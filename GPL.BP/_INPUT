@@ -1,0 +1,195 @@
+      * _INPUT
+      * INPUT statement processor
+      * Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+      *
+      * This program is free software; you can redistribute it and/or modify
+      * it under the terms of the GNU General Public License as published by
+      * the Free Software Foundation; either version 2, or (at your option)
+      * any later version.
+      *
+      * This program is distributed in the hope that it will be useful,
+      * but WITHOUT ANY WARRANTY; without even the implied warranty of
+      * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+      * GNU General Public License for more details.
+      *
+      * You should have received a copy of the GNU General Public License
+      * along with this program; if not, write to the Free Software Foundation,
+      * Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+      *
+      * Ladybridge Systems can be contacted via the www.openqm.com web site.
+      *
+      * START-HISTORY:
+      * 06 Apr 09 gcb Fixed PTERM case state origination code. It was not
+      *               storing the original PTERM state properly.
+      * 02 Apr 09 gcb Added support for IN$NO.CASE.INVERT option
+      * 29 Mar 09 gwb Added support for IN$NO.ECHO.DATA option
+      *               This is activated by the $MODE "NO.ECHO.DATA"
+      *
+      * 10 Feb 06  2.3-6 Added timeout.
+      * 10 Feb 06  2.3-6 Autologout now handled in kernel.
+      * 21 Dec 05  2.3-3 Handle pipe eof exception condition.
+      * 30 Aug 05  2.2-9 0402 The fix for 0392 is invalid as it prevents use of
+      *                  special keys in INPUT data.
+      * 15 Aug 05  2.2-8 0392 Use KEYCODE() to ensure recognition of non-standard
+      *                  values for backspace and return keys.
+      * 04 Aug 05  2.2-7 Added immediate argument to LOGOUT().
+      * 27 Jan 05  2.1-4 Corrected spelling of autologout message.
+      * 13 Oct 04  2.0-5 Use message handler.
+      * 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+      * END-HISTORY
+      *
+      * START-DESCRIPTION:
+      *
+      *
+      * END-DESCRIPTION
+      *
+      * START-CODE
+
+      $internal
+      $recursive
+      $no.symbols
+      $no.xref
+      $flags allow.break
+
+      subroutine input(string.arg, max.input, (timeout), flags)
+
+      * Flags:
+      *   IN$NOCRLF          Suppress automatic CR/LF (underscore used)
+      *   IN$NOLF            Suppress LF after CR (colon used)
+      *   IN$NOT.DATA        Do not use DATA queue
+      *   IN$PASSWORD        Use password style masking if input
+      *   IN$UPCASE          Force input to uppercase
+      *   IN$TIMEOUT         Timeout supplied (else timeout value is 0 from kernel)
+      *   IN$THENELSE        THEN/ELSE present - return status on stack
+      *   IN$NO.ECHO.DATA    Supress character echo of input source is DATA
+      *   IN$NO.CASE.INVERT  Suppress case inversion regardless of PTERM status
+
+      $include syscom.h
+      $include int$keys.h
+
+      $include keys.h
+      $include keyin.h
+      $include err.h
+
+      set.status 0
+      then.else.flag = 1
+
+      use.data.queue = not(bitand(flags, IN$NOT.DATA))
+      password = bitand(flags, IN$PASSWORD)
+      pagination = kernel(K$PAGINATE, -1)
+      return.key = seq(pterm(PT$INEWLINE,''))
+      uppercase = bitand(flags, IN$UPCASE)
+      no.echo.data = bitand(flags, IN$NO.ECHO.DATA)
+      no.case.invert = bitand(flags, IN$NO.CASE.INVERT)
+
+      if pterm(PT$INVERT, -1) then
+         original.case.inversion = 1
+      end else
+         original.case.inversion = 0
+      end
+      if no.case.invert then
+         if original.case.inversion = 1 then
+            i = pterm(PT$INVERT, @false)
+         end
+      end
+      
+      c = terminfo('kbs')    ;* 0402
+      backspace = if len(c) = 1 then seq(c) else 8
+
+      string = ''
+      if max.input = 0 then max.input = 99999
+
+      * Display prompt character if required
+
+      if len(prompt()) then display prompt() :
+
+      * Process input
+
+      if len(data.queue) and use.data.queue then       ;* Get text from DATA queue
+         string = field(data.queue, @im, 1, 1)[1,max.input]
+         if uppercase then string = upcase(string)
+         data.queue = data.queue[col2() + 1, 99999999]
+
+         if not(no.echo.data) then
+            if echo.input then
+               display if password then str('*', len(string)) else string :
+               if not(bitand(flags, in$nolf)) then display
+            end
+         end
+      end else                     ;* Not taking data from a DATA statement
+         string = ""
+
+         loop
+            c = keyinc(timeout)
+            if c = '' then          ;* Exception condition
+               if status() = ER$TIMEOUT then then.else.flag = 0
+
+               * Other exception conditions return a null string and leave the
+               * caller to sort out what happened.
+
+               string = ''
+               exit
+            end
+
+            n = seq(c)
+            begin case  ;* 0392 Allow rebindable values
+               case n = backspace                     ;* BACKSPACE key
+                  if len(string) then
+                     string = string[1, len(string) - 1]
+                     if echo.input then display @(IT$CUB) : ' ' : @(IT$CUB) :
+                  end
+
+               case n = return.key                    ;* RETURN key
+                  if echo.input and not(bitand(flags, in$nolf)) then display
+                  exit
+               case n = 10
+                  null
+               case n = 13
+                  null
+               case 1
+                  if len(string) < max.input then
+                     if uppercase then c = upcase(c)
+                     string := c
+                     if echo.input then
+                        display if password then '*' else c :
+                     end
+                  end
+
+            end case
+
+            * If we have reached the character limit and the underscore option
+            * was not used, terminate input.
+
+            if len(string) = max.input and not(bitand(flags, in$nocrlf)) then
+               if echo.input and not(bitand(flags, in$nolf)) then display
+               exit
+            end
+         repeat
+      end
+
+      * Reset line number if pagination was active when we entered
+
+      c = kernel(K$PAGINATE, pagination)
+
+      * Unless we timed out the input, update the caller's variable
+
+      if then.else.flag then string.arg = string
+
+      * Restore the PTERM CASE inversion mode
+
+      if no.case.invert then
+         if original.case.inversion = 1 then
+            i = pterm(PT$INVERT, @true)
+         end else
+            i = pterm(PT$INVERT, @false)
+         end
+      end
+
+      * If we have a THEN/ELSE clause, we need to leave a status on the stack
+
+      if bitand(flags, IN$THENELSE) then return value then.else.flag
+
+      return
+      end
+
+      * END-CODE

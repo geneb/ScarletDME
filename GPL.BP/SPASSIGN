@@ -1,0 +1,208 @@
+* SPASSIGN
+* SP.ASSIGN command.
+* Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 10 Oct 07  2.6-5 SETPTR command was wrongly formed if no options.
+* 12 Oct 06  2.4-15 New program.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* n      Number of copies
+* Fqno   Assign to specified queue (0 - 999, default 0)
+* H      Send to hold file (also prints unless S used)
+* O      Keep open
+* Qqno   Same as Fqno
+* Runit  Use specified print unit
+* S      Suppress printing (used with H option)
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program spassign
+$catalog $spass
+
+$include parser.h
+$include syscom err.h
+$include syscom keys.h
+$include int$keys.h
+$include forms.h
+
+deffun errtext(x) calling "!errtext"
+deffun find.option(opt) local
+
+   @system.return.code = -ER$ARGS      ;* Preset for command format errors
+
+   * Set defaults
+
+   unit = 0
+   copies = -1
+   queue = 0
+   hold = @false
+   suppress.printing = @false
+   keep.open = @false
+
+   * Open the $FORMS file
+
+   open '$FORMS' to frm.f else
+      stop sysmsg(7164)  ;* Cannot open $FORMS: %M
+   end
+
+   * Parse the command
+
+   call !parser(PARSER$RESET, 0, @sentence, 0)
+   call !parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+
+   * Process options which may be one or multiple tokens
+
+   call !parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   if token.type = PARSER$END then
+      stop sysmsg(7165)  ;* Printer options required
+   end
+
+   loop
+      token = upcase(token)
+      loop
+         c = token[1,1]
+         begin case
+            case token = ''
+               exit
+
+            case token.type = PARSER$COMMA   ;* Ignore comma
+               token = token[2,99999]
+
+            case token.type = PARSER$LBR     ;* Ignore left bracket
+               token = token[2,99999]
+
+            case token.type = PARSER$RBR     ;* Ignore right bracket
+               token = token[2,99999]
+
+            case c matches '1N'              ;* Number of copies
+               copies = matchfield(token, '0N0X', 1)
+               if copies < 1 then
+                  stop sysmsg(7167)  ;* Invalid number of copies
+               end
+               token = matchfield(token, '0N0X', 2)
+
+            case token matches '"F"1N0X'     ;* Form queue number
+               queue = matchfield(token, '"F"0N0X', 2)
+               token = matchfield(token, '"F"0N0X', 3)
+
+            case c = 'H'                     ;* Direct to hold file
+               hold = @true
+               token = token[2,99999]
+
+            case c = 'O'                     ;* Keep open
+               keep.open = @true
+               token = token[2,99999]
+
+            case token matches '"Q"1N0X'     ;* Form queue number
+               queue = matchfield(token, '"Q"0N0X', 2)
+               token = matchfield(token, '"Q"0N0X', 3)
+
+            case token matches '"R"1N0X'     ;* Print unit number
+               unit = matchfield(token, '"F"0N0X', 2)
+               token = matchfield(token, '"F"0N0X', 3)
+
+            case c = 'S'                     ;* Suppress printing
+               suppress.printing = @true
+               token = token[2,99999]
+
+            case 1
+               stop sysmsg(2018, token)  ;* Unexpected token (%1)
+         end case
+      repeat
+      call !parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   until token.type = PARSER$END
+   repeat
+
+   * Now read the form queue record and construct a SETPTR command
+
+   read frm.rec from frm.f, queue else
+      stop sysmsg(7166)  ;* Print queue is not defined
+   end
+
+   options = raise(frm.rec<FRM.OPTIONS>)
+   mode = frm.rec<FRM.MODE>
+
+   * Handle options
+
+   if copies > 0 then
+      i = find.option('COPIES')
+      options<i> = 'COPIES ' : copies
+   end
+
+   if hold then
+      if suppress.printing then           ;* HS
+         mode = 3
+         i = find.option('AT')
+         if i > 0 then del options<i>
+      end else                            ;* H
+         mode = 6
+      end
+   end else                               ;* Neither (or meaningless lone S)
+      if mode # 1 and mode # 6 then
+         i = find.option('AT')
+         if i > 0 then del options<i>
+      end
+
+      if mode # 3 and mode # 6 then
+         i = find.option('AS')
+         if i > 0 then del options<i>
+      end
+   end
+
+   if keep.open then
+      if find.option('KEEP.OPEN') < 0 then
+         options<i> = 'KEEP.OPEN'
+      end
+   end
+
+   cmd = 'SETPTR ' : unit : ','
+   cmd := frm.rec<FRM.WIDTH> : ','
+   cmd := frm.rec<FRM.DEPTH> : ','
+   cmd := frm.rec<FRM.TMGN> : ','
+   cmd := frm.rec<FRM.BMGN> : ','
+   if options # '' then cmd := ',' : change(options, @fm, ',')
+   cmd := ',BRIEF'
+   execute cmd
+
+   @system.return.code = 0
+   return
+
+* ======================================================================
+
+local function find.option(opt)
+   private i,n
+
+   n = dcount(options, @fm)
+   for i = 1 to n
+      if field(options<i>, ' ', 1) = opt then return i
+   next i
+
+   return -1
+end
+
+end
+
+* END-CODE

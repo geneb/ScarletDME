@@ -1,0 +1,145 @@
+* _KEYCODE
+* KEYCODE() recursive code.
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 31 Oct 06  2.4-15 Use @SYS.BELL to honour BELL ON/OFF setting.
+* 23 May 06  2.4-4 Added lone Esc handling.
+* 18 May 05  2.2-0 0356 Map backspace (needed for xterm).
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+$recursive
+$no.symbols
+$no.xref
+
+subroutine keycode(timeout)
+$include int$keys.h
+$include terminfo.h
+$include keyin.h
+$include keycode.h
+
+
+   if kc.term.type # @term.type then   ;* Load bindings
+      kc.keys = ''
+      kc.codes = ''
+      tinfo = terminfo()
+
+      code = K$F1         ; key.string = tinfo<T$KEY.F1>        ; gosub bind
+      code = K$F2         ; key.string = tinfo<T$KEY.F2>        ; gosub bind
+      code = K$F3         ; key.string = tinfo<T$KEY.F3>        ; gosub bind
+      code = K$F4         ; key.string = tinfo<T$KEY.F4>        ; gosub bind
+      code = K$F5         ; key.string = tinfo<T$KEY.F5>        ; gosub bind
+      code = K$F6         ; key.string = tinfo<T$KEY.F6>        ; gosub bind
+      code = K$F7         ; key.string = tinfo<T$KEY.F7>        ; gosub bind
+      code = K$F8         ; key.string = tinfo<T$KEY.F8>        ; gosub bind
+      code = K$F9         ; key.string = tinfo<T$KEY.F9>        ; gosub bind
+      code = K$F10        ; key.string = tinfo<T$KEY.F10>       ; gosub bind
+      code = K$F11        ; key.string = tinfo<T$KEY.F11>       ; gosub bind
+      code = K$F12        ; key.string = tinfo<T$KEY.F12>       ; gosub bind
+      code = K$LEFT       ; key.string = tinfo<T$KEY.LEFT>      ; gosub bind
+      code = K$RIGHT      ; key.string = tinfo<T$KEY.RIGHT>     ; gosub bind
+      code = K$UP         ; key.string = tinfo<T$KEY.UP>        ; gosub bind
+      code = K$DOWN       ; key.string = tinfo<T$KEY.DOWN>      ; gosub bind
+      code = K$PAGE.UP    ; key.string = tinfo<T$KEY.PPAGE>     ; gosub bind
+      code = K$PAGE.DOWN  ; key.string = tinfo<T$KEY.NPAGE>     ; gosub bind
+      code = K$HOME       ; key.string = tinfo<T$KEY.HOME>      ; gosub bind
+      code = K$END        ; key.string = tinfo<T$KEY.END>       ; gosub bind
+      code = K$INSERT     ; key.string = tinfo<T$KEY.IC>        ; gosub bind
+      code = K$DELETE     ; key.string = tinfo<T$KEY.DC>        ; gosub bind
+      code = K$CTRL.TAB   ; key.string = tinfo<T$KEY.BTAB>      ; gosub bind
+      code = K$MOUSE      ; key.string = tinfo<T$KEY.MOUSE>     ; gosub bind
+      code = K$BACKSPACE  ; key.string = tinfo<T$KEY.BACKSPACE> ; gosub bind
+      code = K$RETURN     ; key.string = pterm(PT$INEWLINE,'')  ; gosub bind
+
+      kc.term.type = @term.type
+   end
+
+   * A negative timeout value is used as a special case where we call this
+   * subroutine simply to initialise the key bindings.
+
+   if timeout < 0 then return value ''
+
+
+   * Process input
+
+   loop
+      key.string = keyin(timeout)
+      if key.string = '' then return value ''
+
+      if key.string = char(27) then   ;* Leading Esc
+         if not(kc.disable.esc) then
+            key.string = keyin(0.2)
+            set.status 0   ;* Hide possible timeout
+            if key.string = '' then return value char(27)
+            key.string = char(27) : key.string
+         end
+      end
+
+      loop
+         locate key.string in kc.keys<1> by 'AL' setting i then
+            code = kc.codes<i>
+            if code < 256 then       ;* Standard key definition
+               return value char(code)
+            end else                 ;* KEYEXIT/KEYTRAP definitions
+               set.status code
+               return value char(0)
+            end
+         end
+
+      while kc.keys<i>[1,len(key.string)] = key.string
+         c = keyin(timeout)
+         if c = '' then return value ''
+         key.string := c
+      repeat
+
+      if len(key.string) = 1 then
+         if system(1001) then key.string = swapcase(key.string)
+         return value key.string
+      end
+
+      display @sys.bell :
+      key.string = ''
+   repeat
+
+
+* ======================================================================
+*  bind  -  Set a binding
+
+bind:
+   if len(key.string) then
+      locate key.string in kc.keys<1> by 'AL' setting i then ;* Replace binding
+         kc.codes<i> = code
+      end else                                               ;* Add binding
+         ins key.string before kc.keys<i>
+         ins code before kc.codes<i>
+      end
+   end
+
+   return
+end
+
+* END-CODE

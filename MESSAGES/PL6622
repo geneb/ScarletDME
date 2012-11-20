@@ -1,0 +1,7 @@
+The Menu Item Separator Line
+Press the Return key on this line to insert a new menu item below.
+
+Use the Kill Line action (Ctrl-K) to delete the menu item below.  Successive
+use of the Kill Line operation will collect the deleted items in the kill
+buffer.  These can be reinserted at a suitable position by use of the paste
+(Ctrl-Y) action.

@@ -1,0 +1,105 @@
+* _PICKMSG
+* Recursive code for Pick style error message.
+* Copyright (c) 2004 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 04 Nov 04  2.0-10 Do not use STOP if an error occurs.
+* 19 Oct 04  2.0-6 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+$no.symbols
+$no.xref
+$recursive
+
+subroutine pickmsg(msg.id, args, is.abort)
+$include syscom.h
+
+   open 'ERRMSG' to err.f else
+      display sysmsg(1620, id) ;* Cannot open ERRMSG while reporting error %1
+      return
+   end
+
+   id = if msg.id = '' then 'NULL' else msg.id
+
+   read err.rec from err.f, id else
+     display '[':id:'] ' : sysmsg(1621)  ;* Cannot locate message in ERRMSG
+     return
+   end
+
+   if id matches '1N0N' then @system.return.code = id
+
+   argno = 1
+   n = dcount(err.rec, @fm)
+   for i = 1 to n
+      s = err.rec<i>
+      begin case
+         case s matches 'A0N'
+            z = s[2,999]
+            if z = '' then display field(args, @im, argno) :
+            else display fmt(field(args, @im, argno), z:'L') :
+            argno += 1
+
+         case s[1,1] = 'B'
+            display @sys.bell :
+
+         case s[1,1] = 'D'
+            display oconv(date(), 'D4/DMY[,A3]') :
+
+         case s[1,1] = 'E'
+            display '[' : id : ']' : s[2,999] :
+
+         case s[1,1] = 'H'
+            display s[2,999] :
+
+         case s matches 'L0N'
+            z = s[2,999]
+            if z = '' then z = 1
+            loop while z do display ; z -= 1 repeat
+
+         case s matches 'R0N'
+            z = s[2,999]
+            if z = '' then display field(args, @im, argno) :
+            else display fmt(field(args, @im, argno), z:'R') :
+            argno += 1
+
+         case s matches 'S0N'
+            z = s[2,999] + 0
+            display space(z) :
+
+         case s[1,1] = 'T'
+            display oconv(time(), 'MTS') :
+      end case
+   next i
+
+   display
+
+   if is.abort then abort.message = '[' : id : ']'
+
+   return
+end
+
+* END-CODE

@@ -1,0 +1,6 @@
+The Access Control Key
+If the menu includes an access control subroutine, the subroutine is called
+as the menu is prepared for display for each menu option that has an entry in
+this Access line.  The value entered here is passed into the subroutine as a
+key to identify the menu option being processed.  The subroutine returns a
+status indicating whether the menu option is to be available or not.

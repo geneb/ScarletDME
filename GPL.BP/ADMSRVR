@@ -1,0 +1,522 @@
+* ADMSRVR
+* GUI Admin tool server.
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 03 Oct 07  2.6-5 Use parse.pathname.tokens() against ACCOUNTS record.
+* 02 Nov 06  2.4-15 VOC/dictionary record types now case insensitive.
+* 04 Aug 05  2.2-7 Added immediate argument to LOGOUT().
+* 20 Sep 04  2.0-2 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+
+$internal
+$flags trusted
+$qmcall
+subroutine admsrvr(action,     ;* Action number
+                   arg1,       ;* Qualifying argument 1
+                   arg2,       ;* Qualifying argument 2
+                   reply,      ;* Returned result
+                   err)        ;* Error message. Null if ok
+
+$catalog $admsrvr
+
+$include keys.h
+$include int$keys.h
+$include revstamp.h
+
+   reply = ""
+   err = ""
+
+   windows = system(91)
+
+   * Ensure that user is an administrator
+
+   if not(kernel(K$ADMINISTRATOR,-1)) then
+      err = sysmsg(2000)
+      return
+   end
+
+   on action gosub get.users,           ;*  1  Get active user list
+                   get.locks,           ;*  2  Get lock list
+                   logout.user,         ;*  3  Logout user
+                   get.files,           ;*  4  Get list of open files
+                   get.usernames,       ;*  5  Get list of usernames in $LOGINS
+                   get.user.detail,     ;*  6  Get details of specific user
+                   set.user.detail,     ;*  7  Set details of specific user
+                   get.server.info,     ;*  8  Get information about server
+                   delete.user,         ;*  9  Delete user
+                   get.accounts,        ;* 10  Get account name list
+                   release.lock,        ;* 11  Release lock
+                   get.account.details, ;* 12  Get ACCOUNTS file record
+                   create.account,      ;* 13  Create new account
+                   create.account2,     ;* 14  Create new account after confirmation
+                   browse.dir,          ;* 15  Browse content of directory
+                   delete.account,      ;* 16  Delete account
+                   delete.account2,     ;* 17  Delete account after confirmation
+                   unrecognised
+
+exit.admsrvr:
+   return to exit.admsrvr
+
+* =============================================================================
+* 
+get.users:
+   ulist = kernel(K$USERS, 0)
+   * uid VM pid VM ip_addr VM flags VM puid VM username FM...
+
+   reply = ulist
+   return
+
+* =============================================================================
+* 
+get.locks:
+   reply = field(getlocks('', arg1), @fm, 2, 999999)
+   * file_id VM pathname VM userno VM type VM id VM username FM ...
+   * Multiple locks in a single file are not grouped together
+
+   return
+
+* =============================================================================
+*
+logout.user:
+   arg1 = trim(arg1)  ;* VB leaves a leading space which upsets the code below
+
+   if logout(arg1, @false) then
+      * Pause up to 5 seconds for the user to go away so that when we
+      * return to the client side, updating the user list will reflect
+      * the logout action.
+
+      for i = 1 to 20
+         ulist = vslice(kernel(K$USERS, 0),1)           ;* List of user numbers
+         locate arg1 in ulist<1> setting s else exit  ;* User has gone
+         nap 250
+      next i
+   end else
+      err = sysmsg(2100)  ;* Invalid user number
+   end
+
+   return
+
+* =============================================================================
+* 
+get.files:
+   reply = system(1003)
+   return
+
+* =============================================================================
+*
+get.usernames:
+   openpath @qmsys:@ds:'$LOGINS' to lgn.f then
+      select lgn.f
+      loop
+         readnext id else exit
+         if id = 'Console' then continue
+         if id = '$SECURE' then continue
+         reply<-1> = id
+      repeat
+      close lgn.f
+   end
+
+   return
+
+* =============================================================================
+
+get.user.detail:
+   openpath @qmsys:@ds:'$LOGINS' to lgn.f then
+      read reply from lgn.f, arg1 else null
+      close lgn.f
+   end
+   return
+
+* =============================================================================
+
+set.user.detail:
+   acc.name = arg2<LGN$FORCE.ACCOUNT>
+   if acc.name # '' then
+      * Validate account name
+      openpath @qmsys:@ds:'ACCOUNTS' to acc.f else   ;* Will close on return
+         err = sysmsg(2200) ;* Cannot open accounts register
+         return
+      end
+
+      readv s from acc.f, acc.name, 0 else
+         err = sysmsg(2201, acc.name) ;* Account name '%1'is not in register
+         return
+      end
+   end
+
+   openpath @qmsys:@ds:'$LOGINS' to lgn.f then
+      read reply from lgn.f, arg1 else null
+      * Copy modifiable fields
+      reply<LGN$OWNER> = arg2<LGN$OWNER>
+      reply<LGN$FORCE.ACCOUNT> = acc.name
+      reply<LGN$ADMIN> = arg2<LGN$ADMIN>
+      write reply to lgn.f, arg1
+      close lgn.f
+   end
+
+   return
+
+* =============================================================================
+
+get.server.info:
+   * Returns:
+   * F1 : Platform   0 = Windows 95/98/ME
+   *                 1 = Windows NT/2000/XP
+   *                 2 = Linux
+   *                 3 = FreeBSD
+   * F2 : Server user number
+   * F3 : QM version
+
+   s = system(1010)
+   begin case
+      case s = 'Windows'
+         reply = system(1006)
+      case s = 'Linux'
+         reply = 2
+      case s = 'FreeBSD'
+         reply = 3
+      case 1
+         reply = -1
+   end case
+
+   reply<2> = @userno
+   reply<3> = QM.REV.STAMP
+
+   return
+
+* =============================================================================
+
+delete.user:
+   openpath @qmsys:@ds:'$LOGINS' to lgn.f then
+      readu s from lgn.f, arg1 then delete lgn.f, arg1
+      close lgn.f
+   end
+
+   return
+
+* =============================================================================
+
+get.accounts:
+   openpath @qmsys:@ds:'ACCOUNTS' to acc.f else   ;* Will close on return
+      err = sysmsg(2200)  ;* Cannot open ACCOUNTS register
+      return
+   end
+
+   sselect acc.f to 1
+   readlist reply from 1 else null
+
+   return
+
+* =============================================================================
+
+release.lock:
+   userno = field(arg1, ',', 1)
+   fileno = field(arg1, ',', 2)
+
+   release.lock fileno, userno, arg2
+
+   return
+
+* =============================================================================
+
+get.account.details:
+   openpath @qmsys:@ds:'ACCOUNTS' to acc.f else   ;* Will close on return
+      err = sysmsg(2200)  ;* Cannot open ACCOUNTS register
+      return
+   end
+
+   readv reply from acc.f, arg1, ACC$PATH else
+      err = sysmsg(2201, arg1)  ;* Account name '%1' is not in register
+      return
+   end
+
+   reply = parse.pathname.tokens(reply)
+
+   return
+
+* =============================================================================
+
+create.account:
+   force = @false
+   goto create.account.common
+
+create.account2:
+   force = @true
+
+create.account.common:
+
+   * Validate account name
+
+   if len(arg1) > 16 or convert('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-', '', arg1) # '' then
+      err = sysmsg(2202)  ;* Account name is invalid
+      return
+   end
+
+   openpath @qmsys:@ds:'ACCOUNTS' to acc.f else   ;* Will close on return
+      err = sysmsg(2200)  ;* Cannot open accounts register
+      return
+   end
+
+   read acc.rec from acc.f, arg1 then
+      err = sysmsg(2203)  ;* Account is already in register
+      return
+   end
+
+   * Check if valid pathname (must be full pathname)
+
+   pathname = arg2<ACC$PATH>
+   if windows then pathname = upcase(pathname)
+   pathname = parse.pathname.tokens(pathname)
+
+   if windows then s = '1A":\"1X0X' else s = '"/"1X0X'
+   if not(pathname matches s) then
+      err = sysmsg(2101)   ;* Full pathname required
+      return
+   end
+
+   if not(ospath(pathname, OS$PATHNAME)) then
+      err = sysmsg(2204)  ;* Invalid account pathname
+      return
+   end
+
+   pathname = ospath(pathname, OS$FULLPATH)   ;* Should do nothing!
+   if windows then pathname = upcase(pathname)
+
+   acc.rec<ACC$PATH> = pathname
+
+   * Check parent directory exists
+
+   parent.dir = field(pathname, @ds, 1, dcount(pathname, @ds) - 1)
+   if parent.dir # '' and not(parent.dir matches "1A':") then
+      if not(ospath(parent.dir, OS$EXISTS)) then
+         err = sysmsg(2205)  ;* Parent directory does not exist
+         return
+      end
+   end
+
+   * Check if account directory exists
+
+   if ospath(pathname, OS$EXISTS) then
+      * Check for presence of a VOC file
+      openpath pathname:@ds:'VOC' to voc.f then
+         if not(force) then  ;* Directory contains a VOC file
+            reply = sysmsg(2206)
+            return
+         end
+
+         goto link.to.existing.account
+      end
+   end else
+      create.file pathname directory on error
+         err = sysmsg(2207)  ;* Unable to create account directory
+         return
+      end
+   end
+
+   * Set up the account
+
+   create.file pathname:@ds:'VOC' dynamic on error
+      err = sysmsg(2208)  ;* Unable to create VOC
+      return
+   end
+
+   openpath pathname:@ds:'VOC' to voc.f else
+      err = sysmsg(2209)  ;* Unable to open new VOC
+      return
+   end
+
+   openpath @qmsys:@ds:"NEWVOC" to newvoc.f else
+      err = sysmsg(2210)  ;* Cannot open QMSYS NEWVOC
+      return
+   end
+
+   select newvoc.f to 11
+   loop
+      readnext id from 11 else exit
+
+      read rec from newvoc.f, id then
+         rec<1> = if upcase(rec[1,1]) = 'P' then rec<1>[1,2] else rec[1,1]
+
+         if upcase(rec<1>) = 'K' and rec<3> # '' then   ;* Keyword with other use
+            s = rec<3>
+            rec<3> = if upcase(s[1,1]) = 'P' then s<1>[1,2] else s[1,1]
+         end
+
+         write rec to voc.f, id
+      end
+   repeat
+
+   close newvoc.f
+
+
+   * Create $HOLD
+
+   fn = '$HOLD'
+   os.name = '$HOLD'
+   descr = sysmsg(2230) ;* File for deferred prints
+   if descr[1,1] # 'F' then descr = 'F ' : descr
+   dict = @true
+   gosub create.dir.file
+
+
+   * Create $SAVEDLISTS
+
+   fn = '$SAVEDLISTS'
+   os.name = '$SVLISTS'
+   descr = sysmsg(2231) ;* File for saved select lists
+   if descr[1,1] # 'F' then descr = 'F ' : descr
+   dict = @false
+   gosub create.dir.file
+
+
+   * Create private catalogue
+
+   create.file pathname:@ds:'cat' directory on error
+      err = sysmsg(2211)  ;* Unable to create private catalogue directory
+      return
+   end
+
+link.to.existing.account:
+
+   * Add ACCOUNTS entry
+
+   acc.rec = ''
+   acc.rec<1> = pathname
+   write acc.rec to acc.f, arg1
+   close acc.f
+
+   return
+
+* =============================================================================
+
+browse.dir:
+   call !sort(ospath(arg1, OS$DIR), s, 'A')
+   s = lower(s)                          ;* Make value separated
+   if s[1,1] = 'F' then s = @fm : s      ;* No directories, add leading FM
+   else
+      i = index(s, @vm:'F', 1)           ;* Find first directory and...
+      if i then s[i,1] = @fm             ;* ...split into two fields
+   end
+   reply = substrings(s, 2, 99999)       ;* Remove type character
+
+   return
+
+* =============================================================================
+
+delete.account:
+  force = @false
+  goto delete.account.common
+
+delete.account2:
+  force = @true
+
+delete.account.common:
+   openpath @qmsys:@ds:'ACCOUNTS' to acc.f else   ;* Will close on return
+      err = sysmsg(2200)  ;* Cannot open accounts register
+      return
+   end
+
+   readu acc.rec from acc.f, arg1 else
+      err = sysmsg(2201, arg1)  ;* Account name '%1' is not in register
+      return
+   end
+
+   if arg2 then   ;* Delete directory too
+      acc.path = parse.pathname.tokens(acc.rec<ACC$PATH>)
+
+      * Check for other account names for same directory
+
+      select acc.f to 1
+      loop
+         readnext xacc from 1 else exit
+         if xacc # arg1 then
+            readu xacc.rec from acc.f, xacc then
+               xacc.path = parse.pathname.tokens(xacc.rec<ACC$PATH>)
+               if xacc.path = acc.path then
+                  if force then delete acc.f, xacc
+                  else reply<-1> = xacc
+               end
+            end
+            release acc.f, xacc
+        end
+      repeat
+
+      if reply # '' then return
+
+      i = ospath(acc.path, OS$DELETE)
+   end
+
+   delete acc.f, arg1
+
+   return
+
+* =============================================================================
+
+create.dir.file:
+   create.file pathname:@ds:os.name directory on error
+      err = sysmsg(2212, fn)  ;* Unable to create data part of %1
+      return to exit.admsrvr
+   end
+
+   begin case
+      case descr[1,1]= 'F'       ; voc.rec = descr
+      case descr # ''            ; voc.rec = 'F ' : descr
+      case 1                     ; voc.rec = 'F'
+   end case
+
+   voc.rec<2> = os.name
+
+   if dict then
+      create.file pathname:@ds:os.name:'.DIC' dynamic on error
+         err = sysmsg(2213, fn)  ;* Unable to create dictionary part of %1
+         return to exit.admsrvr
+      end
+
+      openpath pathname:@ds:os.name:'.DIC' to dict.f else
+         err = sysmsg(2214, fn)  ;* Unable to open dictionary part of %1
+         return to exit.admsrvr
+      end
+
+      write raise('Dý0ýý':fn:'ý10LýS') to dict.f, '@ID'
+      close dict.f
+
+      voc.rec<3> = os.name:'.DIC'
+   end
+
+   write voc.rec to voc.f, fn
+
+   return
+
+* ======================================================================
+
+unrecognised:
+   return
+
+end
+
+* END-CODE

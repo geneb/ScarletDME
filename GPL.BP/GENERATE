@@ -1,0 +1,324 @@
+* GENERATE
+* Generate include file from dictionary
+* Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 26 Oct 07  2.6-5 Display error if cannot open target file.
+* 02 Nov 06  2.4-15 Dictionary record types now case insensitive.
+* 03 Sep 05  2.2-9 Added support for A/S types and generation of matrix style
+*                  include records.
+* 28 Mar 05  2.1-11 Use PARSER$MFILE.
+* 14 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    $INCLUDE    1: X
+*                2: Target file name. Defaults to BP
+*                3: Record name for dynamic array mode. Defaults to file name
+*                   with .H suffix.
+*                4: Token prefix for dynamic array style.
+*                5: Copyright
+*                6: Duplicates allowed? (S/M)
+*                7: Generate conversion code tokens?
+*                     N = No (default)
+*                     Y = Yes, where conversion present
+*                     A = Yes, including null conversions
+*                8: Type to create
+*                     D = Dynamic array references (default) } Both can be
+*                     M = Matrix and element equates         } used together
+*                9: Record name for matrix mode. Defaults to file name with
+*                   .MAT.H suffix.
+*               10: Matrix name. Defaults to file name.
+*               11: Token prefix for matrix style.
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program generate
+$catalog $generat
+
+$include parser.h
+$include err.h
+$include keys.h
+$include dictdict.h
+
+
+   @system.return.code = -ER$ARGS      ;* Preset for command format errors
+   parser = '!PARSER'
+
+   prompt ''
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+
+
+   * Get file name
+
+   call @parser(PARSER$MFILE, token.type, dict.name, keyword)
+   if token.type = PARSER$END then stop sysmsg(2102) ;* File name required
+
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   if token.type # PARSER$END then stop sysmsg(2018, token) ;* 'Unexpected token (xx)
+
+   open 'DICT', dict.name to dict.file else
+      open 'DICT', upcase(dict.name) to dict.file else
+         stop sysmsg(2012) ;* Cannot open dictionary
+      end
+      dict.name = upcase(dict.name)
+   end
+
+   readu incl.rec from dict.file, "$INCLUDE" then
+      release dict.file, "$INCLUDE"
+   end else
+      incl.rec = 'X'
+
+      loop
+         display sysmsg(6862) : ;* Type (D dynamic array, M matrix, or both):
+         input type
+         type = upcase(type)
+      until listindex('D,M,DM,MD', ',', type)
+      repeat
+      incl.rec<8> = type
+
+      if index(type, 'D', 1) then
+         display sysmsg(6860) :  ;* Prefix for dynamic array tokens (excluding separator):
+         input prefix
+         incl.rec<4> = prefix : '.'
+      end
+
+      if index(type, 'M', 1) then
+         display sysmsg(6863) :  ;* Prefix for matrix tokens (excluding separator):
+         input prefix
+         incl.rec<11> = prefix : '.'
+      end
+
+      write incl.rec to dict.file, '$INCLUDE'
+   end
+
+   if incl.rec[1,1] = 'X' then
+      file.name = incl.rec<2>
+      if file.name = '' then file.name = "BP"
+
+      copyright = incl.rec<5>
+      duplicates.allowed = (incl.rec<6> = "M")
+      generate.conversions = index("YA", upcase(incl.rec<7>), 1)
+      dynamic.array.mode = incl.rec<8> = '' or index(incl.rec<8>, 'D', 1)
+      matrix.mode = index(incl.rec<8>, 'M', 1)
+
+      names = ''
+      loc = ''
+      conv = ''
+      comments = ''
+      longest = 0
+      conversion.present = @false
+      hi.fno = 0
+
+      select dict.file to 1
+      loop
+         readnext id from 1 else exit
+         read dict.rec from dict.file, id then
+            type = upcase(dict.rec[1,1])
+            begin case
+               case type = 'D'
+                  fno = dict.rec<DICT.LOC>
+                  if num(fno) and fno # 0 and fno # 9998 and fno # 9999 then
+                     if fno > hi.fno then hi.fno = fno
+                     locate fno in loc<1> by 'AR' setting idx then
+                        if not(duplicates.allowed) then continue
+                     end
+
+                     ins id before names<idx>
+                     if len(id) > longest then longest = len(id)
+
+                     ins fno before loc<idx>
+
+                     cnv = dict.rec<DICT.CONV>
+                     ins cnv before conv<idx>
+                     if cnv # '' then conversion.present = @true
+ 
+                     ins dict.rec<DICT.TYPE>[2,9999] before comments<idx>
+                  end
+
+               case (type = 'A' or type = 'S') and dict.rec<DICT.A.CORRELATIVE> = ''
+                  fno = dict.rec<DICT.A.LOC>
+                  if num(fno) and fno # 0 and fno # 9998 and fno # 9999 then
+                     if fno > hi.fno then hi.fno = fno
+                     locate fno in loc<1> by 'AR' setting idx then
+                        if not(duplicates.allowed) then continue
+                     end
+
+                     ins id before names<idx>
+                     if len(id) > longest then longest = len(id)
+
+                     ins fno before loc<idx>
+
+                     cnv = dict.rec<DICT.A.CONV>
+                     ins cnv before conv<idx>
+                     if cnv # '' then conversion.present = @true
+ 
+                     ins dict.rec<DICT.TYPE>[2,9999] before comments<idx>
+                  end
+            end case
+         end
+      repeat
+      clearselect 1
+
+      num.tokens = dcount(names, @fm)
+      if num.tokens then
+         if generate.conversions then
+            if conversion.present or generate.conversions = 2 then
+               longest += 4  ;* Allow for .CNV
+            end
+         end
+
+         if dynamic.array.mode then
+            record.name = incl.rec<3>
+            if record.name = '' then record.name = dict.name : ".H"
+
+            prefix = incl.rec<4>
+
+            openseq file.name, record.name overwrite to include.file else
+               if status() then
+                  stop sysmsg(1436, file.name)  ;* Cannot open %1 : %M
+               end
+            end
+
+            s = "* " : file.name : " " : record.name
+            writeseq s to include.file else null
+
+            s = "* Generated from DICT " : dict.name
+            s := " at " : oconv(time(), "MTS") : " on " : oconv(date(), "DDMYL[,A3,4]")
+            writeseq s to include.file else null
+
+            if len(copyright) then
+               s = trimb("* Copyright (c) " : copyright) : ", All Rights Reserved"
+               writeseq s to include.file else null
+            end
+
+            writeseq "" to include.file else null
+
+            name.width = longest + len(prefix) + 8
+
+            for i = 1 to num.tokens
+               include.rec = fmt("equate " : prefix : names<i>, name.width : 'L')
+               include.rec := 'to ' : fmt(loc<i>, '4R')
+               s = comments<i>
+               if len(s) then include.rec := " ;* " : s
+               writeseq include.rec to include.file else null
+
+               cnv = conv<i>
+               if generate.conversions then
+                  if cnv # '' or generate.conversions = 2 then
+                     include.rec = fmt("equate " : prefix : names<i>:'.CNV', name.width : 'L')
+                     begin case
+                        case index(cnv, '"', 1) = 0
+                           cnv = '"' : cnv : '"'
+                        case index(cnv, '"', 1) = 0
+                           cnv = "'" : cnv : "'"
+                        case index(cnv, '\', 1) = 0
+                           cnv = '\' : cnv : '\'
+                        case 1
+                           crt sysmsg(6861, names<i>) ;* No available quotes for conversion string for %1
+                           continue
+                     end case
+                     include.rec := 'to ' : cnv
+                     writeseq include.rec to include.file else null
+                  end
+               end
+            next i
+
+            closeseq include.file
+         end
+
+         if matrix.mode then
+            record.name = incl.rec<9>
+            if record.name = '' then record.name = dict.name : ".MAT.H"
+
+            prefix = incl.rec<11>
+
+            matrix.name = incl.rec<10>
+            if matrix.name = '' then matrix.name = dict.name
+
+            openseq file.name, record.name overwrite to include.file else
+               if status() then
+                  stop sysmsg(1436, file.name:' ':record.name)  ;* Cannot open %1 : %M
+               end
+            end
+
+            s = "* " : file.name : " " : record.name
+            writeseq s to include.file else null
+
+            s = "* Generated from DICT " : dict.name
+            s := " at " : oconv(time(), "MTS") : " on " : oconv(date(), "DDMYL[,A3,4]")
+            writeseq s to include.file else null
+
+            if len(copyright) then
+               s = trimb("* Copyright (c) " : copyright) : ", All Rights Reserved"
+               writeseq s to include.file else null
+            end
+
+            writeseq '' to include.file else null
+
+            writeseq 'DIM ' : matrix.name : '(' : hi.fno + 1 : ')' to include.file else null
+
+            name.width = longest + len(prefix) + 8
+
+            for i = 1 to num.tokens
+               include.rec = fmt("equate " : prefix : names<i>, name.width : 'L')
+               include.rec := 'to ' : matrix.name : '(' : loc<i> : ')'
+               s = comments<i>
+               if len(s) then include.rec := " ;* " : s
+               writeseq include.rec to include.file else null
+
+               cnv = conv<i>
+               if generate.conversions then
+                  if cnv # '' or generate.conversions = 2 then
+                     include.rec = fmt("equate " : prefix : names<i>:'.CNV', name.width : 'L')
+                     begin case
+                        case index(cnv, '"', 1) = 0
+                           cnv = '"' : cnv : '"'
+                        case index(cnv, '"', 1) = 0
+                           cnv = "'" : cnv : "'"
+                        case index(cnv, '\', 1) = 0
+                           cnv = '\' : cnv : '\'
+                        case 1
+                           crt sysmsg(6861, names<i>) ;* No available quotes for conversion string for %1
+                           continue
+                     end case
+                     include.rec := 'to ' : cnv
+                     writeseq include.rec to include.file else null
+                  end
+               end
+            next i
+
+            closeseq include.file
+         end
+
+      end
+   end
+
+   @system.return.code = 0
+end
+
+
+* END-CODE

@@ -1,0 +1,165 @@
+* UNLOCK
+* UNLOCK verb
+* Copyright (c) 2003 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 13 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    UNLOCK [FILE fid]  [USER uid]  [record id...]
+*                                   [ALL]
+*                                   [FILELOCK]
+*
+*    UNLOCK TASKLOCK n...
+*
+*    In the first form, unless the FILELOCK keyword is used, either record ids
+*    or ALL must be specified.
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+
+program unlock
+$catalog $UNLOCK
+
+$include parser.h
+
+$include keys.h
+$include err.h
+$include int$keys.h
+
+   parser = "!PARSER"
+
+   file.id = -1
+   user.no = -1
+   all = @false
+   filelock = @false
+   ids = ''
+
+   @system.return.code = -ER$ARGS  ;* Preset for command format errors
+
+   if not(kernel(K$ADMINISTRATOR,-1)) then
+      stop sysmsg(2001) ;* Command requires administrator privileges
+   end
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   if keyword = KW$TASKLOCK then gosub clear.task.locks
+   else gosub clear.database.locks
+
+   @system.return.code = 0
+
+   return
+
+* ======================================================================
+
+clear.task.locks:
+   loop
+      call @parser(PARSER$GET.TOKEN, token.type, lock.no, keyword)
+   until token.type = PARSER$END
+      if lock.no matches '1N0N' and lock.no <= 63 then
+         unlock lock.no + 1024   ;* Special form for forced release
+      end else
+         display sysmsg(3080, lock.no) ;* xx is not a valid task lock number
+      end
+   repeat
+
+   return
+
+* ======================================================================
+
+clear.database.locks:
+   loop
+   while token.type = PARSER$TOKEN
+      begin case
+         case keyword = KW$FILE and ids = ''
+            if file.id >= 0 then
+               stop sysmsg(3081) ;* More than one file specified
+            end
+
+            call @parser(PARSER$GET.TOKEN, token.type, file.id, keyword)
+            if not(file.id matches '1-4N') then
+               stop sysmsg(3082, token) ;* File number required after xx
+            end
+
+         case keyword = KW$USER and ids = ''
+            if user.no > 0 then
+               stop sysmsg(3083) ;* More than one user specified
+            end
+
+            call @parser(PARSER$GET.TOKEN, token.type, user.no, keyword)
+            if not(user.no matches '1-5N') or user.no < 1 then
+               stop sysmsg(3084, token) ;* User number required after xx
+            end
+
+         case keyword = KW$ALL and ids = ''
+            all = @true
+
+         case keyword = KW$FILELOCK and ids = ''
+            filelock = @true
+
+         case not(all)
+            if token # '' then ids<-1> = token
+
+         case 1
+            stop sysmsg(2018, token) ;* Unexpected token(xx)
+      end case
+
+      call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   repeat
+
+   if file.id < 0 and user.no < 0 then
+      stop sysmsg(3085) ;* Either a file number or a user number must be specified
+   end
+
+   if filelock then
+      if ids # '' or all then
+         stop sysmsg(3086) ;* Cannot unlock records and a filelock in one operation
+      end
+   end else
+      if ids = '' and not(all) then
+         stop sysmsg(3087) ;* No records specified
+      end
+   end
+
+   begin case
+      case filelock                     ;* Releasing file lock(s)
+         release.lock file.id, user.no
+
+      case all                          ;* Releasing all record locks
+         release.lock file.id, user.no, ''
+
+      case 1                            ;* Releasing record lock(s)
+         num.locks = dcount(ids, @fm)
+         for i = 1 to num.locks
+            release.lock file.id, user.no, ids<i>
+         next i
+   end case
+
+   return
+end
+
+* END-CODE

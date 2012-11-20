@@ -1,0 +1,14 @@
+COPY filename itemlist (options
+To: (destination.filename destination.itemlist
+
+itemlist: item ids desired to copy to destination file
+          * for all items in the file
+          If omitted, uses an active select list
+
+options:  (D - Deletes source records after copying
+          (I - Suppresses display of record id
+          (N - No pagination when printing to screen
+          (O - Overwrite destination items
+          (P - Output to printer
+          (S - Suppresses field numbers with P/T
+          (T - Output to the terminal

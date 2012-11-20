@@ -1,0 +1,6 @@
+Hiding Unavailable Options
+Used with the access control subroutine, this Hide item contains a true/false
+(1/0) value indicating whether unavailable items are to be hidden.  If this
+item id true, unavailable items are not included in the displayed menu.  If
+this value is false, non-available items are displayed with the option number
+in brackets.

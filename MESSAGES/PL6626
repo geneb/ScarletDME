@@ -1,0 +1,11 @@
+Title to appear at the head of the menu display
+Name of access control subroutine. Leave blank if no conditional menu items
+Prompt text. Leave blank to use default text
+Comma separated list of exit codes to return to parent menu, paragraph, etc
+Comma separated list of stop codes to abort processing
+Menu item text
+Action to be performed. Leave blank if text above is a menu subtitle
+Help text for this option
+Access control subroutine key for this option
+1 if option is to be hidden if unavailable. Otherwise leave blank or 0
+Press Return to add a new item, Kill line to remove next item

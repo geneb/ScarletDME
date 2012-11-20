@@ -1,0 +1,8 @@
+Exit Codes
+The optional Exits item is a comma separated list of case insensitive codes
+that the user may enter at the menu prompt to exit from the menu, returning to
+the process that called the menu (another menu, a paragraph, a program or the
+command prompt).
+
+If no exit codes are specified, entry of a null response to the prompt will
+exit from the menu.

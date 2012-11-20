@@ -1,0 +1,109 @@
+* _CCONV
+* C conversion code.
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 29 Aug 06  2.4-12 New module.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* C{;} c expr1 c expr2 ...
+*
+* c is character to appear between elements. Cannot be a digit, a mark
+* character or a quote. A space is valid. A semicolon specifies that no
+* separator character is to be inserted. Multiple semicolons can appear
+* together as can multiple spaces.
+*
+* expr is
+*    a field number, extracted from @RECORD (@ID if zero)
+*    a string enclosed in single quotes, double quotes or backslashes.
+*    an asterisk to substitute the source data.
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+$no.symbols
+$no.xref
+$recursive
+
+subroutine cconv(source, (conv))
+
+   result = ''
+
+   loop
+      * Fetch separator
+again:
+      c = conv[1,1]
+   until c = ''
+      begin case
+         case c matches '1N'
+         case c = '"' or c = "'" or c = '\'
+         case seq(c) >= 252
+         case c = ' '
+            result := ' '
+            conv  =conv[2,999999]
+            c = conv[1,1]
+            if c = ';' or c = ' ' then goto again
+         case c = ';'
+            conv  =conv[2,999999]
+            c = conv[1,1]
+            if c = ';' or c = ' ' then goto again
+         case 1
+            result := c
+            conv  =conv[2,999999]
+      end case
+
+      * Fetch item
+
+      c = conv[1,1]
+   until c = ''
+      begin case
+         case c matches '1N'                  ;* Field number
+            fno = matchfield(conv, '0N0X', 1)
+            conv = matchfield(conv, '0N0X', 2)
+            result := if fno = 0 then @id else @record<fno>
+
+         case c = '"' or c = "'" or c = '\'   ;* String
+            i = index(conv, c, 2)
+            if i = 0 then goto error
+            result := conv[2,i - 2]
+            conv = conv[i+1, 9999999]
+
+         case c = '*'                         ;* Asterisk - insert data item
+            result := source
+            conv = conv[2,99999]
+
+         case 1                               ;* Error
+            goto error
+      end case
+   repeat
+
+   set.status 0
+   return value result
+
+error:
+   set.status 2
+   return value source
+end
+
+* END-CODE

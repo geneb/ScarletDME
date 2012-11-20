@@ -1,0 +1,117 @@
+* NSELECT
+* NSELECT verb
+* Copyright (c) 2005 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 28 Mar 05  2.1-11 Use PARSER$MFILE.
+* 18 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    NSELECT filename
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program nselect
+$catalog $NSELECT
+
+$include parser.h
+$include syscom.h
+$include syscom err.h
+$include syscom keys.h
+
+   @system.return.code = -ER$ARGS      ;* Preset for command format errors
+
+   from.list = 0
+   to.list = 0
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+
+   * Get file information
+
+   call @parser(PARSER$MFILE, token.type, file.name, keyword)
+   if keyword = KW$DICT then     ;* DICT
+      dict.flag = 'DICT'
+      call @parser(PARSER$MFILE, token.type, file.name, keyword)
+   end else
+      dict.flag = ''
+   end
+
+   loop
+      call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   until token.type = PARSER$END
+      begin case
+         case keyword = KW$FROM
+            call @parser(PARSER$GET.TOKEN, token.type, from.list, keyword)
+            if token.type = PARSER$END or not(from.list matches '1-2N') or from.list > HIGH.USER.SELECT then
+               stop sysmsg(3271) ;* Select list number missing or invalid
+            end
+
+         case keyword = KW$TO
+            call @parser(PARSER$GET.TOKEN, token.type, to.list, keyword)
+            if token.type = PARSER$END or not(to.list matches '1-2N') or to.list > HIGH.USER.SELECT then
+               stop sysmsg(3271) ;* Select list number missing or invalid
+            end
+
+         case 1
+            stop sysmsg(2018, token) ;* Unexpected token (xx)
+      end case
+   repeat
+
+   * Open the file
+
+   open dict.flag, file.name to fu else
+      open dict.flag, upcase(file.name) to fu else
+         @system.return.code = -status()
+         stop sysmsg(2019)  ;* File not found
+      end
+      file.name = upcase(file.name)
+   end
+
+   new.list = ''
+   loop
+      readnext id from from.list else exit
+      readv rec from fu, id, 0 else new.list<-1> = id
+   repeat
+
+   if len(new.list) then
+      formlist new.list to to.list
+      record.count = selectinfo(to.list, 3)
+   end else
+      clearselect to.list
+      record.count = 0
+   end
+
+   @system.return.code = record.count
+   @selected = record.count
+
+   display sysmsg(3261, record.count, to.list) ;* %1 records selected to select list %2
+   return
+
+   * Avoid compiler warnings
+   rec = rec
+end
+
+* END-CODE

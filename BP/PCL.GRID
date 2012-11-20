@@ -1,0 +1,61 @@
+* PCL.H
+* PCL grid drawing program
+* Copyright (c) 2005, Ladybridge Systems, All Rights Reserved
+
+* This program draws a PCL coordinate grid on the default printer (assuming
+* it supports PCL!). The paper type below may need amending on some systems.
+*
+* Original implementation by Ladybridge Systems with modifications by
+* Talon Computer Services to add a fine resolution grid.
+
+program pcl.grid
+$include pcl.h
+
+   prompt ''
+   printer on
+
+   print pcl.reset() :
+   print pcl.paper.size('A4') :
+
+   loop
+      display 'Orientation? <P>ortrait or <L>andscape (P/L) ' :
+      input response upcase
+      if response = '' or response = 'END' then stop
+   until response = 'P' or response = 'L'
+   repeat
+
+*  These are the maximum dots @300dpi on A4 for Brother HL-1450 
+   if response = 'P' then
+     xmax = 2335
+     ymax = 3295
+   end else
+     xmax = 3385
+     ymax = 2275
+   end  
+
+   if response = 'P' then print pcl.orientation('PORTRAIT') :
+   else print pcl.orientation('LANDSCAPE') :
+
+   print pcl.font('PC-8, Courier, upright, medium, pitch 12') :
+   
+   print pcl.box(0,0,xmax,ymax,3,0):   ;* Border
+
+   for x = 10 to xmax step 10
+     begin case
+       case rem(x,300) = 0; width = 3  ;* Really bold
+       case rem(x,50) = 0; width = 2   ;* Not so bold
+       case 1; width = 1               ;* Not bold at all...
+     end case
+     print pcl.vline(x, 0, ymax, width) :
+   next x
+
+   for y = 10 to ymax step 10
+     begin case
+       case rem(y,300) = 0; width = 3  ;* Really bold
+       case rem(y,50) = 0; width = 2   ;* Not so bold
+       case 1; width = 1               ;* Not bold at all... 
+     end case
+     print pcl.hline(0, y, xmax, width) :
+   next y
+
+end

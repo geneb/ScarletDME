@@ -1,0 +1,289 @@
+* HF
+* Format heading/footing.
+* Copyright (c) 2005 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 08 Nov 05  2.2-16 0430 Need to use explicit field numbers when assembling
+*                   heading/footing text.
+* 19 Oct 05  2.2-15 Added support for boxed reports.
+* 16 Oct 05  2.2-15 0422 Must not trim overlong heading as panned reports use
+*                   this for the column headings.
+* 06 Oct 05  2.2-14 Added support for multiple breakpoint values.
+* 05 Oct 05  2.2-14 New module. Based on code extracted from QPROC.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* SUBROUTINE HF(PU, PGNO, (HF.IN))
+*
+* PU     = Print unit number, -1 for display (caller sorts out PRINTER ON)
+* PGNO   = Current page number
+* HF.IN  = header/footer template
+*
+* Leaves expanded header/footer with field mark between lines on stack.
+*
+* Flags returned in @SYS0:
+* 0x0001  N option used - kill pagination
+*
+* Control codes:
+*    B{n}     Breakpoint value
+*    C        Centre current line
+*    D        Date
+*    F{n}     File name in given width
+*    G        Gap
+*    Hn       Horizontal position
+*    I{n}     Record id
+*    L        New line
+*    N        Suppress pagination
+*    O        Duplex heading/footing reversal
+*    P{n}     Page number, right aligned in given width
+*    R{n}     Record id
+*    S{n}     Page number, left aligned in given width
+*    T        Date and time
+*    Wn       Use alternative page width (undocumented)
+*    Z        Suppress PCL formatting for this call
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+$no.symbols
+$no.xref
+$recursive
+
+subroutine hf(pu, pgno, (hf.in))
+$include syscom.h
+$include keys.h
+$include int$keys.h
+$include pcl.h
+
+equ G.CODE to char(17)
+
+   hf.out = ''
+   lines = 0
+   sys0 = 0
+   status = status()
+
+   width = getpu(PU$WIDTH, pu)
+   flags = getpu(PU$SPOOLFLAGS, pu)
+   is.pcl = bitand(flags, PU$FLG.PCL)
+   centre = 0
+   reverse = @false
+
+
+   hf.line = ''
+   loop
+      * Text
+      hf.line := field(hf.in, "'", 1)   ;* Everything preceding next quote
+      hf.in = hf.in[col2()+1,99999]     ;* Strip text and leading quote
+   while hf.in # ''
+      if hf.in[1,1] = "'" then
+         * Not really a control code at all - Insert a single quote
+         hf.line := "'"
+         hf.in = hf.in[2,99999]
+      end else
+         * Control codes
+
+         ctrl = field(hf.in, "'", 1)       ;* Code string
+         hf.in = hf.in[col2()+1,99999]  ;* Strip codes and trailing quote
+
+         if ctrl = "" then                 ;* It was a trailing single quote
+            hf.line := "'"
+         end else
+            loop
+               c = ctrl[1,1]
+               ctrl = ctrl[2,9999]
+               begin case
+                  case c = 'B'
+                     if ctrl[1,1] matches '1N' then
+                        n = ctrl[1,1] + 0
+                        ctrl = ctrl[2,99999]
+                     end else n = 0
+                     hf.line := qproc.breakpoint.value(n)
+
+                  case c = 'C'
+                     centre = count(hf.line, G.CODE) + 1
+
+                  case c = 'D'
+                     hdr.date = kernel(K$DATE.CONV, '')
+                     hf.line := oconv(@date, hdr.date)
+
+                  case c = 'F'
+                     c = matchfield(ctrl, '0N0X', 1)
+                     ctrl = matchfield(ctrl, '0N0X', 2)
+                     if c <= 0 then hf.line := qproc.file.name ;* 0 or null
+                     else hf.line := fmt(qproc.file.name[1,c], c:'L')
+
+                  case c = 'G'
+                     hf.line := G.CODE
+
+                  case c = 'H'
+                     c = matchfield(ctrl, '0N0X', 1)
+                     ctrl = matchfield(ctrl, '0N0X', 2)
+                     hf.line = (hf.line:space(c))[1,c]
+
+                  case c = 'I' or c = 'R'
+                     c = matchfield(ctrl, '0N0X', 1)
+                     ctrl = matchfield(ctrl, '0N0X', 2)
+                     if c <= 0 then hf.line := qproc.id ;* 0 or null
+                     else hf.line := fmt(qproc.id[1,c], c:'L')
+
+                  case c = 'L'
+                     gosub perform.alignment
+                     * Note: Any new code that causes line breaks must be
+                     * recognised by set_data_lines() in op_tio.c
+
+                  case c = 'N'
+                     sys0 = bitor(sys0, 0x0001)
+
+                  case c = 'O'
+                     reverse = @true
+
+                  case c = 'P'
+                     c = matchfield(ctrl, '1N0X', 1)   ;* 0419
+                     if c # '' then ctrl = ctrl[2,999999] else c = 4
+                     if len(pgno) > c then c = len(pgno)
+                     hf.line := fmt(pgno, c:'R')
+
+                  case c = 'S'
+                     c = matchfield(ctrl, '1N0X', 1)
+                     if c # '' then ctrl = ctrl[2,999999] else c = 1
+                     if len(pgno) > c then c = len(pgno)
+                     hf.line := fmt(pgno, c:'L')
+
+                  case c = 'T'
+                     hdr.date = kernel(K$DATE.CONV, '')
+                     hf.line := oconv(@time, 'MTS') : '  ' : oconv(@date, hdr.date)
+
+                  case c = 'W'
+                     c = matchfield(ctrl, '0N', 1)
+                     if c # '' then
+                        width = c + 0
+                        ctrl = matchfield(ctrl, '0N0X', 2)
+                     end
+
+                  case c = 'Z'
+                     is.pcl = @false
+
+                  case 1
+                     null
+               end case
+            until ctrl = ''
+            repeat
+         end
+      end
+   while hf.in # ''
+   repeat
+
+   gosub perform.alignment
+
+   if is.pcl then
+      * Set bold stroke weight
+      hf.out = char(27):'(s3B' : hf.out
+
+      * Reset to original font stroke weight
+      weight = getpu(PU$WEIGHT, pu)
+      hf.out := char(27):'(s':weight:'B'
+   end
+
+   @sys0 = sys0
+   set.status status   ;* Restore original value
+
+   return value hf.out
+
+* ======================================================================
+
+perform.alignment:
+* 0422   hf.line = hf.line[1,width]  ;* Ensure not overlong
+
+   if reverse and rem(pgno, 2) = 0 then
+      n = dcount(hf.line, G.CODE)
+      if n > 1 then
+         s = field(hf.line, G.CODE, n)
+         for i = n - 1 to 1 step -1
+            s := G.CODE : field(hf.line, G.CODE, i)
+         next i
+         hf.line = s
+      end
+   end
+
+   hfl = hf.line               ;* For path with no C or G tokens
+
+   * Handle centering
+
+   if centre then
+      s = field(hf.line, G.CODE, centre)
+      w1 = idiv(width - len(s), 2) ;* Width of part to left
+      hfl = space(w1) : s
+      w2 = width - len(hfl)    ;* Width of part to right...
+
+      * Expand G control codes of items to right of centred section
+
+      s = field(hf.line, G.CODE, centre + 1, 99999)
+      if s # '' then
+         s = G.CODE : s
+         n = count(s, G.CODE)   ;* Number of G control codes
+         x = (w2 - 1) - (len(s) - n)   ;* Number of spaces to add
+
+         if n > 1 then
+            s = change(s, G.CODE, space(idiv(x + n - 1, n)), n - 1)
+         end
+         s = change(s, G.CODE, space(w2 - len(s)))
+         hfl := s
+      end
+   end else
+      w1 = width           ;* No centering -  Left part is entire line
+   end
+
+   * Expand G control codes of items to left of centred section
+
+   if centre # 1 then
+      if centre then
+         s = field(hf.line, G.CODE, 1, centre - 1) : G.CODE
+      end else
+         s = hf.line
+      end
+
+      n = count(s, G.CODE)   ;* Number of G control codes
+      if n then
+         x = (w1 - 1) - (len(s) - n)   ;* Number of spaces to add
+         if n > 1 then
+            s = change(s, G.CODE, space(idiv(x + n - 1, n)), n - 1)
+         end
+         s = change(s, G.CODE, space(w1 - len(s)))
+
+         if len(hfl) < w1 then hfl = s
+         else hfl[1,w1] = s
+      end
+   end
+
+   lines += 1
+   hf.out<lines> = hfl     ;* 0430
+
+   hf.line = ''
+   centre = @false
+   reverse = @false
+
+   return
+
+end
+
+* END-CODE

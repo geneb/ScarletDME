@@ -1,0 +1,222 @@
+* ADMUSER
+* ADMIN.USERS command
+* Copyright (c) 2005 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 15 Apr 05  2.1-12 Allow spaces in user names for Windows compatibility.
+* 13 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*   0         1         2         3         4         5         6         7
+*   01234567890123456789012345678901234567890123456789012345678901234567890123456789
+*
+*00                               User Administration
+*01
+*02 User name     [                                ]
+*03
+*04 Owner details [                                                                ]
+*05 Min password  [  ]
+*06 Force account [                ]
+*07 Administrator [Y]
+*08
+*09
+*10
+*11 Last login: 12 Feb 02 12:34
+*12
+*13
+*14
+*15
+*16
+*17
+*18
+*19
+*20
+*21
+*22
+*23
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+$flags trusted
+program admuser
+$catalogue $admuser
+
+$include int$keys.h
+$include err.h
+$include keyin.h
+$include $admuser.scr
+$include screens.h
+
+   prompt ''
+
+   letters= 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+   others = '0123456789.- '
+
+   if not(kernel(K$ADMINISTRATOR,-1)) then
+      stop sysmsg(2001)  ;* Command requires administrator privileges
+   end
+
+
+   * Open files
+
+   openpath @qmsys:@ds:'$LOGINS' to lgn.f else
+      @system.return.code = -status()
+      stop sysmsg(6050)  ;* Cannot open $LOGINS register in QMSYS account
+   end
+
+   open '$SCREENS' to scr.f else stop 'Cannot open $SCREENS'
+
+
+   * Read screen definition
+
+   read scrn from scr.f, '$ADMUSER' else
+      stop sysmsg(2400, '$ADMUSER') ;* Cannot read $ADMUSER screen
+   end
+
+
+   * On Linux, we do not want the MIN.PASSWORD field.
+
+   if not(system(91)) or system(1006) then
+      scrn<SCR.TEXT.MODE,SS.MIN.PASSWORD> = "X"        ;* Remove from screen
+      scrn<SCR.NEXT.STEP, SS.OWNER> = "FORCE.ACCOUNT"  ;* Skip over step
+   end
+
+   user.name.prompt = sysmsg(6062)  ;* User name
+   loop
+      display @(-1):
+      display @(-13) : fmt(sysmsg(6073), @crtwide:'C') : @(-14) :  ;* Title
+
+      display @(0,2) : user.name.prompt : ' [' : space(32) : ']' :
+      username = ''
+
+      inputerr sysmsg(6063) ;* Enter name of new or existing user, F2 for pick list, blank to exit
+
+      loop
+         inputfield @(len(user.name.prompt) + 2,2):username, 32_:
+      while username[1,1] = '$'
+         inputerr sysmsg(6074)  ;* Invalid user name
+      repeat
+
+      c = status()
+      begin case
+         case c = 0
+            if username = '' then exit
+
+            if system(91) then username = upcase(username)
+
+         case c = K$F2
+            * Because access to the $LOGINS file requires trusted program
+            * status, we cannot use the internal F2 handling of the screen
+            * driver.  Instead, we must do it all here.
+
+            sselect lgn.f
+            readlist user.list then
+               locate 'Console' in user.list<1> setting i then del user.list<i>
+            end
+
+            * Remove system records (begin with $)
+
+            for i = dcount(user.list, @fm) to 1 step -1
+               if user.list<i>[1,1] = '$' then del user.list<i>
+            next i
+
+            display @(0,@crthigh-1):sysmsg(6064) :  ;* Select user from list, Ctrl-X to exit
+            call !picklist(username, user.list, 1, 1)
+            display @(0,3):@(-3):
+            if username = '' then continue
+
+         case 1
+            inputerr sysmsg(7000) : @sys.bell ;* Invalid key
+            continue
+      end case
+
+      display @(len(user.name.prompt)+2,2) : username
+      gosub process.user
+   repeat
+
+   display @(-1) :
+
+   return
+
+* ======================================================================
+
+process.user:
+   * Validate user name
+
+   if index(letters, username[1,1], 1) = 0 or convert(letters:others,'',username) # '' then
+      inputerr @sys.bell : sysmsg(6052) ;* User name is invalid
+      input c,1_:
+      return
+   end
+
+   * Try to read from $LOGINS file
+
+   readu lgn.rec from lgn.f, username locked
+      inputerr @sys.bell : sysmsg(6065, status()) ;* This user's register entry is locked by user xx
+      input c,1_:
+      return
+   end then             ;* Existing user
+      action = ''
+   end else             ;* New user
+      action = 'A'
+   end
+
+   * Paint details
+
+   call !screen(scrn, lgn.rec, -1, scr.status)
+
+   * Process screen
+
+   loop
+      if action = '' then
+         display @(0,@crthigh-1): sysmsg(6066) :  ;* Amend, File, Delete, eXit
+         call !screen(scrn, action, SS.ACTION, scr.status)
+         display @(0,@crthigh-1): @(-4):
+      end
+
+      begin case
+         case action = 'A'
+            call !screen(scrn, lgn.rec, SS.OWNER, scr.status)
+
+         case action = 'D'
+             delete lgn.f, username
+             exit
+
+         case action = 'F'
+            write lgn.rec to lgn.f, username
+            exit
+
+         case action = 'X'
+            release lgn.f, username
+            exit
+      end case
+
+      action = ''
+   repeat
+
+   return
+end
+
+* END-CODE

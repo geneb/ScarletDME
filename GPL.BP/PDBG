@@ -1,0 +1,135 @@
+* PDBG
+* Phantom debugger - debugged process side
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 10 Apr 06  2.4-1 New module.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+
+subroutine $pdbg(prog.id, dtm, line, sub.ref, event)
+$catalog $PDBG
+
+$flags debugger
+
+$include keys.h
+$include debug.h
+$include syscom.h
+
+$include int$keys.h
+
+   if not(debug.initialised) then
+      * There should (hopefully) be a user sitting in PDEBUG waiting to
+      * pick up this connection. If so, there will be a DR.xxx record
+      * in the $IPC file where xxx is the account name. This record will
+      * contain the PDEBUG process user number which will be used for
+      * subsequent parts of the conversation so that a second user could
+      * start a debugging session.
+
+      id = 'DR.':@who:'!':@logname
+      readu in.msg from ipc.f, id else goto cannot.debug
+      if in.msg<1> # 'START' then goto cannot.debug
+      delete ipc.f, id
+
+      debugger.uid = in.msg<2>
+      id = 'D.':debugger.uid
+      recordlocku ipc.f, id
+      delete ipc.f, id
+
+      debug.initialised = @true
+   end
+
+   * Send debug line information
+
+   out.msg = 'DBG'
+   out.msg<2> = prog.id
+   out.msg<3> = dtm
+   out.msg<4> = line
+   out.msg<5> = sub.ref
+   out.msg<6> = event
+   out.msg<7> = @userno
+
+   * Process commands from client side of link
+
+   loop
+      * Send outgoing message to client side
+
+      id = 'D.':debugger.uid
+      recordlocku ipc.f, id
+      write out.msg to ipc.f, id
+      wake debugger.uid
+
+      * Get incoming message
+
+      id = 'DR.':debugger.uid
+      loop
+         readu in.msg from ipc.f, id then exit
+         release ipc.f, id
+         pause
+      repeat
+      delete ipc.f, id
+
+      msg.type = in.msg<1>
+      begin case
+         case msg.type = 'BRK'
+            breakpoint in.msg<2>, in.msg<3>
+            out.msg = 'BRK'
+            out.msg<2> = status()
+
+         case msg.type = 'DBG'
+            exit
+
+         case msg.type = 'INFO'
+            s = debug.info(in.msg<2>,in.msg<3>)
+            out.msg = 'INFO'
+            out.msg<2> = status()          
+            out.msg<3> = s
+
+         case msg.type = 'SET'
+            debug.set in.msg<2>, in.msg<3> to field(in.msg, @fm, 4, 99999)
+            out.msg = 'SET'
+            out.msg<2> = status()
+
+         case msg.type = 'STOP'
+            stop
+
+         case msg.type = 'WATCH'
+            watch in.msg<2>, in.msg<3>
+            out.msg = 'WATCH'
+            out.msg<2> = status()
+      end case
+   repeat
+
+   return
+
+cannot.debug:
+   release ipc.f
+   void kernel(K$SUPPRESS.COMO,@false)
+   stop sysmsg(6727) ;* Phantom debugger not active
+end
+
+* END-CODE

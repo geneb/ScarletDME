@@ -1,0 +1,64 @@
++n\tMove forward by n lines
+-n\tMove backward by n lines
+.A[n] string\tAppend string to entry n (default 1) of the command stack
+.C[n]/old/new/\tChange old to new in line n default(1) of the command stack
+.D[n]\tDelete line n (default 1) of the command stack
+.I[n] string\tInsert string as entry n (default 1) of the command stack
+.L[n]\tList n (default 9) lines of the command stack
+.R[n]\tRecall line n (default 1) of the command stack to stack top
+.X[n]\tExecute line n (default 1) of the command stack
+<\tSet current line to be the start line of the block
+<>\tSet block to be just the current line
+>\tSet current line to be the end line of the block
+?\tDisplay status information
+A [string]\tAppend string to the current line. Repeats last if A omitted
+B\tMove to the last line of the record
+B string\tSplit current line into two after string
+BLOCK\tToggle block verification mode
+C/old.string/new.string/[n][G][B]\tChange old.string to new.string in n (default 1) lines fromûthe current line.  Valid delimiters areû   ! ":'"':" # $ % & ( ) * + , - . / : = @ [ ] \ _ ` ' { } |ûG causes all occurrences of old.string to be replacedûB applies the change to the currently defined blockûEntering C with no strings repeats the last substitution
+CASE OFF\tSet case insensitive mode for the F and L commands
+CASE ON\tSet case sensitive mode for the F and L commands
+CAT [string]\tConcatenate current line, string and following line
+COL\tDisplay a column number ruler to aid alignment of inserted text
+COPY\tCopy currently defined block to after the current position
+DELETE\tDelete entire record from the file, terminating edit
+DE[]\tDelete n (default 1) lines starting at the current position
+DROP\tDelete currently defined block
+DUP [n]\tDuplicate the current line n (default 1) times
+D[n]\tDelete n (default 1) lines starting at the current position
+EV\tEnter EV mode to edit values on current line
+FIle [[filename] record.id]\tWrite record and end edit
+F[n] [string]\tFind next line containing string at column n (default 1)
+FORMAT\tFormat QMBasic program source
+G< \tMove to the first line of the currently defined block
+G> \tMove to the last line of the currently defined block
+Gn\tMove to line n
+HELP [topic]\tDisplay short description associated with topic
+I [text]\tInsert text after the current line
+IB [text]\tInsert text before the current line
+L [string]\tFind next line containing string (default as last L command)
+Ln\tDisplay n lines, moving current line to final displayed line
+LOAD [filename] record.id\tInsert part of specified record
+LOOP [lineno [count]]\tRepeat from given line in prestored edit sequence
+M [pattern]\tFind next line matching pattern
+MOVE\t                Copy block to current position and delete original
+NPRINT\tToggles non-printing character entry mode
+n\tMove to line n
+OOPS\tUndo most recent function that modified the record
+PAUSE\tPause prestored edit sequence. Use .XR to resume, .XK to abort
+PB\tDisplay currently defined block
+PL[[-]n]\tDisplay n lines relative to the current line position
+POn\tMove to line n
+PP[n]\tDisplays n lines surrounding the current line position
+P[n]\tDisplay n lines. Default n is as in last P command
+Quit\tEnd edit without saving any changes made to the record
+QV\tExit from EV (edit value) mode, discarding changes
+R [text]\tReplace current line with the text
+R/old.string/new.string/[n][G][B]\tChange old.string to new.string in n (default 1) lines fromûcurrent lineûDelimiter is ! "" # $ % & ( ) * + , - . / : = @ [ ] \ _ ` ' { } |ûG causes all occurrences of old.string to be replacedûB applies the change to the currently defined blockûEntering C with no strings repeats the last substitution
+SAve [[filename] record.id]\tWrite record
+SV\tExit from EV (edit value) mode, saving changes
+T\tMove to top (before line 1)
+UNLOAD [[DICT] filename] record.id\tSave part of record in named file
+X\tAbort edit when a select list is in use without saving changes
+XEQ [command]\tExecute CPROC command
+^\tToggle non-printing character expansion mode

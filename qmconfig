@@ -1,0 +1,4 @@
+[qm]
+QMSYS=/usr/qmsys
+NUMUSERS=10
+SORTMEM=4096

@@ -1,0 +1,432 @@
+* _INPUTAT
+* INPUT@ statement processor
+* Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 07 May 07  2.5-3 0551 INPUT@ with no length field was not retaining the old
+*                  value if the return key was pressed without entering data.
+* 29 Nov 06  2.4-17 Added PANNING mode.
+* 31 Oct 06  2.4-15 Use @SYS.BELL to honour BELL ON/OFF setting.
+* 25 Oct 06  2.4-15 Added APPEND mode.
+* 24 Aug 06  2.4-12 Added IN$OVERLAY and IN$EDIT flags.
+* 10 Feb 06  2.3-6 Added timeout.
+* 10 Feb 06  2.3-6 Autologout now handled in kernel.
+* 04 Aug 05  2.2-7 Added immediate argument to LOGOUT().
+* 13 Jul 05  2.2-4 Allow input to span multiple lines.
+* 29 Jun 05  2.2-1 Added handling for max.input = 0 (no length expression).
+* 27 Jan 05  2.1-4 Corrected spelling of autologout message.
+* 13 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+$no.symbols
+$no.xref
+$recursive
+$flags allow.break
+
+subroutine inputat(x, y, string, max.input, mask, timeout, flags)
+
+* max.input = 0 if not set by user
+*
+* Flags:
+*   IN$DISPLAY         Display existing field value (first colon used)
+*   IN$ERR.DISPLAYED   Error message (PRINTERR) is displayed
+*   IN$FIELD.MODE      Doing INPUTFIELD
+*   IN$NOLF            Suppress LF after CR (trailing colon used)
+*   IN$NOCRLF          Suppress automatic CR/LF (underscore used)
+*   IN$MASK            Apply format mask
+*   IN$PASSWORD        Use password style masking if input
+*   IN$UPCASE          Force input to uppercase
+*   IN$TIMEOUT         Timeout supplied (else timeout value is 0 from kernel)
+*   IN$THENELSE        THEN/ELSE present - return status on stack
+*   IN$OVERLAY         Start in overlay mode
+*   IN$EDIT            Start in edit mode, don't clear on data character
+*   IN$APPEND          Append (used with IN$EDIT)
+*   IN$PANNING         Panning input field (implies IN$NOCRLF & max.input)
+
+$include syscom.h
+$include int$keys.h
+
+$include keys.h
+$include keyin.h
+$include err.h
+
+   set.status 0
+   then.else.flag = 1
+
+   field.mode = bitand(flags, IN$FIELD.MODE)
+   password = bitand(flags, IN$PASSWORD)
+   pagination = kernel(K$PAGINATE, -1)
+   return.key = seq(pterm(PT$INEWLINE,''))
+   uppercase = bitand(flags, IN$UPCASE)
+   panning = bitand(flags, IN$PANNING)
+
+
+   * Display the prompt character, if required, and position cursor at
+   * start of field.
+
+   if len(prompt()) and x # 0 then display @(x - 1, y): prompt() :
+      else display @(x, y) :
+
+   * Display existing data or clear field, repositioning cursor when done
+
+   if bitand(flags, IN$DISPLAY) and not(unassigned(string)) then
+      s = if bitand(flags, IN$MASK) then fmt(string, mask) else string
+
+      if max.input then
+         if password then display str('*', max.input) : @(x, y) :
+         else display fmt(s[1, max.input], max.input:'L') : @(x, y) :
+      end else
+         if password then display str('*', len(s)) : @(x, y) :
+         else display s : @(x, y) :
+      end
+   end else
+      display space(max.input) : @(x, y) :
+      string = ''
+   end
+
+   original.string = string    ;* Save for KEYEXIT / KEYTRAP
+
+   * Perform input
+
+   if len(data.queue) then       ;* Get text from DATA queue
+      if bitand(flags, IN$ERR.DISPLAYED) then printerr ''
+
+      string = field(data.queue, @im, 1, 1)
+      if uppercase then string = upcase(string)
+      if max.input and not(panning) then string = string[1, max.input]
+      data.queue = data.queue[col2() + 1, 99999999]
+
+      if echo.input then
+         if max.input then
+            if password then display str('*', max.input) :
+            else display fmt(string[1,max.input], max.input:'L') :
+         end else
+            if password then display str('*', len(string)) :
+            else display string :
+         end
+         if not(bitand(flags, IN$NOLF)) then display
+      end
+   end else                     ;* Not taking data from a DATA statement
+      posn = if bitand(flags, IN$APPEND) then len(string) + 1 else 1
+      overlay = bitand(flags, IN$OVERLAY)
+      pan.offset = 0
+      pan.increment = min(idiv(max.input + 1, 2), 10)
+
+      if not(panning) and max.input and len(string) > max.input then  ;* 0551
+         string = string[1,max.input]
+      end
+
+      first = @true
+
+      loop
+         if panning then
+            if posn <= pan.offset or posn > max.input + pan.offset then
+               gosub repaint.panned.region
+            end
+         end
+
+         col = x + posn - pan.offset - 1
+         display @(rem(col, @crtwide), y+idiv(col,@crtwide)) :
+
+         c = keycode(timeout)
+         if c = '' then          ;* Exception condition
+            if status() = ER$TIMEOUT then
+               string = original.string
+               then.else.flag = 0
+            end else
+               * Other exception conditions return a null string and leave the
+               * caller to sort out what happened.
+
+               string = ''
+            end
+            exit
+         end
+
+         n = seq(c)
+
+         if (n < 32) or (n >= 128) then
+            begin case
+               case n = 0                      ;* Special case for KEYEXIT
+                  * STATUS() reflects the code stored in the keycode action
+                  * table. Determine whether this is KEYEXIT or KEYTRAP and
+                  * set the required real STATUS() value.
+
+                  if status() > 512 then    ;* KEYTRAP - Restore data
+                     string = original.string
+                  end
+
+                  set.status bitand(status(), 255)
+                  exit
+
+                  * First try rebindable values....
+
+               case n = K$HOME              ;* HOME
+                  posn = 1
+
+               case n = K$END               ;* END
+                  posn = len(string) + 1
+
+               case n = K$BACKSPACE         ;* BACKSPACE
+                  gosub backspace
+
+               case n = K$RETURN            ;* RETURN
+                  gosub return.key
+                  exit
+
+               case n = K$LEFT              ;* Ctrl-B or Cursor left key
+                  if posn > 1 then posn -= 1
+
+               case n = K$RIGHT             ;* Ctrl-F or Cursor right key
+                  if posn <= len(string) then posn += 1
+
+               case n = K$INSERT            ;* INSERT key
+                  overlay = not(overlay)
+
+               case n = K$DELETE            ;* DELETE key
+                  gosub delete.char
+
+               * Now handle fixed bindings (which may be duplicated above)....
+
+               case n = 1                   ;* Ctrl-A
+                  posn = 1
+
+               case n = 2         ;* Ctrl-B
+                  if posn > 1 then posn -= 1
+
+               case n = 4                   ;* Ctrl-D
+                  gosub delete.char
+
+               case n = 5                   ;* Ctrl-E
+                  posn = len(string) + 1
+
+               case n = 6                   ;* Ctrl-F
+                  if posn <= len(string) then posn += 1
+
+               case n = 8                   ;* Backspace key
+                  gosub backspace
+
+               case n = 11                  ;* Ctrl-K
+                  if echo.input then
+                     if panning then n = max.input + pan.offset + 1- posn
+                     else n = (len(string) - posn) + 1
+                     display @(rem(col, @crtwide), y+idiv(col,@crtwide)) : space(n) :
+                  end
+                  string = string[1, posn - 1]
+
+               case n = return.key          ;* Return key
+                  gosub return.key
+                  exit
+
+               case n < 32                  ;* Some other C0 character
+                  if field.mode then
+                     set.status n
+                     exit
+                  end
+
+               case (n >= 128) and (n < 251)  ;* Some other special key but
+                                               * not a mark character
+                  if field.mode then
+                     if bitand(flags, IN$ERR.DISPLAYED) then printerr ''
+                     set.status n
+                     exit
+                  end
+                  gosub insert.char
+
+               case 1
+                  gosub insert.char
+            end case
+         end else
+            gosub insert.char
+         end
+
+         * If we have reached the character limit and the underscore option
+         * was not used, terminate input.
+
+         if not(bitand(flags, IN$NOCRLF)) then
+            if max.input and posn > max.input then
+               if bitand(flags, IN$MASK) then
+                  * Redisplay data with mask applied
+                  display @(x, y) : fmt(string, mask) :
+               end
+
+               if echo.input and not(bitand(flags, IN$NOLF)) then display
+               exit
+            end
+         end
+
+         first = @false
+      repeat
+   end
+
+   * Re-enable line counting if pagination was active when we entered
+
+   n = kernel(K$PAGINATE, pagination)
+
+   * If we have a THEN/ELSE clause, we need to leave a status on the stack
+
+   if bitand(flags, IN$THENELSE) then return value then.else.flag
+
+   return
+
+* ======================================================================
+* Add the character in C to the string
+
+insert.char:
+   if uppercase then c = upcase(c)
+
+   if first and not(bitand(flags, IN$EDIT)) then
+      if echo.input and max.input then display space(max.input) : @(rem(col, @crtwide), y+idiv(col,@crtwide)) :
+      string = ''
+   end
+
+   if max.input then
+      if panning then
+         if posn - pan.offset > max.input then gosub repaint.panned.region
+      end else
+         if len(string) > max.input then string = string[1, max.input]
+
+         if posn > max.input then
+            display @sys.bell :
+            return
+         end
+      end
+   end
+
+   if posn > len(string) then                ;* Appending to string
+      string := c
+      if echo.input then
+         display if password then '*' else c :
+      end
+   end else
+      if overlay then                 ;* Overlaying
+         string[posn, 1] = c
+         if echo.input then
+            display if password then '*' else c :
+         end
+      end else                            ;* Inserting in mid-string
+         string = (string[1, posn - 1] : c : string[posn, 99999999])
+         if max.input and not(panning) then string = string[1, max.input]
+
+         if echo.input then
+            if panning then n = max.input + pan.offset + 1 - posn
+            else n = len(string) - posn + 1
+            if password then display str('*', n)
+            else display string[posn, n] :
+         end
+      end
+   end
+
+   posn += 1
+
+   return
+
+* ======================================================================
+
+backspace:
+   if posn > 1 then
+      if panning and posn - 2 <= pan.offset then gosub repaint.panned.region
+
+      posn -= 1
+      if overlay then
+         string[posn, 1] = " "
+         if echo.input then display @(rem(col - 1, @crtwide), y+idiv(col - 1,@crtwide)) : " " :
+      end else
+         string = string[1, posn - 1] : string[posn + 1, 99999999]
+         if panning then n = max.input + pan.offset + 1- posn
+         else n = 99999999
+         if echo.input then
+             s = if password then str('*', len(string)) else string
+             display @(rem(col - 1, @crtwide), y+idiv(col - 1,@crtwide)) :
+             display (s:' ')[posn, n] :
+         end
+      end
+   end
+
+   return
+
+* ======================================================================
+
+return.key:
+   if echo.input then
+      if bitand(flags, IN$MASK) then
+         * Redisplay data with mask applied
+         display @(x, y) : fmt(string, mask) :
+      end else if panning then
+         if password then display @(x,y) : str('*', len(string))[1,max.input] :
+         else display @(x,y) : string[1,max.input] :
+      end
+
+      if not(bitand(flags, IN$NOLF)) then display
+   end
+
+   if field.mode then set.status 0
+   if bitand(flags, IN$ERR.DISPLAYED) then printerr ''
+
+   return
+
+* ======================================================================
+
+delete.char:
+   string = string[1, posn - 1] : string[posn + 1, 99999999]
+   if echo.input then
+      if panning then n = max.input + pan.offset + 1 - posn
+      else n = 99999999
+      s = if password then str('*', len(string)) else string
+      display @(rem(col, @crtwide), y+idiv(col,@crtwide)) :
+      display (s:' ')[posn, n] :
+   end
+
+   return
+
+* ======================================================================
+
+repaint.panned.region:
+   loop    ;* Pan left
+   while posn <= pan.offset
+      pan.offset -= pan.increment
+   repeat
+
+   loop    ;* Pan right
+   while posn > max.input + pan.offset
+      pan.offset += pan.increment
+   repeat
+
+   display @(x,y) :
+   if password then
+      display (str('*',len(string)):space(max.input))[pan.offset+1, max.input] :
+   end else
+      display (string:space(max.input))[pan.offset+1, max.input] :
+   end
+
+   col = x + posn - pan.offset - 1
+   display @(rem(col, @crtwide), y+idiv(col,@crtwide)) :
+
+   return
+end
+
+* END-CODE

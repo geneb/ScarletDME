@@ -1,0 +1,344 @@
+* LISTI
+* LIST.INDEX verb
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 02 Nov 06  2.4-15 Dictionary record types now case insensitive.
+* 14 Dec 05  2.3-2 Added collation map handling.
+* 11 Oct 05  2.2-14 Report index relocation.
+* 21 Apr 05  2.1-13 0345 Don't print headings until we know if the index is to
+*                   be reported.
+* 28 Mar 05  2.1-11 Use PARSER$MFILE.
+* 21 Mar 05  2.1-10 Repeat main column headings for each index if doing STATS
+*                   or DETAIL mode.
+* 16 Mar 05  2.1-10 0327 Further changes for A/S support.
+* 27 Dec 04  2.1-0 Added support for A, C and S type records.
+* 13 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    LIST.INDEX filename field...
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program listi
+$catalog $LISTI
+
+$include keys.h
+$include int$keys.h
+$include parser.h
+$include err.h
+$include dictdict.h
+$include ak_info.h
+
+
+   parser = "!PARSER"
+
+   @system.return.code = -ER$ARGS     ;* Preset for argument errors
+
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword)  ;* Verb
+
+   * Get and process file name
+
+   dict.flag = ''
+   call @parser(PARSER$MFILE, token.type, filename, keyword)
+   if keyword = KW$DICT then
+      dict.flag = 'DICT'
+      call @parser(PARSER$MFILE, token.type, filename, keyword)
+   end
+   if token.type = PARSER$END then stop sysmsg(2102)  ;* File name required
+
+   * Check file exists and is a dynamic file
+
+   open dict.flag, filename to data.f else
+      open dict.flag, upcase(filename) to data.f else
+         stop sysmsg(2019)  ;* File not found
+      end
+      filename = upcase(filename)
+   end
+
+   if fileinfo(data.f, FL$TYPE) # FL$TYPE.DH then
+      stop sysmsg(2020)  ;* Dynamic file required
+   end
+
+   * Open dictionary too
+
+   dict.open = @false
+   if dict.flag = '' then
+      open 'DICT', filename to dict.f then dict.open = @true
+   end else
+      open 'DICT.DICT' to dict.f then dict.open = @true
+   end
+
+   * Collect field names and options
+
+   list.all = @false
+   stats = @false
+   detail = @false
+   ak.list = ''
+   loop
+      call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   until token.type = PARSER$END
+      begin case
+         case keyword = KW$ALL
+            if ak.list # '' then stop sysmsg(2600)  ;* Cannot use ALL with field names
+            list.all = @true
+
+         case keyword = KW$DETAIL
+            stats = @true
+            detail = @true
+
+         case keyword = KW$STATISTICS
+            stats = @true
+
+         case 1
+            ak.list<-1> = token
+      end case
+   repeat
+
+
+   if not(list.all) and ak.list = '' then
+      prompt ''
+      display sysmsg(2601) :  ;* Index name:
+      input ak.list
+      if ak.list = '' then goto exit.list.index
+      read voc.rec from @voc, ak.list else
+         read voc.rec from @voc, upcase(ak.list) else
+            goto not.all.keyword
+         end
+      end
+      if upcase(voc.rec[1, 1]) = 'K' and voc.rec<2> = KW$ALL then
+         ak.list = ''
+         list.all = @true
+      end
+   end
+not.all.keyword:
+
+   * Get AK data
+
+   ak.names = indices(data.f)
+   num.aks = dcount(ak.names, @fm)
+
+   if num.aks = 0 then
+      crt sysmsg(2603)  ;* File has no indices
+      goto exit.list.index
+   end
+
+   u.ak.names = upcase(ak.names)
+
+
+   * Validate supplied AK names
+
+   num.aks.to.list = dcount(ak.list, @fm)
+   for i = 1 to num.aks.to.list
+      s = ak.list<i>
+      locate s in ak.names<1> setting pos else
+         s = upcase(s)
+         locate s in u.ak.names<1> setting pos else
+            stop sysmsg(2604, s)  ;* Unrecognised index name (xx)
+         end
+         ak.list<i> = ak.names<pos>    ;* Correct casing
+      end
+   next i
+
+
+
+   crt sysmsg(2619, filename)  ;* Alternate key indices for file xx
+   crt sysmsg(2620, num.aks)  ;* Number of indices = xx
+   s = fileinfo(data.f, FL$AKPATH)
+   if s # '' then crt sysmsg(2637, s)  ;* Indices relocated to %1
+   crt
+
+*          1         2         3         4         5         6         7         8
+* 12345678901234567890123456789012345678901234567890123456789012345678901234567890
+* Index name...... En Type Nulls S/M Fmt Field/Expression
+* xxxxxxxxxxxxxxxx  Y  I    Yes   M   L  40......................................
+
+
+   show.headings = @true
+   for i = 1 to num.aks
+      index.name = ak.names<i>
+
+      if not(list.all) then
+         locate index.name in ak.list<1> setting pos else continue
+      end
+
+      if show.headings then
+         crt sysmsg(2621)  ;* Index name...... En Type Nulls S/M Fmt Field/Expression
+         show.headings = @false
+      end
+
+      ak.data = indices(data.f, index.name)
+
+      line = space(79)
+
+      * Field name
+
+      if len(index.name) > 16 then crt index.name
+         else line[1, 18] = index.name
+
+      * Enabled
+
+      line[19, 1] = if ak.data<1, 2> then 'N' else 'Y'
+
+      * Type
+
+      line[22, 1] = ak.data[1, 1]
+
+      * Include nulls?
+
+      line[27, 3] = if ak.data<1, 3> then 'No' else 'Yes'
+
+      type = ak.data[1, 1]
+      begin case
+         case type = 'I' or type = 'C'
+            * Single/multi value
+
+            line[33, 1] = ak.data<DICT.S.M>
+
+            * Justification
+
+            line[37, 1] = ak.data<DICT.FORMAT>
+
+            * Field / Expression
+
+            expr = fmt(ak.data<DICT.ITYPE.SOURCE>, '40L')
+            gosub show.expr
+            comp.field = 2
+
+         case (type = 'A' or type = 'S')
+            * Single/multi value
+
+            line[33, 1] = 'M'
+
+            * Justification
+
+            line[37, 1] = ak.data<DICT.A.JUSTIFY>
+
+            if ak.data<DICT.A.CORRELATIVE> # '' then
+               expr = fmt(ak.data<DICT.A.CORRELATIVE>, '40L')
+               gosub show.expr
+               comp.field = 8
+            end else
+               line[40, 40] = ak.data<DICT.LOC>
+               comp.field = 2
+            end
+
+         case 1
+            * Single/multi value
+
+            line[33, 1] = ak.data<DICT.S.M>
+
+            * Justification
+
+            line[37, 1] = ak.data<DICT.FORMAT>
+
+            line[40, 40] = ak.data<DICT.LOC>
+            comp.field = 2
+      end case
+
+      crt line
+
+      * Check against dictionary entry
+
+      if dict.open then
+         read dict.rec from dict.f, index.name then
+            if type # upcase(dict.rec[1, 1]) or trimb(trimf(ak.data<comp.field>)) # trimb(trimf(dict.rec<comp.field>)) then
+               crt sysmsg(2622)  ;* ** The above index differs from its dictionary definition
+            end
+         end else
+            crt sysmsg(2623)  ;* ** The above index is not in the dictionary
+         end
+      end
+
+      * Check for extended report modes
+
+      if stats then
+         show.headings = @true ;* Repeat main headings for next index
+
+         if detail then
+            crt sysmsg(2624)  ;* Alternate key details:
+            crt sysmsg(2625)  ;* Records...  Key value......................................................
+         end
+
+         key.count = 0
+         target.count = 0
+         min.targets = 2147483647
+         max.targets = 0
+
+         selectindex index.name from data.f to 10
+         loop
+            readnext key from 10 else exit
+            selectindex index.name, key from data.f to 11
+            if detail then
+               crt fmt(@selected, '10R') : '  ' : key
+            end
+
+            key.count += 1
+            target.count += @selected
+            if @selected < min.targets then min.targets = @selected
+            if @selected > max.targets then max.targets = @selected
+         repeat
+
+         if min.targets > max.targets then min.targets = 0  ;* No entries?
+
+         if target.count = 0 then
+            max.targets = 0
+            avg.targets = 0
+         end else
+            avg.targets = target.count / key.count
+         end
+
+         crt sysmsg(2626)  ;* Index entries      Key values     Min Recs       Avg Recs       Max Recs
+         crt fmt(target.count, '13R') : '   ' :
+         crt fmt(key.count, '13R') : '   ' :
+         crt fmt(min.targets, '10R') : '   ' :
+         crt fmt(avg.targets, '12R') : '   ' :
+         crt fmt(max.targets, '12R')
+      end
+
+      crt
+   next i
+
+exit.list.index:
+   @system.return.code = 0
+
+   return
+
+* ======================================================================
+
+show.expr:
+   loop
+      line[40, 40] = remove(expr, delim)
+   while delim
+      crt line
+      line = space(79)
+   repeat
+
+   return
+end
+
+* END-CODE

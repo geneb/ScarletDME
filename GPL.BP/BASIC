@@ -1,0 +1,316 @@
+* BASIC
+* BASIC compiler
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 02 Nov 06  2.4-15 VOC record types now case insensitive.
+* 15 Jul 05  2.2-4 0372 Do not terminate select list compilation when
+*                  @system.return.code goes negative as this could be an error
+*                  from CATALOGUE.
+* 28 Mar 05  2.1-11 Use PARSER$MFILE.
+* 07 Dec 04  2.1-0 Split into two modules.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* BASIC [ file.name ] record.name
+*
+* @SYSTEM.RETURN.CODE = Number of programs successfully compiled
+*                       Negative values indicate fatal errors
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program $basic
+$catalog $BASIC
+
+$include parser.h
+$include syscom.h
+$include header.h
+$include int$keys.h
+$include bcomp.h
+
+$include err.h
+$include keys.h
+
+$define max.levels   10
+
+
+*****************************************************************************
+
+   num.programs = 0
+   parser = "!PARSER"
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+
+   program.name.list = ''
+
+   compiler.flags = 0
+
+   source.file.name = ""
+   record.name = ""
+   compile.only.changed.records = @false
+
+   loop
+      call @parser(PARSER$MFILE, token.type, token, keyword)
+   until token.type = PARSER$END
+      begin case
+         case keyword = KW$CHANGED
+            compile.only.changed.records = @true
+
+         case keyword = KW$DEBUGGING
+            compiler.flags = bitor(compiler.flags, BCOMP.DEBUG)
+
+         case keyword = KW$LISTING
+            compiler.flags = bitor(compiler.flags, BCOMP.LISTING)
+
+         case keyword = KW$NOXREF
+            compiler.flags = bitor(compiler.flags, BCOMP.NO.XREF.TABLES)
+
+         case keyword = KW$XREF
+            compiler.flags = bitor(compiler.flags, BCOMP.LISTING)
+            compiler.flags = bitor(compiler.flags, BCOMP.LIST.XREF)
+
+         case 1
+            program.name.list<-1> = token
+      end case
+   repeat
+
+   * If the first name in program.name.list is a file, it is the source file
+
+   source.file.name = 'BP'
+   if program.name.list # '' then
+      s = program.name.list<1>
+      open s to src.f else
+         s = upcase(s)
+         open s to src.f else goto first.name.not.file
+      end
+
+      source.file.name = s
+      del program.name.list<1>
+      goto source.file.opened
+   end
+
+first.name.not.file:
+
+   * Open source file
+
+   open source.file.name to src.f else
+      @system.return.code = -ER$FNF
+      stop sysmsg(1427, source.file.name)  ;* Cannot open xx
+   end
+
+source.file.opened:
+   if fileinfo(src.f, FL$TYPE) # FL$TYPE.DIR then
+      if compile.only.changed.records then
+         display sysmsg(2992)
+         * CHANGED option ignored for non-directory file source or object
+         compile.only.changed.records = @false
+      end
+   end
+
+   source.path = fileinfo(src.f, fl$path) : @ds
+
+   * Open output file
+
+   if index(source.file.name, ',', 1) then
+      output.file.name = field(source.file.name, ',', 1) : '.OUT' : ',' : field(source.file.name, ',', 2, 999)
+   end else
+      output.file.name = source.file.name : '.OUT'
+   end
+
+   open output.file.name to out.f then
+      if fileinfo(out.f, fl$type) # fl$type.dir then
+         @system.return.code = -ER$NDIR
+         stop sysmsg(1428, output.file.name)  ;* xx is not a directory file
+      end
+   end else
+      * The output file does not exist
+
+      s = field(source.file.name, ',', 1)
+      read voc.rec from voc, s else
+         read voc.rec from voc, upcase(s) else
+            @system.return.code = -ER$NVR
+            stop sysmsg(2801)  ;* Unable to read source file VOC entry
+         end
+      end
+
+      voc.type = upcase(voc.rec[1,1])
+      if voc.type = 'F' then
+         * Create a .OUT file as an F-type entry
+
+         execute 'CREATE.FILE DATA ' : output.file.name : ' DIRECTORY'
+
+         open output.file.name to out.f else
+            @system.return.code = -status()
+            stop sysmsg(2803)  ;* Unable to open newly created output file
+         end
+      end else if voc.type = 'Q' then
+         * Create a Q-pointer to the .OUT file elsewhere
+
+         recordlocku voc, output.file.name
+         voc.rec<3> := '.OUT'
+         write voc.rec to voc, output.file.name
+
+         open output.file.name to out.f else
+            @system.return.code = -status()
+            delete voc, output.file.name   ;* Tidy up
+            stop sysmsg(2804)  ;* Source file is Q-pointer but default output file does not exist
+         end
+         display 'Created Q-pointer to ' : voc.rec<3> : ' in account ' : voc.rec<2>
+      end else    ;* Should be impossible but we'll include a trap
+         stop sysmsg(2805) ;* Source file VOC entry is incorrect
+      end
+   end
+
+   output.path = fileinfo(out.f, fl$path) : @ds
+
+   if fileinfo(out.f, FL$TYPE) # FL$TYPE.DIR then
+      if compile.only.changed.records then
+         display sysmsg(2992)
+         * CHANGED option ignored for non-directory file source or object
+         compile.only.changed.records = @false
+      end
+   end
+
+   mark.mapping out.f, off
+
+
+   if program.name.list = '*' then
+      select src.f to 11
+      readlist program.name.list from 11 else null
+      using.list = @true
+   end else if program.name.list = '' then
+      readlist program.name.list else
+         stop sysmsg(2806) ;* Program name(s) or * required
+      end
+      using.list = @true
+   end else
+      using.list = @false
+   end
+
+   error.modules = ""
+   modules = 0
+
+   loop
+      record.name = removef(program.name.list, 1)
+   until status()
+      if using.list then
+         if record.name = '$BASIC.OPTIONS' then continue
+
+         if index(record.name, '.', 1) then
+            suffix = upcase(field(record.name, '.', dcount(record.name, '.')))
+            if suffix = INCLUDE.SUFFIX then continue
+            if suffix = SCREEN.DEFINITION.SUFFIX then continue
+         end
+      end
+
+      gosub compile
+
+      if errors then   ;* Compilation errors
+         error.modules<-1> = record.name
+      end
+   repeat
+
+   * Report modules with errors
+
+   if modules = 0 then
+      if compile.only.changed.records then
+         display sysmsg(2807) ;* No programs require compilation
+      end
+   end else
+      if error.modules = '' then display sysmsg(2808, modules) ;* ...no errors
+      else
+         display sysmsg(2809, modules)  ;* ...errors in:
+         loop
+            remove s from error.modules setting i
+            display "   " : s
+         while i
+         repeat
+      end
+   end
+
+   @system.return.code = num.programs
+
+   return
+
+* ======================================================================
+
+compile:
+   errors = 0
+
+   * Open source file record
+
+   read prog.source from src.f, record.name else
+      read prog.source from src.f, upcase(record.name) else
+         display sysmsg(2810, record.name) ;* Cannot read source record xx
+         return
+      end
+      record.name = upcase(record.name)
+   end
+
+   if compile.only.changed.records then
+      source.dtm = ospath(source.path : record.name, os$dtm)
+      if source.dtm = 0 then      
+         display sysmsg(2811, record.name)  ;* Source record xx not found
+         return
+      end
+
+      object.dtm = ospath(output.path : record.name, os$dtm)
+      if object.dtm > source.dtm then return
+   end
+
+   display sysmsg(2812, source.file.name, record.name) ;* Compiling ff rr
+   modules += 1
+
+   * Remove any existing object and listing records
+
+   recordlocku out.f, record.name
+   delete out.f, record.name
+
+   listing.record.name = record.name : LISTING.SUFFIX
+   recordlocku out.f, listing.record.name
+   delete out.f, listing.record.name
+
+   call $bcomp(source.file.name, src.f, record.name, @false, prog.source, 
+               output.file.name, listing.record.name,
+               compiler.flags, 1,
+               catalogue.name, catalogue.mode,
+               object.code, errors)
+
+   if errors = 0 then
+      num.programs += 1
+
+      recordlocku out.f, record.name
+      write object.code to out.f, record.name
+
+      if catalogue.name # '' then
+         execute 'CATALOGUE ' : source.file.name : ' ' : catalogue.name : ' ' : record.name : ' ' : catalogue.mode
+      end
+   end
+
+   return
+
+end
+
+* END-CODE

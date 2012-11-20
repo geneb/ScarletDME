@@ -1,0 +1,198 @@
+* DELACC
+* DELETE.ACCOUNT verb
+* Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 03 Oct 07  2.6-5 Use parse.pathname.tokens() when processing ACCOUNTS record.
+* 02 Nov 06  2.4-15 VOC record types now case insensitive.
+* 13 Apr 06  2.4-1 Removed account name validation - simple check of existance
+*                  in ACCOUNTS file is good enough.
+* 13 Oct 04  2.0-5 Use message handler.
+* 01 Oct 04  2.0-3 Added multifile support.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* DELETE.ACCOUNT account.name
+*
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program $delete.account
+$catalog $DELACC
+
+$include keys.h
+$include int$keys.h
+$include parser.h
+$include err.h
+
+   prompt ''
+
+   parser = "!PARSER"
+
+   @system.return.code = -ER$ARGS            ;* Preset for argument errors
+
+
+   call @parser(parser$reset, 0, @sentence, 0)
+   call @parser(parser$get.token, token.type, token, keyword) ;* Verb
+
+   * Get and process account name
+
+   call @parser(parser$get.token, token.type, acc.name, keyword)
+   if token.type = PARSER$END then
+      display sysmsg(6001) :  ;* Account name:
+      input acc.name
+      acc.name = trim(acc.name)
+      if acc.name = '' then stop
+   end
+
+   * Validate account name
+
+   acc.name = upcase(acc.name)
+
+   * Check no further command arguments
+
+   call @parser(parser$get.token, token.type, token, keyword)
+   if token.type # PARSER$END then
+      stop sysmsg(2018, token) ;* Unexpected token (xx)
+   end
+
+   if acc.name = 'QMSYS' then
+      stop sysmsg(6025) ;* Cannot delete QMSYS account
+   end
+
+   if acc.name = @who then
+      stop sysmsg(6026) ;* Cannot delete own account
+   end
+
+   * Check account exists in ACCOUNTS file
+
+   openpath @qmsys:@ds:'ACCOUNTS' to acc.f else
+      stop sysmsg(6000) ;* Cannot open ACCOUNTS file in QMSYS account
+   end
+
+   readu acc.rec from acc.f, acc.name locked
+      stop sysmsg(6006, status()) ;* ACCOUNTS file record locked by user xx
+   end else
+      @system.return.code = -status()
+      stop sysmsg(6027) ;* Account not registered in ACCOUNTS file
+   end
+
+   pathname = parse.pathname.tokens(acc.rec<ACC$PATH>)
+
+   * Check  account directory exists
+
+   if not(ospath(pathname, OS$EXISTS)) then
+      display sysmsg(6028) ;* WARNING: Account directory does not exist
+   end else
+      * Check for cross-references from other accounts
+
+      xref.found = @false
+      select acc.f to 11
+      loop
+         readnext xacc from 11 else exit
+         if xacc # acc.name then
+            read xacc.rec from acc.f, xacc then
+               xacc.path = parse.pathname.tokens(xacc.rec<ACC$PATH>)
+               openpath xacc.path:@ds:'VOC' to xvoc.f then
+                  select xvoc.f to 12
+                  loop
+                     readnext xid from 12 else exit
+                     read xvoc.rec from xvoc.f, xid then
+                        xvoc.rec = upcase(xvoc.rec)
+                        type = upcase(xvoc.rec[1,1])
+                        begin case
+                           case type = 'F'
+                              num.components = dcount(xvoc.rec<2>, @vm)
+                              for comp = 1 to num.components
+                                 fpath = ospath(xvoc.rec<2,comp>, OS$FULLPATH)
+                                 if field(fpath, @ds, 1, dcount(fpath, @ds) - 1) = pathname then
+                                    gosub report.xref
+                                 end
+                              next comp
+
+                              fpath = ospath(xvoc.rec<3>, OS$FULLPATH)
+                              if field(fpath, @ds, 1, dcount(fpath, @ds) - 1) = pathname then
+                                 gosub report.xref
+                              end
+
+                           case type = 'Q'
+                              if xvoc.rec<2> = acc.name or xvoc.rec<2> = pathname then
+                                 gosub report.xref
+                              end
+                        end case
+                     end
+                  repeat
+               end
+            end
+         end
+      repeat
+
+      if xref.found then
+         loop
+            display sysmsg(6029) : ;* Continue with account deletion (Y/N)?
+            input yn
+            yn = upcase(yn)
+            if yn = 'N' then
+               @system.return.code = -ER$STOPPED
+               stop sysmsg(6030) ;* Account deletion abandoned
+            end
+         until yn = 'Y'
+         repeat
+      end
+
+      * Ask if to delete directory
+
+      loop
+         display sysmsg(6031, pathname) :  ;* Delete directory xx (Y/N)?
+         input yn
+         yn = upcase(yn)
+         until yn = 'Y' or yn = 'N'
+      repeat
+
+      if yn = 'Y' then
+         yn = ospath(pathname, OS$DELETE)
+      end
+   end
+
+   * Delete ACCOUNTS entry
+
+   delete acc.f, acc.name
+
+   @system.return.code = 0
+   return
+
+* ======================================================================
+
+report.xref:
+   if not(xref.found) then
+      crt sysmsg(6032) ;* Files in this account are referenced from other accounts
+      crt sysmsg(6033) ;* Account           VOC entry
+      xref.found = @true
+   end
+
+   crt fmt(xacc, '16L') : '  ' : xid
+   return
+end
+
+* END-CODE

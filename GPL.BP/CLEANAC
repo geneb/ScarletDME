@@ -1,0 +1,99 @@
+* CLEANAC
+* CLEAN.ACCOUNT command
+* Copyright (c) 1996, Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 13 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    CLEAN.ACCOUNT
+*
+* Deletes all records from
+*    $COMO
+*    $HOLD
+*    $SAVEDLISTS
+*
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+
+$internal
+program $clean.account
+$catalog $cleanac
+
+$include keys.h
+
+$include syscom.h
+$include err.h
+$include parser.h
+
+   parser = "!PARSER"
+
+   @system.return.code = -ER$ARGS      ;* Preset for command format errors
+
+* ---------------  Step 1  -  Parse the command
+
+   call @parser(parser$reset, 0, @sentence, 0)
+   call @parser(parser$get.token, token.type, token, keyword) ;* Verb
+
+   call @parser(parser$get.token, token.type, token, keyword)
+   if token.type # PARSER$END then
+      stop sysmsg(2018, token) ;* Unexpected token (xx)
+   end
+
+* ---------------  Step 2  -  Clear system files
+
+   if fileinfo(como.file, FL$OPEN) then
+      display sysmsg(6400) ;* $COMO not cleaned - COMO file active
+   end else
+      file.name = "$COMO" ; gosub clean
+   end
+
+   file.name = "$HOLD" ; gosub clean
+   file.name = "$SAVEDLISTS" ; gosub clean
+
+   @system.return.code = 0
+
+   return
+
+* ======================================================================
+
+clean:
+   open file.name to file then
+      clearfile file on error
+         display sysmsg(6401, status(), file.name) ;* Error xx cleaning fn
+         return
+      end
+      close file
+      display sysmsg(6402, file.name) ;* Cleaned xx
+   end else
+      if status() # ER$NVR then
+         display sysmsg(6403, file.name, status()) ;* xx not cleaned - cannot open. Status = xx
+      end
+   end
+
+   return
+end
+
+* END-CODE

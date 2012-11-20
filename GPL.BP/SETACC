@@ -1,0 +1,106 @@
+* SETACC
+* Switch to account without running LOGIN paragraph.
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 03 Oct 07  2.6-5 Use parse.pathname.tokens() when processing ACCOUNTS record.
+* 02 Nov 06  2.4-15 VOC record types now case insensitive.
+* 04 Aug 05  2.2-7 Added immediate argument to LOGOUT().
+* 27 May 05  2.2-0 New module for internal use only.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+subroutine setacc((acc), err, msg)
+$catalogue $setacc
+
+$include syscom.h
+$include err.h
+$include int$keys.h
+$include keys.h
+
+   if index(acc, @ds, 1) then    ;* Attaching by account path
+      path = acc
+      acc = upcase(path[index(path, @ds, count(path, @ds)) + 1, 99999])
+   end else                      ;* Attaching by account name
+      acc = upcase(acc)
+
+      openpath @qmsys:@ds:'ACCOUNTS' to acc.f else
+         err = ER$FNF
+         msg = sysmsg(2200)  ;* Cannot open accounts register
+         return
+      end
+
+      read acc.rec from acc.f, acc else
+         err = ER$NO.ACC
+         msg = sysmsg(2201, acc) ;* Account name '%1' is not in register
+         return
+      end
+
+      path = parse.pathname.tokens(acc.rec<ACC$PATH>)
+   end
+
+   if not(ospath(path, OS$CD)) then
+      err = ER$ACCOUNT
+      msg = sysmsg(5161) ;* Unable to change to new directory
+      goto revert.to.old.account
+   end
+
+   openpath "VOC" to new.voc else
+      err = ER$ACCOUNT
+      msg = sysmsg(5163) ;* Directory is not a QM account
+      goto revert.to.old.account
+   end
+
+   dummy = ospath("", os$flush.cache)
+   account.path = ospath("", os$cwd)     ;* @PATH
+
+   who = acc
+   voc = new.voc ; new.voc = 0   ;* Dereference temporary VOC file var
+
+   private.catalogue = 'cat'
+   read voc.rec from voc, "$PRIVATE.CATALOGUE" then
+      if upcase(voc.rec[1,1]) = 'X' then private.catalogue = voc.rec<2>
+   end
+   dummy = kernel(K$PRIVATE.CATALOGUE, private.catalogue)
+
+   err = 0
+   msg = ''
+
+   return
+
+* ======================================================================
+
+revert.to.old.account:
+   if ospath(account.path, OS$CD) then return
+   display sysmsg(5162) ;* Fatal error : Cannot return to previous account
+   dummy = logout(0, @true)
+   return
+
+   * Avoid compiler warnings
+   dummy = dummy
+end
+
+* END-CODE

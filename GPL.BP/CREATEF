@@ -1,0 +1,503 @@
+* CREATEF
+* CREATE.FILE verb
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 02 Nov 06  2.4-15 VOC record types now case insensitive.
+* 30 Aug 06  2.4-12 Added NO.RESIZE option.
+* 28 Aug 06  2.4-12 Transform invalid names in multifile components.
+* 28 Apr 06  2.4-2 0484 Trap CREATE.FILE A,A when converting A to a multifile.
+* 13 Jan 06  2.3-4 Added option not to uppercase operating system names.
+* 05 Aug 05  2.2-7 Added NO.QUERY option.
+* 09 May 05  2.1-13 Do not restrict size in version 2 upwards.
+* 07 Apr 05  2.1-12 0339 PATHNAME keyword was mapping path to uppercase.
+* 29 Mar 05  2.1-11 Offer to convert simple file to multifile if appropriate.
+* 28 Mar 05  2.1-11 Use PARSER$MFILE.
+* 18 Oct 04  2.0-5 0262 Allow creation of multifile data parts in a file that
+*                  previously had only a dictionary.
+* 13 Oct 04  2.0-5 Use message handler.
+* 04 Oct 04  2.0-4 Trap attempt to create a multifile element under a normal
+*                  file.
+* 01 Oct 04  2.0-3 Added multifile support.
+* 23 Sep 04  2.0-2 Added support for case insensitive ids.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* CREATE.FILE [{ DICT }] voc.name { DIRECTORY }
+*             [{ DATA }]          { DYNAMIC {parameters {DIRECTORY path}}}
+*             USING DICT filename
+*             NO.QUERY
+*
+* Dynamic parameters:
+*    MINIMUM.MODULUS n
+*    GROUP.SIZE n
+*    LARGE.RECORD n
+*    SPLIT.LOAD n
+*    MERGE.LOAD n
+*    VERSION n
+*    DIRECTORY path         path is existing directory to hold file
+*    NO.CASE                case insensitive ids
+*    NO.RESIZE              disable file resizing
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program $create.file
+$catalog $CREATEF
+
+$include int$keys.h
+$include parser.h
+$include keys.h
+$include err.h
+
+$define default.merge.load 50
+$define default.split.load 80
+
+   parser = "!PARSER"
+   prompt ''
+
+   @system.return.code = -ER$ARGS            ;* Preset for argument errors
+
+   * Open VOC here rather than using @VOC so that it will be closed on
+   * exit avoiding the need for explicit releases on locks.
+
+   open 'VOC' to voc.f else stop 'Cannot open VOC'
+
+   create.dict = @true
+   create.data = @true
+   file.type = FL$TYPE.DH
+   no.case = @false
+   dir.name = ""
+   dir.name.with.delimiter = ""
+   using.dict = @false
+   no.query = @false
+   no.resize = @false
+
+   group.size.value = -1
+   large.rec.size = -1
+   min.modulus.value = -1
+   split.load.value = default.split.load
+   merge.load.value = default.merge.load
+   version.value = -1
+   file.flags = 0
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+   call @parser(PARSER$MFILE, token.type, token, keyword) ;* First argument
+
+
+   * Check for DICT or DATA keyword
+
+   begin case
+      case keyword = KW$DICT      ;* DICT
+         create.data = @false
+         call @parser(PARSER$MFILE, token.type, token, keyword)
+  
+      case keyword = KW$DATA      ;* DATA
+         create.dict = @false
+         call @parser(PARSER$MFILE, token.type, token, keyword)
+   end case
+
+   * Fetch file name
+
+   if token.type = PARSER$END then stop sysmsg(2102) ;* File name required
+
+   file.name = field(token, ',', 1)
+   component = field(token, ',', 2)
+
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   if token.type = PARSER$COMMA then   ;* New multifile
+      call @parser(PARSER$GET.TOKEN, token.type, component, keyword)
+      call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   end
+
+   if file.name = '' then stop sysmsg(6100) ;* Illegal file name
+
+   * Check for file type keyword. We default to DYNAMIC
+
+   begin case
+      case keyword = KW$DIRECTORY      ;* DIRECTORY
+         file.type = FL$TYPE.DIR
+         call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+
+      case keyword = KW$DYNAMIC        ;* dynamic
+         call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   end case
+
+   * Check for other keywords
+
+   loop
+   until token.type = PARSER$END
+      begin case
+         * ---------- GROUP.SIZE n
+         case keyword = KW$GROUP.SIZE and file.type # FL$TYPE.DIR
+            call @parser(PARSER$GET.TOKEN, token.type, value, keyword)
+            if not(value matches '1N') or (value < 1) or (value > 8) then
+               stop sysmsg(6105) ;* Group size is invalid
+            end
+            group.size.value = value + 0
+
+         * ---------- LARGE.RECORD n
+         case keyword = KW$LARGE.RECORD and file.type # FL$TYPE.DIR
+            call @parser(PARSER$GET.TOKEN, token.type, value, keyword)
+            if not(value matches '1N0N') then
+               stop sysmsg(6106) ;* Large record size is invalid
+            end
+            large.rec.size = value + 0
+   
+         * ---------- MERGE.LOAD n
+         case keyword = KW$MERGE.LOAD and file.type = FL$TYPE.DH
+            call @parser(PARSER$GET.TOKEN, token.type, value, keyword)
+            if not(value matches '1N0N') or value < 10 or value > 10000 then
+               stop sysmsg(6107) ;* Merge load is invalid
+            end
+            merge.load.value = value + 0
+
+         * ---------- MINIMUM.MODULUS n
+         case keyword = KW$MINIMUM.MODULUS and file.type = FL$TYPE.DH
+            call @parser(PARSER$GET.TOKEN, token.type, value, keyword)
+            if not(value matches '1N0N') or value < 1 then
+               stop sysmsg(6108) ;* Minimum modulus is invalid
+            end
+            min.modulus.value = value + 0
+
+         * ---------- NO.CASE
+         case keyword = KW$NO.CASE
+            no.case = @true
+
+         * ---------- NO.QUERY
+         case keyword = KW$NO.QUERY
+            no.query = @true
+
+         * ---------- NO.RESIZE
+         case keyword = KW$NO.RESIZE
+            no.resize = @true
+
+         * ---------- PATHNAME name
+         case keyword = KW$PATHNAME
+            call @parser(PARSER$GET.TOKEN, token.type, dir.name, keyword)
+   
+            if not(ospath(dir.name, OS$PATHNAME)) then
+               @system.return.code = -ER$INVA.PATH
+               stop sysmsg(6109) ;* Directory path name is not valid
+            end
+   
+            if not(ospath(dir.name, OS$EXISTS)) then
+               @system.return.code = -ER$NO.DIR
+               stop sysmsg(6110) ;* Directory path name does not exist
+            end
+   
+            * Get full pathname
+   
+            dir.name = ospath(dir.name, OS$FULLPATH)   ;* 0339 removed UPCASE()
+            dir.name.with.delimiter = dir.name
+            if dir.name.with.delimiter[1] # @ds then dir.name.with.delimiter := @ds
+   
+         * ---------- SPLIT.LOAD n
+         case keyword = KW$SPLIT.LOAD and file.type = FL$TYPE.DH
+            call @parser(PARSER$GET.TOKEN, token.type, value, keyword)
+            if not(value matches '1N0N') or value < 20 or value > 10000 then
+               stop sysmsg(6111) ;* Split load is invalid
+            end
+            split.load.value = value + 0
+   
+         * ---------- USING DICT filename
+         case keyword = KW$USING
+            call @parser(PARSER$GET.TOKEN, token.type, value, keyword)
+            if keyword # KW$DICT then stop sysmsg(6112, token) ;* Expected DICT after xx
+
+            call @parser(PARSER$GET.TOKEN, token.type, dict.name, keyword)
+
+            if not(create.data) then
+               stop sysmsg(6113) ;* Inconsistent command options
+            end
+
+            read voc.rec from voc.f, dict.name else
+               read voc.rec from voc.f, upcase(dict.name) else
+                  stop sysmsg(6114, dict.name) ;* xx is not defined in your VOC
+               end
+               dict.name = upcase(dict.name)
+            end
+
+            if upcase(voc.rec[1,1]) # 'F' then
+               stop sysmsg(6115, dict.name) ;* xx is not an F-type VOC record
+            end
+
+            if voc.rec<3> = '' then
+               stop sysmsg(6116, dict.name)  ;* xx has no dictionary
+            end
+
+            dict.path = voc.rec<3>
+            using.dict = @true
+
+         * ---------- VERSION n
+         case keyword = KW$VERSION and file.type # FL$TYPE.DIR
+            call @parser(PARSER$GET.TOKEN, token.type, value, keyword)
+            if not(value matches '1N0N') or value < 0 or value > DH.VERSION then
+               stop sysmsg(6117) ;* Invalid file version
+            end
+            version.value = value + 0
+   
+         case 1
+            stop sysmsg(2018, token) ;* Unexpected token (xx)
+      end case
+         
+      call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   repeat
+
+   * Check that no VOC entry already exists for this name
+
+   readu voc.rec from voc.f, file.name then
+      if upcase(voc.rec[1,1]) # "F" then
+         @system.return.code = -ER$VNF
+         stop sysmsg(6101, file.name) ;* VOC record xx already exists but not as a file
+      end
+
+      if create.data then
+         if component = '' and voc.rec<4> = '' then     ;* Creating simple file
+            if (voc.rec<2> # "") then
+               display sysmsg(6102) ;* DATA part of file already exists
+               create.data = @false
+            end
+         end else
+            if component = '' then component = file.name
+
+            if voc.rec<2> # '' and voc.rec<4> = '' then   ;* 0262
+               * We need to make this into a multifile.
+
+               * 0484 Check if we are trying to create the default subfile.
+
+               if file.name = component then   ;* 0484
+                  stop sysmsg(6201, component) ;* Subfile %1 would be created from the existing data element
+               end
+
+               if no.query then
+                  display sysmsg(6162, file.name, file.name)
+                     * Converting to multifile named "%1,%1"
+               end else
+                  display sysmsg(6103, file.name) ;* %1 already exists but not as a multifile
+                  loop
+                     display sysmsg(6195, file.name, file.name) :
+                        * Convert to multifile named "%1,%1" (Y/N)?
+                     input yn
+                     yn = upcase(yn)
+                  until yn = 'Y' or yn = 'N'
+                  repeat
+                  if yn = 'N' then stop
+               end
+
+               i = ospath("", os$flush.cache)
+
+               old.path = voc.rec<2>
+
+               * Transform invalid o/s names
+
+               if option(OPT.CREATE.FILE.CASE) then
+                  os.name = ospath(file.name, OS$MAPPED.NAME)
+               end else
+                  os.name = ospath(upcase(file.name), OS$MAPPED.NAME)
+               end
+               new.path = old.path : @ds : os.name
+
+               subfiles = dir(old.path)
+
+               * Create new subdirectory inside old file directory  
+
+               if not(ospath(new.path, OS$MKDIR)) then
+                  stop sysmsg(6196, new.path) ;* Unable to create %1
+               end
+
+               * Move the ~n components down into the new sub directory
+
+               for i = dcount(subfiles, @fm) to 1 step -1
+                  s = subfiles<i,1>
+                  if s[1,1] = '~' then
+                     if not(osrename(old.path:@ds:s, new.path:@ds:s)) then
+                        stop sysmsg(6197, status(), os.error(), old.path:@ds:s)
+                              * Error %1.%2 moving %3
+                     end
+                  end
+               next i
+
+               voc.rec<2> = new.path
+               voc.rec<4> = file.name
+               writeu voc.rec to voc.f, file.name
+            end
+
+            locate component in voc.rec<4,1> setting i then
+               display sysmsg(6102) ;* DATA part of file already exists
+               create.data = @false
+            end
+         end
+      end
+
+      if create.dict and (voc.rec<3> # "") then
+         display sysmsg(6104) ;* DICT part of file already exists
+         create.dict = @false
+      end
+
+      if not(create.dict or create.data) then stop
+   end else
+      voc.rec = "F"        ;* Create skeletal VOC record
+   end
+
+
+
+   if group.size.value < 0 then group.size.value = config("GRPSIZE")
+   if large.rec.size > (group.size.value * 1024 - 8) then
+      stop sysmsg(6118) ;* Large record size must be at least 8 bytes less than group size
+   end
+
+   if split.load.value <= merge.load.value then
+      stop sysmsg(6119) ;* Split load must be greater than merge load
+   end
+
+
+   if version.value >= 0 and version.value < 2 then
+      * Validate file size
+
+      if min.modulus.value > 1 then
+         filesize = if version.value then (group.size.value * 1024) else 1024
+         filesize += min.modulus.value * group.size.value * 1024
+         if filesize > 2147483648 then stop sysmsg(6120) ;* File size is too large
+      end
+   end
+
+   * Form operating system file name from VOC record name
+
+   if option(OPT.CREATE.FILE.CASE) then
+      os.name = ospath(file.name, OS$MAPPED.NAME)
+   end else
+      os.name = ospath(upcase(file.name), OS$MAPPED.NAME)
+   end
+
+   * Check if operating system components already exist
+
+   if create.dict and not(using.dict) then
+      dict.path = dir.name.with.delimiter : os.name : ".DIC"
+      if ospath(dict.path, OS$EXISTS) then        ;* Already exists
+         stop sysmsg(6121, dict.path) ;* Dictionary pathname 'xx' already exists
+      end
+   end
+
+   if create.data then
+      * If we are creating a multifile element, use the file name as the
+      * default directory under which to create the file.
+
+      if component # '' then
+         if dir.name = '' then
+            dir.name = file.name
+            dir.name.with.delimiter = dir.name
+            if dir.name.with.delimiter[1] # @ds then dir.name.with.delimiter := @ds
+         end
+
+         if option(OPT.CREATE.FILE.CASE) then
+            os.name = ospath(component, OS$MAPPED.NAME)
+         end else
+            os.name = ospath(upcase(component), OS$MAPPED.NAME)
+         end
+      end
+
+      data.path = dir.name.with.delimiter : os.name
+
+      if ospath(data.path, OS$EXISTS) then        ;* Already exists
+         stop sysmsg(6125, data.path) ;* Data pathname 'xx' already exists
+      end
+   end
+
+
+   * Create dictionary part
+
+   if create.dict then
+      if not(using.dict) then
+         create.file dict.path dynamic
+         display sysmsg(6123, dict.path) ;* Created DICT part as xx
+      end
+      voc.rec<3> = dict.path
+   end
+
+
+   * Create data part
+
+   if create.data then
+      * If we are creating a multifile element, use the file name as the
+      * default directory under which to create the file.
+
+      if component # '' then
+         if not(ospath(dir.name, OS$EXISTS)) then
+            if not(ospath(dir.name, OS$MKDIR)) then
+               stop sysmsg(6124, dir.name) ;* Unable to create directory xx
+            end
+         end
+      end
+
+      if component = '' then
+         voc.rec<2> = data.path
+      end else
+         voc.rec<2,-1> = data.path
+         voc.rec<4,-1> = component
+      end
+
+      file.flags = 0
+      if no.case then file.flags = bitor(file.flags, FL$FLAGS.NOCASE)
+      if no.resize then file.flags = bitor(file.flags, FL$FLAGS.NORESIZE)
+
+      begin case
+         case file.type = FL$TYPE.DH
+            create.file data.path dynamic group.size group.size.value big.rec.size large.rec.size min.modulus min.modulus.value split.load split.load.value merge.load merge.load.value flags file.flags version version.value
+         case 1
+            create.file data.path directory
+      end case
+      display sysmsg(6127, data.path) ;* Created DATA part as xx
+   end
+
+
+   * Write VOC entry
+
+   write voc.rec to voc.f, file.name
+
+   * Write @ID record to dictionary
+
+   if create.dict and not(using.dict) then
+      open "DICT", file.name to dict.file else
+         @system.return.code = -status()
+         stop sysmsg(6128) ;* Unable to open newly created dictionary
+      end
+
+      recordlocku dict.file, '@ID'
+      id.rec = "D" : @fm : "0" : @fm : "" : @fm : file.name : @fm
+      id.rec := if file.type = FL$TYPE.DIR then "12L" else "10L"
+      id.rec := @fm : "S" : @fm
+      write id.rec to dict.file, "@ID"
+
+      display sysmsg(6129) ;* Added default '@ID' record to dictionary
+
+      close dict.file
+   end
+
+   @system.return.code = 0
+
+   return
+end
+
+* END-CODE

@@ -1,0 +1,662 @@
+* FMTSUB
+* !FORMAT()  -  Apply format rules to QMBasic program.
+* Copyright (c) 2004 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 23 Mar 09 gwb Fixed a bug that was causing the routine to fail due to mis-matched
+*               data if the source file has a blank line as the first line in the file.
+*
+* 14 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    CALL !FORMAT(in.rec, out.rec, default.file, indent.step, case.option, errors)
+*
+*       in.rec         Text to be formatted.
+*
+*       out.rec        Formatted text.
+*
+*       default.file   File to use for $INCLUDE
+*
+*       indent.step    Indentation increment.
+*
+*       case.option    Perform case conversion actions? (boolean).
+*
+*       errors         Count of reported errors
+*
+*    Format rules:
+*
+*     1. PROGRAM, FUNCTION or SUBROUTINE lines are aligned at the left margin.
+*
+*     2. Compiler directives are aligned at the left margin.
+*
+*     3. Lines ending with ON ERROR, LOCKED, THEN or ELSE cause the following
+*        lines to be indented.  Other lines commencing with these words and
+*        holding a conditioned statement are indented, reverting to the
+*        original indentation on the following line.
+*
+*     4. The CASE construct is indented such that the CASE statements are
+*        indented one level and the conditioned statements by two levels.
+*
+*     5. WHILE and UNTIL statements are aligned with their LOOP or FOR.
+*
+*     6. Multiple spaces between language elements are reduced to one space.
+*
+*     7. Spaces before commas are removed.  Commas have a single space after.
+*
+*     8. Labels are aligned to the left margin.  Any statement on the same line
+*        as a label is aligned with the surrounding code except that there will
+*        always be at least one space after the label.
+*
+*     9. A comment on the same line as a statement is not moved unless not to
+*        do so would place it over the statement or with less than one space
+*        before the semicolon.
+*
+*    10. Lines holding left aligned comments are not changed.
+*
+*    11. Comment lines which commence with spaces are moved to the alignment
+*        of the surrounding code except where the preceding line was a comment
+*        (including trailing comments) in which case the line is aligned with
+*        the preceding line.
+*
+*    12. EQUate and $DEFINE lines are unchanged to preserve possible column
+*        alignment.
+*
+*    13. The CASE option converts all language elements, labels and data names
+*        to lowercase.  Names corresponding to EQUate or $DEFINEd tokens
+*        retain the casing of the defininition.
+*
+! Add spaces around operators (but not field references or after unary +/-).
+! Alignment of items in ON GOTO/GOSUB.
+! Alignment of subroutine/function/call arguments over multiple lines.
+! FOR I = 1 TO 4 ; blah ; NEXT I  (and other use of multiple statement lines).
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+subroutine format(in.rec, out.rec, default.file, indent.step, case.option, errors)
+$catalogue !format
+equ MAX.INCLUDE to 20
+
+   name.chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.$_%'
+
+   dim include.f(MAX.INCLUDE)
+   dim include.rec(MAX.INCLUDE)
+
+   errors = 0
+
+   * Process source lines
+
+   new.rec = ''            ;* Formatted record
+   indent = indent.step    ;* Current indentation level
+   comment.indent = 0      ;* Indent for multi-line comment
+   loop.stack = ''         ;* Indent positions for LOOP/REPEAT or FOR/NEXT
+   indent.type = 'P'       ;* For, Loop, Conditional, Begin, Program, Transaction
+   tokens = ''             ;* Equate and define tokens as defined...
+   u.tokens = ''           ;* ...and in uppercase for searching
+   include.depth = 0       ;* Include record depth
+
+   lno = 0
+   dot.emitted = @false
+   loop
+      line = removef(in.rec, 1)
+   until status()
+      lno += 1
+      if rem(lno,10) = 0 then
+         display '.' :
+         dot.emitted = @true
+      end
+      line.len = len(line)
+
+
+      * Remove leading form feed
+
+      if line[1,1] = char(12) then
+         ff = char(12)
+         line = trimf(line[2,99999])
+         line.len -= 1
+      end else
+         ff = ''
+      end
+
+
+      * Lines with leading comments are preserved unchanged
+
+      c = trimf(line)[1,1]
+      if c = '*' or c = '!' then
+         if line[1,1] = ' ' then    ;* Indented comment
+            if comment.indent then  ;* Align with previous line
+               line = space(comment.indent) : trimf(line)
+            end else                ;* Align with code
+               line = space(indent) : trimf(line)
+            end
+         end else                   ;* Left aligned comment
+            null
+         end
+         goto emit
+      end
+
+      first.word = upcase(field(trim(line), ' ', 1))
+
+      * EQUate and $DEFINE lines are left unchanged to preserve any
+      * column alignment
+
+      begin case
+         case first.word = '$DEFINE'
+            u.tokens<-1> = upcase(field(line, ' ', 2))
+            tokens<-1> = field(trim(line), ' ', 2)
+            goto emit
+
+         case first.word = 'EQUATE' or first.word = 'EQU'
+!!!! Need to handle multi-token format of EQUATE
+            u.tokens<-1> = upcase(field(line, ' ', 2))
+            tokens<-1> = field(trim(line), ' ', 2)
+            goto emit
+      end case
+
+
+      * Remove leading and trailing spaces
+
+      line = trimb(trimf(line))
+
+
+      * Strip off labels
+
+      label = ''
+      c = line[1,1]
+      if alpha(c) then                      ;* Check for name style label
+         i = 2
+         loop
+            c = line[i,1]
+         until c = ''
+         while index(name.chars, upcase(c), 1)
+            i += 1
+         repeat
+         if line[i,1] = ':' and line[i,2] # ':=' then   ;* 0165
+            label = line[1,i]
+            line = trimf(line[i+1,99999])
+         end
+      end else if c matches '1N' then       ;* Check for numeric label
+         i = 2
+         loop
+            c = line[i,1]
+         while c # '' and index('0123456789.', c, 1)
+            i += 1
+         repeat
+         if c = '' or c= ':' or c = ' ' or c = '*' or c = '!' then
+            label = trimb(line[1,i])  ;* Keeps colon but trims space
+            line = trimf(line[i+1,99999])
+         end
+      end
+
+      * Pack spaces, preserving strings.  Strip comments in the same process.
+
+      new.statement = @true
+      comment = ''
+      i = 1
+      loop
+         c = line[i,1]
+      while len(c)
+         begin case
+            case c = '"' or c = "'" or c = '\'
+               j = index(line[i+1,99999], c, 1)
+               if j = 0 then  ;* No closing quote
+                  message = sysmsg(2977) ;* Unclosed string
+                  gosub error
+                  exit
+               end
+               i += j + 1
+
+            case c = ' '
+               i += 1
+               j = i
+               loop
+               while line[j,1] = ' '
+                  j += 1
+               repeat
+               if j # i then line = line[1,i-1]:line[j,99999]
+
+            case c = ','
+               * Remove any space before a comma and ensure there is a
+               * space after it.
+
+               if line[i-1,1] = ' ' then
+                  line = line[1,i-2] : ', ' : trimf(line[i+1,99999])
+               end else
+                  line = line[1,i-1] : ', ' : trimf(line[i+1,99999])
+               end
+               i += 1              
+
+            case c = ';'
+               i += 1
+               new.statement = @true
+
+            case c = '*' or c= '!'
+               if new.statement then
+                  need.semicolon = (i # 1)
+                  comment = line[i,99999]
+                  comment.col = line.len - len(comment) - 1  ;* Position for semicolon
+                  line = trimb(line[1,i-1])
+                  loop
+                  while line[1] = ';'
+                     line= trimb(line[1,len(line)-1])
+                  repeat
+                  exit
+               end
+               i += 1
+
+            case 1
+               i += 1
+               new.statement = @false
+         end case
+      repeat
+
+
+      * Construct an uppercase version of the line for analysis
+
+      u.line = upcase(line)
+
+      * Convert ON ERROR to ON~ERROR in u.line. This may affect strings
+      * but it doesn't matter as we will be looking for first/last word and
+      * the quotes will stop us getting it wrong.
+
+      u.line = change(u.line, 'ON ERROR', 'ON~ERROR')
+
+
+      * Extract interesting bits of the line
+
+      num.words = dcount(u.line, ' ')
+      first.word = field(u.line, ' ', 1)
+      rest = field(u.line, ' ', 2, 9999)
+      last.word = field(u.line, ' ', num.words)
+
+
+      * Look for things that take us toward the left
+
+      begin case
+         * ---------- Left aligned items
+
+         case listindex('CLASS,FUNCTION,PROGRAM,SUB,SUBROUTINE', ',', first.word)
+            line.indent = 0
+            indent = indent.step
+
+         case u.line[1,1] = '$'
+            line.indent = 0
+
+            begin case
+               case u.line[1,9] = '$INCLUDE '  ;* Process include record
+                  if case.option then
+                     include.id = field(line, ' ' , 3)
+                     if include.id = '' then
+                        include.fn = ''
+                        include.id = field(line, ' ' , 2)
+                     end else
+                        include.fn = field(line, ' ' , 2)
+                     end
+                     gosub process.include
+                  end
+            end case
+
+         * ---------- WHILE/UNTIL
+
+         case first.word = 'WHILE'
+            line.indent = loop.stack<1> + 0
+
+         case first.word = 'UNTIL'
+            line.indent = loop.stack<1> + 0
+
+         * ---------- Undent at end of structure
+
+         case first.word = 'END'
+            if field(u.line, ' ', 2) = 'CASE' then
+               indent -= indent.step * 2
+               if indent.type<1> # 'B' then
+                  message = sysmsg(6880) ;* Incorrectly paired BEGIN/END CASE
+                  gosub error
+               end else
+                  del indent.type<1>
+               end
+            end else if field(u.line, ' ', 2) = 'TRANSACTION' then
+               indent -= indent.step
+               if indent.type<1> # 'T' then
+                  message = sysmsg(6881) ;* Incorrectly paired BEGIN/END TRANSACTION
+                  gosub error
+               end else
+                  del indent.type<1>
+               end
+            end else
+               indent -= indent.step
+               s = if indent then 'C' else 'P'
+               if indent.type<1> # s then
+                  message = sysmsg(6882) ;* Incorrectly paired END
+                  gosub error
+               end else
+                  del indent.type<1>
+               end
+            end
+            if indent < 0 then indent = 0
+            line.indent = indent
+
+         case first.word = 'CASE'
+            if indent.type<1> # 'B' then
+               message = sysmsg(6883) ;* Incorrectly placed CASE
+               gosub error
+            end
+            indent -= indent.step
+            if indent < 0 then indent = 0
+            line.indent = indent
+
+         case first.word = 'NEXT'
+            indent -= indent.step
+            if indent.type<1> # 'F' then
+               message = sysmsg(6884) ;* Incorrectly paired FOR/NEXT
+               gosub error
+            end else
+               del indent.type<1>
+            end
+            del loop.stack<1>
+            line.indent = indent
+
+         case first.word = 'REPEAT'
+            indent -= indent.step
+            if indent.type<1> # 'L' then
+               message = sysmsg(6885) ;* Incorrectly paired LOOP/REPEAT
+               gosub error
+            end else
+               del indent.type<1>
+            end
+            del loop.stack<1>
+            line.indent = indent
+
+         * ---------- Default - Leave as is
+
+         case 1
+            line.indent = indent
+      end case
+
+      begin case
+         case last.word = 'REPEAT' and num.words > 1    ;* 0196
+            line.indent = indent
+            indent -= indent.step 
+            if indent.type<1> # 'L' then
+               message = sysmsg(6885) ;* Incorrectly paired LOOP/REPEAT
+               gosub error
+            end else
+               del indent.type<1>
+            end
+            del loop.stack<1>
+      end case
+
+      * Look for things that take us towards the right
+
+      begin case
+         case first.word = 'ON~ERROR' and rest # ''
+            line.indent += indent.step    ;* Just for this line
+
+         case first.word = 'LOCKED' and rest # ''
+            line.indent += indent.step    ;* Just for this line
+
+         case first.word = 'THEN' and rest # ''
+            line.indent += indent.step    ;* Just for this line
+
+         case first.word = 'ELSE' and rest # ''
+            line.indent += indent.step    ;* Just for this line
+      end case
+
+      begin case
+         case last.word = 'ON~ERROR'
+            line.indent = indent  ;* Allow for (e.g.) ELSE ... ON ERROR
+            indent += indent.step
+            ins 'C' before indent.type<1>
+
+         case last.word = 'LOCKED'
+            line.indent = indent  ;* Allow for (e.g.) ELSE ... LOCKED
+            indent += indent.step
+            ins 'C' before indent.type<1>
+
+         case last.word = 'THEN'
+            line.indent = indent  ;* Allow for (e.g.) ELSE ... THEN
+            indent += indent.step
+            ins 'C' before indent.type<1>
+
+         case last.word = 'ELSE'
+            line.indent = indent  ;* Allow for (e.g.) ELSE ... ELSE
+            indent += indent.step
+            ins 'C' before indent.type<1>
+
+         case first.word = 'BEGIN'
+            if field(rest, ' ', 1) = 'TRANSACTION' then
+               indent += indent.step
+               ins 'T' before indent.type<1>
+            end else
+               indent += indent.step * 2
+               ins 'B' before indent.type<1>
+            end
+
+         case first.word = 'CASE'
+            indent += indent.step
+
+         case first.word = 'GET'
+            indent += indent.step
+            ins 'C' before indent.type<1>
+
+         case first.word = 'PUT'
+            indent += indent.step
+            ins 'C' before indent.type<1>
+
+         case first.word = 'PUBLIC'
+            if listindex('FUNCTION,SUB,SUBROUTINE', ',', field(rest, ' ', 1)) then
+               indent += indent.step
+               ins 'C' before indent.type<1>
+            end
+
+         case first.word = 'LOOP'
+            ins indent before loop.stack<1>
+            ins 'L' before indent.type<1>
+            indent += indent.step
+
+         case first.word = 'FOR'
+            ins indent before loop.stack<1>
+            ins 'F' before indent.type<1>
+            indent += indent.step
+      end case
+
+
+      if case.option then
+         * Sort out casing of statement
+
+         i = 1
+         loop
+            c = line[i,1]
+         while len(c)
+            begin case
+               case c = '"' or c = "'" or c = '\'
+                  j = index(line[i+1,99999], c, 1)
+                  if j = 0 then  ;* No closing quote
+                     message = sysmsg(2977) ;* Unclosed string
+                     gosub error
+                     exit
+                  end
+                  i += j + 1
+
+               case alpha(c)
+                  j = i + 1
+                  loop
+                     c = upcase(line[j,1])
+                  while c # ''
+                  while index(name.chars, c, 1)
+                     j += 1
+                  repeat
+
+                  s = upcase(line[i, j-i])   ;* Extract name
+                  locate s in u.tokens<1> setting pos then
+                      line[i,j-i] = tokens<pos>
+                  end else
+                      line[i,j-i] = downcase(s)
+                  end
+
+                  i = j
+               case 1
+                  i += 1
+            end case
+         repeat
+      end
+
+
+      * Apply indentation
+
+      line = space(line.indent) : trimf(line)
+
+      * Replace label
+
+      if len(label) then
+         if case.option then label = downcase(label)
+         if len(line) then label := ' '
+         line = label : trimf(line[1,len(label)]) : line[len(label)+1,99999]
+      end
+
+
+      * Append trailing comment
+
+      if len(comment) then
+         if line[comment.col-2,9999] # '' then  ;* Overlaps code
+            line := '  '
+         end else                               ;* Extend code to comment pos
+            line = fmt(line, comment.col:'L')
+         end
+         comment.indent = len(line) + 1
+
+         if need.semicolon then line := ';'  ;* 0086
+         line := comment
+
+      end else
+         comment.indent = 0
+      end
+
+emit:
+      if len(ff) then line = ff : line    ;* Reapply leading form feed
+      new.rec<lno> = trimb(line) 
+
+   repeat
+
+   if dot.emitted then display
+
+   * If all has gone correctly, the new record should be identical to the old
+   * record if we remove all spaces.
+   if upcase(convert(' ', '', in.rec)) # upcase(convert(' ', '', new.rec)) then
+      display 'Internal error - data mismatch.'
+		display "I started with ":len(in.rec):" bytes and ended up with ": len(new.rec):" bytes"
+		display 'Press ENTER to continue' :
+      i = keyin()
+      new.rec = in.rec
+   end
+
+   out.rec = new.rec
+
+   return
+
+* ======================================================================
+* Process an include record
+
+process.include:
+   if include.depth = MAX.INCLUDE then return  ;* Too deep
+
+   include.depth += 1
+
+   include.found = @false
+
+   if include.fn # '' then        ;* Use specific file
+      open include.fn to include.f(include.depth) else
+         open upcase(include.fn) to include.f(include.depth) else
+            goto exit.process.include
+         end
+      end
+
+      read include.rec(include.depth) from include.f(include.depth), include.id then
+         include.found = @true
+      end
+   end else                       ;* Use default file
+      open default.file to include.f(include.depth) then
+         read include.rec(include.depth) from include.f(include.depth), include.id then
+            include.found = @true
+         end
+      end
+
+      if not(include.found) then
+         open 'SYSCOM' to include.f(include.depth) then
+            read include.rec(include.depth) from include.f(include.depth), include.id then
+               include.found = @true
+            end
+         end
+      end
+   end
+
+   if include.found then
+      loop
+         include.line = trim(removef(include.rec(include.depth), 1))
+      until status()
+         u.include.first = upcase(field(include.line, ' ', 1))
+         begin case
+           case u.include.first = 'EQU' or u.include.first = 'EQUATE'
+              s = field(include.line, ' ',2)
+              u.tokens<-1> = upcase(s)
+              tokens<-1> = s
+
+           case u.include.first = '$DEFINE'
+              s = field(include.line, ' ',2)
+              u.tokens<-1> = upcase(s)
+              tokens<-1> = s
+
+           case u.include.first = '$INCLUDE'
+              include.id = field(include.line, ' ' , 3)
+              if include.id = '' then
+                 include.fn = ''
+                 include.id = field(include.line, ' ' , 2)
+              end else
+                include.fn = field(include.line, ' ' , 2)
+               end
+              gosub process.include
+         end case
+      repeat
+   end
+
+   close include.f(include.depth)
+   include.rec(include.depth) = ''
+
+   include.depth -=1
+
+exit.process.include:
+   return
+
+* ======================================================================
+
+error:
+   if dot.emitted then display
+   display fmt(lno, "4'0'R") : ':  ' : message
+   dot.emitted = @false
+   errors += 1
+
+   return
+end
+
+* END-CODE

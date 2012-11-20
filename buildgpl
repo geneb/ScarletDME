@@ -1,0 +1,160 @@
+# This script builds the GPL OpenQM source
+#
+# The first argument can be a stage number to continue from the given stage
+#
+# This script requires a standard installed QMSYS for the same release.
+# The directory from which this script is executed should have subdirectories
+# for the source (gplsrc), object (gplobj) and executables (bin). The
+# default names shown in brackets can be modified below.
+
+# The gpl.src file must be in the current directory and contains a list of
+# the source modules that are used to build the qm executable.
+
+# Define a few things:
+#    QMSYS           Pathname of QMSYS directory
+#    GPLSRC          Source directory
+#    GPLOBJ          Target directory for object files
+#    GPLBIN          Target directory for executables
+#    QM_GCC_OPTIONS  Compiler options
+#    QMLIBS          Libraries
+
+QMSYS=/usr/qmsys
+GPLSRC=gplsrc
+GPLOBJ=gplobj
+GPLBIN=bin
+QM_GCC_OPTIONS="-Wall -Werror -DLINUX -D_FILE_OFFSET_BITS=64 -DGPL -g"
+QMLIBS="-lm -lcrypt -ldl"
+
+STAGE=$1
+if test "$STAGE" = ""
+then
+   STAGE=1
+fi
+
+
+######################### STAGE 1  -  Build QM #########################
+
+if test $STAGE -le 1
+then
+   echo ===== Stage 1 =====
+   echo Building C program modules...
+   errors=0
+   errorprogs=""
+   for file in `cat gpl.src`
+   do
+      echo $file
+      gcc -c $QM_GCC_OPTIONS -I$GPLSRC -o $GPLOBJ/$file.o $GPLSRC/$file.c
+      if test $? -ne 0
+      then
+         errors=`expr $errors + 1`
+         errorprogs="$errorprogs$file "
+      fi
+   done
+
+   if test $errors -ne 0
+   then
+      echo "Build aborted due to compilation errors in $errors program(s):"
+      echo $errorprogs
+      exit
+   fi
+
+   echo
+fi
+
+######################### STAGE 2  -  Link QM ##########################
+
+if test $STAGE -le 2
+then
+   echo ===== Stage 2 =====
+   echo "Linking qm"
+
+   objects=''
+   for file in `cat gpl.src`
+   do
+      objects="$objects $GPLOBJ/$file.o"
+   done
+   gcc -o $GPLBIN/qm $QMLIBS $objects
+
+   echo
+fi
+
+###################### STAGE 3  -  Build QMCLILIB ######################
+
+if test $STAGE -le 3
+then
+   echo ===== Stage 3 =====
+   echo "Building qmclilib.o and qmclilib.so"
+   gcc -c $QM_GCC_OPTIONS -I$GPLSRC -o $GPLOBJ/qmclilib.o $GPLSRC/qmclilib.c
+   cp $GPLOBJ/qmclilib.o $GPLBIN/qmclilib.o
+
+   gcc -shared -Wl,-soname,$GPLOBJ/qmclilib.so -o $GPLOBJ/qmclilib.so $GPLOBJ/qmclilib.o -lc
+   cp $GPLOBJ/qmclilib.so $GPLBIN/qmclilib.so
+
+   echo
+fi
+
+####################### STAGE 4  -  Build QMTic ########################
+
+if test $STAGE -le 4
+then
+   echo ===== Stage 4 =====
+   echo "Building qmtic"
+   gcc -o $GPLBIN/qmtic $QM_GCC_OPTIONS -I$GPLSRC -lc $GPLSRC/qmtic.c \
+       $GPLSRC/inipath.c
+   echo
+fi
+
+####################### STAGE 5  -  Build QMFix ########################
+
+if test $STAGE -le 5
+then
+   echo ===== Stage 5 =====
+   echo "Building qmfix"
+   gcc -o $GPLBIN/qmfix $QM_GCC_OPTIONS -I$GPLSRC -lc $GPLSRC/qmfix.c \
+       $GPLOBJ/ctype.o $GPLOBJ/linuxlb.o $GPLOBJ/dh_hash.o $GPLOBJ/inipath.o
+   echo
+fi
+
+####################### STAGE 6  -  Build QMConv #######################
+
+if test $STAGE -le 6
+then
+   echo ===== Stage 6 =====
+   echo Building qmconv
+   gcc -o $GPLBIN/qmconv $QM_GCC_OPTIONS -I$GPLSRC -lc $GPLSRC/qmconv.c \
+       $GPLOBJ/linuxlb.o $GPLOBJ/dh_hash.o $GPLOBJ/ctype.o
+   echo
+fi
+
+####################### STAGE 7  -  Build qmidx ########################
+
+if test $STAGE -le 7
+then
+   echo ===== Stage 7 =====
+   echo Building qmidx
+   gcc -o $GPLBIN/qmidx $QM_GCC_OPTIONS -I$GPLSRC -lc $GPLSRC/qmidx.c
+   echo
+fi
+
+####################### STAGE 8  -  Build qmlnxd #######################
+
+if test $STAGE -le 8
+then
+   # Build qmlnxd
+   echo ===== Stage 8 =====
+   echo Building qmlnxd
+   gcc -o $GPLBIN/qmlnxd $QM_GCC_OPTIONS -I$GPLSRC -lc \
+       $GPLSRC/qmlnxd.c $GPLSRC/qmsem.c
+   echo
+fi
+
+#################### STAGE 9  -  Compile terminfo ######################
+
+if test $STAGE -le 9
+then
+   echo ===== Stage 9 =====
+   echo Compiling terminfo library
+   mkdir terminfo
+   $GPLBIN/qmtic -pterminfo terminfo.src
+   echo
+fi

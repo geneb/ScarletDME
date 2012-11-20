@@ -1,0 +1,181 @@
+* MESSAGE
+* MESSAGE command
+* Copyright (c) 2005 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 09 Sep 05  2.2-10 Added MESSAGE ON/OFF.
+* 18 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    MESSAGE user.no   {IMMEDIATE} {text}
+*            user.name
+*            ALL
+*            ON
+*            OFF
+*
+* Use of user name is case insensitive.
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+
+$internal
+program message
+$catalog $message
+
+$include syscom.h
+$include parser.h
+$include err.h
+$include int$keys.h
+
+
+   prompt ''
+   parser = "!PARSER"
+
+   @system.return.code = -ER$ARGS      ;* Preset for command format errors
+   user.list = ''
+   text = ''
+   immediate = @false
+
+   user.data = kernel(K$USERS, 0)
+   * uid VM pid VM ip_addr VM flags VM puid VM username FM...
+   num.users = dcount(user.data, @fm)
+
+
+* ---------------  Step 1 -  Parse command
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+
+   * Identify destination user(s)
+
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   begin case
+      case token.type = PARSER$END
+         stop sysmsg(6475) ;* Destination user name, user number or ALL required
+
+      case keyword = KW$ALL
+         for i = 1 to num.users
+            user = user.data<i,K$USERS.UID>
+            if user = @userno then continue
+            if bitand(user.data<i,K$USERS.FLAGS>, USR$PHANTOM) then continue
+            if bitand(user.data<i,K$USERS.FLAGS>, USR$QMVBSRVR) then continue
+            if bitand(user.data<i,K$USERS.FLAGS>, USR$MSG.OFF) then continue
+
+            user.list<-1> = user
+         next i
+
+      case keyword = KW$OFF
+         i = kernel(K$MESSAGE, 0)
+         call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+         if token.type # PARSER$END then
+            stop sysmsg(2018, token) ;* Unexpected token (xx)
+         end
+         goto exit_message
+
+      case keyword = KW$ON
+         i = kernel(K$MESSAGE, 1)
+         call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+         if token.type # PARSER$END then
+            stop sysmsg(2018, token) ;* Unexpected token (xx)
+         end
+         goto exit_message
+
+      case token matches '1N0N'
+         user.list = token + 0  ;* Numeric to ensure no leading zeros, etc
+         ok = @false
+         for i = 1 to num.users
+            ok = (user.data<i,K$USERS.UID> = user.list)
+         until ok
+         next i
+         if not(ok) then stop sysmsg(6470, user.list) ;* User xx is not logged in
+
+         if bitand(user.data<i,K$USERS.FLAGS>, USR$PHANTOM) ~
+         or bitand(user.data<i,K$USERS.FLAGS>, USR$QMVBSRVR) then
+            stop sysmsg(6471) ;* Cannot send message to phantom or QMClient users
+         end
+
+         if bitand(user.data<i,K$USERS.FLAGS>, USR$MSG.OFF) then
+            stop sysmsg(6476) ;* User has message reception disabled
+         end
+
+      case 1 ;* User name
+         for i = 1 to num.users
+            user = user.data<i,K$USERS.UID>
+            if upcase(user.data<i,K$USERS.UNAME>) # upcase(token) then continue
+            if user = @userno then continue ;* Ourself
+            if bitand(user.data<i,K$USERS.FLAGS>, USR$PHANTOM) then continue
+            if bitand(user.data<i,K$USERS.FLAGS>, USR$QMVBSRVR) then continue
+            if bitand(user.data<i,K$USERS.FLAGS>, USR$MSG.OFF) then continue
+
+            user.list<-1> = user
+         next i
+   end case
+
+   if user.list = '' then
+      stop sysmsg(6472) ;* There are no users to receive the message
+   end
+
+
+   * Look for options
+
+   loop
+      call @parser(PARSER$LOOK.AHEAD, token.type, token, keyword)
+   while token.type # PARSER$END
+      begin case
+         case keyword = KW$IMMEDIATE
+            call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+            immediate = @true
+
+         case 1
+            call @parser(PARSER$GET.REST, token.type, text, keyword)
+            text = trimf(text)
+            exit
+      end case
+   repeat
+
+
+   if text = '' then
+      display 'Text: ' :
+      input text
+   end   
+
+   if user.list # '' then
+      loop
+         user = remove(user.list, delim)
+         ipc.id = 'M':user
+         readu s from ipc.f, ipc.id else null
+         s<-1> = text : @vm : sysmsg(6474, @userno, timedate()) ;* Message from user %1 at %2
+         write s to ipc.f, ipc.id
+         if immediate then i = events(user, EVT$MESSAGE)
+      while delim
+      repeat
+   end
+
+exit_message:
+   @system.return.code = 0
+
+   return
+end
+
+* END-CODE

@@ -1,0 +1,120 @@
+* DCOMP
+* Compile a dictionary item.
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 02 Nov 06  2.4-15 VOC/dictionary record types now case insensitive.
+* 27 Dec 04  2.1-0 New module to wrap other compilers.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+subroutine dcomp(dict.f,      ;* Dictionary file variable
+                 dict.id,     ;* Dictionary record id
+                 dict.rec,    ;* Dictionary record to compile
+                 format,      ;* Out: Format of first item in I-type
+                 conversion,  ;* Out: Conversion of first item in I-type
+                 sm,          ;* Out: S/M of first item in I-type
+                 assoc,       ;* Out: Association of first item in I-type
+                 constant,    ;* Out: I-type is constant?
+                 depth)       ;* Recursion depth
+$catalogue $dcomp
+
+$include dictdict.h
+$include bcomp.h
+$include err.h
+
+   * Remove any existing object code
+
+   dict.rec = field(dict.rec, @fm, 1, DICT.ITYPE.OBJECT - 1)
+
+   type = upcase(dict.rec[1,1])
+   begin case
+      case (type = 'A' or type = 'S') and dict.rec<8> # ''
+         source = dict.rec<DICT.A.CORRELATIVE>
+         if source # '' then
+            call $acomp(dict.f,                ;* Dictionary file
+                        dict.rec<DICT.A.LOC>,  ;* Field number
+                        source,                ;* Correlative source
+                        object,                ;* Object code
+                        1)                     ;* Recursion depth
+         end
+
+      case type = 'I'
+         call $icomp(dict.f,
+                     dict.rec<2>,
+                     object,
+                     format,
+                     conversion,
+                     sm,
+                     assoc,
+                     constant,
+                     depth)
+
+      case type = 'C'
+         source = raise(trimf(trimb(dict.rec<DICT.ITYPE.SOURCE>)))
+         if source # '' then
+            compiler.flags = BCOMP.NO.XREF.TABLES
+            call $bcomp('',                ;* File name
+                        dict.f,            ;* File var to source file
+                        dict.id,           ;* Record name
+                        @true,             ;* Is C-type
+                        source,            ;* Source text to compile
+                        '',                ;* Target file name
+                        '',                ;* Listing record
+                        compiler.flags,    ;* Compiler flags
+                        depth,             ;* Compiler recursion depth
+                        z,                 ;* Out: Catalogue under this name...
+                        z,                 ;* Out: ... in this mode
+                        object,            ;* Out: Compiled code
+                        errors)            ;* Out: Error count
+            if errors then object = ''
+         end
+
+      case 1
+!!
+   end case
+
+   if object # '' then
+      * Insert new object code and checksum.
+      * The checksum is formed over the entire record with the checksum itself
+      * removed.
+
+      dict.rec<DICT.ITYPE.OBJECT> = object
+      dict.rec<DICT.SYS.INFO,1> = ''
+      dict.rec<DICT.SYS.INFO,1> = checksum(dict.rec)
+
+      * Align the object code of a four byte boundary
+
+      n = rem(index(dict.rec, @fm, DICT.ITYPE.OBJECT - 1), 4)
+      if n then
+         dict.rec<DICT.SYS.INFO> = space(4 - n) : dict.rec<DICT.SYS.INFO>
+      end
+   end
+
+   return
+end
+
+* END-CODE

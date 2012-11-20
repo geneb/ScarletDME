@@ -1,0 +1,279 @@
+* FSTAT
+* FSTST command.
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 02 Nov 06  2.4-15 VOC record types now case insensitive.
+* 28 Mar 05  2.1-11 Use PARSER$MFILE.
+* 13 Oct 04  2.0-5 Use message handler.
+* 01 Oct 04  2.0-3 Added multifile support.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    FSTAT filename ON         To turn on collection, clearing counters
+*    FSTAT filename {LPTR}     To display statistics
+*    FSTAT filename OFF        To turn off collection
+*
+*    FSTAT GLOBAL {LPTR}       To display global statistics
+*    FSTAT RESET               Clear global statistics counters
+*    FSTAT                     To display periodic global statistics
+*
+* In all cases that take a filename, a select list may be used instead, or
+* multiple filenames may be given.
+*
+* Only dynamic files can be used in this command. All other files will give
+* a warning message if the name is specified on the command line or be ignored
+* if a select list is used.
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program fstat
+$catalog $fstat
+
+$include parser.h
+$include syscom err.h
+$include syscom keys.h
+$include int$keys.h
+
+   parser = "!PARSER"
+
+   @system.return.code = -ER$ARGS    ;* Preset for command format errors
+
+   files = ''
+   lptr = @false
+   mode = 0
+   using.list = @false
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+
+   dict.flag = ''
+   loop
+      call @parser(PARSER$MFILE, token.type, token, keyword)
+   until token.type = PARSER$END
+      begin case
+         case keyword = KW$DICT
+            dict.flag = 'DICT '
+            call @parser(PARSER$MFILE, token.type, token, keyword)
+            if token.type = PARSER$END then stop sysmsg(2102) ;* File name required
+            goto check.filename
+
+         case keyword = KW$ON
+            if mode then stop sysmsg(2054) ;* Illegal combination of options
+            mode = KW$ON
+
+         case keyword = KW$OFF
+            if mode then stop sysmsg(2054) ;* Illegal combination of options
+            mode = KW$OFF
+
+         case keyword = KW$GLOBAL
+            if mode then stop sysmsg(2054) ;* Illegal combination of options
+            mode = KW$GLOBAL
+
+         case keyword = KW$RESET
+            if mode then stop sysmsg(2054) ;* Illegal combination of options
+            mode = KW$RESET
+
+         case keyword = KW$LPTR
+            lptr = @true
+
+         case 1
+check.filename:
+           fn = field(token, ',', 1)
+            read voc.rec from @voc, fn else
+               read voc.rec from @voc, upcase(fn) else null
+               token = upcase(token)
+            end
+            if upcase(voc.rec[1,1]) # 'F' then
+               stop sysmsg(2018, token) ;* Unexpected token (xx)
+            end
+
+            files<-1> = dict.flag : token
+            dict.flag = ''
+      end case
+   repeat
+
+   if mode = KW$RESET then
+      fdata = kernel(K$FILESTATS,1)
+      return
+   end
+
+   if mode = KW$GLOBAL then
+      fdata = kernel(K$FILESTATS,0)
+      gosub show.stats
+      return
+   end
+
+   if files = '' then
+      * Look for a select list of file names
+
+      readlist files then
+         using.list = @true
+      end else
+         * No select list - Must be global statistics display
+         gosub periodic
+         return
+      end
+   end
+
+   if lptr then printer on
+
+   num.files = dcount(files, @fm)
+   for fno = 1 to num.files
+      fn = files<fno>
+      open fn to fu else
+         if not(using.list) then display sysmsg(1427, fn) ;* Cannot open xx
+         continue
+      end
+
+      if fileinfo(fu, FL$TYPE) # FL$TYPE.DH then
+         close fu
+         if not(using.list) then display sysmsg(2028, fn) ;* xx is not a dynamic file
+         continue
+      end
+
+      begin case
+         case mode = KW$ON
+            dummy = fileinfo(fu, FL$STATS.ON)
+         case mode = KW$OFF
+            dummy = fileinfo(fu, FL$STATS.OFF)
+         case 1
+            fdata = fileinfo(fu, FL$STATS)
+            rtm = fdata<FL$STATS.RESET>
+            if rtm then
+               dt1 = idiv(rtm, 86400)
+               tm1 = mod(rtm, 86400)
+               dt2 = date()
+               tm2 = time()
+               start.dt = oconv(dt1, 'D4DMYL[Z,A3]') : '  ' : oconv(tm1,'MTS')
+               if dt1 # dt2 then
+                  end.dt = oconv(dt2, 'D4DMYL[Z,A3]') : '  ' : oconv(tm2,'MTS')
+               end else
+                  end.dt = oconv(tm2,'MTS')
+               end
+               page
+               print sysmsg(6420, start.dt, end.dt) ;* File statistics from %1 to %2
+               print
+               print sysmsg(6421, fn) ;* Filename : xx
+               print sysmsg(6422, fileinfo(fu, FL$PATH)) ;* Pathname : xx
+               print
+               gosub show.stats
+            end else
+               if not(using.list) then
+                  display sysmsg(6423, fn) ;* File statistics are not enabled for xx
+               end
+            end
+      end case
+
+      close fu
+   next fno
+
+   if lptr then printer off
+   @system.return.code = 0
+
+   return
+
+* ======================================================================
+
+show.stats:
+   print 'Opens      ' : fmt(fdata<FL$STATS.OPENS>, '10R')
+   print 'Reads      ' : fmt(fdata<FL$STATS.READS>, '10R')
+   print 'Writes     ' : fmt(fdata<FL$STATS.WRITES>, '10R')
+   print 'Deletes    ' : fmt(fdata<FL$STATS.DELETES>, '10R')
+   print 'Clears     ' : fmt(fdata<FL$STATS.CLEARS>, '10R')
+   print 'Selects    ' : fmt(fdata<FL$STATS.SELECTS>, '10R')
+   print 'Splits     ' : fmt(fdata<FL$STATS.SPLITS>, '10R')
+   print 'Merges     ' : fmt(fdata<FL$STATS.MERGES>, '10R')
+   print 'AK Reads   ' : fmt(fdata<FL$STATS.AKREADS>, '10R')
+   print 'AK Writes  ' : fmt(fdata<FL$STATS.AKWRITES>, '10R')
+   print 'AK Deletes ' : fmt(fdata<FL$STATS.AKDELETES>, '10R')
+   return
+
+* ======================================================================
+
+periodic:
+   display @(-1) : @(29,0): 'GLOBAL FILE STATISTICS'
+   display @(0,2) : '           ....System  .....Total  ..........  ...Average'
+   display @(0,3) : '           .....Total  ..this run  ...Per sec  ...per sec'
+
+   reset.time = -1      ;* Force restart
+   fdata = kernel(K$FILESTATS,0)
+   first = @true
+   loop
+      last = fdata
+      fdata = kernel(K$FILESTATS,0)
+      if fdata<FL$STATS.RESET> # reset.time then  ;* RESET done while active
+         base.data = fdata
+         reset.time = base.data<FL$STATS.RESET> + 0    ;* Time global stats reset
+         base.time = system(1005)                      ;* Time of entry to FSTAT
+      end
+
+      now = system(1005)
+      tm = now - base.time
+      base.diff = fdata - base.data      ;* Since FSTAT started
+      period.diff = fdata - last         ;* This cycle (per second)
+      
+      display @(70,0) : oconv(mod(now, 86400),'MTS') :
+      display @(0,4):
+      print 'Period    ' : fmt(oconv(now - reset.time, 'MTS'), '11R') : ' ' : fmt(oconv(now - base.time, 'MTS'), '11R')
+      title = 'Opens' ; f = FL$STATS.OPENS ; gosub show
+      title = 'Reads' ; f = FL$STATS.READS ; gosub show
+      title = 'Writes' ; f = FL$STATS.WRITES ; gosub show
+      title = 'Deletes' ; f = FL$STATS.DELETES ; gosub show
+      title = 'Clears' ; f = FL$STATS.CLEARS ; gosub show
+      title = 'Selects' ; f = FL$STATS.SELECTS ; gosub show
+      title = 'Splits' ; f = FL$STATS.SPLITS ; gosub show
+      title = 'Merges' ; f = FL$STATS.MERGES ; gosub show
+      title = 'AK Reads' ; f = FL$STATS.AKREADS ; gosub show
+      title = 'AK Writes' ; f = FL$STATS.AKWRITES ; gosub show
+      title = 'AK Deletes' ; f = FL$STATS.AKDELETES ; gosub show
+
+      if first then
+         display
+         display sysmsg(6424) :  ;* Press any key to quit
+         first = @false
+      end
+
+      sleep 1
+   until keyready()
+   repeat
+
+   clearinput
+
+   return   
+
+show:
+   display fmt(title, '11L') :
+   display fmt(fdata<f>, '10R') : '  ' :
+   display fmt(base.diff<f>, '10R') : '  ' :
+   display fmt(period.diff<f>, '10R') : '  ' :
+   if tm then display fmt(base.diff<f>/tm, '10R1') :
+   display @(-4)
+   return
+
+   * Avoid compiler warnings
+   dummy = dummy
+end
+
+* END-CODE

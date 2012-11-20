@@ -1,0 +1,1964 @@
+* SCREEN
+* Screen driver subroutine
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 02 Nov 06  2.4-15 Dictionary record types now case insensitive.
+* 31 Oct 06  2.4-15 Use @SYS.BELL to honour BELL ON/OFF setting.
+* 14 Oct 04  2.0-5 Use message handler.
+* 04 Oct 04  2.0-4 Reinstated control codes lost in change to use keycode().
+* 28 Sep 04  2.0-3 Removed use of colour attributes as some emulators use a
+*                  coloured background which we destroy. Extended screen
+*                  image saving (previously UniVerse only) to handle QM
+*                  terminals that do not support save.screen().
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* subroutine !screen(scrn, data, step, ret.status)
+*
+* scrn       = screen description record
+*
+* step       = initial step, updated on exit to be last step performed
+*               0 = clear and paint screen. Also flushes i-type cache
+*              -1 = paint screen without clearing (unless done in step)
+*              -2 = clear screen without painting (Users of screen should do
+*                   this to ensure F2 exit repaint does not show old data)
+*              -3 = return a single keystroke key value via the data
+*                   argument.  The scrn argument should be a null string.
+*
+* ret.status = -3   Illegal EXIT.KEY code
+*              -2   Illegal validation code
+*              -1   Step number error
+*               0   Normal exit (X)
+*               1   Exit key (escape) seen
+*               2   Backstep key seen with no step history
+*               n   Function key value if FKEYS = 'Y' (F1 = 128, F2=129,...)
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+subroutine screen(scrn, data, step, ret.status)
+$catalog !screen
+
+$include syscom tty.h
+$include keys.h
+$include screens.h
+$include keyin.h
+$include terminfo.h
+$include dictdict.h
+
+   common /SCREEN.COM/ initialised,
+                       srev.attr,
+                       erev.attr,
+                       actions,
+                       itype.cache.names,
+                       itype.cache(5),
+                       keep.image,           ;* Doesn't supports save.screen?
+                       screen.image(25),     ;* For non-saveable screens
+                       screen.attributes(25) ;* H=half, R=reverse, r=both
+
+
+* Codes for evaluate.next.step
+
+   equate RETURN.KEY   to 1
+   equate EXIT.KEY     to 2
+
+
+   * Ensure the data variable is no unassigned
+
+   if unassigned(data) then data = ''
+
+
+   * First time in?  If so, set up the common data area
+
+   if not(initialised) then
+      srev.attr = @(IT$SREV)
+      erev.attr = @(IT$EREV)
+
+      itype.cache.names = ''
+
+      keep.image = (@term.type # 'qmterm')    ;* Will change with new AccuTerm
+      if keep.image then
+         mat screen.image = space(80) ;  screen.image(0) = space(80)
+         mat screen.attributes = space(80) ;  screen.attributes(0) = space(80)
+      end
+
+      initialised = @true
+   end
+
+
+   prompt ''
+   tdata = ''           ;* Temporary data
+   step.limit = 0       ;* Not in repeating step/group
+   clear.msg = @false   ;* No message displayed
+
+
+   num.steps = dcount(scrn<SCR.TYPE>,@vm)
+
+
+   * Handle special non-step based actions
+
+   if step <= 0 then              ;* Not a step based action
+      if step = -3 then           ;* Return a single keystroke
+         gosub get.key
+         data = n
+         ret.status = 0
+         return
+      end
+
+      if step = -2 then           ;* Clear without painting
+         gosub clear.screen
+         ret.status = 0
+         return
+      end
+
+      if step = 0 then            ;* Clear screen
+         gosub clear.screen
+         itype.cache.names = ''
+      end
+
+
+      * Paint screen
+
+      s = scrn<SCR.HEADER>[1,80]
+      if len(s) then
+         display @(0,0) : srev.attr : (s '80L') : erev.attr :
+         if keep.image then
+            screen.image(0) = s '80L'
+            screen.attributes(0) = str('R', 80)
+         end
+      end
+
+      for step = 1 to num.steps
+         step.type = scrn<SCR.TYPE,step>
+         begin case
+            case step.type matches "0X'R'1N0N0X"     ;* Repeated step
+               dsp.step.limit = matchfield(step.type, "0X'R'0N0X", 3) + 0
+               for step.incr = 1 to dsp.step.limit
+                   if not(index(scrn<SCR.TEXT.MODE,step>, 'X', 1)) then gosub display.text
+                   if not(index(scrn<SCR.DATA.MODE,step>, 'X', 1)) then gosub display.data
+               next step.incr
+
+            case step.type matches "'G'1N0N"  ;* Repeated group
+               step.limit = step.type[2,999] + 0
+               repeated.steps = scrn<SCR.DISP.STEP,step>
+               if len(repeated.steps) then
+                  repeating.step = step
+                  for step.incr = 1 to step.limit
+                     repeated.steps = repeated.steps
+                     loop
+                        step = remove(repeated.steps, repeat.delim)
+                        if not(num(step)) then
+                           locate step in scrn<SCR.NAME,1> setting step else continue
+                        end
+                        if not(index(scrn<SCR.TEXT.MODE,step>, 'X', 1)) then gosub display.text
+                        if not(index(scrn<SCR.DATA.MODE,step>, 'X', 1)) then gosub display.data
+                     while repeat.delim
+                     repeat
+                  next step.incr
+                  step = repeating.step
+               end
+
+            case index(step.type, 'X', 1) = 0
+               if not(index(scrn<SCR.TEXT.MODE,step>, 'X', 1)) then gosub display.text
+               if not(index(scrn<SCR.DATA.MODE,step>, 'X', 1)) then gosub display.data
+         end case
+      next step
+      goto exit.screen
+   end
+
+   step.history = ''
+
+   loop
+      if step > num.steps or step < 1 then goto step.no.err
+
+      gosub do.step
+   repeat
+
+exit.screen:
+   display erev.attr :    ;* Ensure not left in reverse video mode
+
+abort.screen:
+   return to abort.screen
+
+step.no.err:
+   ret.status = -1
+   goto exit.screen
+
+illegal.conditional:
+   ret.status = -3
+   goto exit.screen
+
+* **********************************************************************
+* DO.STEP  -  Execute step 'step'
+
+do.step:
+   step.type = scrn<SCR.TYPE,step>
+   begin case
+      * ---------- Repeated step
+      case step.limit = 0 and step.type matches "0X'R'1N0N0X"
+         step.incr = 1
+         step.limit = matchfield(step.type, "0X'R'0N0X", 3) + 0
+         repeating.step = step
+         repeated.steps = step : ''
+         step = remove(repeated.steps, repeat.delim)
+         if not(num(step)) then
+            locate step in scrn<SCR.NAME,1> setting step else goto step.no.err
+         end
+
+      * ---------- Repeated group
+      case step.type matches "'G'1N0N"
+         step.incr = 1
+         step.limit = step.type[2,999] + 0
+         repeating.step = step
+         repeated.steps = scrn<SCR.DISP.STEP,step>
+         if len(repeated.steps) then
+            step = remove(repeated.steps, repeat.delim)
+            if not(num(step)) then
+               locate step in scrn<SCR.NAME,1> setting step else goto step.no.err
+            end
+         end
+   end case
+
+   * Display any steps that need to be output before this one
+
+   pre.text = scrn<SCR.DISP.STEP,step>
+   if len(pre.text) then
+      pre.text.saved.step = step
+      pre.text.delim = 99
+      loop
+      while pre.text.delim
+         step = remove(pre.text, pre.text.delim)
+         if not(num(step)) then
+            locate step in scrn<SCR.NAME,1> setting step else continue
+         end
+
+         step.type = scrn<SCR.TYPE,step>
+         begin case
+            * ---------- Repeated step
+            case step.type matches "0X'R'1N0N0X"
+               dsp.step.limit = matchfield(step.type, "0X'R'0N0X", 3) + 0
+               for step.incr = 1 to dsp.step.limit
+                  gosub display.step
+               next step.incr
+
+            * ---------- Repeated group
+            case step.type matches "'G'1N0N"
+               dsp.step.limit = step.type[2,999] + 0
+               repeated.steps = scrn<SCR.DISP.STEP,step>
+               if len(repeated.steps) then
+                  repeating.step = step
+                  for step.incr = 1 to dsp.step.limit
+                     repeated.steps = repeated.steps
+                     loop
+                        step = remove(repeated.steps, repeat.delim)
+                        if not(num(step)) then
+                           locate step in scrn<SCR.NAME,1> setting step else continue
+                        end
+                        gosub display.step
+                     while repeat.delim
+                     repeat
+                  next step.incr
+                  step = repeating.step
+               end
+
+            case 1
+               gosub display.step
+         end case
+      repeat
+      step = pre.text.saved.step
+   end
+
+   * Display this step
+
+   step.type = scrn<SCR.TYPE,step>
+   if index(step.type, 'N', 1) = 0 then gosub display.step
+
+   * Perform input actions
+
+   if index(step.type, 'I', 1) then ;* Step has input phase
+      if step.limit then ins step:'.':step.incr:'.':step.limit before step.history<1>
+      else ins step before step.history<1>
+
+      input.len = scrn<SCR.INPUT.LEN,step> + 0
+
+      if f then original.data = data<f,v,sv>
+      else
+         original.data = ''
+         tdata = ''
+      end
+
+      loop
+         display.mode = scrn<SCR.DATA.MODE, step> ; gosub set.mode
+         gosub do.input
+
+         if n = 0 then   ;* Successful return of data
+!!            if len(input.data) = 0 then input.data = external.data
+         end else
+             begin case
+                case n = CTRL.X
+                   next.step = scrn<SCR.EXIT.KEY,step>
+                   gosub display.step  ;* Restore data
+                   action.key = EXIT.KEY ; gosub evaluate.next.step
+                   if n then
+                      step = n
+                      return
+                   end
+                   continue
+
+                case n = K$F1
+                   message = scrn<SCR.HELP.MSG,step>
+                   if len(message) = 0 then message = sysmsg(7001) ;* No help is available for this field
+                   gosub show.msg
+                   continue
+
+                case n = K$F2
+                   f2.action = scrn<SCR.F2,step>
+                   if f2.action = '' then  ;* No special action defined
+                      if scrn<SCR.FKEYS,step> = 'Y' then
+                         ret.status = 129  ;* F2
+                         goto exit.screen
+                      end
+
+                      message = sysmsg(7002) ;* F2 key not allowed for this field
+                      gosub show.err.msg
+                      continue
+                   end else   ;* Special F2 action
+                      gosub f2
+                      if len(f2.value) = 0 then continue
+                      input.data = f2.value
+                   end
+
+                case n = K$F3
+                   if f > 0 then data<f, v, sv> = ''
+                   else tdata = ''
+                   goto do.step
+
+                case n = K$F4
+                   if f then data<f,v,sv> = original.data
+                   else tdata = original.data
+                   continue
+
+                case n = CTRL.P
+                      if scrn<SCR.BACKSTEP,step> # 'Y' then
+                         message = sysmsg(7003) ;* Back step key not allowed for this field
+                         gosub show.err.msg
+                         continue
+                      end
+                      gosub display.step  ;* Restore data
+                      n = step.history<2>
+                      if len(n) = 0 then
+                         ret.status = 2
+                         goto exit.screen
+                      end
+
+                      step = field(n, '.', 1) + 0
+                      step.incr = field(n, '.', 2) + 0
+                      step.limit = field(n, '.', 3) + 0
+
+                      step.history = field(step.history, @fm, 3, 99999)
+                      return
+
+                case 1
+                   if scrn<SCR.FKEYS,step> = 'Y' then
+                      ret.status = n
+                      goto exit.screen
+                   end
+
+                   message = sysmsg(7004) ;* Function key not allowed for this field
+                   gosub show.err.msg
+                   continue
+             end case
+         end
+
+         if not(text.box) then input.data = input.data[1,input.len]
+
+         cond = scrn<SCR.REQUIRED,step>
+         begin case
+            case cond = 'Y'
+               required = @true
+            case cond = 'F'
+               required = (step.incr = 1)
+            case cond = '' or cond = 'N'
+               required = @false
+            case cond
+               gosub test.condition
+               if len(cond) then goto illegal.conditional
+               required = condition.true
+            case 1
+               goto illegal.conditional
+         end case
+
+         if len(input.data) = 0 and required then
+            message = sysmsg(7005) ;* This is a required field
+            gosub show.err.msg
+            continue
+         end
+
+         if len(input.data) or required then
+            * Do not validate blank field with required flag = N
+
+            * Perform validation 1
+
+            validation = scrn<SCR.VAL.1,step>
+            gosub validate
+            if not(ok) then continue
+
+            * Perform input conversion
+
+            input.conv = scrn<SCR.INPUT.CONV,step>
+            if len(input.conv) then
+               loop
+                  conv = remove(input.conv, conv.delim)
+                  c = conv[1,1]
+                  begin case
+                     case c = 'F'  ;* Apply FMT()
+                        input.data = fmt(input.data, conv[2,999])
+                     case c = 'N'  ;* Numeric extension
+                        if input.data matches '1N0N' then
+                           input.data = fmt(input.data, conv[2,99]:'"0"R')
+                        end
+                     case c = 'S'   ;* Apply SUBR()
+                        input.data = subr(conv[2,999], input.data)
+                     case c = 'T'  ;* Apply TRANS()
+                        conv = conv[2,999]
+                        input.data = raise(trans(field(conv,',',1), input.data, field(conv, ',', 2), field(conv, ',', 3)))
+                     case c = '<'
+                        conv = field(conv[2,999], '>', 1)
+                        input.data = input.data<field(conv,',',1)+0,field(conv,',',2)+0,field(conv,',',3)+0>
+                     case 1        ;* Apply ICONV()
+                        s = iconv(input.data, conv)
+                        if status() = 0 then input.data = s
+                  end case
+               while conv.delim
+               repeat
+            end
+
+            * Perform validation 2
+
+            validation = scrn<SCR.VAL.2,step>
+            gosub validate
+            if not(ok) then continue
+         end
+
+         exit
+      repeat
+
+      * Save data if required
+
+      if f > 0 then data<f, v, sv> = input.data
+      else tdata = input.data
+
+      * Redisplay data
+
+      gosub display.data
+   end
+
+   * Check conditions
+
+   next.step = scrn<SCR.NEXT.STEP,step>
+   action.key = RETURN.KEY ; gosub evaluate.next.step
+   if n then step = n
+
+   return
+
+* **********************************************************************
+* DO.INPUT  -  Perform input
+*
+* Uses:
+*    output.col
+*    output.row
+*    output.len
+*    input.len
+*    external.data
+*    input.data
+* Returns:
+*    n = 0 : input.data
+*    n # 0 : n is special key (e.g. backtab, F2)
+*
+do.input:
+   overlay = @false
+   offset = 1
+   posn = 1
+   input.data = external.data
+
+   key.validation = field(scrn<SCR.KEY.VAL,step>, ',', 1)
+
+   if text.box then
+      tb.top = 1
+      loop
+         tb.data = convert(@fm,@vm,folds(input.data, output.len)[1,posn-1])
+         ss = field(tb.data, @vm, tb.top, 99)
+         tb.y = count(ss, @vm)
+         tb.x = len(ss<1,tb.y + 1>)
+         crt @(output.col + tb.x, output.row + tb.y) :
+
+         gosub get.key
+
+         if clear.msg then
+            display @(0,23) : @(-4) :
+            clear.msg = @false
+         end
+
+         if (n < 32) or (n >= 126) then  ;* Includes banned marks
+            begin case
+               case n = K$HOME or n = CTRL.A
+                  posn -= tb.x
+
+               case n = K$END or n = CTRL.E
+                  ss = convert(@fm,@vm,folds(input.data, output.len))
+                  posn += len(ss<1,tb.y + tb.top>) - tb.x
+
+               case n = K$BACKSPACE
+                  if posn > 1 then posn -= 1
+                  input.data = input.data[1, posn - 1] : input.data[posn + 1, 99999]
+
+               case n = CTRL.K
+                  if input.data[posn,1] = @vm then
+                     input.data = input.data[1, posn - 1] : input.data[posn + 1, 999999]
+                  end else
+                     ss = convert(@fm,@vm,folds(input.data, output.len))
+                     n = posn + len(ss<1,tb.y+1>) - tb.x
+                     input.data = input.data[1, posn - 1] : input.data[n, 999999]
+                  end
+
+               case n = K$RETURN or n = K$TAB
+                  input.data = input.data[1, posn - 1] : @vm : input.data[posn, 99999]
+                  posn += 1
+
+               case n >= K$F1 and n <= K$F12
+                  exit
+
+               case n = CTRL.X
+                  n = 0
+                  exit
+
+               case n = K$LEFT or n = CTRL.B
+                  if posn > 1 then posn -= 1
+
+               case n = K$RIGHT or n = CTRL.F
+                  if posn <= len(input.data) then posn += 1
+
+               case n = K$UP or n = CTRL.P or n = CTRL.Z
+                  ss = convert(@fm,@vm,folds(input.data, output.len)[1,posn-1])
+                  if tb.y + tb.top > 1 then
+                     n = index(ss, @vm, tb.y + tb.top - 2)
+                     i = len(ss<1,tb.y + tb.top - 1>)
+                     if tb.x < i then  ;* Can move vertically up
+                        posn = n + 1 + tb.x
+                     end else          ;* Just go to start of previous line
+                        posn = n + 1
+                     end
+                  end else
+                     posn = 1
+                  end
+
+               case n = K$DOWN or n = CTRL.N
+                  ss = convert(@fm,@vm,folds(input.data, output.len))
+                  n = index(ss, @vm, tb.y + tb.top)
+                  if n then
+                     i = len(ss<1,tb.y + tb.top + 1>)
+                     if tb.x < i then  ;* Can move vertically down
+                        posn = n + 1 + tb.x
+                     end else          ;* Just go to start of next line
+                        posn = n + 1
+                     end
+                  end else
+                     posn = len(input.data) + 1
+                  end
+
+               case n = K$INSERT
+                  overlay = not(overlay)
+
+               case n = K$DELETE or n = CTRL.D
+                  input.data = input.data[1, posn - 1] : input.data[posn + 1, 99999]
+
+               case n >= 253                ;* Banned marks
+                  null
+
+               case 1
+                  gosub insert.char
+            end case
+         end else
+            gosub insert.char
+         end
+
+         gosub repaint.text.box
+         if key.validation # '' then gosub do.key.validation
+      repeat
+   end else
+      panning = (input.len > output.len)
+      image = fmt(external.data[1,output.len],output.len:'L')
+      display @(output.col, output.row) : image : @(output.col, output.row) :
+
+      if keep.image then
+         screen.image(output.row)[output.col+1,output.len] = image
+         screen.attributes(output.row)[output.col+1,output.len] = str(display.attributes, output.len)
+      end
+
+      gosub get.key
+
+      if (n >= 32) and (n < 127) then input.data = ''
+
+      loop
+         if clear.msg then
+            display @(0,23) : @(-4) :
+            clear.msg = @false
+         end
+
+         if (n < 32) or (n >= 127) then  ;* Includes banned marks
+            begin case
+               case n = K$HOME or n = CTRL.A
+                  posn = 1
+
+               case n = K$END or n = CTRL.E
+                  posn = len(input.data) + 1
+
+               case n = K$BACKSPACE
+                  if posn > 1 then posn -= 1
+                  input.data = input.data[1, posn - 1] : input.data[posn + 1, 99999]
+
+               case n = CTRL.K
+                  input.data = input.data[1, posn - 1]
+
+               case n = CTRL.P
+                  exit
+
+               case n = CTRL.X
+                  exit
+
+               case n >= K$F1 and n <= K$F12
+                  exit
+
+               case n = K$RETURN or n = K$TAB
+                  n = 0
+                  exit
+
+               case n = K$LEFT or n = CTRL.B
+                  if posn > 1 then posn -= 1
+
+               case n = K$RIGHT or n = CTRL.F
+                  if posn <= len(input.data) then posn += 1
+
+               case n = K$INSERT
+                  overlay = not(overlay)
+
+               case n = K$DELETE or n = CTRL.D
+                  input.data = input.data[1, posn - 1] : input.data[posn + 1, 99999]
+
+               case n >= 253                ;* Banned marks
+                  null
+
+               case 1
+                  gosub insert.char
+            end case
+         end else
+            gosub insert.char
+         end
+
+         if panning then
+            if posn < offset then
+               offset = posn
+            end else if posn >= (offset + output.len) then
+               offset = posn + 1 - output.len 
+            end
+         end
+
+         if keep.image then
+            new.image = fmt(input.data[offset,output.len],output.len:'L')
+            old.image = screen.image(output.row)[output.col+1,output.len]
+
+            left = 0
+            for cl = 1 to output.len
+               if new.image[cl,1] # old.image[cl,1] then
+                  left = cl ; right = cl
+                  loop
+                     cl += 1
+                  while cl <= output.len
+                     if new.image[cl,1] # old.image[cl,1] then right = cl
+                  repeat
+
+                  display @(output.col + left - 1, output.row) : new.image[left,(right - left) + 1] :
+                  exit
+               end
+            next cl
+
+            screen.image(output.row)[output.col+1,output.len] = new.image
+            screen.attributes(output.row)[output.col+1,output.len] = str(display.attributes, output.len)
+         end else
+            display @(output.col, output.row) : fmt(input.data[offset,output.len],output.len:'L') :
+         end
+
+         if key.validation # '' then gosub do.key.validation
+
+         display @(output.col + posn - offset, output.row) :
+         gosub get.key
+      repeat
+   end
+
+   return
+
+
+insert.char:
+   if posn > len(input.data) then ;* Appending to string
+      if len(input.data) < input.len then
+         input.data := c
+         posn += 1
+      end else
+         display @sys.bell :
+      end
+   end else                   ;* In mid-string
+      if overlay and (not(text.box) or input.data[posn,1] # @tm) then
+         input.data[posn,1] = c
+         posn += 1
+      end else
+         if len(input.data) < input.len then
+            input.data = input.data[1, posn - 1] : c : input.data[posn, 99999]
+            posn += 1
+         end else display @sys.bell :
+      end
+   end
+
+   return
+
+* =============================================================================
+* paint.text.box  -  Paint 
+*
+* In:
+*   internal.data = data to paint
+*   output.len    = width
+*   output.row    = row coordinate
+*   output.col    = column coordinate
+*   tb.top        = index to top row to paint
+*   tb.lines      = number of lines to paint
+*   display.attributes = attributes to paint
+
+paint.text.box:
+   tb.data = convert(@fm, @vm, folds(internal.data, output.len))
+   s = field(tb.data, @vm, tb.top, 99)
+   tb.row = output.row
+   for i = 1 to tb.lines
+      ss = fmt(remove(s, delim), output.len:'L')
+      display @(output.col, tb.row) : ss :
+
+      if keep.image then
+         screen.image(tb.row)[output.col+1,output.len] = ss
+         screen.attributes(output.row)[output.col+1,output.len] = str(display.attributes, output.len)
+      end
+
+      tb.row += 1
+   next i
+
+   return
+
+repaint.text.box:
+   tb.data = convert(@fm, @vm, folds(input.data, output.len))
+
+   * Scroll window?
+
+   tb.y = count(tb.data[1,posn-1], @vm) + 1
+   if tb.y < tb.top then tb.top = tb.y
+   else if tb.y >= tb.top + tb.lines then tb.top = tb.y - tb.lines + 1
+
+   s = field(tb.data, @vm, tb.top, 99)
+   tb.row = output.row
+   for i = 1 to tb.lines
+      if keep.image then
+         new.image = fmt(remove(s, delim), output.len:'L')
+         old.image = screen.image(tb.row)[output.col+1,output.len]
+         if compare(new.image, old.image) then
+            left = 0
+            for cl = 1 to output.len
+               if new.image[cl,1] # old.image[cl,1] then
+                  left = cl ; right = cl
+                  loop
+                     cl += 1
+                  while cl <= output.len
+                     if new.image[cl,1] # old.image[cl,1] then right = cl
+                  repeat
+                  display @(output.col + left - 1, tb.row) : new.image[left,(right - left) + 1] :
+                  exit
+               end
+            next cl
+
+            screen.image(tb.row)[output.col+1,output.len] = new.image
+            screen.attributes(tb.row)[output.col+1,output.len] = str(display.attributes, output.len)
+         end
+      end else
+         display @(output.col, tb.row) : fmt(remove(s, delim), output.len:'L') :
+      end
+      tb.row += 1
+   next i
+
+   return
+
+
+do.key.validation:
+   call @key.validation(ok, data, input.data)
+   if not(ok) then
+      message = trimf(field(scrn<SCR.KEY.VAL,step>, ',', 2))
+      gosub show.err.msg
+   end
+   return
+
+* **********************************************************************
+* DISPLAY.STEP  -  Display text and value for step 'step'
+
+display.step:
+   gosub display.text
+   gosub display.data
+   return
+
+* *****************************************************************************
+* DISPLAY.TEXT  -  Display text for step 'step'
+
+display.text:
+   step.type = scrn<SCR.TYPE,step>
+
+   if scrn<SCR.CLEAR,step> = 'Y' then gosub clear.screen
+
+   if index(step.type, 'H', 1) then   ;* Display header
+      s = fmt(scrn<SCR.HEADER>[1,80], '80L')
+      display @(0,0) : srev.attr : s : erev.attr :
+      if keep.image then
+         screen.image(0) = s
+         screen.attributes(0) = str('R', 80)
+      end
+   end
+
+   if index(step.type, 'B', 1) then display @sys.bell :
+
+   ds.text = scrn<SCR.TEXT, step>
+   ds.prompt = scrn<SCR.PROMPT.CHAR,step>[1,1]
+   ds.end = scrn<SCR.END.MARK,step>[1,1]
+
+   if len(ds.text:ds.prompt:ds.end) then
+      display.mode = scrn<SCR.TEXT.MODE, step> ; gosub set.mode
+      output.col = scrn<SCR.DATA.COL, step>
+      output.row = scrn<SCR.DATA.ROW, step>
+      if output.row matches "1-2N'+'0N" then
+         dy = field(output.row, '+', 2) ; if len(dy) = 0 then dy = 1
+         output.row = field(output.row, '+', 1) + ((step.incr - 1) * dy)
+      end
+
+      if len(ds.text) then
+         x = scrn<SCR.TEXT.COL, step> + 0
+         y = scrn<SCR.TEXT.ROW, step> + 0
+         display @(x,y) : ds.text :
+         n = len(ds.text)
+         if keep.image then
+            screen.image(y)[x+1,n] = ds.text
+            screen.attributes(y)[x+1,n] = str(display.attributes, n)
+         end
+      end
+
+      output.len = scrn<SCR.OUTPUT.LEN,step>
+      if index(output.len, ',', 1) then
+         text.box = @true
+         tb.lines = field(output.len, ',', 1) + 0
+         output.len = field(output.len, ',', 2) + 0
+      end else
+         text.box = @false
+         tb.lines = 1
+         output.len += 0
+      end
+
+      if len(ds.prompt) or len(ds.end) then
+         y = output.row
+         for i = 1 to tb.lines
+            * Display prompt character, if defined
+
+            if len(ds.prompt) and output.col > 0 then
+               display @(output.col - 1,y) : ds.prompt :
+               if keep.image then
+                  screen.image(y)[output.col,1] = ds.prompt
+                  screen.attributes(y)[output.col,1] = display.attributes
+               end
+            end
+
+            * Display end mark character, if defined
+
+            if len(ds.end) then
+               n = output.col + output.len
+               if n < 80 then
+                  display @(n,y) : ds.end :
+                  if keep.image then
+                     screen.image(y)[n+1,1] = ds.end
+                     screen.attributes(y)[n+1,1] = display.attributes
+                  end
+               end
+            end
+            y += 1
+         next i
+      end
+   end
+
+   return
+
+* *****************************************************************************
+* DISPLAY.DATA  -  Display data for step 'step'
+*
+* On exit, the following items are defined:
+*    internal.data
+*    external.data
+*    output.row
+*    output.col
+*    output.len
+*    step.type
+*    f, v, sv  (v and sv only if f non-zero)
+
+display.data:
+   f = scrn<SCR.FIELD, step>
+   v = scrn<SCR.VALUE, step>
+   sv = scrn<SCR.SUBVALUE, step>
+   if len(f) then
+      if f matches "0N'+'" then f = matchfield(f, "0N'+'", 1) + step.incr - 1
+      if v matches "0N'+'" then v = matchfield(v, "0N'+'", 1) + step.incr - 1
+      if sv matches "0N'+'" then sv = matchfield(sv, "0N'+'", 1) + step.incr - 1
+      f += 0 ; v += 0 ; sv += 0
+
+      output.len = scrn<SCR.OUTPUT.LEN,step>
+      if index(output.len, ',', 1) then
+         text.box = @true
+         tb.lines = field(output.len, ',', 1) + 0
+         output.len = field(output.len, ',', 2) + 0
+         internal.data = data<f, v, sv>
+         external.data = internal.data
+         tb.top = 1 ; gosub paint.text.box
+      end else
+         text.box = @false
+         output.len += 0
+
+         s = scrn<SCR.JUSTIFY,step>[1,1]
+         if s # 'L' then s = 'R'
+         output.format = output.len : s
+         output.conv = scrn<SCR.OUTPUT.CONV,step>
+         output.col = scrn<SCR.DATA.COL, step>
+         output.row = scrn<SCR.DATA.ROW, step>
+         if output.row matches "1-2N'+'0N" then
+            dy = field(output.row, '+', 2) ; if len(dy) = 0 then dy = 1
+            output.row = field(output.row, '+', 1) + ((step.incr - 1) * dy)
+         end
+
+         * Perform data conversion and formatting
+
+         s = if f then data<f, v, sv> else tdata
+         internal.data = s
+         if len(output.conv) then
+            output.conv = output.conv
+            loop
+               conv = remove(output.conv, conv.delim)
+               c = conv[1,1]
+               begin case
+                  case c = 'F'   ;* Apply FMT()
+                     s = fmt(s, conv[2,999])
+
+                  case c = 'I'   ;* Evaluate I-type
+                     itype.name = conv[2,9999]   ;* file,rec
+                     gosub find.itype
+                     if itype.index then
+                        @record = data
+                        s = itype(itype.cache(itype.index))
+                     end else
+                        s = ''
+                     end
+
+                  case c = 'S'   ;* Apply SUBR()
+                     s = subr(conv[2,999], s)
+
+                  case c = 'T'  ;* Apply TRANS()
+                     conv = conv[2,999]
+                     s = raise(trans(field(conv,',',1), s, field(conv, ',', 2), field(conv, ',', 3)))
+
+                  case c = '<'
+                     conv = field(conv[2,999], '>', 1)
+                     s = s<field(conv,',',1)+0,field(conv,',',2)+0,field(conv,',',3)+0>
+
+                  case 1         ;* Apply OCONV()
+                     s = oconv(s, conv)
+               end case
+            while conv.delim
+            repeat
+         end
+         external.data = s
+
+         s = fmt(s[1,output.len], output.format)
+         display.mode = scrn<SCR.DATA.MODE, step> ; gosub set.mode
+         display @(output.col,output.row) :
+         display s :
+
+         if keep.image then
+            screen.image(output.row)[output.col+1,output.len] = s
+            screen.attributes(output.row)[output.col+1,len(s)] = str(display.attributes, len(s))
+         end
+      end
+   end else
+      internal.data = ''
+      external.data = ''
+   end
+
+   return
+   
+* **********************************************************************
+* VALIDATE  -  Perform input validation
+
+validate:
+   if len(validation) then
+      ok = @false
+      loop
+         inverse = @false
+         val = remove(validation, val.delim)
+         if val[1,1] = 'X' then
+            inverse = @true
+            val = val[2,999]
+         end
+
+         c = val[1,1]
+         begin case
+            case c = '='               ;* String equality
+               ok = compare(input.data, val[2,999]) = 0
+
+            case val matches "0N1N"    ;* Numeric value check
+               if len(input.data) and num(input.data) then
+                  ok = input.data + 0 = val + 0
+               end
+
+            case val matches "0N1N'-'0N1N"    ;* Range check numeric
+               if len(input.data) and num(input.data) then
+                  n = input.data + 0
+                  if n >= matchfield(val, "0N'-'0N", 1) then
+                     if n <= matchfield(val, "0N'-'0N", 3) then
+                        ok = @true
+                     end
+                  end
+               end
+
+            case val = 'D'                   ;* Valid date
+               s = iconv(input.data, 'D')
+               ok = not(status())
+
+            case c = 'F'                     ;* Record exists in named file
+               s = field(val, ',', 1)[2,999]
+               if len(s) then
+                  if index(s, '\', 1) then
+                     if upcase(s[1,6]) = '@QMSYS' then s = @qmsys:s[7,9999]
+                     openpath s to val.f else goto skip.f.validation
+                  end else
+                     open s to val.f else goto skip.f.validation
+                  end
+
+                  read s from val.f,input.data then
+                     n = field(val, ',', 2)
+                     if len(n) and num(n) then input.data = s<n>
+                     ok = @true
+                  end
+                  close val.f
+skip.f.validation:
+               end
+
+            case val matches "'M'1X0X"       ;* Matches template
+               ok = input.data matches val[2,999]
+
+            case val matches "'R'1X0X','1X0X"   ;* Match against record content
+               open field(val, ',', 1)[2,999] to val.f then
+                  read s from val.f, field(val, ',', 2) then
+                     close val.f
+                     n = field(val, ',', 3) ; if n = '' then n = 1
+                     if num(n) then
+                        if field(val, ',', 4) = 'X' then ;* Case insensitive
+                           z = upcase(s<n>)
+                           find upcase(input.data) in z setting zf, zv else zv = 0
+                        end else
+                           z = s<n>
+                           find input.data in z setting zf, zv else zv = 0
+                        end
+                        if zv then  ;* Found it
+                           n = field(val, ',', 5)
+                           if n matches '1N0N' then ;* Substitute
+                              input.data = s<n,zv>
+                           end
+                           ok = @true
+                        end
+                     end
+                  end else
+                     close val.f
+                  end
+               end
+
+            case c = '@'                   ;* User subroutine
+               subr.name = val[2,999]
+               call @subr.name(ok, (data), (input.data))
+
+            case 1
+               ret.status = -2
+               goto exit.screen
+         end case
+
+         if inverse then ok = not(ok)
+
+      until ok
+      while val.delim
+      repeat
+
+      if not(ok) then
+         message = scrn<SCR.ERROR.MSG,step>
+         if len(message) = 0 then message = sysmsg(7006) ;* Invalid data entered
+         gosub show.err.msg
+         gosub display.step
+      end
+   end else
+      ok = @true
+   end
+
+exit.validate:
+   return
+
+* *****************************************************************************
+* EVALUATE.NEXT.STEP
+*
+* step hold current step number
+* next.step holds condition list
+* action.key = key being processed
+* Returns n as next step number, 0 if error
+
+evaluate.next.step:
+   * Tidy up from current step
+
+   if index(scrn<SCR.TYPE,step>, 'C', 1) then
+      output.col = scrn<SCR.DATA.COL, step>
+      output.row = scrn<SCR.DATA.ROW, step>
+      if output.row matches "1-2N'+'0N" then
+         dy = field(output.row, '+', 2) ; if len(dy) = 0 then dy = 1
+         output.row = field(output.row, '+', 1) + ((step.incr - 1) * dy)
+      end
+      output.len = scrn<SCR.OUTPUT.LEN,step> + 0
+
+      * Remove text
+
+      ds.text = scrn<SCR.TEXT, step>
+      if len(ds.text) then
+         x = scrn<SCR.TEXT.COL,step> + 0
+         y = scrn<SCR.TEXT.ROW,step> + 0
+         n = len(ds.text)
+         display @(x,y) : space(n) :
+
+         if keep.image then
+            screen.image(y)[x+1,n] = ''
+            screen.attributes(y)[x+1,n] = ''
+         end
+      end
+
+      * Remove prompt character, if defined
+
+      if len(scrn<SCR.PROMPT.CHAR,step>[1,1]) and output.col > 0 then
+         display @(output.col - 1,output.row) : ' ' :
+         if keep.image then
+            screen.image(output.row)[output.col,1] = ' '
+            screen.attributes(output.row)[output.col,1] = ' '
+         end
+      end
+
+      * Remove end marker, if defined
+
+      if len(scrn<SCR.END.MARK,step>[1,1]) then
+         n = output.col + output.len
+         if n < 80 then
+            display @(n,output.row) : ' ' :
+            if keep.image then
+               screen.image(output.row)[n+1,1] = ' '
+               screen.attributes(output.row)[n+1,1] = ' '
+            end
+         end
+      end
+
+      * Remove data field
+
+      if output.len then
+         display @(output.col,output.row) : space(output.len) :
+         if keep.image then
+            screen.image(output.row)[output.col+1,output.len] = ''
+            screen.attributes(output.row)[output.col+1,output.len] = ''
+         end
+      end
+   end
+
+   * Evaluate where we go next
+
+   delim = 1
+   loop
+   while delim
+      cond = remove(next.step, delim)
+      if cond matches "'<'0Xý'EQ'0Xý'NE'0Xý'LT'0Xý'GT'0Xý'LE'0Xý'GE'0XýM0X" then
+         gosub test.condition
+         if not(condition.true) then continue
+
+         if cond[1,1] # ':' then goto illegal.conditional
+         cond = cond[2,999]
+      end
+
+      begin case
+         case cond = 'X'  ;* Exit with return status of 1
+            if action.key = EXIT.KEY then ret.status = 1
+            else ret.status = 0
+            goto exit.screen
+
+         case cond = ''
+            exit
+
+         case num(cond)
+            step.incr = 0    ;* Terminate repeated step or group
+            step.limit = 0
+            n = cond + 0
+            return
+
+         case 1           ;* Step name?
+            step.incr = 0    ;* Terminate repeated step or group
+            step.limit = 0
+            locate cond in scrn<SCR.NAME,1> setting n then return
+            goto illegal.conditional
+      end case
+   repeat
+
+* Either no condition has been satisfied or we have satisfied a null action
+
+   if action.key = RETURN.KEY then
+      if step.limit then  ;* In repeated step or group
+         n = remove(repeated.steps, repeat.delim)
+         if n = '' then       ;* End of group - start next iteration
+            step.incr += 1
+            repeated.steps = repeated.steps
+            if step.incr > step.limit then  ;* Done final iteration
+               n = repeating.step + 1
+               step.limit = 0
+            end else
+               n = remove(repeated.steps, repeat.delim)
+            end
+         end
+
+         if not(num(n)) then
+            locate n in scrn<SCR.NAME,1> setting n else goto step.no.err
+         end
+      end else
+         n = step + 1
+      end
+   end else
+      message = sysmsg(7007) ;* Key not allowed for this field
+      gosub show.err.msg
+      n = 0
+   end
+
+   return
+
+* **********************************************************************
+* test.condition  -  Test a data condition
+*
+* cond holds condition code (which may have some addition stuff on the end)
+
+test.condition:
+   condition.true = @false
+
+   if cond matches "'<'0N'>'0Xý'<'0N','0N'>'0Xý'<'0N','0N','0N'>'0X" then
+      zf = matchfield(cond, "'<'0N0X", 2) + 0
+      zv = matchfield(cond, "'<'0N','0N0X", 4) + 0
+      zsv = matchfield(cond, "'<'0N','0N','0N'>'0X", 6) + 0
+      cond = matchfield(cond, "0X'>'0X", 3)
+   end else
+      zf = scrn<SCR.FIELD,step>
+      zv = scrn<SCR.VALUE,step>
+      zsv = scrn<SCR.SUBVALUE,step>
+      if zf matches "0N'+'" then zf = matchfield(zf, "0N'+'", 1) + step.incr - 1
+      if zv matches "0N'+'" then zv = matchfield(zv, "0N'+'", 1) + step.incr - 1
+      if zsv matches "0N'+'" then zsv = matchfield(zsv, "0N'+'", 1) + step.incr - 1
+      zf += 0 ; zv += 0 ; zsv += 0
+   end
+   z = if zf then data<zf, zv, zsv> else tdata
+
+   relop = cond[1,2]
+   cond = cond[3,999]
+   s = cond[1,1]
+   begin case
+      case s = '"' or s = "'"                 ;* String test
+         i = index(cond, s, 2)
+         if i = 0 then goto illegal.conditional  ;* Unpaired quote
+
+         s = cond[2, i - 2]
+         cond = cond[i + 1, 999]
+
+         begin case
+            case relop = 'EQ'
+               if compare(z, s) then return
+            case relop = 'NE'
+               if not(compare(z, s)) then return
+            case relop = 'LT'
+               if compare(z, s) >= 0 then return
+            case relop = 'GT'
+               if compare(z, s) <= 0 then return
+            case relop = 'LE'
+               if compare(z, s) > 0 then return
+            case relop = 'GE'
+               if compare(z, s) < 0 then return
+            case relop = 'M'
+               if not(z matches s) then return
+            case 1
+               goto illegal.conditional
+         end case
+
+      case num(s)                             ;* Numeric test
+         if not(num(z)) then return
+         z += 0
+         n = matchfield(cond, '0N0X', 1) + 0
+         cond = matchfield(cond, '0N0X', 2)
+         begin case
+            case relop = 'EQ'
+               if z # n then return
+            case relop = 'NE'
+               if z = n then return
+            case relop = 'LT'
+               if z >= n then return
+            case relop = 'GT'
+               if z <= n then return
+            case relop = 'LE'
+               if z > n then return
+            case relop = 'GE'
+               if z < n then return
+            case 1
+               goto illegal.conditional
+         end case
+
+      case cond matches "'<'0N'>'0Xý'<'0N','0N'>'0Xý'<'0N','0N','0N'>'0X"
+         zf = matchfield(cond, "'<'0N0X", 2) + 0
+         zv = matchfield(cond, "'<'0N','0N0X", 4) + 0
+         zsv = matchfield(cond, "'<'0N','0N','0N'>'0X", 6) + 0
+         n = if zf then data<zf,zv,zsv> else tdata
+         cond = matchfield(cond, "0X'>'0X", 3)
+         begin case
+            case relop = 'EQ'
+               if z # n then return
+            case relop = 'NE'
+               if z = n then return
+            case relop = 'LT'
+               if z >= n then return
+            case relop = 'GT'
+               if z <= n then return
+            case relop = 'LE'
+               if z > n then return
+            case relop = 'GE'
+               if z < n then return
+            case 1
+               goto illegal.conditional
+         end case
+   end case
+
+   condition.true = @true
+   return
+
+* *****************************************************************************
+* SHOW.MSG  -  Display a message
+*
+* message     = message
+* All but the last line of the message must not exceed 72 characters.
+* The last line can be 79 characters.
+
+show.msg:
+   loop
+      msg.line = remove(message, msg.delim)
+   while msg.delim
+      display @(0,23) : (msg.line[1,72]) : ' (more)' : @(-4) :
+      gosub get.key
+   until n = CTRL.X
+   repeat
+   display @(0,23) : msg.line[1,79] : @(-4) :
+
+   clear.msg = @true
+
+   return
+
+* *****************************************************************************
+* SHOW.ERR.MSG  -  Fetch and display a message with beep
+*
+* message = message to display
+
+show.err.msg:
+   display @sys.bell :
+   gosub show.msg
+
+   return
+
+* *****************************************************************************
+* SET.MODE  -  Set display mode
+
+set.mode:
+   if index(display.mode, 'R', 1) then
+      display @(IT$SREV) :
+      display.attributes = 'R'
+   end else
+      display @(IT$EREV) :
+      display.attributes = ''
+   end
+
+   if index(display.mode, 'H', 1) then
+      display @(IT$SHALF) :
+      display.attributes = if len(display.attributes) then 'r' else 'R'
+   end else
+      display @(IT$EHALF) :
+   end
+
+   return
+
+* ======================================================================
+
+clear.screen:
+   display @(IT$CS) :
+
+   if keep.image then
+      mat screen.image = space(80)
+      screen.image(0) = space(80)
+
+      mat screen.attributes = space(80)
+      screen.attributes(0) = space(80)
+   end
+
+   return
+
+* *****************************************************************************
+* Special F2 action handling
+*
+* f2.action holds action string
+*    file,sort/selection clause,field numbers/names  = Selected record list
+*    #file,rec,sort.field,field.list                 = Pick list from field
+*    @subr(arg.list)                                 = Anything
+* Returns selected item in f2.value (null if none)
+
+equ F2.KEY.WIDTH to 10
+equ F2.KEY.FMT   to "10L"
+
+f2:
+   f2.value = ''
+   box.top = -1   ;* Not yet drawn box
+
+   begin case
+      case f2.action[1,1] = '#'       ;* Generate pick list from record/field
+         * #filename,record.name,sort.field,field.list
+         * Fetch given record
+         * Sort by sort.field
+         * Display data from space separated list for fields
+         * Returns value from first field in field.list
+
+         f2.list = ''
+         pick.list.fields = field(f2.action, ',', 4)
+         num.pick.items = dcount(pick.list.fields, ' ')
+         dim pick.fields(num.pick.items)
+         matparse pick.fields from pick.list.fields, ' '
+
+         * Fetch sort field number and check if right justified sort
+
+         pick.sort.field = field(f2.action, ',', 3)
+         if pick.sort.field[1] = 'R' then
+            sort.mode = 'AR'
+            pick.sort.field = pick.sort.field[1,len(pick.sort.field) - 1]
+         end else
+            sort.mode = 'AL'
+         end
+         if not(pick.sort.field matches '1N0N') then goto abort.f2
+
+         pick.sort.list = ''
+
+         open field(f2.action, ',', 1)[2,999] to pick.f else goto abort.f2
+
+         read pick.rec from pick.f, field(f2.action, ',', 2) then
+            s = pick.rec<pick.sort.field>
+
+            num.pick.values = dcount(s, @vm)
+            for i = 1 to num.pick.values
+               pick.item = s<1, i>
+               locate pick.item in pick.sort.list<1,1> by sort.mode setting posn else
+                  ins pick.item before pick.sort.list<1,posn>
+                  for j = 1 to num.pick.items
+                     ins pick.rec<pick.fields(j), i> before f2.list<j,posn>
+                  next j
+               end
+           next i
+         end
+
+         close pick.f
+         pick.rec = ''    ;* Release memory
+         pick.sort.list = ''
+
+         s = convert(' ', @fm, pick.list.fields)
+         locate pick.sort.field in s<1> setting f2.index.column
+         else f2.index.column = 1
+
+         num.f2.items = dcount(f2.list<1>, @vm)
+         num.f2.columns = dcount(f2.list, @fm)
+         dim f2.width(num.f2.columns) ; mat f2.width = 0
+
+         * Find widest item in each column
+
+         for i = 1 to num.f2.columns
+            n = 0
+            s = f2.list<i>
+            for j = 1 to num.f2.items
+               z = s<1,j>
+               if len(z) > n then n = len(z)
+            next j
+            f2.width(i) = n
+         next i
+
+      case f2.action[1,1] = '@'             ;* Action subroutine
+         f2.list = ''
+
+         subr.name = f2.action[2,999]
+         if subr.name matches "0X'('0X')'" then
+            subr.args = matchfield(subr.name, "0X'('0X')'", 3)
+            subr.name = field(subr.name, '(', 1)
+            n = dcount(subr.args, ',')
+         end else                                ;* No input arguments
+            n = 0
+         end
+
+         begin case
+            case n = 0
+               call @subr.name(f2.list, f2.index.column)
+            case n = 1
+               call @subr.name(f2.list, f2.index.column, subr.args)
+            case n = 2
+               call @subr.name(f2.list, f2.index.column, field(subr.args, ',', 1),
+                                                         field(subr.args, ',', 2))
+            case n = 3
+               call @subr.name(f2.list, f2.index.column, field(subr.args, ',', 1),
+                                                         field(subr.args, ',', 2),
+                                                         field(subr.args, ',', 3))
+            case n = 4
+               call @subr.name(f2.list, f2.index.column, field(subr.args, ',', 1),
+                                                         field(subr.args, ',', 2),
+                                                         field(subr.args, ',', 3),
+                                                         field(subr.args, ',', 4))
+            case 1
+               goto abort.f2
+         end case
+
+         num.f2.items = dcount(f2.list<1>, @vm)
+         num.f2.columns = dcount(f2.list, @fm)
+         dim f2.width(num.f2.columns) ; mat f2.width = 0
+
+         * Find widest item in each column
+
+         for i = 1 to num.f2.columns
+            n = 0
+            s = f2.list<i>
+            for j = 1 to num.f2.items
+               z = s<1,j>
+               if len(z) > n then n = len(z)
+            next j
+            f2.width(i) = n
+         next i
+
+      case 1                           ;* Standard file processing
+         f2.dict.open = @false
+         f2.file.name = field(f2.action, ',', 1)
+         open f2.file.name to f2.file else goto abort.f2
+
+         s = trim(field(f2.action, ',', 3)) ;* Ensure no double spaces
+         if s = '' then s = '0'
+         convert ' ' to @fm in s
+
+         * Build f2.columns matrix, one element per display item (column)
+         *    F1 = field number (I if I-type)
+         *    F2 = conversion
+         *    F3 = I-type code
+
+         f2.index.column = 1   ;* Index by first column as default
+         num.f2.columns = dcount(s, @fm)
+         dim f2.columns(num.f2.columns)
+         matparse f2.columns from s,@fm
+
+         for i = 1 to num.f2.columns
+            f2.item = f2.columns(i)<1>
+
+            if f2.item[1,1] = '&' then    ;* Set index column
+               f2.index.column = i
+               f2.item = f2.item[2,9999]
+            end
+
+            if not(num(f2.item)) then
+               if not(f2.dict.open) then
+                  open 'DICT', f2.file.name to f2.dict else goto abort.f2
+                  f2.dict.open = @true
+               end
+
+               read f2.rec from f2.dict, f2.item then
+                  c = upcase(f2.rec[1,1])
+                  begin case
+                     case c = 'D'
+                        f2.columns(i)<1> = f2.rec<DICT.LOC> : @fm : f2.rec<DICT.CONV>
+
+                     case c = 'I'
+                        if len(f2.rec<DICT.ITYPE.OBJECT>) = 0 then goto abort.f2
+
+                        f2.columns(i) = 'I':@fm:f2.rec<DICT.CONV>: @fm :f2.rec
+
+                     case 1
+                        goto abort.f2
+                  end case
+               end else
+                  goto abort.f2
+               end
+            end
+         next i
+
+         if f2.dict.open then close f2.dict
+
+         cmd = 'select ' : f2.file.name : ' ' : field(f2.action, ',', 2)
+         hush on
+         execute cmd
+         hush off
+
+         f2.list = ''
+         if selectinfo(0, 3) then
+            dim f2.width(num.f2.columns)  ;  mat f2.width = 0
+            loop
+               readnext f2.id else exit
+               read f2.rec from f2.file, f2.id then
+                  s = ''
+                  for i = 1 to num.f2.columns
+                     j = f2.columns(i)<1>
+                     begin case
+                        case j = 0
+                           z = f2.id
+
+                        case j = 'I'
+                           icode = field(f2.columns(i), @fm ,3, 9999999)
+                           @record = f2.rec
+                           @id = f2.id
+                           z = itype(icode)
+
+                        case 1
+                           z = f2.rec<j>
+                     end case
+                     f2.conv = f2.columns(i)<2>
+                     if len(f2.conv) then z = oconv(z, f2.conv)
+                     if len(z) > f2.width(i) then f2.width(i) = len(z)
+                     f2.list<i,-1> = z
+                  next i
+               end
+            repeat
+         end
+         num.f2.items = dcount(f2.list<1>, @vm)
+   end case
+
+   * We now have the data to display.  Sort out the box dimensions.
+
+   if num.f2.items = 0 then   ;* Nothing to display
+      left = int(@crtwide/2) - 10; box.top = 11 ; box.height = 3
+      if not(keep.image) then
+         image = save.screen(left, box.top, 23, 3)
+      end
+      display @(left, box.top)     : '=======================' :
+      display @(left, box.top + 1) : '| No items to display |' :
+      display @(left, box.top + 2) : '=======================' :
+      gosub get.key
+      goto abort.f2
+   end
+
+   data.width = -2
+   for i = 1 to num.f2.columns
+      data.width += f2.width(i) + 2
+   next i
+
+   if data.width > 76 then goto abort.f2
+
+   left = 40 - (int(data.width / 2) + 2)
+
+* Set box.top, box.height as position of first data line and number of lines
+
+   if num.f2.items <= 13 then
+      box.top = 12 - int(num.f2.items / 2)
+      box.height = num.f2.items
+      box.scroll = @false        ;* Showing all data
+   end else
+      box.top = 6
+      box.height = 13
+      box.scroll = @true         ;* Showing top of data
+   end
+
+* Draw outline of box
+
+   ln = box.top - 1
+
+   if not(keep.image) then
+      image = save.screen(left, ln, data.width + 4, box.height + 2);
+   end
+
+   display @(left, ln) : str('=', data.width + 4) :
+   for i = 1 to box.height
+      ln += 1
+      display @(left, ln) : '| ' : space(data.width) : ' |' :
+   next i
+   display @(left,ln + 1) : str('=', data.width + 4) : 
+
+* Paint data page
+   selected.item = 1
+   offset = 1 ; gosub f2.page
+
+* Process input
+
+   f2.key = ''
+   loop
+      display @(left, box.top - 1) :
+
+      gosub get.key
+      begin case
+         case n = K$RETURN
+            f2.value = f2.list<1,selected.item>
+            exit
+
+         case n = CTRL.X
+            exit
+
+         case n = K$UP or n = CTRL.P or n = CTRL.Z
+            gosub clear.f2.key
+            if selected.item > 1 then
+               f2.idx = selected.item
+               selected.item -= 1
+               gosub f2.item
+               f2.idx = selected.item
+               if f2.idx < offset then
+                  offset -= box.height
+                  if offset < 1 then offset = 1
+                  gosub f2.page
+               end
+               gosub f2.item
+            end
+
+         case n = K$DOWN or n = CTRL.N
+            gosub clear.f2.key
+            if selected.item < num.f2.items then
+               f2.idx = selected.item
+               selected.item += 1
+               gosub f2.item
+               f2.idx = selected.item
+               if f2.idx >= offset + box.height then
+                  offset += box.height
+                  gosub f2.page
+               end
+               gosub f2.item
+            end
+
+         case n = K$HOME or n = CTRL.A
+            gosub clear.f2.key
+            offset = 1
+            selected.item = 1
+            gosub f2.page
+
+         case n = K$END or n = CTRL.E
+            gosub clear.f2.key
+            selected.item = num.f2.items
+            offset = int((selected.item - 1) / box.height) * box.height + 1
+            gosub f2.page
+
+         case n = K$PAGE.UP
+            gosub clear.f2.key
+            if offset > 1 then
+               offset -= box.height
+               if offset < 1 then offset = 1
+               selected.item -= box.height
+               if selected.item < 1 then selected.item = 1
+               gosub f2.page
+            end
+
+         case n = K$PAGE.DOWN
+            gosub clear.f2.key
+            if offset + box.height <= num.f2.items then
+               offset += box.height
+               selected.item += box.height
+               if selected.item > num.f2.items then selected.item = num.f2.items
+               gosub f2.page
+            end
+
+         case n = K$BACKSPACE
+            n = len(f2.key)
+            if n then
+               f2.key = f2.key[1, n - 1]
+               gosub f2.key.search
+            end
+
+         case n >= 32 and n < 127 and len(f2.key) < F2.KEY.WIDTH
+            f2.key := upcase(c)
+            gosub f2.key.search
+      end case
+   repeat
+
+
+abort.f2:
+   if box.top >= 0 then   ;* Restore screen
+      if keep.image then
+         restore.top = box.top - 1
+         restore.bottom = restore.top + box.height + 1
+
+         for rln = restore.top to restore.bottom
+            rst.text = screen.image(rln)
+            rst.attributes = screen.attributes(rln)
+            rst.attr = '?'
+
+            display @(0,rln) :
+            if len(trim(rst.attributes)) = 0 then   ;* No attributes in this line
+               display erev.attr : rst.text :
+            end else                                ;* Attributes present
+               for rcol = 1 to 80
+                  rst.mode = rst.attributes[rcol,1]
+                  if rst.mode # rst.attr then
+                     begin case
+                        case rst.mode = ' '
+                           display erev.attr :
+
+                        case rst.mode = 'R'
+                           display srev.attr :
+
+                        case rst.mode = 'H'
+                           display erev.attr :
+
+                        case rst.mode = 'r'
+                           display srev.attr :
+                     end case
+                     rst.attr = rst.mode
+                  end
+                  display rst.text[rcol,1] :
+               next rcol
+            end
+         next rln
+
+         display erev.attr :
+      end else
+         restore.screen image, @false
+      end
+   end
+
+   dim f2.columns(1) ; f2.columns(1) = ''   ;* Minimise memory usage
+   f2.rec = ''
+   f2.list = ''
+   f2.file = 0  ;* Force close if open
+
+   return
+
+
+f2.key.search:
+   if len(f2.key) = 0 then
+      display @(left + 1, box.top + box.height) : str('=', F2.KEY.WIDTH + 2) :
+   end else
+      display @(left + 1, box.top + box.height) : '[' : (f2.key F2.KEY.FMT) : ']' :
+   end
+
+   s = upcase(f2.list<f2.index.column>)
+   locate f2.key in s<1,1> by 'AL' setting selected.item else null
+   if selected.item > num.f2.items then selected.item = num.f2.items
+   offset = selected.item  ;* Position as first on page
+   gosub f2.page
+   return
+
+clear.f2.key:
+   if len(f2.key) then
+      display @(left + 1, box.top + box.height) : str('=', F2.KEY.WIDTH + 2) :
+      f2.key = ''
+   end
+   return
+
+* -----------------------------------------------------------------------------
+* Display current page of F2 data
+
+f2.page:
+   for i = 1 to box.height
+      f2.idx = offset + i - 1
+      gosub f2.item
+   next i
+
+   if box.scroll then
+      begin case
+         case offset = 1                              ;* Showing top of data
+            crt @(left, box.top) : '|' :
+            crt @(left, box.top + box.height - 1) : 'v' :
+         case offset + box.height <= num.f2.items     ;* Showing middle of data
+            crt @(left, box.top) : '^' :
+            crt @(left, box.top + box.height - 1) : 'v' :
+         case 1                                       ;* Showing bottom of data
+            crt @(left, box.top) : '^' :
+            crt @(left, box.top + box.height - 1) : '|' :
+      end case
+   end
+
+   return
+
+* -----------------------------------------------------------------------------
+* Display a single F2 data item, reverse video if selected item
+
+f2.item:
+   display @(left + 2, box.top + f2.idx - offset) :
+   if f2.idx <= num.f2.items then
+      if f2.idx = selected.item then display srev.attr :
+      j = 1
+      loop
+         display fmt(f2.list<j,f2.idx>, f2.width(j):'L') :
+      while j < num.f2.columns
+         display '  ' :
+         j += 1
+      repeat
+      if f2.idx = selected.item then display erev.attr :
+   end else
+      display space(data.width) :
+   end
+
+   return
+
+* *****************************************************************************
+
+find.itype:
+   locate itype.name in itype.cache.names<1> setting itype.index else
+      open 'DICT', field(itype.name, ',', 1) to itype.f then
+         if itype.index > inmat(itype.cache)<1,1> then
+            dim itype.cache(itype.index + 4)
+         end
+         read itype.cache(itype.index) from itype.f, field(itype.name, ',', 2) then
+             if upcase(itype.cache(itype.index)[1,1]) = 'I' then
+                itype.cache.names<itype.index> = itype.name
+             end else
+                itype.index = 0
+             end
+         end else
+            itype.index = 0
+         end
+         close itype.f
+      end else
+         itype.index = 0
+      end
+   end
+   return                     
+
+
+* ======================================================================
+
+get.key:
+   c = keycode()
+   n = seq(c)
+   return
+end
+
+* END-CODE

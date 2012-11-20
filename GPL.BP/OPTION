@@ -1,0 +1,247 @@
+* OPTION
+* Set/clear/report options
+* Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 13 Sep 07  2.6-3 Added SPACE.MCT option.
+* 30 Aug 07  2.6-0 Added PROC.A option.
+* 17 Jan 07  2.4-19 Added NO.DATE.WRAPPING option.
+* 30 Oct 06  2.4-15 Added PICK.IMPLIED.EQ option.
+* 29 Jun 06  2.4-5 Added LOCK.BEEP option.
+* 15 Mar 06  2.3-8 Added INHERIT option.
+* 14 Feb 06  2.3-6 Allow all users to set hidden options but only include in
+*                  display if they are enabled.
+* 09 Feb 06  2.3-6 Added PICK.EXPLODE option.
+* 13 Jan 06  2.3-4 Added CREATE.FILE.UPCASE option.
+* 19 Dec 05  2.3-3 Added SELECT.KEEP.CASE option.
+* 18 Nov 05  2.2-17 Added CHAIN.KEEP.COMMON option.
+* 10 Aug 05  2.2-7 Added NO.SEL.LIST.QUERY option
+* 09 Aug 05  2.2-7 Added ED.NO.QUERY.FD option
+* 01 Jul 05  2.2-3 Added DEBUG.REBIND.KEYS option.
+* 21 Mar 05  2.1-10 Made DUMP.ON.ERROR public.
+* 14 Jan 05  2.1-1 Added SUPPRESS.ABORT.MSG option.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    OPTION name {ON | OFF | DISPLAY}      Default is ON
+*    OPTION ALL OFF                        To turn off all options
+*    OPTION                                To display all
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program option
+$catalogue $option
+
+$include parser.h
+$include err.h
+$include keys.h
+$include int$keys.h
+
+   * Option names must match the list in options.h and be in the same order,
+   * where the first entry is option zero.
+
+   opt = ''
+   opt<-1> = 'UNASS.WARNING|W|3100'
+   opt<-1> = '$QUERY.DEBUG||3101'
+   opt<-1> = 'PICK.WILDCARD|P|3102'
+   opt<-1> = 'QUALIFIED.DISPLAY|P|3103'
+   opt<-1> = 'PICK.BREAKPOINT|P|3104'
+   opt<-1> = 'WITH.IMPLIES.OR|P|3105'
+   opt<-1> = 'DUMP.ON.ERROR||3106'
+   opt<-1> = 'DIV.ZERO.WARNING|W|3107'
+   opt<-1> = 'NON.NUMERIC.WARNING|W|3108'
+   opt<-1> = 'ASSOC.UNASSOC.MV|P|3109'
+   opt<-1> = 'PICK.BREAKPOINT.U|P|3110'
+   opt<-1> = 'NO.USER.ABORTS||3111'
+   opt<-1> = 'RUN.NO.PAGE||3112'
+   opt<-1> = 'SHOW.STACK.ON.ERROR||3113'
+   opt<-1> = 'CRDB.UPCASE||3114'
+   opt<-1> = 'AMPM.UPCASE||3115'
+   opt<-1> = 'PICK.NULL|P|3116'
+   opt<-1> = 'PICK.GRAND.TOTAL|P|3117'
+   opt<-1> = 'SUPPRESS.ABORT.MSG||3118'
+   opt<-1> = 'DEBUG.REBIND.KEYS||3119'
+   opt<-1> = 'ED.NO.QUERY.FD||3120'
+   opt<-1> = 'NO.SEL.LIST.QUERY||3121'
+   opt<-1> = 'CHAIN.KEEP.COMMON||3122'
+   opt<-1> = 'SELECT.KEEP.CASE||3123'
+   opt<-1> = 'CREATE.FILE.UPCASE||3124'
+   opt<-1> = 'PICK.EXPLODE|P|3125'
+   opt<-1> = 'INHERIT||3126'
+   opt<-1> = 'QUERY.NO.CASE||3127'
+   opt<-1> = 'LOCK.BEEP||3128'
+   opt<-1> = 'PICK.IMPLIED.EQ||3129'
+   opt<-1> = 'QUERY.PRIORITY.AND||3130'
+   opt<-1> = 'NO.DATE.WRAPPING||3131'
+   opt<-1> = 'PROC.A||3132'
+   opt<-1> = 'SPACE.MCT||3133'
+   *         'xxxxxxxxxxxxxxxxxxx'    Option name limit = 19 characters
+
+   * Shortcuts
+
+   shortcuts = ''
+   shortcuts<1,-1> = 'PICK'             ; shortcuts<2,-1> = 'P'
+   shortcuts<1,-1> = 'QMBASIC.WARNINGS' ; shortcuts<2,-1> = 'W'
+
+
+   options = fields(opt, '|', 1)
+   flags = fields(opt, '|', 2)
+   desc.msgs = fields(opt, '|', 3)
+   lptr = -1
+
+   @system.return.code = -ER$ARGS      ;* Preset for command format errors
+
+   is.internal = kernel(K$INTERNAL,-1)
+
+   call !parser(PARSER$RESET, 0, @sentence, 0)
+   call !parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+
+   * Get option name
+
+   call !parser(PARSER$GET.TOKEN, token.type, option.name, keyword)
+   option.name = upcase(option.name)
+
+   begin case
+      case token.type = PARSER$END ;* Display all options
+         gosub display.all
+
+      case keyword = KW$LPTR
+         call !parser(PARSER$GET.TOKEN, token.type, token, keyword)
+         if token.type = PARSER$TOKEN and token matches '1-3N' ~
+         and token >= 0 and token <= LPTR$HIGH.PRINT.UNIT then
+            lptr = token + 0
+         end else lptr = 0
+         if lptr = 0 then printer on
+         gosub display.all
+         if lptr = 0 then printer off
+
+      case keyword = KW$ALL        ;* OPTION ALL OFF?
+         call !parser(PARSER$GET.TOKEN, token.type, option.name, keyword)
+         if keyword # KW$OFF then
+            stop sysmsg(3200) ;* The ALL keyword can only be used with OFF
+         end
+
+         option.flags = kernel(K$GET.OPTIONS, 0)
+         convert '1' to '0' in option.flags
+         void kernel(K$SET.OPTIONS, option.flags)
+
+      case 1
+         * Look up option name
+
+         locate option.name in options<1> setting i else
+            locate option.name in shortcuts<1,1> setting i else
+               stop sysmsg(3201) ;* Option name not recognised
+            end
+
+            * It's a shortcut option.
+
+            call !parser(PARSER$GET.TOKEN, token.type, token, keyword)
+            if token.type # PARSER$END then
+               stop sysmsg(3202) ;* This option cannot take a qualifying keyword
+            end
+
+            shortcut.flag = shortcuts<2,i>
+            num.options = dcount(options, @fm)
+            for i = 1 to num.options
+               if index(flags<i>, shortcut.flag, 1) then
+                  option.flags = kernel(K$GET.OPTIONS, 0)
+                  option.flags[i,1] = '1'
+                  void kernel(K$SET.OPTIONS, option.flags)
+               end
+            next i
+
+            goto done
+         end
+
+         * Get action
+
+         call !parser(PARSER$GET.TOKEN, token.type, token, keyword)
+         begin case
+            case token.type = PARSER$END or keyword = KW$ON
+               option.flags = kernel(K$GET.OPTIONS, 0)
+               option.flags[i,1] = '1'
+               void kernel(K$SET.OPTIONS, option.flags)
+
+            case keyword = KW$OFF
+               option.flags = kernel(K$GET.OPTIONS, 0)
+               option.flags[i,1] = '0'
+               void kernel(K$SET.OPTIONS, option.flags)
+
+            case keyword = KW$DISPLAY
+               option.flags = kernel(K$GET.OPTIONS, 0)
+               display options<i> : ': ' :
+               display if option.flags[i,1] then 'On' else 'Off'
+
+            case 1
+               stop 'Expected ON, OFF or DISPLAY after option name'
+         end case
+   end case
+
+done:
+   @system.return.code = 0
+   return
+
+* =============================================================================
+
+display.all:
+   * Fetch descriptive texts from message handler
+
+   descriptions = ''
+   n = dcount(desc.msgs, @fm)
+   for i = 1 to n
+      descriptions<i> = sysmsg(desc.msgs<i>)
+   next i
+
+   format = maximum(lens(options)) : 'L'
+
+   option.flags = kernel(K$GET.OPTIONS, 0)
+
+   * The report looks better in sorted order so now sort the options
+
+   sorted.options = ''
+
+   n = dcount(options, @fm)
+   for i = 1 to n
+      s = options<i>
+      if s[1,1] = '$' and not(is.internal) then
+         if not(option.flags[i,1]) then continue
+      end
+      s = fmt(s, format) : ': ' : if option.flags[i,1] then 'On ' else 'Off'
+      s := '   ' : descriptions<i>
+      locate s in sorted.options<1> by 'AL' setting pos else
+         ins s before sorted.options<pos>
+      end
+   next i
+
+   n = dcount(sorted.options, @fm)
+   for i = 1 to n
+      print on lptr sorted.options<i>
+   next i
+
+   return
+
+
+end
+
+* END-CODE

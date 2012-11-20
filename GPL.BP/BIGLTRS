@@ -1,0 +1,77 @@
+* BIGLTRS
+* Return big letter equivalent for a given string.
+* Copyright (c) 2003 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+subroutine bigltrs(out.text, in.text, width)
+$catalogue $bigltrs
+
+   equ SPACING to 2
+
+* Work out how many character will fit on a line
+
+   chars.per.line = idiv(width, 7 + SPACING)
+
+   text = fmt(in.text, chars.per.line:'T')
+   if text = '' then return
+
+   out.text = ''
+
+   dim pattern(7)
+   pattern(1) = '   W      W W    W   W   WWWWW  WWW   W  WWWWW     W      W        W    W     W    W                                  W  WWWWW     W     WWWWW   WWWWW  W       WWWWWWW  WWWWW  WWWWWWW  WWWWW   WWWWW                     WW           WW      WWWWW   WWWWW      W    WWWWW    WWWWW  WWWWW   WWWWWWW WWWWWWW  WWWWW  W     W WWWWWWW   WWWWW W    WW W       WW   WW WW    W  WWWWW  WWWWWW   WWWWW  WWWWWW   WWWWW  WWWWWWW W     W W     W W     W W     W W     W WWWWWWW  WWWWW  W        WWWWW     W               W                                                                                                                                                                                                                       WW      W      WW            '
+   pattern(2) = '   W      W W    W   W  W  W  W W W  W  W     W    W     W          W    W   W     W                                 W  W    WW  W W    W     W W     W W       W       W     W       W W     W W     W  WWW     WWW      W               W    W     W W     W    W W   W    W  W     W W    W  W       W       W     W W     W    W         W  W   WW  W       WWW WWW W W   W W     W W     W W     W W     W W     W    W    W     W W     W W     W  W   W   W   W       W   W       W           W    W W              W            W                     W          WWWWW   WWWWW  W          W         W   W   W     W                                                             W                                                        W        W        W           '
+   pattern(3) = '   W      W W   WWWWWWW W  W    WWW W    W    W    W    W            W    W W      W                                W   W   W W    W          W       W W  W    W       W            W  W     W W     W  WWW     WWW    WW      WWWWW      WW        W W     W   W   W  W     W W       W     W W       W       W       W     W    W         W  W WW    W       W  W  W W WW  W W     W W     W W     W W     W W          W    W     W W     W W     W   W W     W W       W    W        W          W   W   W              W    WWWWW  W        WWWWW        W  WWWWW  W       W     W W                        W W       W    W     W WWWWWW   WWWWW  WWWWW    WWWWW   WWWWW  WWWWWW   W      W    W  W    W  W     W W     W W     W WWWWWW    W        W        W    WW   W '
+   pattern(4) = '   W             W   W   WWWWW     W     WWW            W            W  WWWWWWW WWWWWWW         WWWWWWW            W    W  W  W    W        WW    WWWW  WWWWWWW  WWWWW  WWWWWW      W    WWWWW   WWWWWW                W                     W    WWW  WWWWWW   WWWWWWW WWWWWW  W       W     W WWWWWW  WWWWWW  W   WWW WWWWWWW    W         W  WW      W       W  W  W W  W  W W     W WWWWWW  W  W  W WWWWWW   WWWWW     W    W     W W     W W     W    W       W       W     W         W         W                                W WWWWWW  W     W  WWWWWW W     W W       W     W W          W         W   WW        W    W W W W W     W W     W W    W  W     W W       W       WWWW    W    W  W    W  W     W  W   W  W     W     W    WW                 WW  W  W  W '
+   pattern(5) = '   W            WWWWWWW    W  W   W WWW W  W  W         W            W    W W      W       W                      W     W W   W    W      WW          W    W          W W     W    W    W     W       W  WWW      W     WW      WWWWW      WW     W    W        W     W W     W W       W     W W       W       W     W W     W    W         W  W WW    W       W     W W  WW W W     W W       W   W W W WW          W    W    W     W  W   W  W  W  W   W W      W      W      W          W        W                           WWWWWW W     W W       W     W WWWWWW  WWWWW    WWWWWW WWWWW      W         W   W  W      W    W  W  W W     W W     W WWWWW    WWWWWW W       WWWWWW   W      W    W  W    W  W  W  W    W     WWWWWW   W       W        W        W   W   WW  '
+   pattern(6) = '                 W   W  W  W  W  W  W W W   W W          W          W    W   W     W      W              WWW     W      WW    W    W     W      W     W    W    W     W W     W    W    W     W W     W  WWW     W        W               W            W     W  W     W W    W  W     W W    W  W       W       W     W W     W    W    W    W  W  WW   W       W     W W   W W W     W W       W    WW W   WW  W     W    W    W     W   W W   W  W  W  W   W     W     W       W           W       W                          W     W W     W W     W W     W W       W             W W    W     W    W    W   W   W     W    W     W W     W W     W W             W W            W   W      W    W   W  W   W  W  W  W   W        W  W        W        W        W           '
+   pattern(7) = '   W             W   W   WWWWW  W   WWW  WWWWW            W        W    W     W    W     W               WWW    W        WWWWW   WWWWW  WWWWWWW  WWWWW     W     WWWWW   WWWWW    W      WWWWW   WWWWW          W          WW           WW        W     WWWWW   W     W WWWWW    WWWWW  WWWWW   WWWWWWW W        WWWWW  W     W WWWWWWW  WWWW   W   WW  WWWWWWW W     W W    WW  WWWWW  W        WWWWW  W     W  WWWWW     W     WWWWW     W     WW WW  W     W    W    WWWWWWW  WWWWW        W  WWWWW          WWWWWWW          WWWWWW WWWWWW   WWWWW   WWWWWW  WWWWW  W        WWWWW  W    W     W     WWWWW   W    W    W    W     W W     W  WWWWW  W        WWWWW  W       WWWWWW    WWWW   WWWWW    W      WWWWW  W     W  WWWWW  WWWWWW     WW      W      WW            '
+
+   loop
+      line = remove(text, more)
+      for row = 1 to 7
+         s = ''
+         for chpos = 1 to chars.per.line
+            c = line[chpos, 1]
+            n = seq(c)
+            if c = '' or n <= 32 or n >= 127 then
+               s := space(8 + SPACING)
+            end else
+               s := pattern(row)[(n - 33) * 8 + 1, 7] : space(SPACING)
+            end
+         next chpos
+         out.text<-1> = s
+      next row
+   while more
+      out.text<-1> = ''
+   repeat
+
+   return
+end
+
+* END-CODE

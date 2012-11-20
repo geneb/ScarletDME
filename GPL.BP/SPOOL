@@ -1,0 +1,149 @@
+* SPOOL
+* Spool command.
+* Copyright (c) 2005 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 23 Aug 05  2.2-8 Added LINES parameter.
+* 28 Mar 05  2.1-11 Use PARSER$MFILE.
+* 18 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* SPOOL file id... {LINES n m} {LNUM} {LPTR n}
+*
+* If no ids specified on command line, uses select list 0.
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program spool
+$catalog $spool
+
+$include parser.h
+$include syscom err.h
+$include syscom keys.h
+
+   parser = "!PARSER"
+   numbering = @false
+   lptr = 0
+   lo = 1
+   hi = 999999999
+
+   @system.return.code = -ER$ARGS   ;* Preset for command format errors
+
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, verb, keyword) ;* Verb
+
+
+   * Get file name
+
+   dict.flag = ""
+   call @parser(PARSER$MFILE, token.type, file.name, keyword)
+   if keyword = KW$DICT then
+      dict.flag = 'DICT'
+      call @parser(PARSER$MFILE, token.type, file.name, keyword)
+   end
+   if token.type # PARSER$TOKEN then stop sysmsg(2102) ;* File name required
+
+
+   * Open file
+
+   open dict.flag, file.name to fu else
+      open dict.flag, upcase(file.name) to fu else
+         stop sysmsg(2019) ;* File not found
+      end
+      file.name = upcase(file.name)
+   end
+
+
+   * Build list of records
+
+   id.list = ''
+   loop
+      call @parser(PARSER$GET.TOKEN, token.type, id, keyword)
+   until token.type = PARSER$END
+      begin case
+         case keyword = KW$LINES
+            call @parser(PARSER$GET.TOKEN, token.type, lo, keyword)
+            if token.type # PARSER$TOKEN or not(lo matches '1N0N') or lo < 1 then
+               stop sysmsg(7153) ;* Invalid line number range
+            end
+
+            call @parser(PARSER$GET.TOKEN, token.type, hi, keyword)
+            if token.type # PARSER$TOKEN or not(hi matches '1N0N') or hi < lo then
+               stop sysmsg(7153) ;* Invalid line number range
+            end
+
+         case keyword = KW$LNUM
+            numbering = @true
+
+         case keyword = KW$LPTR
+            call @parser(PARSER$GET.TOKEN, token.type, lptr, keyword)
+            if token.type # PARSER$TOKEN or not(lptr matches '1-3N') or lptr < 0 or lptr > LPTR$HIGH.PRINT.UNIT then
+               stop sysmsg(2053) ;* Invalid print unit number
+            end
+            lptr += 0
+
+         case 1
+            id.list<-1> = id
+      end case
+   repeat
+
+
+   * Process records
+
+   if id.list = '' then
+      readlist id.list else stop sysmsg(7133) ;* No records specified
+   end
+
+   number.format = "4'0'R"
+   loop
+      id = remove(id.list, more)
+
+      read rec from fu, id then
+         if lptr = 0 then printer on
+         n = dcount(rec, @fm)
+         if hi < n then n = hi
+
+         if lo > n then
+            display sysmsg(7153) ;* Invalid line number range
+         end else
+            if n > 9999 then number.format = len(n):"'0'R"
+
+            for i = lo to n
+               if numbering then print on lptr fmt(i, number.format) : ': ' :
+               print on lptr rec<i>
+            next i
+         end
+         printer close on lptr
+      end else
+         display sysmsg(2061, id)  ;* xx not found
+      end
+   while more
+   repeat
+
+   @system.return.code = 0
+end
+
+* END-CODE

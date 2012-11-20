@@ -1,0 +1,1363 @@
+* SHOW
+* SHOW verb
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 02 Nov 06  2.4-15 VOC/dictionary record types now case insensitive.
+* 31 Oct 06  2.4-15 Use @SYS.BELL to honour BELL ON/OFF setting.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* This program has been mechanically extracted from the version that runs on
+* QM, UniVerse and Unidata.  It is a little weird in places!
+* The SHOW verb is in the process of being incorporated into the query
+* processor so it is unlikely that developments will be done here.
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program show
+******$catalog $SHOW
+
+$include parser.h 
+$include dictdict.h
+
+   equ FILEINFO.KEY         to  1
+   equ PROMPT.CHAR          to ':'
+
+   equ ITYPE.NAME to "__SHOW"
+   equ MAX.ITEMS to 10
+   equ MIN.WIDTH to 45
+
+   prompt.string = ''
+
+   open 'VOC' to voc.f else stop 'Cannot open VOC'
+
+   sentence = trimf(@sentence)
+   gosub get.token    ;* Skip verb name
+
+* Get file name
+
+   gosub get.token
+   if token = 'DICT' then
+      dict.flag = 'DICT'
+      gosub get.token
+   end else
+      dict.flag = ''
+   end
+   file.name = token
+
+   if file.name = '' then
+      stop 'File name missing'
+   end
+
+* Open file and dictionary
+
+   open dict.flag, file.name to fvar else
+      open dict.flag, upcase(file.name) to fvar else
+         stop 'Cannot open file ' : file.name : ', status ' : status()
+      end
+      file.name = upcase(file.name)
+   end
+
+   if len(dict.flag) then
+      open 'DICT.DICT' to dict.fvar else
+         stop 'Cannot open DICT.DICT, status ' : status()
+      end
+   end else
+      open 'DICT', file.name to df then
+         dict.fvar = df
+      end else
+         display 'Cannot open dictionary'
+      end
+   end
+
+
+   * Go do the work
+
+   header = @sentence
+   option.arg = sentence
+   readv s from voc.f, '&SHOW.OPTIONS&', 2 then
+      if upcase(s[1,1]) = 'X' then option.arg = s : ' ' : sentence
+   end
+
+   top = 0
+   left = 0
+   height.arg = 0
+   width.arg = 0
+   min.list = 0
+   max.list = 0
+   gosub show.subr
+
+   display 
+
+   if emsg # '' then stop emsg
+
+   if not(count.sup) then
+      begin case
+         case num.selected < 0  ;* Error 
+            null
+
+         case num.selected = 0
+            display 'No records selected'
+
+         case num.selected = 1
+            display '1 record selected'
+
+         case 1
+            display num.selected : ' records selected'      
+      end case
+   end
+
+   return
+
+*****************************************************************************
+* Command parser
+
+get.token:
+   i = index(sentence, ' ', 1)
+   if i then
+      token = sentence[1,i-1]
+      sentence = trimf(sentence[i+1,99999])
+   end else
+      token = sentence
+      sentence = ''
+   end
+
+   return
+
+* ======================================================================
+
+show.subr:
+   dim item.type(MAX.ITEMS)          ;* Items from dictionary...
+   dim item.loc(MAX.ITEMS)           ;* ...
+   dim item.heading(MAX.ITEMS)       ;* ...
+   dim item.width(MAX.ITEMS)         ;* Places that must manipulate...
+   dim item.conv(MAX.ITEMS)          ;* ...these related tables are...
+   dim item.fmt(MAX.ITEMS)           ;* ...tagged with a marker "ALL ITEMS"
+   dim item.multi.valued(MAX.ITEMS)  ;* ...
+   dim item.assoc(MAX.ITEMS)         ;* ...
+   dim item.icode(MAX.ITEMS)         ;* ...Dict rec for I-type
+   dim display.item(MAX.ITEMS)       ;* Data (display time only)
+   mat item.icode = ""
+
+   emsg = ''
+
+   dict.open = not(unassigned(dict.fvar))
+
+   if height.arg = 0 then
+      height = @crthigh - top
+   end else
+      height = height.arg
+   end
+
+   if width.arg = 0 then
+      width = @crtwide - left
+   end else
+      width = width.arg
+   end
+
+   if width < MIN.WIDTH then
+      emsg = 'Minimum supported width = ' : MIN.WIDTH
+      goto abort.showsubr
+   end
+
+   is.dict = @false
+   dict.flag = ''
+
+   file.name = fileinfo(fvar, FILEINFO.KEY)
+
+   * Determine whether this is the data or dictionary part of the file
+
+   if file.name[1,5] = 'DICT ' then
+      is.dict = @true
+      dict.flag = 'DICT '
+   end else
+      read voc.rec from voc.f, file.name then
+         open 'DICT', file.name to x.fvar then
+            if fileinfo(fvar, 2) = fileinfo(x.fvar, 2) then
+               is.dict = @true
+               dict.flag = 'DICT '
+            end
+            close x.fvar
+         end
+      end
+   end
+
+* Parse options
+
+   num.items = 0
+   heading.text = ""
+   from.list = -1
+   to.list = -1
+   hdr.sup = @false
+   col.sup = @false
+   count.sup = @false
+   id.sup = @false
+   col.spaces = -1
+   selection.criteria = ""
+   sorted = @false            ;* BY or BY.DSND in selection criteria?
+
+   if len(option.arg) then
+      * Original interface used field mark delimited list - change to spaces
+      option.string = convert(@fm, ' ', option.arg)
+      from.args = @true
+      gosub parse
+      if emsg # '' then goto abort.showsubr
+   end
+
+   if prompt.string = '' then prompt.string = PROMPT.CHAR
+
+   if num.items = 0 and dict.open then
+      read dict.rec from dict.fvar, "@SHOW" then
+         if upcase(dict.rec[1,2]) = "PH" then
+            option.string = convert(' ', @fm, trim(dict.rec<2>))
+            from.args = @false
+            gosub parse
+         end
+      end
+   end
+
+   if not(id.sup) then
+      * We need to insert the record id at the start of the list of items.
+      * Move everything up one position.
+
+      if num.items = MAX.ITEMS then
+         emsg = 'Too many data items specified'
+         goto abort.showsubr
+      end
+
+      for i = num.items to 1 step -1     ;* ALL ITEMS
+         item.type(i + 1) = item.type(i)
+         item.loc(i + 1) = item.loc(i)
+         item.heading(i + 1) = item.heading(i)
+         item.width(i + 1) = item.width(i)
+         item.conv(i + 1) = item.conv(i)
+         item.fmt(i + 1) = item.fmt(i)
+         item.multi.valued(i + 1) = item.multi.valued(i)
+         item.assoc(i + 1) = item.assoc(i)
+         item.icode(i + 1) = item.icode(i)
+      next i
+
+      if dict.open then
+         read dict.rec from dict.fvar, '@ID' else
+            dict.rec = 'D'
+            dict.rec<DICT.LOC> = '0'
+            dict.rec<DICT.DISPLAY.NAME> = 'Id'
+            dict.rec<DICT.FORMAT> = '10L'
+         end
+      end else
+         dict.rec = 'D'
+         dict.rec<DICT.LOC> = '0'
+         dict.rec<DICT.DISPLAY.NAME> = 'Id'
+         dict.rec<DICT.FORMAT> = '10L'
+      end
+
+      option = '@ID'
+      item.idx = 1
+      gosub add.item
+      if emsg # ''then goto abort.showsubr
+   end
+
+   if num.items = 0 then
+      emsg = "No fields to display"
+      goto abort.showsubr
+   end
+
+   if min.list and max.list and (max.list < min.list) then
+      emsg = 'Incompatible list size limits'
+      goto abort.showsubr
+   end
+
+* Set default TO list
+
+   if to.list < 0 then to.list = 0
+
+* Set up screen window parameters
+
+   loop
+      reqd.width = 5   ;* nn*..
+      for item.idx = 1 to num.items
+         reqd.width += item.width(item.idx)
+      next item.idx
+
+      cs = col.spaces
+      if col.spaces < 0 then  ;* Default.  Try 2, 1 if won't fit
+         cs = 2
+         if reqd.width + (num.items - 1) * cs > width then cs = 1
+      end
+      reqd.width += (num.items - 1) * cs
+
+   while reqd.width > width  ;* Exit unless it still won't fit
+
+      if num.items <= 1 + not(id.sup) then  ;* Nothing else for it - truncate
+         * We arrive here with just one data item to display plus, possibly,
+         * the record id.
+
+         item.width(num.items) -= (reqd.width - width)
+         if item.width(num.items) >= 3 then continue  ;* Try again
+      end
+
+      num.items -= 1
+   repeat
+   col.spaces = cs
+
+   line = top
+   data.lines = height - 3  ;* Status, input and error lines
+   if data.lines < 2 then
+      emsg = 'Insufficient display height'
+      goto abort.showsubr
+   end
+
+   if not(hdr.sup) then
+      hdr.line = line
+      line += 1
+      data.lines -= 1
+      if len(heading.text) then page.heading = heading.text
+      else page.heading = header
+   end
+
+   if not(col.sup) then
+      col.hdr.line = line
+
+      * Find number of lines required for heading
+
+      hdg.lines = 1
+      for i = 1 to num.items
+         hdg = item.heading(i)
+         n = dcount(hdg, @vm)
+         if n > hdg.lines then hdg.lines += 1
+      next i
+
+      * Build column heading
+
+      col.heading = ""
+      for i = 1 to num.items
+         n = item.width(i)
+         hdg = item.heading(i)
+         ln = dcount(hdg, @vm)
+         for j = 1 to hdg.lines
+* 1.0-12  Format all lines of heading, not just last, to have ... padding
+*         to match behaviour of query processor.
+*           if j = ln then hdg.fmt = n:".L"   ;* Final line of heading
+*           else hdg.fmt = n:"L"
+
+            if j <= ln then hdg.fmt = n:".L"   ;* In body of heading
+            else hdg.fmt = n:"L"               ;* Trailing blank line
+* 1.0-12 END
+            col.heading<j> = col.heading<j> : fmt(hdg<1,j>[1,n], hdg.fmt) : space(col.spaces)
+         next j
+      next i
+
+      hdg.lines = dcount(col.heading, @fm)
+      data.lines -= hdg.lines
+      line += hdg.lines
+   end
+
+   if data.lines < 1 then
+      emsg = 'Screen area too small to display data'
+      goto abort.showsubr
+   end
+
+   status.line = line + data.lines
+   input.line = line + data.lines + 1
+   error.line = line + data.lines + 2
+
+* Identify all associations with more than one member in display
+
+   association.names = ''
+   association.items = ''
+   assoc.usage = ''
+   for item.idx = 1 to num.items
+      if item.multi.valued(item.idx) then
+         assoc = item.assoc(item.idx)
+         if len(assoc) then
+            locate assoc in assoc.usage<1,1> setting i then    ;* Seen before
+               locate assoc in association.names<1> setting j then
+                  association.items<j,-1> = item.idx
+               end else
+                  association.names<j> = assoc
+                  association.items<j> = assoc.usage<2,i> : @vm : item.idx
+               end
+            end else                                           ;* First reference
+               assoc.usage<1,i> = assoc
+               assoc.usage<2,i> = item.idx
+            end
+         end
+      end
+   next item.idx
+   num.associations = dcount(association.names, @fm)
+
+   gosub display.headings
+
+* Select data
+
+   if from.list < 0 then
+      if system(11) then
+         from.list = 0
+      end else
+         * No list specified, use TO list to avoid destroying other lists
+         from.list = to.list
+         if len(selection.criteria) then
+            if sorted then cmd = "SELECT " : dict.flag : file.name : selection.criteria
+            else cmd = "SSELECT " : dict.flag : file.name : selection.criteria
+            cmd := ' TO ' : from.list   ;* 1.0-12
+            hush on
+            execute cmd
+            hush off
+         end else
+            sselect fvar to from.list
+         end
+      end
+
+      readlist id.list from from.list else null
+   end else   ;* Processing FROM list
+      readlist id.list from from.list else
+         emsg = 'Select list is empty or not active'
+         goto abort.showsubr
+      end
+   end
+
+   num.records = dcount(id.list, @fm)
+   selected = space(num.records)
+
+* Display data, accepting input prompt
+
+   dim item.map(data.lines)   ;* Maps list item numbers to screen lines
+   pgno = 1
+   pg.offset = 0
+   offset = 0
+   sel.count = 0
+   gosub show.page
+   err.clear = @true
+   gosub show.abbreviated.help
+
+   loop
+      display @(left, input.line) : space(width) :
+      display @(left, input.line) :
+
+      display prompt.string :
+      prompt ''
+      input action, width:
+      if err.clear then
+         display @(left, error.line) : space(width - 1) :
+         err.clear = @false
+      end
+      action = upcase(action)
+
+      begin case
+         case len(action) = 0 or action = 'N'
+            n = pg.offset<pgno + 1>
+            if len(n) then  ;* Already been to this page
+               pgno += 1
+               offset = n
+               gosub show.page
+            end else        ;* Creating new page
+               if offset + items.on.page < num.records then  ;* Not end
+                  pgno += 1
+                  offset += items.on.page
+                  pg.offset<pgno> = offset
+                  gosub show.page
+               end
+            end
+
+         case action[1,1] = 'C'
+            sel.mode = ' '
+            sel.string = trim(action[2,9999])
+            gosub make.selection
+
+         case action = 'P'
+            if offset then
+               pgno -= 1
+               offset = pg.offset<pgno>
+               gosub show.page
+            end
+
+         case action = 'QC'
+            tgt.list = ''
+            exit
+
+         case action = 'Q'
+            tgt.list = ''
+            for i = 1 to num.records
+               if selected[i,1] = '*' then tgt.list<-1> = id.list<i>
+            next i
+
+            num.selections = dcount(tgt.list, @fm)
+            begin case
+               case num.selections = 0           ;* Nothing selected
+                  exit
+
+               case num.selections < min.list    ;* Insufficient items
+                  if min.list = max.list then
+                     err = 'Must select exactly ' : min.list : ' item'
+                  end else
+                     err = 'Must select at least ' : min.list : ' item'
+                  end
+                  if min.list # 1 then err := 's'
+                  gosub error
+
+               case max.list and num.selections > max.list ;* Too many items
+                  if min.list = max.list then
+                     err = 'Must select exactly ' : max.list : ' item'
+                  end else
+                     err = 'Must select no more than ' : max.list : ' item'
+                  end
+                  if max.list # 1 then err := 's'
+                  gosub error
+
+               case 1
+                  exit
+            end case
+
+         case action = 'R' or action = '^^'
+            gosub display.headings
+            gosub show.page
+
+         case action[1,1] = 'S'
+            sel.mode = '*'
+            sel.string = trim(action[2,99999])
+            gosub make.selection
+
+         case action = 'T'
+            pgno = 1
+            offset = 0
+            gosub show.page
+
+         case action = '?' or action[1,1] = "H"
+            gosub display.help
+
+         case 1
+            sel.mode = '*'
+            sel.string = action
+            gosub make.selection
+      end case
+   repeat
+
+   clearselect from.list
+   if len(tgt.list) then formlist tgt.list to to.list
+   num.selected = dcount(tgt.list, @fm)
+   @system.return.code = num.selected
+   @selected = num.selected
+
+   return
+
+abort.showsubr:
+   num.selected = -1
+   @system.return.code = -1
+   @selected = -1
+
+exit.showsubr:
+   return
+
+* *****************************************************************************
+* parse  -  Parse the options string
+
+parse:
+   * Convert option.string to field mark delimited options list
+
+   options = ''
+   loop
+   while len(option.string)
+      c = option.string[1, 1]
+      if (c = '"') or (c = "'") then      ;* Quoted string
+         i = index(option.string, c, 2)
+         if i = 0 then stop "Unpaired string quote"
+
+         options<-1> = option.string[1, i]
+
+         option.string = trimf(option.string[i + 1, 999999])
+      end else                                 ;* Simple token
+         i = index(option.string, ' ', 1)
+         if i = 0 then i = 999999
+
+         if i > 1 then
+            options<-1> = option.string[1, i - 1]
+         end
+
+         option.string = trimf(option.string[i, 999999])
+      end
+   repeat
+
+   look.ahead = ""
+   loop
+      if len(look.ahead) then
+         option = look.ahead
+         look.ahead = ""
+      end else
+         option = remove(options, more)
+      end
+
+      keyword = -1
+      type = ''
+      found = @false
+      if dict.open then
+         read dict.rec from dict.fvar, option then
+            type = upcase(dict.rec[1,1])
+            found = @true
+         end
+      end         
+
+      if not(found) then
+         read dict.rec from voc.f, option then
+            type = upcase(dict.rec[1,1])
+            if type = 'K' then keyword = dict.rec<2>
+            found = @true
+         end
+      end         
+
+      * Try names in upper case
+
+      if not(found) and dict.open then
+         read dict.rec from dict.fvar, upcase(option) then
+            option = upcase(option)
+            type = upcase(dict.rec[1,1])
+            found = @true
+         end
+      end         
+
+      if not(found) then
+         read dict.rec from voc.f, upcase(option) then
+            option = upcase(option)
+            type = upcase(dict.rec[1,1])
+            if type = 'K' then keyword = dict.rec<2>
+            found = @true
+         end
+      end         
+
+      begin case
+         case upcase(dict.rec[1,2]) = "PH"
+            del dict.rec<1>
+            s = change(dict.rec, '_':@fm, ' ')<1>
+            loop
+            while more
+               s := ' ' : remove(options, more)
+            repeat
+
+            options = ''
+            loop
+            while len(s)
+               c = s[1, 1]
+               if (c = '"') or (c = "'") then      ;* Quoted string
+                  i = index(s, c, 2)
+                  if i = 0 then
+                     emsg = "Unpaired string quote in PHrase : " : option
+                     return
+                  end
+
+                  options<-1> = s[1, i]
+                  s = trimf(s[i + 1, 999999])
+               end else                            ;* Simple token
+                  i = index(s, ' ', 1)
+                  if i = 0 then i = 999999
+
+                  if i > 1 then  options<-1> = s[1, i - 1]
+                  s = trimf(s[i, 999999])
+               end
+            repeat
+            more = len(options)
+
+         case keyword = KW$EVAL
+            if not(dict.open) then
+               emsg = 'EVAL requires dictionary'
+               return
+            end
+
+            if is.dict then
+               emsg = 'EVAL cannot be used with dictionary'
+               return
+            end
+
+            if not(more) then
+               emsg = 'I-type expression required'
+               return
+            end
+
+            dict.rec = 'I'
+            option = remove(options, more)
+            c = option[1,1]
+            if (c # '"' and c # "'") or len(option) < 3 or option[1] # c then
+               emsg = 'I-type expression must be quoted'
+               return
+            end
+
+            option = option[2, len(option) - 2]
+            dict.rec<DICT.LOC> = option
+            dict.rec<DICT.DISPLAY.NAME> = option
+            dict.rec<DICT.FORMAT> = '10L'
+
+            recordlocku dict.fvar, ITYPE.NAME
+            writeu dict.rec to dict.fvar, ITYPE.NAME
+            hush on
+            execute "COMPILE.DICT " : file.name : " " : ITYPE.NAME
+            hush off
+            read dict.rec from dict.fvar, ITYPE.NAME else
+               stop "Cannot read compiled EVAL I-type"
+            end
+            delete dict.fvar, ITYPE.NAME
+
+            if @system.return.code then
+               stop "Compilation error in EVAL expression : " : option
+            end
+
+            item.idx = num.items + 1
+            gosub add.item
+            if emsg # ''then return
+
+         case keyword = KW$HEADING
+            if len(heading.text) then
+               emsg = 'Multiple headings encountered'
+               return
+            end
+
+            if not(more) then
+               emsg = 'Heading text required'
+               return
+            end
+
+            option = remove(options, more)
+            c = option[1,1]
+            if (c # '"' and c # "'") or len(option) < 3 or option[1] # c then
+               emsg = 'Heading text must be quoted'
+               return
+            end
+
+            heading.text = option[2, len(option) - 2]
+
+         case keyword = KW$COL.SUP
+            col.sup = @true
+
+         case keyword = KW$COUNT.SUP
+            count.sup = @true
+
+         case keyword = KW$HDR.SUP
+            hdr.sup = @true
+
+         case keyword = KW$ID.SUP
+            id.sup = @true
+
+         case keyword = KW$COL.SPACES
+            if col.spaces >= 0 then
+               emsg = 'Multiple column spacing values specified'
+               return
+            end
+
+            col.spaces = remove(options, more)
+
+            if not(col.spaces matches '1-2N') then
+               emsg = 'Column spacing value required'
+               return
+            end
+
+            col.spaces += 0
+
+            if col.spaces = 0 then
+               emsg = 'Invalid column spacing'
+               return
+            end
+
+         case keyword = KW$FROM and from.args
+            if from.list >= 0 then
+               emsg = 'Multiple source select lists specified'
+               return
+            end
+
+            from.list = remove(options, more)
+
+            if not(from.list matches '1-2N') then
+               emsg = 'Select list number required'
+               return
+            end
+
+            from.list += 0
+
+            if from.list < 0 or from.list > 10 then
+               emsg = 'Invalid select list number'
+               return
+            end
+
+         case keyword = KW$TO and from.args
+            if to.list >= 0 then
+               emsg = 'Multiple target select lists specified'
+               return
+            end
+
+            to.list = remove(options, more)
+
+            if not(to.list matches '1-2N') then
+               emsg = 'Select list number required'
+               return
+            end
+
+            to.list += 0
+
+            if to.list < 0 or to.list > 10 then
+               emsg = 'Invalid select list number'
+               return
+            end
+
+         case keyword = KW$REQUIRE.SELECT
+            if not(selectinfo(0,1)) then
+               emsg = 'No select list active. Processing stopped'
+               return
+            end
+
+         case keyword = KW$FMT
+            if num.items = 0 then
+               emsg = 'Format specifier without data item'
+               return
+            end
+               
+            if not(more) then
+               emsg = 'Format specifier required'
+               return
+            end
+
+            option = remove(options, more)
+            c = option[1,1]
+            if (c # '"' and c # "'") or len(option) < 2 or option[1] # c then
+               emsg = 'Format expression must be quoted'
+               return
+            end
+
+            option = option[2, len(option) - 2]
+            item.fmt(num.items) = option
+            item.width(item.idx) = len(fmt(1, option))
+
+         case keyword = KW$COL.HDG
+            if num.items = 0 then
+               emsg = 'Column heading without data item'
+               return
+            end
+               
+            if not(more) then
+               emsg = 'Column heading text required'
+               return
+            end
+
+            option = remove(options, more)
+            c = option[1,1]
+            if (c # '"' and c # "'") or len(option) < 2 or option[1] # c then
+               emsg = 'Column heading must be quoted'
+               return
+            end
+
+            item.heading(num.items) = option[2, len(option) - 2]
+
+         case keyword = KW$CONV
+            if num.items = 0 then
+               emsg = 'Conversion specifier without data item'
+               return
+            end
+               
+            if not(more) then
+               emsg = 'Conversion specifier required'
+               return
+            end
+
+            option = remove(options, more)
+            c = option[1,1]
+            if (c # '"' and c # "'") or len(option) < 2 or option[1] # c then
+               emsg = 'Conversion specifier must be quoted'
+               return
+            end
+
+            item.conv(num.items) = option[2, len(option) - 2]
+
+         case keyword = KW$MAX
+            if not(more) then
+               emsg = 'Maximum list length required'
+               return
+            end
+
+            s = trimb(trimf(remove(options, more)))
+            if not(s matches "1N0N") then
+               emsg = 'Maximum list length must be a number'
+               return
+            end
+
+            if max.list = 0 then max.list = s + 0
+
+         case keyword = KW$MIN
+            if not(more) then
+               emsg = 'Minimum list length required'
+               return
+            end
+
+            s = trimb(trimf(remove(options, more)))
+            if not(s matches "1N0N") then
+               emsg = 'Minimum list length must be a number'
+               return
+            end
+
+            if min.list = 0 then min.list = s + 0
+
+         case keyword = KW$WITH
+            selection.criteria := " WITH "
+            gosub append.tokens
+
+         case keyword = KW$WHEN
+            selection.criteria := " WHEN "
+            gosub append.tokens
+
+         case keyword = KW$LIKE
+            selection.criteria := " LIKE "
+            gosub append.tokens
+
+         case keyword = KW$UNLIKE
+            selection.criteria := " UNLIKE "
+            gosub append.tokens
+
+         case keyword = KW$SAMPLE
+            selection.criteria := " SAMPLE "
+            gosub append.tokens
+
+         case keyword = KW$BY
+            selection.criteria := " BY "
+            gosub append.tokens
+
+         case keyword = KW$BY.DSND
+            selection.criteria := " BY.DSND "
+            gosub append.tokens
+
+            
+         case keyword = -1 and (type = "D" or type = "I")
+            item.idx = num.items + 1
+            gosub add.item
+            if emsg # ''then return
+
+         case keyword = KW$PROMPT
+            if not(more) then
+               emsg = 'Prompt string required'
+               return
+            end
+
+            option = remove(options, more)
+            c = option[1,1]
+            if c = '"' or c = "'" then  ;* Quoted
+               if len(option) < 3 then
+                  emsg = 'Invalid prompt string specification'
+                  return
+               end
+               if len(option) < 3 or option[1] # c then
+                  emsg = 'Unpaired quote in prompt string'
+                  return
+               end
+               prompt.string = option[2, len(option) - 2]
+            end else
+               prompt.string = option
+            end
+
+
+         case 1
+            emsg = option : ' is not a valid keyword or data item'
+            return
+      end case
+   while more
+   repeat
+
+   return
+
+
+append.tokens:
+   loop
+   while more
+      look.ahead = remove(options, more)
+      keyword = -1  ;* Found in VOC but not a keyword
+      read look.ahead.dict.rec from voc.f, look.ahead else
+         read look.ahead.dict.rec from voc.f, upcase(look.ahead) else
+            keyword = -2   ;* Not found in VOC
+         end
+      end
+
+      type = upcase(look.ahead.dict.rec[1,1])
+      if type = 'K' then keyword = look.ahead.dict.rec<2>
+
+      if keyword = KW$HEADING then exit
+      if keyword = KW$TO then exit
+      if keyword = KW$FROM then exit
+      if keyword = KW$COL.SPACES then exit
+      if keyword = KW$HDR.SUP then exit
+      if keyword = KW$COL.SUP then exit
+      if keyword = KW$ID.SUP then exit
+      if keyword = KW$MAX then exit
+      if keyword = KW$MIN then exit
+
+      if keyword = KW$BY or keyword = KW$BY.DSND then sorted = @true
+      selection.criteria := " " : look.ahead
+      look.ahead = ""
+   repeat
+
+   return
+
+* *****************************************************************************
+* Add a new display item
+*
+* option   = Name of item to add
+* dict.rec = Dictionary record for item
+* item.idx = Position at which to add to tables
+*
+* num.items is incremented if successful
+
+add.item:
+   if num.items = MAX.ITEMS then
+      emsg = 'Too many data items specified'
+      return
+   end
+
+   type = upcase(dict.rec[1,1])
+   begin case
+      case type = 'D' or type = 'I'
+         num.items += 1
+         item.type(item.idx) = type
+         item.loc(item.idx) = dict.rec<DICT.LOC>
+         s = dict.rec<DICT.DISPLAY.NAME>
+         w = len(fmt(1, dict.rec<DICT.FORMAT>)) ;* Covers all format cases
+         if len(s) = 0 then s = option  ;* Use field name if no display name
+         item.heading(item.idx) = s
+         n = dcount(s, @vm)
+         for i = 1 to n   ;* Force column width up to fit heading
+            if len(s<1,i>) > w then w = len(s<1,i>)
+         next i
+         item.width(item.idx) = w
+         item.multi.valued(item.idx) = (dict.rec<DICT.S.M>[1,1] = 'M')
+         item.conv(item.idx) = dict.rec<DICT.CONV>
+         item.fmt(item.idx) = dict.rec<DICT.FORMAT>
+         item.assoc(item.idx) = dict.rec<DICT.ASSOC>
+
+         if type = 'I' then
+            if dcount(dict.rec, @fm) < 16 then  ;* Must compile I-type
+               if is.dict then
+                  emsg = 'I-type must be compiled before use'
+                  return
+               end
+
+               execute "CD " : file.name : " " : option
+
+               if @system.return.code then
+                  stop "Compilation error in I-type : " : option
+               end
+
+               read dict.rec from dict.fvar, option else
+                  stop "Cannot read compiled EVAL I-type"
+               end
+            end
+
+            item.icode(item.idx) = dict.rec
+         end
+
+      case 1
+         emsg = 'Item ' : option : ' is of unsuitable type'
+         return
+   end case
+
+   return
+
+* *****************************************************************************
+* Display page and column headings
+
+display.headings:
+   if not(hdr.sup) then
+      display @(left, hdr.line) : fmt(page.heading[1,width], width:'L') :
+   end
+
+   if not(col.sup) then
+      ln = col.hdr.line
+      for i = 1 to hdg.lines
+         display @(left, ln) : fmt('     ' : col.heading<i>[1,width], width:'L') :
+         ln += 1
+      next i
+   end
+
+   ln = line
+   for i = 1 to data.lines
+      display @(left,ln) : space(width) :
+      ln += 1
+   next i
+   display @(left,status.line) : space(width) :
+   display @(left,input.line) : space(width) :
+   if error.line = @crthigh - 1 and left + width = @crtwide then
+      display @(left,error.line) : @(-4) :
+   end else
+      display @(left,error.line) : space(width) :
+   end
+
+   return
+
+* *****************************************************************************
+* Show a page
+*
+* In:  pgno          = page number
+*      offset        = offset of first record on page
+* Out: items.on.page = number of displayed items
+
+show.page:
+   rec.idx = offset + 1
+   items.on.page = 0
+   ln = line
+
+   loop
+   while ln < status.line and rec.idx <= num.records
+      num.lines = 1   ;* Number of lines required to display this item
+      id = id.list<rec.idx>
+      read rec from fvar, id then
+         * Extract and format data to be displayed
+
+         for item.idx = 1 to num.items
+            type = item.type(item.idx)
+            begin case
+               case type = 'D'
+                  n = item.loc(item.idx) + 0
+                  if n then data = rec<n>
+                  else data = id
+
+               case type = 'I' or type = 'V'
+                  @record = rec
+                  @id = id
+                  data = itype(item.icode(item.idx))
+            end case
+
+            conv = item.conv(item.idx)
+            format = item.fmt(item.idx)
+            if item.multi.valued(item.idx) then
+               if len(conv) then data = oconvs(data, conv)
+               if len(format) then data = fmts(data, format)
+            end else
+               if len(conv) then data = oconv(data, conv)
+               if len(format) then data = fmt(data, format)
+            end
+            display.item(item.idx) = data
+
+            n = dcount(data, @fm)
+            if n > num.lines then num.lines = n
+         next item.idx
+
+         * For associated fields, pair up values and subvalues, replacing all
+         * marks by field marks when we are done.
+
+         for assoc.idx = 1 to num.associations
+            sv.count = ''  ;* One field per value holding number of subvalues
+            tm.count = ''  ;* Text mark count per value and subvalue
+            assoc.list = association.items<assoc.idx>
+            num.assoc.items = dcount(assoc.list, @vm)
+
+            * Establish max values and subvalues in each associated item
+
+            for assoc.item.idx = 1 to num.assoc.items
+               item.idx = assoc.list<1,assoc.item.idx> + 0
+               s = display.item(item.idx)
+               num.values = dcount(s, @vm)
+               for v = 1 to num.values
+                  num.subvalues = dcount(s<1,v>, @sm)
+                  if num.subvalues = 0 then num.subvalues = 1
+                  if num.subvalues > sv.count<v> then sv.count<v> = num.subvalues
+
+                  * Count text marks
+                  for sv = 1 to num.subvalues
+                     n = count(s<1,v,sv>, @tm)
+                     if n > tm.count<v,sv> then tm.count<v,sv> = n
+                  next sv
+               next v
+            next assoc.item.idx
+
+            * Now pair up the items
+
+            num.values = dcount(sv.count, @fm)
+            for assoc.item.idx = 1 to num.assoc.items
+               item.idx = assoc.list<1,assoc.item.idx> + 0
+               for v = 1 to num.values
+                  num.subvalues = sv.count<v> + 0
+                  for sv = 1 to num.subvalues
+                     * Force mark insertion
+                     n = tm.count<v,sv>
+                     s = display.item(item.idx)<1,v,sv>
+                     t = count(s, @tm)
+                     if t < n then s := str(@tm, n - t)
+                     display.item(item.idx)<1,v,sv> = s
+                  next sv
+               next v
+            next assoc.item.idx
+         next assoc.idx
+
+         for item.idx = 1 to num.items
+            if item.multi.valued(item.idx) then
+               convert @tm:@sm:@vm to @fm:@fm:@fm in display.item(item.idx)
+            end else
+               convert @tm to @fm in display.item(item.idx)
+            end
+            n = dcount(display.item(item.idx), @fm)
+            if n > num.lines then num.lines = n
+         next item.idx
+
+         * If this is not the first item on this page, check whether it will fit
+
+         if items.on.page > 1 then  ;* Not first item, will it fit on page?
+            if ln + num.lines > status.line then exit  ;* Defer for next page
+         end
+
+         * Display the item
+
+         items.on.page += 1
+         s = fmt(items.on.page, '2R') : selected[rec.idx,1] : '  '
+         item.map(items.on.page) = ln  ;* Remember screen line position
+         for item.line = 1 to num.lines
+            for item.idx = 1 to num.items
+               w = item.width(item.idx)
+               s := fmt(display.item(item.idx)<item.line>[1,w], w:'L') : space(col.spaces)
+            next item.idx
+            if len(trim(s)) then ;* Omit intermediate null lines
+               display @(left, ln) : fmt(s[1,width], width:'L') :
+               ln += 1
+            end
+         while ln < status.line
+            s = space(5)
+         next item.line
+
+         rec.idx += 1
+      end else  ;* Error reading record - remove from list
+         del id.list<rec.idx>
+         selected = selected[1, rec.idx-1] : selected[rec.idx+1, 999999]
+         num.records -= 1
+      end
+   repeat
+
+   loop
+   while ln < status.line
+      display @(left, ln) : space(width) :
+      ln += 1
+   repeat
+
+   gosub display.status
+
+   return
+
+* *****************************************************************************
+
+display.status:
+   s = 'Page ' : pgno
+   if offset + items.on.page < num.records then s := ' (more)'
+
+   s := ', ' : sel.count : ' items selected' 
+   display @(left, status.line) : fmt(s, width:'L') :
+
+   return
+
+* *****************************************************************************
+* make.selection  -  Select or deselect items
+*
+* sel.mode   = Display code (asterisk or space)
+* sel.string = Items to select/deselect
+
+make.selection:
+   sel.string = convert(' ,', 'ýý', trim(sel.string))
+
+   if len(sel.string) then
+      loop
+         sel.item = remove(sel.string, sel.delim)
+         begin case
+            case sel.item matches '1N0N'
+               sel.item += 0
+               if sel.item < 1 or sel.item > items.on.page then
+                  err = 'Invalid item number'
+                  gosub error
+               end else
+                  selected[offset + sel.item, 1] = sel.mode
+                  display @(left+2, item.map(sel.item)) : sel.mode :
+               end
+
+            case sel.item matches "1N0N'-'1N0N"
+               lo = field(sel.item, '-', 1) + 0
+               hi = field(sel.item, '-', 2) + 0
+               if lo < 1 or hi > items.on.page or hi < lo then
+                  err = 'Invalid selection range'
+                  gosub error
+               end else
+                  for n = lo to hi
+                     selected[offset + n, 1] = sel.mode
+                     display @(left+2, item.map(n)) : sel.mode :
+                  next n
+               end
+
+            case sel.item = 'VISIBLE'[1,len(sel.item)]
+               for n = 1 to items.on.page
+                  selected[offset + n, 1] = sel.mode
+                  display @(left+2, item.map(n)) : sel.mode :
+               next n
+
+            case sel.item = 'ALL'[1,len(sel.item)]
+               selected = str(sel.mode, num.records)
+               for n = 1 to items.on.page
+                  display @(left+2, item.map(n)) : sel.mode :
+               next n
+
+            case 1
+               err = 'Invalid selection'
+               gosub error
+         end case
+      while sel.delim
+      repeat
+   end
+
+   sel.count = count(selected, '*')
+   gosub display.status
+
+   return
+
+* *****************************************************************************
+
+display.help:
+   err.clear = @true
+              *-------Maximum text width------------------- (MIN.WIDTH - 1)
+   help     = 'S ss   Select items defined by ss'
+   help<-1> = 'C ss   Clear items defined by ss'
+   help<-1> = 'ss is  number, range, VISIBLE or ALL'
+   help<-1> = 'T      Display top page'
+   help<-1> = 'P      Display previous page'
+   help<-1> = 'N      Display next page (default command)'
+   help<-1> = 'Q      Quit, setting target list'
+   help<-1> = 'QC     Quit, clearing any selection'
+
+   prompt ""
+   loop
+      display @(left,error.line) : fmt(remove(help, delim), (width - 1):'L') :
+      display @(left, error.line) :
+      input c,1:
+   while delim and (c = "")
+   repeat
+
+show.abbreviated.help:
+   display @(left,error.line) : 'Select, Clear, Top, Previous, Next, Quit, ?' :
+   return
+
+* *****************************************************************************
+
+error:
+   display @(left, error.line) : @sys.bell : err[1,width] :
+   err.clear = @true
+   return
+
+   * Avoid compiler warnings
+   voc.rec = voc.rec
+end
+
+* END-CODE

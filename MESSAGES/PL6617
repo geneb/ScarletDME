@@ -1,0 +1,13 @@
+Menu Option Text
+The Text item is the text for an individual menu option. The menu option number
+will be added automatically.  If the text is wider than the display device
+after the number has been added, excess characters are lost.
+
+A menu with all text items short enough to display in half the width of the
+display device will automatically wrap into two columns if there are more
+options than can be displayed in a single column.
+
+In both single and double column mode, if there are options that cannot be
+displayed in the available space, the additional options are lost.
+A menu text item that has no associated Action is treated as a sub-heading and
+is displayed aligned with the option numbers.

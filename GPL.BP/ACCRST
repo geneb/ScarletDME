@@ -1,0 +1,2135 @@
+* ACCRST
+* Tape restore program.
+* Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 03 Oct 07  2.6-5 Use parse.pathname.tokens() against ACCOUNTS record.
+* 23 May 07  2.5-5 Added NO.INDEX option.
+* 06 Sep 06  2.4-13 Create @ID if not already present when restoring dictionary
+* 24 Jul 06  2.4-10 TED - fix to switch files if restoring object code
+* 29 May 06  2.4-5 Correction for PPC object code restore.
+* 02 May 06  2.4-4 TED - create openQM named index instead of _RST_xxxx
+* 26 Apr 06  2.4-2 TED - Many improvements mvBASE from Pete S's excellent notes
+* 25 Apr 06  2.4-2 TED - fixed multifile handling for directory files
+* 14 Apr 06  2.4-1 TED - Add T-LOAD command line or select list of items
+* 12 Apr 06  2.4-1 TED - Add SEL-RESTORE command line or select list of items
+* 10 Apr 06  2.4-1 TED - Changed RESTORE-ACCOUNTS to not rely on label for name
+* 10 Apr 06  2.4-1 TED - Added awareness of jBASE type tapes
+* 10 Apr 06  2.4-1 TED - Added support for Ultimate FILE-SAVE tapes
+* 08 Apr 06  2.4-1 TED - NO.CASE fixed to preserve case in file names
+* 06 Apr 06  2.4-1 TED - rename files that conflict with other VOC entries
+* 06 Apr 06  2.4-1 TED - fm.count introduced to build counts of marks
+* 06 Apr 06  2.4-1 TED - xt introduced to find EOI fm.count, xt notes in code
+* 04 Apr 06  2.4-1 TED - Fixed erroneous incrementing of files in check.next
+* 03 Apr 06  2.4-1 TED - Added RESTORE-ACCOUNTS functionality
+* 03 Apr 06  2.4-1 TED - Fixed index syntax and escape clause for ID checks
+* 02 Apr 06  2.3-9 TED - Added awareness of FILE-SAVE type tapes
+* 02 Apr 06  2.3-9 TED - Added SEL.RESTORE to selectively restore files
+* 02 Apr 06  2.3-9 TED - Added FIND.ACCOUNT to seek through FILE-SAVE tapes
+* 02 Apr 06  2.3-9 TED - Fixed to watch for ibuf[1,4]='EOF':@im instead of 'EOF'
+* 31 Mar 06  2.3-9 TED - Added multi-reel support
+* 30 Mar 06  2.3-9 TED - Added DIRECTORY option
+* 30 Mar 06  2.3-9 TED - Added check for illegal characters in item ID
+* 29 Mar 06  2.3-9 TED - Added support for D3/NT's FSI (QS) types
+* 29 Mar 06  2.3-9 TED - Added support for mvBase tape images
+* 29 Mar 06  2.3-9 Added NO.CASE option.
+* 16 Jan 06  2.3-4 Added NO.OBJECT option.
+* 28 Dec 05  2.3-3 TED - Added POSITIONED keyword and alternative tape block
+*                  size handling.
+* 05 Dec 05  2.2-18 Added BINARY option.
+* 11 Oct 05  2.2-14 Added ak.path argument to $mkindx.
+* 04 Aug 05  2.2-7 Disable mark mapping.
+* 04 Aug 05  2.2-7 TED - Added support for binary items.
+* 01 Aug 05  2.2-6 Added message to failed file creation.
+* 26 Jul 05  2.2-6 Removed use of "res" status variable. Modified read.label
+*                  to handle multiple EOF blocks (e.g. two T.DUMPs on one tape).
+* 25 Jul 05  2.2-6 Allow DET.SUP with ACCOUNT.RESTORE too.
+* 25 Jul 05  2.2-6 Process options before rewinding tape as T.REW will
+*                  overwrite parser data.
+* 20 Jul 05  2.2-4 Added COUNT.SUP and DET.SUP options. Always show the record
+*                  count unless COUNT.SUP used, even if it is zero.
+* 20 Jul 05  2.2-4 0377 T.LOAD looped if the tape was empty or at eot.
+* 19 Jul 05  2.2-4 TED - 0375 Trim trailing FM from restored data.
+* 04 Jun 05  2.2-1 TED - Convert 'D' dict types back from tape storage format
+* 02 Jun 05  2.2-1 TED - Create DIRECTORY file type if 'DQ' in FDI
+* 02 Jun 05  2.2-1 TED - Modified to read modulus from tape record
+* 28 May 05  2.2-1 TED - Added overwriting functionality to T.LOAD
+* 27 May 05  2.2-1 TED - Modified to use the handle provided by SET.DEVICE
+* 27 May 05  2.2-1 TED - Rename VOC to VOC-RESTORE so no 'Oops'
+* 19 May 05  2.2-1 TED - Added ability to read AP/D3 index definitions
+* 12 May 05  2.1-14 Corrected object code handling.
+* 21 Apr 05  2.1-13 New module.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* Some portions copyright (c) 2005 Doug Dumitru.
+* Some portions copyright (c) 2005-6 Tom deLombarde.
+* This program is based on source provided by Doug Dumitru. Changes have been
+* made to bring it into line with the general style of QM programs and to
+* support some variations in media format. Subsequent changes were supplied
+* by Tom deLombarde to enhance the program and to correct some defects.
+*
+* Messages that relate to internal errors do not use the message handler.
+*
+*
+* ACCOUNT.RESTORE {options}
+*    BINARY       Suppress mark translation for directory files
+*    DET.SUP      Suppress detailed reporting
+*    NO.CASE      Create files with case insensitive ids
+*    NO.INDEX     Do not create alternate key indices
+*    NO.OBJECT    Do not load object code
+*    POSITIONED   Tape is alrady positioned
+*
+* RESTORE.ACCOUNTS {target_dir} {options}
+*    BINARY       Suppress mark translation for directory files
+*    DET.SUP      Suppress detailed reporting
+*    NO.CASE      Create files with case insensitive ids
+*    NO.INDEX     Do not create alternate key indices
+*    NO.OBJECT    Do not load object code
+*    POSITIONED   Tape is alrady positioned
+*
+* SEL.RESTORE {DICT} filename {item ID's} {options}
+*    BINARY       Suppress mark translation for directory files
+*    DET.SUP      Suppress detailed reporting
+*    NO.INDEX     Do not create alternate key indices
+*    NO.CASE      Create files with case insensitive ids
+*    NO.OBJECT    Do not load object code
+*
+* FIND.ACCOUNT account.name
+*
+* T.LOAD {DICT} filename (item ids} {options}
+*    BINARY       Suppress mark translation for directory files
+*    COUNT.SUP    Suppress record count
+*    DET.SUP      Suppress detailed reporting
+*    OVERWRITING  Overwrite existing records
+*
+*   If a valid SET.DEVICE command was not issued before using these, the
+*   user will be prompted for a device name and SET.DEVICE will be invoked.
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program accrst
+$catalogue $accrst
+
+$include int$keys.h
+$include keys.h
+$include err.h
+$include parser.h
+$include tape.h
+
+   deffun abspath(d, r) calling '!abspath'
+
+   equ ACCRST to 1
+   equ TLOAD  to 2
+   equ SELRST to 3
+   equ FINDA  to 4
+   equ RSTACC to 5
+
+   silent = @false
+   xt     = @false
+*   uselen = @false
+   im.count = 0
+   fm.count = 0
+   recover  = 0
+   subtype  = ''
+   bintype  = ''
+   clashes  = ''
+   len      = 0
+   ln       = 0
+   f3s      = 0
+   itm.cnt  = 0
+
+   * Initialize tmp vars for next reel
+   id = ''
+   tmp.name = ''
+   tmp.fh = ''
+
+   * Initialize variables for SEL-RESTORE
+   seek.acct = ''
+   acct.found= ''
+   seek.dflg = ''
+   seek.fn   = ''
+   id.list   = ''
+   file.found= ''
+   sel.file.num= ''
+   itm.rst   = 0
+
+   * Initialize variables for RESTORE.ACCOUNTS
+   root.path = ''
+
+   * Form lists of valid characters in record ids
+
+   valid.dir.id = ''             ;* Directory files
+   for i = 32 to 126
+      valid.dir.id := char(i)
+   next i
+
+   valid.dh.id = ''              ;* Dynamic hashed files
+   for i = 1 to 250
+      valid.dh.id := char(i)
+   next i
+
+   * Added to sense the 'D' blocks embedded in D3/NT's QS types
+   block.type = ''
+   last.type = ''
+
+   @system.return.code = -ER$ARGS   ;* Preset for command format errors
+   prompt ''
+
+   * Examine the VOC option flags to work out what we are doing
+
+   begin case
+      case @option = 1  ;* ACCOUNT.RESTORE
+         mode = ACCRST
+      case @option = 2  ;* T.LOAD
+         mode = TLOAD
+      case @option = 3  ;* SEL.RESTORE
+         mode = SELRST
+      case @option = 4  ;* FIND.ACCOUNT
+         mode = FINDA
+      case @option = 5  ;* RESTORE.ACCOUNTS
+         mode = RSTACC
+      case 1
+         stop 'Invalid option in VOC record'
+   end case
+
+   max.id = config('MAXIDLEN')
+   is.windows = system(91)
+   moved.accounts = @false
+
+   binary = @false
+   debugging = @false
+   overwriting = @false
+   count.sup = @false
+   det.sup = @false
+   no.case = @false
+   no.index = @false
+   no.object = @false
+   no.query = @false
+   directory = @false
+   positioned = @false
+   dict.flag = ''
+   modulo = 101
+   grp.sz = 4
+
+   call !parser(PARSER$RESET, 0, @sentence, 0)
+   call !parser(PARSER$GET.TOKEN, token.type, token, keyword)  ;* Verb
+
+   if mode = TLOAD or mode = SELRST then
+      * Get target file
+
+      call !parser(PARSER$MFILE, token.type, tgt.file.name, keyword)
+      if keyword = KW$DICT then
+         dict.flag = 'DICT'
+         call !parser(PARSER$MFILE, token.type, tgt.file.name, keyword)
+      end
+      if token.type = PARSER$END then
+         stop sysmsg(7506)  ;* Target file name required
+      end
+
+      * Check that the target file exists
+
+      open dict.flag, tgt.file.name to test.fh then
+         close test.fh
+      end else
+         stop sysmsg(6568, dict.flag:' ':tgt.file.name)
+         * File %1 does not exist
+      end
+   end
+
+   if mode = FINDA then
+      * Get the account name
+      call !parser(PARSER$MFILE, token.type, seek.acct, keyword)
+      if token.type = PARSER$END then
+         stop sysmsg(5160)  ;* Account name required
+      end
+   end
+
+   * Process options
+
+   first.param = @true
+   loop
+      call !parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   until token.type = PARSER$END
+
+      begin case
+         case keyword = KW$BINARY
+            binary = @true
+
+         case keyword = KW$COUNT.SUP and mode = TLOAD
+            count.sup = @true
+
+         case keyword = KW$DEBUGGING
+            debugging = @true
+
+         case keyword = KW$DET.SUP
+            det.sup = @true
+
+         case keyword = KW$NO.QUERY and mode = SELRST
+            no.query = @true
+
+         case keyword = KW$NO.CASE and (mode = ACCRST ~
+                                        or mode = RSTACC ~
+                                        or mode = SELRST)
+            no.case = @true
+
+         case keyword = KW$NO.INDEX and (mode = ACCRST ~
+                                        or mode = RSTACC ~
+                                        or mode = SELRST)
+            no.index = @true
+
+         case keyword = KW$NO.OBJECT and (mode = ACCRST ~
+                                          or mode = RSTACC ~
+                                          or mode = SELRST)
+            no.object = @true
+
+         case keyword = KW$DIRECTORY and (mode = ACCRST or mode = RSTACC)
+            directory = @true
+
+         case keyword = KW$OVERWRITING
+            overwriting = @true
+
+         case keyword = KW$POSITIONED and (mode = ACCRST ~
+                                           or mode = RSTACC ~
+                                           or mode = SELRST)
+            positioned = @true
+
+         case 1
+            begin case
+               case mode = RSTACC and first.param
+                  root.path = token
+               case mode = SELRST or mode = TLOAD
+                  id.list<-1> = token
+               case 1
+                  stop sysmsg(2018, token)  ;* Unexpected token
+            end case
+      end case
+
+      first.param = @false
+   repeat
+
+   * Do we already have a tape attached?
+
+   if not(tp$name) then
+      * Get source tape name and open it
+
+      if positioned then
+         stop sysmsg(7542)  ;* Must have tape attached to use the POSITIONED keyword
+      end
+
+      device.name = ''
+      loop
+         display sysmsg(7521) :
+         * No tape attached. Please enter a device name (blank to quit):
+         input device.name
+         if device.name = '' then stop
+
+         execute 'SET.DEVICE ' : device.name
+      while @system.return.code
+      repeat
+   end else
+      * Tape is already attached - Rewind it unless doing T.LOAD
+
+      if mode # TLOAD and not(positioned) then execute 'T.REW'
+   end
+
+
+   file.names = ''
+
+   dummy = @(0, 0)   ;* Kill pagination
+
+
+   ibuf = ''
+   tp$eot = @false
+
+   openpath @qmsys:@ds:'ACCOUNTS' to acc.f else
+      display sysmsg(2200)  ;* Cannot open accounts register
+      return
+   end
+
+   * Work out how we can get back to the current account, allowing for
+   * accounts that are not in the register
+
+   original.acc = @path
+   read acc.rec from acc.f, @who then
+      acc.path = parse.pathname.tokens(acc.rec<ACC$PATH>)
+      if acc.path = @path then original.acc = @who
+   end
+
+   begin case
+      case mode = ACCRST
+         if not(positioned) then
+            begin case
+               case tp$type = 'R83'
+                 if not(tp$eot) then gosub tape.fwd
+                 if not(tp$eot) then gosub read.label
+               case tp$type = 'FS'
+                 if tp$lasttype = 'L' then
+                    tacct = upcase(field(trim(lbl), ' ', 8, 1))
+                    if trim(tacct) # '' and upcase(tacct) # 'FILE-SAVE' then
+                      acct = tacct
+                      acct.found = @true
+                    end
+                 end
+               case tp$type = 'ULTFS'
+                 if not(tp$eot) then gosub read.label
+                 if not(tp$eot) then gosub read.label
+                 if not(tp$eot) then gosub read.label
+               case tp$type = 'JBS'
+                 if not(tp$eot) then gosub read.label
+               case 1
+                 if not(tp$eot) then gosub tape.fwd
+                 if not(tp$eot) then gosub read.label
+                 if not(tp$eot) then gosub tape.fwd
+                 if not(tp$eot) then gosub read.label
+            end case
+         end
+         if not(tp$eot) then gosub do.account.restore
+
+      case mode = TLOAD
+         gosub check.list
+         if tp$lasttype # 'L' then gosub read.label
+         gosub do.t.load
+
+      case mode = FINDA
+         gosub find.account
+
+      case mode = SELRST
+         if not(positioned) then
+           display sysmsg(7544) :  ;* Account name on tape (blank to quit):
+           input seek.acct
+         end else seek.acct = 'POSITIONED'
+
+         display sysmsg(7545)  : ;* File name on tape (blank to quit):
+         input seek.fn
+
+         if seek.acct # '' and seek.fn # '' then
+            gosub check.list
+
+            silent = @true
+            if not(positioned) then
+              gosub find.account
+            end else
+              * assume properly positioned
+              acct.found = @true
+            end
+
+            if acct.found then
+               seek.fn = trim(seek.fn)
+               if upcase(seek.fn[1, 5]) = 'DICT ' then
+                  seek.dflg = 'DICT'
+                  seek.fn = field(seek.fn, ' ', 2)
+               end
+
+               gosub do.account.restore
+               if not(file.found) then
+                  display 'File: ':seek.dflg:' ':seek.fn:' not found.'
+               end
+            end else
+               display 'Account: ':seek.acct:' not found.'
+            end
+         end else
+            display 'Cancelled.'
+         end
+
+      case mode = RSTACC
+         if root.path = '' then
+           openpath @qmsys:@ds:'VOC' to voc.f else
+              display sysmsg(7900)  ;* Cannot open QMSYS account VOC 
+              return
+           end
+
+           read path.rec from voc.f, '$ACCOUNT.ROOT.DIR' then
+             if upcase(path.rec<1>) = 'X' then
+               root.path = trim(path.rec<2>)
+             end else root.path = ''
+           end
+
+           if root.path = '' then
+             display 'Enter root directory for accounts (blank to quit): ':
+             input root.path
+             if root.path = '' then display 'Cancelled.'
+           end
+
+           close voc.f
+        end
+
+        if root.path # '' then
+          if ospath(root.path, OS$EXISTS) then
+            gosub do.restore.accounts
+          end else
+            display sysmsg(6110):': ':root.path
+            * Directory path name does not exist
+          end
+        end
+   end case
+
+   @system.return.code = 0
+
+   begin case
+     case mode = ACCRST or mode = RSTACC
+       display
+       display 'Restore Completed.'
+       display
+     case mode = SELRST or mode = TLOAD
+       if not(count.sup) then
+          display sysmsg(7523, itm.rst, tgt.file.name)
+          * %1 items loaded into %2
+       end
+   end case
+
+   if clashes # '' then
+     display sysmsg(7552) ;* The following items have been renamed:
+     mxx = dcount(clashes, @fm)
+     for x = 1 to mxx
+       display '  ' : clashes<x>
+     next x
+   end
+
+abort.restore:
+   if moved.accounts then
+      call $setacc(original.acc, err, msg)
+      if err then
+         @system.return.code = err
+         display msg
+      end
+   end
+
+unwind:
+   return to unwind
+
+* ======================================================================
+
+do.account.restore:
+   src.accounts = ''
+   tgt.accounts = ''
+   acc.name = ''    ;* Currently loaded ACCOUNTS record id
+
+   ibuf = ''
+   cur.file = ''
+   cur.open.file = ''
+   index.list = ''
+
+   loop
+      block.type = ibuf[1, 1]
+
+      * we have hit a label
+      if tp$lasttype = 'L' then block.type = ''
+
+      * D3/NT if the last block.type was 'R', discard two 'D' records
+      if block.type = 'D' and last.type = 'R' then
+         tt = index(ibuf, @im, 2)
+         ibuf = ibuf[tt+1, 999999999]
+         im.count = count(ibuf, @im)
+         fm.count = count(ibuf, @fm)
+         block.type = ibuf[1, 1]
+      end
+
+      if block.type = 'H' then
+         tt = index(ibuf, @im, 1)
+         ibuf = ibuf[tt+1, 999999999]
+         im.count = count(ibuf, @im)
+         fm.count = count(ibuf, @fm)
+         block.type = ibuf[1, 1]
+      end
+
+*      if debugging then display 'Block type ' : block.type
+
+      rec = ''
+      forget.this.file = @false
+      begin case
+         case ibuf = ''
+            gosub tape.fillbuf
+            if (not(tp$eot) and tmp.name # '***Cancelled***') then continue
+
+         case block.type = 'D'
+            * The selected file has been restored
+            ftype = if upcase(ibuf<5>) = 'DQ' then 4 else ''
+            t = index(ibuf, @im, 1)
+
+            if not(t) then
+               if tp$eot then
+                  t = len(ibuf) + 1
+               end else
+                  gosub tape.fillbuf
+                  if (not(tp$eot) and tmp.name # '***Cancelled***') then continue
+               end
+            end
+
+            v1 = ibuf<1>                 ;* Dcode
+            v2 = ibuf<2>                 ;* Level
+            v3 = ibuf<3>                 ;* File number
+            rec = ibuf[1, t-1]
+            ibuf = ibuf[t+1, 999999999]
+            im.count = count(ibuf, @im)
+            fm.count = count(ibuf, @fm)
+            rec = rec[len(v1)+len(v2)+len(v3)+8, 999999999]
+
+            * D3/NT's QS uses 'FFFFFxxx' for file number:
+            if len(v3) > 6 then v3 = v3[5, len(v3)]
+
+         * 'R' block type added for D3/NT QS account type
+         case block.type = 'R'
+            ftype = upcase(ibuf<5>)
+            t = index(ibuf, @im, 1)
+
+            if not(t) then
+               if tp$eot then
+                  t = len(ibuf) + 1
+               end else
+                  gosub tape.fillbuf
+                  if (not(tp$eot) and tmp.name # '***Cancelled***') then continue
+               end
+            end
+
+            v1 = ibuf<1>                 ;* Dcode
+            v2 = ibuf<2>                 ;* Level
+            v3 = ibuf<3>                 ;* File number
+            rec = ibuf[1, t-1]
+            ibuf = ibuf[t+1, 999999999]
+            im.count = count(ibuf, @im)
+            fm.count = count(ibuf, @fm)
+            rec = rec[len(v1)+len(v2)+len(v3)+4, 999999999]
+
+            * D3/NT's QS uses 'FFFFFxxx' for file number:
+            if len(v3) > 6 then v3 = v3[5, len(v3)]
+
+         * for mvBase object code (CC)
+         * and "extended" (larger than 32k) items (CL)
+         case block.type = 'B'
+            if count(ibuf, @im) < 1 then
+               if tp$eot then
+                 ibuf := @im
+               end else 
+                 gosub tape.fillbuf
+               end
+            end
+
+            bintype = ibuf<4>
+            v1 = ibuf<3>[1, 4]
+            rec = ibuf<3>[5, 999999999]:@fm
+            id = rec<1>
+
+            t = index(ibuf, @im, 1)
+            ibuf = ibuf[t+1, 999999999]
+
+             * see if it is binary or hex data
+             binhex = ibuf[2,1]
+             if binhex = 'B' then nxlen = 500 else nxlen = 1000
+             t = len(ibuf<1>) + len(ibuf<2>) + 3
+             if len(ibuf) - t < nxlen then
+               if tp$eot then
+                 ibuf := @im
+               end else 
+                 gosub tape.fillbuf
+               end
+             end
+
+             * construct a binary item for use below
+             loop until ibuf[1,1] # 'O' and not(tp$eof) do
+               t = len(ibuf<1>) + len(ibuf<2>) + 3
+               rec := ibuf[t, nxlen - 1]
+               if len(ibuf) >= t + nxlen then
+                 ibuf = ibuf[t + nxlen + 1, 999999999]
+               end
+               gosub tape.fillbuf
+               if ibuf[1, 1] = @fm then ibuf = ibuf[2, 999999999]
+               if ibuf[1, 1] = @im then ibuf = ibuf[2, 999999999]
+             repeat
+
+         case block.type = 'I' or block.type = 'F' or block.type = 'E' ~
+                                                   or block.type = 'L'
+            * fm.count is built in tape.getblk instead of inline
+            * inline processing became a performance issue in large items
+            * by building this in tape.getblk, the max size of the item
+            * being searched is tp$blksz
+
+            subtype = ibuf<3>[1, 1]
+            if fm.count < 4 or im.count < 2 then
+              if subtype # 'O' and block.type # 'L' then
+                 if tp$type = 'ULTFS' and xcflg then
+                   tp$eof = @true
+                   ibuf = ibuf[1, (xcflg + (len(ibuf) - tp$blksz)) - 1]
+                 end
+                 if tp$eot or tp$eof else
+                   gosub tape.fillbuf
+                   if (not(tp$eot) and tmp.name # '***Cancelled***') then continue
+                 end
+              end
+            end
+
+            v1 = ibuf<1>                 ;* File id
+            v2 = ibuf<2>                 ;* Group
+            f3s = len(v1) + len(v2) + 2  ;* Field 3 start offset (from zero)
+                                          * D3/NT's QS uses 'FFFFFxxx'
+                                          * for file number:
+            if len(v1) > 6 then v1 = 'I':v1[6, len(v1)]
+
+            begin case
+               case subtype = 'L'
+                  xt = @false
+                  if im.count < 2 then
+                     gosub tape.fillbuf
+                     if not(tp$eof or tp$eot) then continue
+                  end
+
+                  t1 = index(ibuf, @im, 1)
+                  t2 = index(ibuf, @im, 2)
+                  rec = ibuf[t1+1, t2-t1-1]
+                  ibuf = ibuf[t2+1, 999999999]
+                  im.count = count(ibuf, @im)
+                  fm.count = count(ibuf, @fm)
+
+               case subtype = 'O'
+                  ln = oconv(ibuf<3>[2, 4], 'MCXD') * 1000
+                  if len(ibuf) < f3s + ln + len(ibuf<4>) + 3 then
+                     if not(tp$eof or tp$eot) then
+                       gosub tape.fillbuf
+                       if (not(tp$eot) and tmp.name # '***Cancelled***') ~
+                           and not(xt) then continue
+                     end
+                  end
+
+                  * As with the fm.count note above, each iteration had been
+                  * searching for EOI mark here, causing serious preformance
+                  * problems. this is now being checked in tape.getblk to
+                  * reduce the size of the item being tested.
+                  * the 'xt' variable now carries this index into ibuf
+
+                  if not(xt) or len(ibuf)-(f3s + ln) < (tp$blksz+tp$pad) then
+                     if not(tp$eot or tp$eof) then
+                       gosub tape.fillbuf
+                       if (not(tp$eot) and tmp.name # '***Cancelled***') then continue
+                     end
+                  end
+
+                  t.ibuf = ibuf[f3s+ln+xt+2, 999999999]
+                  block.type = 'O'
+
+                  * 2.2-7 binary item support
+                  if len(ibuf) <= (f3s+ln+xt+1) and not(tp$eot or tp$eof) ~
+                      and not(xt) then
+                    gosub tape.fillbuf
+                    t.ibuf = ibuf[f3s+xt+1, 999999999]
+                  end
+
+                  id = ibuf<4>
+                  rec.s = f3s + len(ibuf<3>) + len(ibuf<4>) + 3
+                  rec = ibuf[f3s + len(ibuf<3>) + len(ibuf<4>) + 3, 999999999]
+
+                  if ibuf[f3s + ln + xt + 2, 1] = char(130) then
+                     tt = index(t.ibuf, @im, 1)
+                     flen = oconv(t.ibuf[2, tt - 2], "MCXD")
+                     rec = ibuf[f3s + len(ibuf<3>) + len(ibuf<4>) + 3,999999999]
+                     rec = rec[1, flen]
+                     xt = xt+tt
+                  end else
+                    if ibuf[f3s + ln + xt + 3, 1] = char(130) then
+                     xt += 1
+                     t.ibuf = t.ibuf[2, len(t.ibuf)]
+                     tt = index(t.ibuf, @im, 1)
+                     flen = oconv(t.ibuf[3, tt - 2], "MCXD")
+                     rec = ibuf[f3s + len(ibuf<3>) + len(ibuf<4>) + 4,999999999]
+                     rec = rec[1, flen]
+                     xt = xt+tt
+                    end else
+                       rec = rec[1, (f3s + ln + xt + 1) - rec.s]
+                    end
+                  end
+
+                  ibuf = ibuf[f3s + ln + xt + 2, 999999999]
+                  im.count = count(ibuf, @im)
+                  fm.count = count(ibuf, @fm)
+
+               case 1
+                  t1 = index(ibuf, @im, 1)
+                  if not(t1) then
+                     if tp$eot or tp$eof
+                        then t1 = len(ibuf) + 1
+                     else
+                        gosub tape.fillbuf
+                        * logic change for mvBase
+                        if tp$lasttype = 'L' then tp$eof = @true
+                        if not(tp$eof or tp$eot) then continue
+                     end
+                  end
+
+                  rec = ibuf[f3s+5, t1-f3s-5]
+                  ibuf = ibuf[t1+1, 999999999]
+                  im.count = count(ibuf, @im)
+                  fm.count = count(ibuf, @fm)
+            end case
+
+         case block.type = @im
+            xt = @false
+            ibuf = ibuf[2, 999999999]
+            im.count = count(ibuf, @im)
+            fm.count = count(ibuf, @fm)
+            continue
+
+         case block.type = 'X'
+           * thanks to Peter S. - this used to simply say exit and
+           * then in a mvBASE tape the D-Pointers were all lost.
+           if ibuf[1, 2] = 'XC' or ibuf = 'X' then
+              ibuf = ''
+              exit
+           end
+           tt = index(ibuf, @im, 1)
+           ibuf = ibuf[tt+1, 999999999]
+           im.count = count(ibuf, @im)
+           fm.count = count(ibuf, @fm)
+           block.type = ibuf[1, 1]
+           continue
+
+         case tp$lasttype = 'L'
+            xt = @false
+            tp$eof = @true
+
+         case 1
+            if tp$blksz # 500 or recover > 0 then
+               display 'Unrecognised block type'
+               display 'IBUF = |' : ibuf : '|'
+               return
+            end else
+               recover += 1
+               * Try forwarding to the next block boundry:
+
+               loop
+                  readblk tape.block from tp$fh, 1 then
+                     tp$ptr += 1
+                     tp$tptr += 1
+                  end else
+                     tp$eot = @true
+                  end
+                  until tp$eot or tape.block[1, 1] = char(0) do repeat
+
+               if not(tp$eof) then
+                  readblk tape.block from tp$fh, (tp$blksz + tp$pad)-1 then
+                     tp$ptr = tp$ptr - 1
+                     tp$tptr = tp$tptr - 1
+                     blk = char(0):tape.block[tp$pad + 1, tp$blksz]
+                     ibuf := blk
+                     continue
+                  end else
+                     tp$eof = @true
+                     continue
+                  end
+               end else
+                  stop 'Tape format error - block size = ':tp$blksz
+                  display 'Unrecognised block type'
+                  display 'IBUF = |' : ibuf : '|'
+                  return
+               end
+            end
+      end case
+
+      begin case
+         * 'R' block type added for D3/NT QS account type
+         case block.type = 'D' or block.type = 'R'
+            itm.cnt = 0
+            level = v2
+            dtyp  = upcase(v1[1,1])
+            file.num = oconv(v3, 'MCXD')
+            if rec<1> = 'VOC' then rec<1> = 'VOC-RESTORE'
+            * a problem with MENTOR/mvBASE, they liked '/' in file names!
+            tmp = rec<1>
+            convert '\/' to '--' in tmp
+            rec<1> = tmp
+
+            if mode = RSTACC and dtyp = 'D' and level = 1 then
+               read acc.rec from acc.f, rec<1> then
+                 display sysmsg(7550, rec<1>)
+                 * %1: Account exists, forwarding to next account...
+                 return
+               end else
+                 if no.case then
+                   pathname = root.path:@ds:rec<1>
+                 end else
+                   pathname = root.path:@ds:upcase(rec<1>)
+                 end
+                 if ospath(pathname, OS$EXISTS) then
+                   display sysmsg(7553,rec<1>)
+                   * Account directory '%1' exists, forwarding to next account..
+                   return
+                 end else
+                   display sysmsg(7554, acct, pathname) :
+                   * Restoring "%1" into "%2"...
+                 end
+               end
+            end
+
+            if mode = SELRST and file.found then
+               if upcase(rec<1>) # upcase(seek.fn) then
+                  return
+               end
+            end
+
+            tfn = rec<1>
+
+            begin case
+               case level = 1
+                  if mode = SELRST then
+                     rec<1> = 'MD'
+                     tfn = rec<1>
+                  end
+                  file.name = rec<1>
+               case level = 2
+                  file.name = field(cur.file, ',', 1) : ',' : rec<1>
+               case level = 3
+                  file.name = field(cur.file, ',', 1) : ',' : field(cur.file, ',', 2) : ',' : rec<1>
+               case 1
+                  display 'Illegal level (':level:')'
+                  return
+            end case
+
+            if mode = SELRST then
+               if dict.flag = 'DICT' then
+                  d.level = 2
+               end else
+                  d.level = 3
+               end
+               forget.this.file = @true
+               if upcase(tfn) = upcase(seek.fn) then
+                  cur.file = @who:',':tgt.file.name
+
+                  begin case
+                     case level = 1
+                        forget.this.file = @false
+                     case level = 2
+                        if seek.dflg = 'DICT' then forget.this.file = @false
+                     case level = 3
+                        if seek.dflg # 'DICT' then forget.this.file = @false
+                     case 1
+                        display 'Illegal level (':level:')'
+                        return
+                  end case
+
+                  begin case
+                     case d.level = 2
+                        file.name = field(cur.file, ',', 1) : ',' : tgt.file.name
+                     case d.level = 3
+                        file.name = field(cur.file, ',', 1) : ',' : field(cur.file, ',', 2) : ',' : tgt.file.name
+                     case 1
+                        display 'Illegal level (':level:')'
+                        return
+                  end case
+               end
+
+               if not(forget.this.file) then
+                  file.found = @true
+                  sel.file.num = file.num
+                  src.accounts<file.num> = @who
+                  tgt.accounts<file.num> = @who
+               end
+            end
+
+            if not(forget.this.file) then
+               if not(no.case) and rec<1> # 'cat' then
+                 file.name = upcase(file.name)  ;* D3 appears to mix cases
+               end
+               file.names<file.num> = file.name
+               cur.file = file.name
+               if not(det.sup) then display space(level*2) : upcase(rec<1>)
+               cur.open.file = cur.file
+
+               * Get modulus from tape
+
+               modulo = ''
+
+               if rec<14> # '' then  ;* try f/realloc field:
+                  modulo = field(field(rec<14>, '(', 2), ')', 1)
+               end
+               if modulo matches '0N' else modulo = ''
+
+               * If nothing in f/realloc then get from PICK modulo field
+               if not(modulo) then modulo = rec<4>
+               if modulo matches '0N' else modulo = ''
+
+               * If for some reason not a sane value, default to 101
+               if not(modulo) then modulo = 101
+
+               gosub tape.opencreate
+
+               * Check for indices
+               * Format of the index description is:
+               *   Attribute<8> of the FDI multivalued:
+               *     'IxxxxxxAyyyy'
+               *   Where:
+               *     'I'      = Magic character denoting this is an index
+               *     'xxxxxx' = PICK FID of location of index (we discard it)
+               *     'Ayyyyy' = any valid 'A' correlative
+               * I am pretty sure that this is the _ONLY_ place that index
+               * definitions are stored for the B-Tree indices on AP and D3
+               * systems.
+
+               rec<9> = upcase(rec<9>)
+               if rec<9>[1, 1] = "I" then
+                  no.idx = dcount(rec<9>, @vm)
+                  for i = 1 to no.idx
+                     * for openQM named index files
+                     if rec<18>[1,3] = 'QMI' then
+                        * openQM just makes it "AN(DICT_NAME)" so extract name
+                        tmp = path
+                        tmp<1, 2> = field(cur.file, ',', 2)
+                        tmp<1, 3> = this.acc
+                        tmp<1, 4> = 'QMI:':field(field(rec<9,i>,'(',2),')',1)
+                     end else
+                        tmp = rec<9, i>
+                        tst = index(tmp, 'A', 1)
+                        a.corr = tmp[tst, 99999]
+                        t.corr = a.corr[2, 99999]
+                        if a.corr matches '0N' then
+                           att2 = t.corr
+                           a.corr = ''
+                        end else
+                           att2 = '00'
+                        end
+   
+                        tmp = path           ;* Path to data portion of file
+                        tmp<1, 2> = field(cur.file, ',', 2)
+                        tmp<1, 3> = this.acc
+                        tmp<1, 4> = '_RST_':dcount(index.list, @fm) "R%4"
+                        tmp<1, 5> = 'S'
+                        tmp<1, 6> = att2
+                        tmp<1, 7> = 'DICT item for index ':a.corr
+                        tmp<1, 12> = a.corr
+                        tmp<1, 13> = 'L'
+                        * Apparently, indices cannot be right justified
+                        tmp<1, 14> = '12'
+                     end
+                     index.list<-1> = tmp
+                  next i
+               end
+            end      ;* end if not(forget.this.file)
+
+         case block.type[1, 1] = 'I'
+            if rec # '' then
+               file.num = oconv(v1[2, 999], 'MCXD')
+
+               if mode = SELRST then
+                  if file.found and file.num = sel.file.num then
+                     if id.list # '' then
+                       locate rec<1> in id.list<1> setting pos then
+                         forget.this.file = @false
+                       end else forget.this.file = @true
+                     end else forget.this.file = @false
+                  end else
+                     forget.this.file = @true
+                  end
+               end
+
+               if not(forget.this.file) then
+                  if len(rec<1>) > max.id then
+                     display sysmsg(7509, rec<1>)
+                     * Record id '%1' exceeds MAXIDLEN limit
+                     rec = ''
+                     continue
+                  end
+
+                  tid = rec<1>
+                  tst = seq(tid[1, 1])
+                  if tid = '' then
+                     display sysmsg(7510)  ;* Record with null id ignored
+                     rec = ''
+                     continue
+                  end
+
+                  * Check for illegal characters in ID
+
+                  if fileinfo(tgt.f, FL$TYPE) = FL$TYPE.DIR then
+                     if convert(valid.dir.id, '', tid) # '' then rec = ''
+                  end else
+                     if convert(valid.dh.id, '', tid) # '' then rec = ''
+                  end
+               
+                  if rec = '' then
+                     display sysmsg(7543)  ;* Illegal characters in record id
+                     continue
+                  end
+
+                  if not(num(file.num)) then
+                     if debugging then
+                        t = v1 : ' ' : v2 : ' ' : v3
+                        display fmt(t, 'L#131')
+                     end
+                  end else
+                     id = rec<1>
+                     del rec<1>
+
+                     * If it was a QM 'D' type dict item, convert back
+
+                     if rec<1> = 'A' and rec<17>[1,4] = 'QM-D' ~
+                                               and subtype # 'O' then
+                        gosub convert.d.item
+                     end
+
+                     if mode = SELRST then
+                       display space(level*2):'  ':id
+                       itm.rst += 1
+                     end
+
+
+                     if debugging then
+                        * only waste time on counter if debugging
+                        itm.cnt += 1
+                        display itm.cnt:' ':file.names<file.num> : ' ' : id
+                     end
+
+                     if file.names<file.num> # cur.open.file then
+                        cur.open.file = file.names<file.num>
+                        gosub tape.opencreate
+                     end
+
+                     * 0375 TED: Trim trailing FM from record
+                     if rec[1] = @fm then rec = rec[1, len(rec)-1]
+
+                     recordlocku tgt.f, id
+                     write rec to tgt.f, id
+                  end
+               end  ;* end if not(forget.this.file)
+            end
+
+         case block.type[1, 1] = 'O' or block.type[1, 1] = 'B'
+            
+            if not(no.object) or bintype = 'CL' then
+               file.num = oconv(v1[2, 999], 'MCXD')
+
+               if file.names<file.num> # cur.open.file then
+                  cur.open.file = file.names<file.num>
+                  gosub tape.opencreate
+               end
+
+               if mode = SELRST then
+                  if file.found and file.num = sel.file.num then
+                     if id.list # '' then
+                       locate rec<1> in id.list<1> setting pos then
+                         forget.this.file = @false
+                       end else forget.this.file = @true
+                     end else forget.this.file = @false
+                  end else
+                     forget.this.file = @true
+                  end
+               end
+
+               if not(forget.this.file) then
+                  if rec # '' then
+                     if not(num(file.num)) then
+                        if debugging then
+                           t = v1 : ' ' : v2 : ' ' : v3
+                           display fmt(t, 'L#131')
+                        end
+                     end else
+                        * 2.2-7 Binary item support
+
+                        * 0375 TED: Trim trailing FM from record
+                        if rec[1] = @fm then rec = rec[1, len(rec)-1]
+
+                        if mode = SELRST then
+                          display space(level*2):'  ':id
+                          itm.rst += 1
+                        end
+
+                        recordlocku tgt.f, id
+                        write rec to tgt.f, id
+                        * reset the 'xt' variable for the next iteration
+                        xt = @false
+                     end
+                  end
+               end      ;* end if not(forget.this.file)
+            end else
+              * reset the 'xt' variable for the next iteration
+              xt = @false
+
+              if debugging then
+                 * only waste time on counter if debugging
+                 itm.cnt += 1
+                 display itm.cnt:' ':sysmsg(7507, id)
+                 * Object record '%1' omitted
+              end
+            end
+            bintype = ''
+      end case
+      last.type = block.type
+   until tp$eot or tp$eof
+   repeat
+
+   if index.list # '' and not(no.index) then
+      gosub create.index
+   end
+
+   return
+
+* ======================================================================
+* find.account - search through FILE-SAVE tape for account
+*
+* There appear to be two types of PICK tapes that contain multiple accounts
+*   FILE-SAVE with one label before each account and
+*   tapes created with 'ACCOUNT-SAVE ACCOUNT1 ACCOUNT2 ...'
+*   the latter use the three leading blocks as if several ACCOUNT-SAVE's
+*   were stitched together one after another.
+* SET-DEVICE reads ahead when attaching the tape originally to see if the
+* second label says 'file-save' and if so sets tp$type to 'FS'
+
+find.account:
+   acct.found = @FALSE
+   last.account = ''
+   acct = ''
+
+   loop until tp$eot or acct.found do
+      gosub find.next.account
+      if seek.acct = acct and acct # '' else acct.found = @false
+
+      if acct # last.account then
+         if acct[1, 1] # @fm and acct # 'FILE-SAVE' then crt acct
+      end
+   repeat
+
+   if not(silent) then
+      if acct.found then
+         crt "Tape positioned at beginning of '":seek.acct:"'."
+      end else
+         crt "Account '":seek.acct:"' not found."
+      end
+   end
+
+   return
+
+* ======================================================================
+
+do.restore.accounts:
+   loop
+     tp$eof = @false
+     tp$eot = @false
+     xt     = 0
+     if not(positioned) then
+       gosub find.next.account
+       if acct.found then
+          gosub do.account.restore
+          if @system.return.code # 0 then
+             display sysmsg(7501)  ;* Restore terminated
+             continue
+          end
+       end
+     end else
+       * if POSITIONED keyword, don't seek to the first account
+       gosub do.account.restore
+       * but set the next iteration to seek
+       positioned = @false
+     end
+   until tp$eot do repeat
+
+   return
+
+* ======================================================================
+
+do.t.load:
+   forget.this.item = @false
+   * set a flag so we can exit after list is exhausted
+   if id.list # '' then
+     have.list = @true
+   end else have.list = @false
+
+   open dict.flag, tgt.file.name to data.f else
+      open dict.flag, upcase(tgt.file.name) to data.f else
+         display sysmsg(1427, trimf(dict.flag:' ':tgt.file.name))
+         * Cannot open %1
+         goto abort.restore
+      end
+      tgt.file.name = upcase(tgt.file.name)
+   end
+   if binary then mark.mapping data.f, off
+
+   ibuf = ''
+
+   loop
+      gosub tape.getrec
+
+      if rec # '' then
+         id = rec<1>
+         del rec<1>
+
+         if rec[len(rec), 1] = @fm then rec = rec[1, len(rec)-1]
+
+         if id = 'X' and (ibuf[1, 2] = @tm:@tm or trim(rec) = '') then
+           id = ''
+           ibuf = ''
+           tp$eof = @true
+           continue
+         end
+
+         if id.list # '' then
+           locate id in id.list<1> setting pos then
+             forget.this.item = @false
+           end else forget.this.item = @true
+         end else
+           if have.list then exit
+         end
+
+         if not(forget.this.item) then
+            if id = '' then         ;* AP/D3 allows null ID, discard them
+               display sysmsg(7510)        ;* Record with null id ignored
+               continue
+            end
+   
+            if overwriting then            ;* Silently overwrite
+               recordlocku data.f, id
+               write rec to data.f, id
+               itm.rst += 1
+               if not(det.sup) then
+                  display itm.rst "R#5":' ':id : ' - ' : len(rec)
+               end
+            end else
+               read dummy from data.f, id then
+                  display id : ' exists on file.'
+               end else
+                  recordlocku data.f, id
+                  write rec to data.f, id
+                  itm.rst += 1
+                  if not(det.sup) then
+                     display itm.rst "R#5":' ':id : ' - ' : len(rec)
+                  end
+               end
+            end
+         end
+      end
+   until tp$eof or tp$eot
+   repeat
+
+   if tp$eot then display sysmsg(7522)  ;* End of recorded data.
+
+   return
+
+* ======================================================================
+
+find.next.account:
+   acct       = ''
+   acct.found = @false
+
+   loop until tp$eot or acct.found do
+      last.account = acct
+      gosub read.label
+      if not(tp$eot) then
+         if tp$lasttype = 'L' then
+            acct = upcase(field(trim(lbl), ' ', 8, 1))
+            begin case
+               case tp$type = 'FS'
+                 if tp$lasttype = 'L' then
+                    tacct = upcase(field(trim(lbl), ' ', 8, 1))
+                    if trim(tacct) # '' and upcase(tacct) # 'FILE-SAVE' then
+                      acct = tacct
+                      acct.found = @true
+                    end
+                 end
+               case tp$type = 'ULTFS'
+                 if not(tp$eot) and tp$lasttype # 'L' then gosub read.label
+                 if not(tp$eot) and upcase(tape.block[1, 2]) # @im:'D' then
+                   gosub read.label
+                 end
+                 if tp$lasttype = 'L' then
+                    acct = upcase(field(trim(lbl), ' ', 6, 1))
+                    acct.found = @true
+                 end else
+                    if upcase(blk[1, 2]) = @im:'D' then
+                      im.count = count(ibuf, @im)
+                      fm.count = count(ibuf, @fm)
+                      xt = @false
+                      seek tp$fh, 0 then
+                        tp$tptr -= tp$ptr
+                        tp$ptr  -= tp$ptr
+                        gosub read.label
+                        acct.found = @true
+                      end
+                    end
+                 end
+               case tp$type = 'MV'
+                 if tp$lasttype = 'L' then
+                    acct = upcase(field(trim(lbl), ' ', 7, 1))
+                    acct.found = @true
+                 end
+                 
+               case tp$type = 'R83'
+                 if not(tp$eot) then gosub tape.fwd
+                 if not(tp$eot) then gosub read.label
+                 if tp$lasttype = 'L' then
+                    acct = upcase(field(trim(lbl), ' ', 7, 1))
+                    acct.found = @true
+                 end
+               case 1
+                 if not(tp$eot) then gosub tape.fwd
+                 if not(tp$eot) then gosub tape.fwd
+                 if not(tp$eot) then gosub read.label
+                 if tp$lasttype = 'L' then
+                    acct = upcase(field(trim(lbl), ' ', 8, 1))
+                    acct.found = @true
+                 end
+            end case
+         end else
+            gosub tape.fwd
+            if tp$lasttype = 'L' then
+              lbl = blk[3, 78]
+              if tp$type = 'ULTFS' then
+                acct = upcase(field(trim(lbl), ' ', 6, 1))
+              end else
+                acct = upcase(field(trim(lbl), ' ', 8, 1))
+              end
+              acct.found = @true
+            end
+         end
+      end
+   repeat
+
+   return
+
+* ======================================================================
+
+tape.opencreate:
+   this.acc = upcase(field(cur.open.file, ',', 1))
+   convert '/' to '-' in this.acc
+   convert '\' to '-' in this.acc
+
+   locate this.acc in src.accounts<1> setting pos then
+      this.acc = tgt.accounts<pos>
+   end else
+      * D3/NT seems to include 'I' blocks with no proper file reference
+      if block.type # 'D' and block.type # 'R' then
+        display 'Disconnected item: ':tid:' skipped.'
+        return
+      end
+      * This is the first time we've seen this account
+      * Confirm that the user wants to use the same name
+
+      src.accounts<-1> = this.acc
+
+      if mode = RSTACC then
+        * already validated
+        s = this.acc
+      end else
+        display sysmsg(7511, this.acc)    ;* Source account name: %1
+        display sysmsg(7512, this.acc) :  ;* Target account name (default %1):
+        input s
+      end
+      if s # '' then this.acc = upcase(s)
+      tgt.accounts<-1> = this.acc
+   end
+
+   if this.acc # acc.name then
+      acc.name = this.acc
+      read acc.rec from acc.f, acc.name else
+         if mode = RSTACC then
+           yn = 'Y'
+         end else
+           loop
+              display sysmsg(7500, acc.name) :
+              * Account '%1' is not in the account register. Create new account?
+              input yn
+              yn = upcase(yn)
+           until yn = 'Y' or yn = 'N'
+           repeat
+         end
+
+         if yn # 'Y' then
+            display sysmsg(7501)  ;* Restore terminated
+            goto abort.restore
+         end
+
+         if mode = RSTACC then
+           execute 'CREATE.ACCOUNT ' : acc.name : ' ' : pathname : ' NO.QUERY'
+         end else
+           execute 'CREATE.ACCOUNT ' : acc.name
+         end
+         if @system.return.code # 0 then
+            display sysmsg(7501)  ;* Restore terminated
+            goto abort.restore
+         end
+
+         read acc.rec from acc.f, acc.name else
+            display 'Internal error - Cannot read newly create ACCOUNTS entry'
+            goto abort.restore
+         end
+      end
+
+      acc.path = parse.pathname.tokens(acc.rec<ACC$PATH>)
+
+      if mode = SELRST then acc.path = @path
+
+      openpath acc.path : @ds : 'VOC' to voc.f else
+         display sysmsg(7508)  ;* Cannot open account VOC
+         goto abort.restore
+      end
+
+      moved.accounts = @true
+      call $setacc(acc.name, err, msg)
+      if err then
+         @system.return.code = err
+         display msg
+         goto abort.restore
+      end
+   end
+
+   level = dcount(cur.open.file, ',')
+   fn = field(cur.open.file, ',', 2)
+   sfn = field(cur.open.file, ',', 3)
+
+   * If we are restoring an MD item, transform the file name to MD-RESTORE
+
+   if level = 1 then
+      fn = 'MD-RESTORE'
+      sfn = fn
+   end
+
+   * We must check the target account VOC rather than just opening by the
+   * default pathname as the file might already exist with a non-default
+   * name or it could clash with another VOC entry.
+
+retry.open:
+   read voc.rec from voc.f, fn then
+      * Record already exists
+
+      if voc.rec[1, 1] # 'F' then
+         * It's not a file entry.
+
+         clsh = acc.name:',':fn:' renamed to '
+         fn = 'QM-CLASH.':fn
+         clsh := acc.name:',':fn
+         clashes<-1> = clsh
+         display clsh
+
+         * The above will simply rename the file with the prefix 'QM-CLASH.'.
+         * In this way users can just decide what to do later (fix their
+         * programs, get rid of the clash item, etc). The old code below is
+         * retained for reference.
+
+*         display sysmsg(7502, fn)  ;* VOC entry '%1' exists but not as a file reference
+*         display sysmsg(7503):    ;* Enter alternative name for restore:
+*         input fn
+*         if fn = '' then
+*            display sysmsg(7501)  ;* Restore terminated
+*            goto abort.restore
+*         end
+         goto retry.open
+      end
+   end
+
+   voc.rec<1> = 'F':voc.rec<1>[2, 99999]
+   create.path = @false
+
+   begin case
+      case level = 2                       ;* Dictionary restore
+         if voc.rec<3> # '' then
+            path = voc.rec<3>
+         end else
+            path = fn : '.DIC'
+            gosub map.path
+            voc.rec<3> = path
+            create.path = @true
+         end
+
+      case voc.rec<4> # ''                 ;* File is already a multifile
+         locate sfn in voc.rec<4, 1> setting pos then
+            path = voc.rec<2, pos>
+         end else
+            path = fn : @ds : sfn
+            gosub map.path
+            voc.rec<2, -1> = path
+            voc.rec<4, -1> = sfn
+            create.path = @true
+         end
+
+      case fn # sfn and voc.rec<2> = ''    ;* Must make as a multifile
+         path = fn : @ds : sfn
+         gosub map.path
+         voc.rec<2> = path
+         voc.rec<4> = sfn
+         create.path = @true
+
+      case fn # sfn                        ;* Must convert to a multifile
+         * This VOC item references a simple file with an existing data part
+         * that must be converted to a multifile.
+
+         if fileinfo(tgt.f, FL$OPEN) then
+            close tgt.f
+         end
+
+         i = ospath("", os$flush.cache)
+
+         * Create new subdirectory inside old file directory to represent
+         * the existing part of the new multifile.
+
+         old.path = abspath(acc.path, voc.rec<2>)
+         * Transform path to full pathname
+         new.path = old.path : @ds : fn
+
+         no.idx = dcount(index.list, @fm)
+         for i = 1 to no.idx
+            if index.list<i, 1> = old.path then
+               index.list<i, 1> = new.path
+            end
+         next i
+
+         if not(ospath(new.path, OS$MKDIR)) then
+            display sysmsg(6196, new.path)  ;* Unable to create %1
+            goto abort.restore
+         end
+
+         * Move the ~n components down into the new sub directory
+
+         subfiles = dir(old.path)
+         for i = dcount(subfiles, @fm) to 1 step -1
+            s = subfiles<i, 1>
+            y = subfiles<i, 2>
+            if s[1, 1] = '~' or y = 'F' then
+               if not(osrename(old.path:@ds:s, new.path:@ds:s)) then
+                  display sysmsg(6197, status(), os.error(), old.path:@ds:s)
+                  * Error %1.%2 moving %1
+                  goto abort.restore
+               end
+            end
+         next i
+
+         voc.rec<2> := @ds : fn    ;* Leave as possibly relative
+         voc.rec<4> = fn
+
+         path = fn : @ds : sfn
+         gosub map.path
+         voc.rec<2, -1> = path
+         voc.rec<4, -1> = sfn
+         create.path = @true
+
+      case 1                               ;* Simple file
+         if voc.rec<2> # '' then
+            path = voc.rec<2>
+         end else
+            path = fn
+            gosub map.path
+            voc.rec<2> = path
+            create.path = @true
+         end
+   end case
+
+   path = abspath(acc.path, path)  ;* Transform path to full pathname
+
+   if create.path then
+      if ftype # 4 and not(directory) then
+         file.flags = 0
+         if no.case then file.flags = bitor(file.flags, FL$FLAGS.NOCASE)
+
+         create.file path dynamic group.size grp.sz min.modulus modulo flags file.flags on error
+            display sysmsg(1432, status(), os.error(), path) 
+            * Error %1 (os.error %2) creating %3
+            goto abort.restore
+         end
+      end else
+         create.file path directory on error
+            display sysmsg(1432, status(), os.error(), path)
+            * Error %1 (os.error %2) creating %3
+            goto abort.restore
+         end
+      end
+
+      recordlocku voc.f, fn
+      write voc.rec to voc.f, fn
+   end
+
+   openpath path to tgt.f else
+      display sysmsg(1427, path)  ;* Cannot open %1
+      goto abort.restore
+   end
+   if binary then mark.mapping tgt.f, off
+
+   * Create default @ID item when creating the DICT portion of a file.
+   * If an @ID exists in the tape image, it will simply overwrite this default.
+
+   if level = 2 then
+      file.type = fileinfo(tgt.f, FL$TYPE)
+      readu dummy from tgt.f, '@ID' then
+         * Already exists, just release the lock
+         release tgt.f, '@ID'
+      end else
+         * No @ID for this DICT, create one
+         id.rec = 'D' : @fm : '0' : @fm : @fm : fn : @fm
+         id.rec := if file.type = FL$TYPE.DIR then '12L' else '10L'
+         id.rec := @fm : 'S' : @fm
+         write id.rec to tgt.f, '@ID'
+      end
+   end
+
+   return
+
+* ======================================================================
+
+tape.getrec:
+   rec = ''
+
+   loop
+      t.im = index(ibuf, @im, 1)
+      t.sb = index(ibuf, @tm, 1)
+      begin case
+         case t.im and (t.sb = 0 or t.im < t.sb)
+            if t.im = len(ibuf) then
+               gosub tape.fillbuf
+            end else
+               if t.sb = t.im + 1 then
+                  ibuf = ibuf[1, t.im-1] : ibuf[t.im+2, 999999999]
+               end else
+                  ibuf = ibuf[1, t.im-1] : ibuf[t.im+1, 999999999]
+               end
+            end
+
+         case t.sb
+            rec = ibuf[1, t.sb-1]
+            ibuf = ibuf[t.sb+1, 999999999]
+            exit
+
+         case 1
+               gosub tape.fillbuf
+      end case
+   until tp$eof or tp$eot
+   repeat
+
+   return
+
+* ======================================================================
+
+tape.getblk:
+   blk = ''
+   last.eof = tp$eof
+   tp$eot = @false
+   tp$eof = @false
+   tp$lasttype = ''
+
+   readblk tape.block from tp$fh, tp$blksz + tp$pad else
+
+      if not(last.eof) then
+         gosub check.next
+         if tp$eof or tp$eot or tmp.name = '***Cancelled***' then
+            return
+         end
+         *
+         readblk tape.block from tp$fh, tp$blksz + tp$pad then
+            if tape.block[1, 3] = 'BOV' then
+               tp$lastblk = tp$ptr
+               tp$ptr += tp$blksz + tp$pad
+               tp$tptr += tp$blksz + tp$pad
+               readblk tape.block from tp$fh, tp$blksz + tp$pad else
+                  tp$eot = @true
+                  tp$eof = @true
+               end
+            end
+         end else
+            tp$eot = @true
+            tp$eof = @true
+         end
+      end else
+         * failed read AND we already read an EOF, so must be EOT
+         tp$eot = @true
+      end
+   end
+
+   if not(tp$eof) and not(tp$eot) then
+      tp$lastblk = tp$ptr
+      tp$ptr += tp$blksz + tp$pad
+      tp$tptr += tp$blksz + tp$pad
+      tp$lasttype = 'D'
+      blkbyte = tape.block[1, 1]
+
+      * mvBase uses four SPACE chars in beginning of pad
+      if (blkbyte = char(0) or blkbyte = char(32)) and tp$blksz = 500 then
+         blk = tape.block[tp$pad + 1, tp$blksz]
+         tape.block = blk
+      end
+
+      * Ultimate FILE-SAVE - the end of each account is also the end of a file
+      xcflg = index(tape.block, @im:'XC':char(32):char(32), 1)
+
+      begin case
+         case index(tape.block, 'EOV':@im, 1)#0
+            blk = tape.block[1, index(tape.block, 'EOV':@im, 1)-1]
+         case index(tape.block, @im:'M65':@im:'XC', 1)#0
+            tp$eof = @true
+         case tape.block[1, 4] = 'EOF':@im or ~
+                         tape.block[1, 4] = 'XC':char(32):char(32)
+            tp$eof = @true
+         case index(tape.block,@im:'XX':@vm:@vm,1)#0 ~
+              or index(tape.block,@im:'XX':char(32):char(32),1)#0
+            tp$eof = @true
+         case 1
+            blk = tape.block
+      end case
+
+      bt = block.type
+      if bt = 'I' or bt = 'F' or bt = 'E' or bt = 'O' then
+         im.count += count(blk, @im)
+         fm.count += count(blk, @fm)
+
+         * The 'uselen' stuff below was originally put in because I thought
+         * that if the 'X':@im:char(130):@im:item_length format was ever used
+         * then that is what would _always_ be used. This appears to be true
+         * in D3/NT but not in D3/Linux - so if we wanted to make 'D3NT' a
+         * keyword and allow support for the 'native' D3/NT format, I can just
+         * reorganize this a little and move on.
+
+         * The alternative is to simply tell people that they must use the '(A'
+         * option when doing a save from D3/NT.
+
+         * The commented out code is retained for reference.
+
+         * only check for EOI in Ojbect items when ibuf has reached
+         * the size specified in the header
+         if ((len(ibuf)+f3s+len(blk)) >= ln) and (bt='O' or subtype='O') then
+            txt = 0
+            last.txt = @false
+            * look at the tail end of ibuf and the new block
+            * this keeps from having to test the block boundary
+            tblk = ibuf[(len(ibuf) - tp$blksz) + 1, len(ibuf)]:blk
+
+            loop
+               txt = index(tblk, 'X':@im:char(130), 1)
+               if txt then
+                * if we've ever seen 'X':@im:char(130) length, then
+                * don't try the @im:'X':@im method
+*                 uselen = @true
+               end
+   
+*               if not(txt) and not(uselen) then
+               if not(txt) then
+                  txt = index(tblk, 'X':@im:'D', 1)
+                  if txt then txt -= 1
+               end
+   
+               if not(txt) then
+                  txt = index(tblk, 'X':@im:'I', 1)
+                  if txt then txt -= 1
+               end
+
+               if txt then
+                 last.txt = txt
+                 tblk = tblk[txt + 1, len(tblk)]
+                 txt = @false
+               end
+   
+            until tblk = '' or not(txt) do repeat
+
+            if last.txt then
+              xt = (last.txt + (len(ibuf) - (f3s + ln)) - tp$blksz)
+            end
+         end
+
+      end
+
+      !! to fix (most?) embedded EOI sequences
+      !! if xt and (xt < ln - 998) then xt = @false
+
+      if blk[1, 3] = @im : 'L ' then tp$lasttype = 'L'
+   end
+
+   return
+
+* ======================================================================
+
+tape.fillbuf:
+   gosub tape.getblk
+   if not(tp$eof or tp$eot) then ibuf := blk
+
+   return
+
+* ======================================================================
+
+read.label:
+   lbl = ''
+
+   * Read forwards to the next block, ignoring EOFs along the way as
+   * we may need to skip the second block of a double EOF.
+
+   loop
+      gosub tape.getblk
+      if tp$eot then return
+   while tp$eof
+   repeat
+
+   if blk[1, 2] = @im : 'L' then
+      lbl = blk[3, 78]
+      tp$lasttype = 'L'
+      if debugging then display 'LBL = ' : lbl
+   end
+
+   return
+
+* ======================================================================
+
+tape.fwd:
+   loop
+      gosub tape.getblk
+   until tp$eof or tp$eot or tp$lasttype = 'L'
+   repeat
+
+   return
+
+* ======================================================================
+* check.next - Find next reel/file name or prompt for one
+
+check.next:
+   * read failed in tape.getblk; initialize to EOF and EOT
+   reel.no = @false
+
+   * first try the PICK style filename-n approach
+   nh = dcount(tp$name, '-')
+
+   * found at least one hyphen, see if it's an "-n" suffix
+   if nh > 0 then
+      nh -= 1
+      dx = index(tp$name, '-', nh)
+      tmp.name = tp$name[1, dx]
+      reel.no = tp$name[dx+1, len(tp$name)]
+      if num(reel.no) then
+         * suffix seems to be "-n", increment it
+         reel.no += 1
+         tmp.name = tmp.name:reel.no
+         gosub open.tape
+      end else
+         * must be a hyphen in file-name, try appending "-1"
+         tmp.name := reel.no:'-1'
+         gosub open.tape
+      end
+   end
+
+   * see if the above found a tape
+   nl = len(tp$name)
+   if (not(tmp.name = '***Cancelled***') and not(reel.no)) then
+      * check if the last x number of chars are numeric
+      for nm = 4 to 0 step -1
+         tst = tp$name[(nl - nm) + 1, nl]
+         if num(tst) and tst >= 0 then exit
+      next nm
+      * looks like a numeric suffix, increment
+      if nm > 0 then
+         * for Ultimate style 1, 2, 3 ... instead of 001, 002, 003 ...
+         if tst = 9 or tst = 99 or tst = 999 then
+           frmt = "R%":nm+1
+         end else
+           frmt = "R%":nm
+         end
+         tmp.name = tp$name[1, (nl - nm)]:(tst +1) frmt
+         gosub open.tape
+      end else
+         * just try the next in a filenamennnn sequence
+         for rn = 4 to 1 step -1
+            reel.no = rn "R%":rn
+            tmp.name = tp$name:reel.no
+            gosub open.tape
+            if not(tp$eof) and not(tp$eot) then exit
+         next rn
+      end
+   end
+
+   * if none of the above worked, prompt user for file name
+   if tp$eof or tp$eot then
+      loop until not(tp$eot) or tmp.name = '' do
+         display sysmsg(7546) :
+         * End of reel detected. Please enter name if next reel (blank to quit)
+         input tmp.name
+         if tmp.name # '' then gosub open.tape
+      repeat
+
+      * if user wants to quit, then return EOT so the post restore routines
+      * (index building) will be executed
+      if tmp.name = '' then
+         tmp.name = '***Cancelled***'
+         tp$eot = @true
+         tp$eof = @true
+      end
+   end
+
+   return
+
+* ======================================================================
+* Open the pseudo-tape file (this should probably become a cataloged sub)
+*
+open.tape:
+   deffun errtext(n) calling "!errtext"
+
+   openseq tmp.name to tmp.fh locked
+      stop 'Device ':tmp.name:' is locked by user ' : status()
+   end then
+      * should already have block sizes (reel 01 set this)
+      * Test block sizes
+   end else
+      if status() then
+         display sysmsg(7535, status(), errtext(status()))
+         * Error %1 opening device (%2)
+      end
+      tp$eot = @true
+      tp$eof = @true
+      reel.no= @false
+      tmp.fh = @false
+   end
+
+   if tmp.fh then
+      tp$name = tmp.name
+      closeseq tp$fh
+      tp$fh = tmp.fh
+      tp$lastblk = 0
+      tp$ptr = 0
+      tp$lasttype = ''
+      tp$eof = @false
+      tp$eot = @false
+      closeseq tmp.fh
+   end
+
+   return
+
+* ======================================================================
+* check.list - check for the existence of a select list
+check.list:
+   begin case
+      case id.list # ''
+         null
+
+      case selectinfo(0, sl$active)      ;* using SELECT list
+         readnext record.name then
+            if not(no.query) and not(option(OPT.NO.SEL.LIST.QUERY)) then
+               loop
+                  ;* Use active select list (First item 'xx')?
+                  display sysmsg(2050, record.name) :
+                  prompt ""
+                  input reply
+
+                  if upcase(reply[1,1]) = "N" then stop
+
+               until upcase(reply[1,1]) = "Y"
+               repeat
+            end
+
+            readlist id.list else null
+            ins record.name before id.list<1>
+         end
+      case 1
+         id.list = ''
+   end case
+
+   return
+
+* ======================================================================
+* map.path  -  Transform illegal characters in o/s path name
+
+map.path:
+   if is.windows then
+      path = substitute(path, '*|%|+', '%A|%P|%V', '|')
+   end
+
+   return
+
+* ======================================================================
+* CONVERT.D.ITEM - Bring back the 'D' type items that were converted to
+* D3 'A' types during ACCOUNT-SAVE
+
+convert.d.item:
+   tmp.itm = 'D'
+   tmp.itm<2> = rec<2>
+   tmp.itm<3> = rec<8>
+   tmp.itm<4> = rec<3>
+   tmp.itm<5> = rec<10> : rec<9>
+   tmp.itm<6> = rec<17, 2>
+   tmp.itm<7> = rec<17, 3>
+   tmp.itm<8> = rec<17, 4>
+
+   rec = tmp.itm
+
+   return
+
+* ======================================================================
+* Build indices as indicated in D3 ACCOUNT-SAVE dict items
+*
+create.index:
+   qmidx = @false
+   no.idx = dcount(index.list, @fm)
+
+   for i = 1 to no.idx
+      tmp = index.list<i>
+      data.path = tmp<1, 1>
+      dict.name = tmp<1, 2>
+      cur.account = tmp<1, 3>
+      item.name = tmp<1, 4>
+
+      if item.name[1, 4] = 'QMI:' then
+        qmidx = @true
+        item.name = item.name[5, len(item.name)]
+      end
+
+      * Check if this index already exists
+
+      openpath data.path to data.f then
+         index.data = indices(data.f, item.name)
+         close data.f
+         begin case
+            case index.data = ''                   ;* New index
+               build.modes = MKI$CREATE + MKI$BUILD
+            case index.data<1, 2> = 1              ;* Needs building
+               build.modes = MKI$BUILD
+            case 1                                 ;* Already built
+               continue
+         end case
+      end
+
+      read acc.rec from acc.f, cur.account else
+         display sysmsg(2201, cur.account)  ;* Account name '%1' is not in register
+         goto abort.restore
+      end
+
+      acc.path = parse.pathname.tokens(acc.rec<ACC$PATH>)
+      dict.path = acc.path:@ds:dict.name:'.DIC'
+
+      del tmp<1, 1>
+      del tmp<1, 1>
+      del tmp<1, 1>
+      del tmp<1, 1>
+      convert @vm to @fm in tmp
+
+      display sysmsg(7514, data.path, item.name, dict.path)
+      * Creating index for %1 %2. Dict %3
+
+      if not(qmidx) then
+        openpath dict.path to dict.f else
+           display sysmsg(1427, dict.path)  ;* Cannot open %1
+           goto abort.restore
+        end
+        if binary then mark.mapping dict.f, off
+
+        recordlocku dict.f, item.name
+        write tmp to dict.f, item.name
+        close dict.f
+      end
+
+      call $mkindx(data.path, dict.path, '', item.name, build.modes, err)
+      if err then
+         display sysmsg(7513, data.path, item.name)  ;* Failed to create index %1 %2
+      end
+   next i
+
+   return
+
+   * Avoid compiler warnings
+   dummy = dummy
+end
+
+* END-CODE

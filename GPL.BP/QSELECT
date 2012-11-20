@@ -1,0 +1,242 @@
+* QSELECT
+* QSELECT command
+* Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 29 Aug 07  2.6-0 Use select list 0 by default.
+* 02 Nov 06  2.4-15 Dictionary record types now case insensitive.
+* 01 Jun 05  2.2-1 Expanded FORMLIST inline to remove unnecessary CONVERT().
+* 28 Mar 05  2.1-11 Use PARSER$MFILE.
+* 30 Dec 04  2.1-0 Added support for A/S type items with no correlative.
+* 13 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    QSELECT {DICT} file.name {records | *} {options}
+*
+*    Options are:
+*       SAVING n         Save field n. A field name may be used.
+*       FROM n           Use list n as source of record ids.
+*       TO n             Generate list n.
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+
+$internal
+program $qselect
+$catalog $qselect
+
+$include err.h
+
+$include syscom.h
+$include parser.h
+$include keys.h
+$include dictdict.h
+$include int$keys.h
+
+   parser = "!PARSER"
+
+   @system.return.code = -ER$ARGS     ;* Preset for command format errors
+
+* ---------------  Step 1 -  Parse the command
+
+   dict.flag = ''
+   src.list = -1
+   tgt.list = -1
+   all = @false
+   id.list = ''
+   saving = -1
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+
+   * Get file name
+
+   call @parser(PARSER$MFILE, token.type, file.name, keyword)
+   if keyword = KW$DICT then
+      dict.flag = 'DICT'
+      call @parser(PARSER$MFILE, token.type, file.name, keyword)
+   end
+   if token.type = PARSER$END then stop sysmsg(2102) ;* File name required
+
+   * Open the file
+
+   open dict.flag, file.name to src.f else
+      open dict.flag, upcase(file.name) to src.f else
+         @system.return.code = -status()
+         stop sysmsg(1430, status())  ;* Error xx opening xx
+      end
+       file.name = upcase(file.name)
+   end
+
+   * Open the dictionary if possible
+
+   if dict.flag = '' then open 'DICT', file.name to dict.f else null
+   else open 'DICT.DICT' to dict.f else null
+
+   * Process options
+
+   option.found = @false
+   loop
+      call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   until token.type = PARSER$END
+      begin case
+         case keyword = KW$FROM
+            option.found = @true
+            if src.list >= 0 then stop sysmsg(3280) ;* Source list specified twice
+
+            call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+            if token.type = PARSER$END then
+               stop sysmsg(3281) ;* Source list number missing or invalid
+            end
+
+            if token matches '1-2N' and token >= 0 and token <= 10 then
+               src.list = token + 0
+            end else
+               stop sysmsg(3281) ;* Source list number missing or invalid
+            end
+
+         case keyword = KW$SAVING
+            option.found = @true
+
+            if saving >= 0 then stop sysmsg(3282) ;* More than one SAVING clause
+
+            call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+            if token.type = PARSER$END then
+               stop sysmsg(3283) ;* Field name or number required after SAVING
+            end
+
+            if token matches '1N0N' and token > 0 then
+               saving = token + 0
+            end else
+               if fileinfo(dict.f, FL$OPEN) then
+                  read dict.rec from dict.f, token else
+                     read dict.rec from dict.f, upcase(token) else
+                        stop sysmsg(3284, token) ;* xx is not a valid field name or number'
+                     end
+                  end
+
+                  type = upcase(dict.rec[1,1])
+                  begin case
+                     case type = 'D'
+                        null
+                     case (type = 'A' or type = 'S') and dict.rec<DICT.A.CORRELATIVE> = ''
+                        null
+                     case 1
+                        stop sysmsg(3285, token) ;* %1 is not of suitable type for this operation
+                  end case
+
+                  saving = dict.rec<2>
+                  if not(saving matches '1N0N') then
+                     stop sysmsg(3286, token) ;* xx dictionary item has no field number
+                  end
+               end else
+                  stop sysmsg(3284, token) ;* xx is not a valid field name or number'
+               end
+            end
+
+         case keyword = KW$TO
+            option.found = @true
+            if tgt.list >= 0 then stop sysmsg(3287) ;* Target list specified twice
+
+            call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+            if token.type = PARSER$END then
+               stop sysmsg(3288) ;* Target list number missing or invalid
+            end
+
+            if token matches '1-2N' and token >= 0 and token <= 10 then
+               tgt.list = token + 0
+            end else
+               stop sysmsg(3288) ;* Target list number missing or invalid
+            end
+
+         case 1
+             if option.found then stop sysmsg(2018) ;* Unexpected token (xx)
+             if token = '*' then
+                if all then stop sysmsg(3289) ;* '*' token appears more than once
+                all = @true
+             end else
+                id.list<-1> = token
+             end
+      end case
+   repeat
+
+   * Check consistency of options
+
+   n = (id.list # '') + all + (src.list >= 0)
+   begin case
+      case n = 0   ;* No records to process
+         if not(selectinfo(0, SL$ACTIVE)) then
+            stop sysmsg(3290) ;* No records specified to process
+         end
+
+         src.list = 0
+
+      case n > 1   ;* More than one source specified
+         stop sysmsg(3291) ;* Incompatible record id specification options used
+   end case
+
+   if tgt.list < 0 then tgt.list = 0
+
+   * Identify source records
+
+   begin case
+      case src.list >= 0
+         null
+
+      case id.list # ''
+         src.list = 11
+         formlist id.list to 11
+
+      case all
+         src.list = 11
+         select src.f to 11
+   end case
+   
+   * Process data
+
+   list = ''
+   loop
+      readnext id from src.list else exit
+      read rec from src.f, id then
+         begin case
+            case saving > 0    ;* Save specific field
+               list<-1> = convert(@vm:@sm, @fm:@fm, rec<saving>)
+            case saving = 0    ;* Save record id
+               list<-1> = convert(@vm:@sm, @fm:@fm, id)
+            case 1             ;* Save all fields
+               list<-1> = convert(@vm:@sm, @fm:@fm, rec)
+         end case
+      end
+   repeat
+
+
+   formlist list to tgt.list
+   
+   @system.return.code = selectinfo(tgt.list, SL$COUNT)
+   display sysmsg(3261, @system.return.code) ; * xx records selected to select list xx
+
+   return
+end
+
+* END-CODE

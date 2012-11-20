@@ -1,0 +1,110 @@
+* NLS
+* Set or report NLS parameters.
+* Copyright (c) 2004 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 14 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*   NLS {parameter {value}}
+*   NLS DEFAULT
+*
+*   CURRENCY      National currency symbol
+*   THOUSANDS     Thousands separator
+*   DECIMAL       Decimal separator
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program nls
+$catalog $NLS
+
+$include parser.h
+$include err.h
+$include keys.h
+
+   parser = "!PARSER"
+   @system.return.code = -ER$ARGS     ;* Preset for argument errors
+
+   call @parser(parser$reset, 0, @sentence, 0)
+   call @parser(parser$get.token, token.type, token, keyword) ;* Verb
+
+   * Get NLS key
+
+   call @parser(parser$get.token, token.type, key, keyword)
+   if token.type = PARSER$END then    ;* Report all settings
+      crt sysmsg(6900, getnls(NLS$CURRENCY))
+      crt sysmsg(6901, getnls(NLS$THOUSANDS))
+      crt sysmsg(6902, getnls(NLS$DECIMAL))
+      goto done
+   end
+
+   call @parser(parser$get.token, token.type, value, kw)
+   if token.type = PARSER$END then ;* Report specific setting or set defaults
+      begin case
+         case keyword = KW$DEFAULT
+            setnls NLS$CURRENCY, "$"
+            setnls NLS$THOUSANDS, ","
+            setnls NLS$DECIMAL, "."
+
+
+         case keyword = KW$CURRENCY
+            crt sysmsg(6900, getnls(NLS$CURRENCY))
+
+         case keyword = KW$THOUSANDS
+            crt sysmsg(6901, getnls(NLS$THOUSANDS))
+
+         case keyword = KW$DECIMAL
+            crt sysmsg(6902, getnls(NLS$DECIMAL))
+
+         case 1
+            stop sysmsg(6903, key) ;* %1 is not a recognised NLS key
+       end case
+       goto done
+   end
+
+   call @parser(parser$get.token, token.type, token, kw)
+   if token.type # PARSER$END then stop sysmsg(2018, token) ;* Unexpected token (xx)
+
+   * Set NLS parameter
+
+   begin case
+      case keyword = KW$CURRENCY
+         setnls NLS$CURRENCY, value
+
+      case keyword = KW$THOUSANDS
+         setnls NLS$THOUSANDS, value
+
+      case keyword = KW$DECIMAL
+         setnls NLS$DECIMAL, value
+
+      case 1
+         stop sysmsg(6903, key) ;* %1 is not a recognised NLS key
+   end case
+
+done:
+   @system.return.code = 0
+end
+
+* END-CODE

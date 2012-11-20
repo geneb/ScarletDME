@@ -1,0 +1,1498 @@
+* VBSRVR
+* VB server process.
+* Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 04 Oct 07  2.6-5 Added network traffic logging option.
+* 03 Oct 07  2.6-5 Use parse.pathname.tokens() when processing ACCOUNTS record.
+* 23 Jul 07  2.5-7 Added checks for QMNet on operations that should not be
+*                  permitted on such connections.
+* 17 May 07  2.5-5 Username is now maintained by kernel.
+* 07 Feb 07  2.4-20 Increased cmnd buffer trimming to allow very large writes.
+* 02 Nov 06  2.4-15 VOC record types now case insensitive.
+* 17 Aug 06  2.4-11 Added ON.LOGTO support.
+* 16 May 06  2.4-4 Store account name, not path in @WHO.
+* 09 Mar 06  2.3-8 Added SrvrMarkMapping.
+* 25 Jan 06  2.3-5 0452 Set private catalogue path when entering account.
+* 05 Jan 06  2.3-3 Added QMSetLeft() QMSetRight(), QMSelectLeft() and
+*                  QMSelectRight().
+* 24 Nov 05  2.2-17 Set @date and @time.
+* 06 Oct 05  2.2-14 Added support for multiple breakpoint values.
+* 26 Sep 05  2.2-12 Return @system.return.code via QMStatus() after use of
+*                   QMExecute().
+* 25 Sep 05  2.2-12 0414 ACCOUNT.PATH should only be forced to uppercase on
+*                   Windows.
+* 02 Aug 05  2.2-7 Trap loss of connection.
+* 26 Apr 05  2.1-13 0346 vb.close() was using the wrong index into the files
+*                   table.
+* 18 Oct 04  2.0-5 Use message handler.
+* 09 Oct 04  2.0-5 Added ALIAS support.
+* 26 Sep 04  2.0-2 Removed licence check for GPL version.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* All actions return:
+*    0 - 1   server error status (see below)
+*    2 - 5   status()
+*    6+      action specific data
+* 
+* All numbers in the client packets are low byte first regardless of the
+* server platform byte ordering.
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+* Server error status values
+$define SV$OK               0    ;* Action successful
+$define SV$ON.ERROR         1    ;* Action took ON ERROR clause
+$define SV$ELSE             2    ;* Action took ELSE clause
+$define SV$ERROR            3    ;* Action failed. Error text available
+$define SV$LOCKED           4    ;* Took locked clause
+
+$define MAX.ARG.COUNT     255
+
+$internal
+program vbsrvr
+$catalog $VBSRVR
+
+$flags cproc
+$flags trusted
+
+$execute 'RUN REVSTAMP'
+$include revstamp.h
+
+$include syscom.h
+$include int$keys.h
+$include header.h
+
+$include err.h
+$include keys.h
+
+
+common /$VBSRVR/ logged.in,          ;* Process is logged in
+                 files(100),         ;* Array of file variables
+                 logging             ;* Logging network traffic?
+
+   * If this is the first time through, initialise various things in
+   * the SYSCOM common block.
+
+   if not(kernel(K$CPROC.LEVEL,0)) then
+      abort.message = ""
+
+      parser = "!PARSER"          ;* Command parser subroutine
+
+      * Attach to QMSYS directory
+
+      if not(ospath(@qmsys, OS$CD)) then
+         abort.message = sysmsg(5261) ;* Cannot attach to QMSYS
+         goto connection.failed
+      end
+
+      clearselect all
+      i = high.select
+      loop
+      while i > high.user.select
+         clearselect i
+         i -= 1
+      repeat
+
+      i = kernel(K$CPROC.LEVEL,1)
+      xeq.command = ""
+      data.queue = ""
+      command.stack = ""
+      at.sentence = ""
+      last.command = ""
+      sys.bell = char(7)
+      user.return.code = 0
+      aliased.commands = ''
+      alias.targets = ''
+      default.style.rec = ''
+      logname = kernel(K$USERNAME, 0)
+      if system(91) then logname = upcase(logname)
+      mat qproc.breakpoint.value = ''
+      user.var.names = ''
+      user.var.values = ''
+      itype.mode = 0                  ;* Standard I-type
+      trigger.return.code = 0
+      dir.separator = if system(91) then '\' else '/'
+
+      echo on
+
+      logging = bitand(config('DEBUG'), 0x20)
+
+
+   account.path = ospath("", os$cwd)     ;* @PATH 
+   if system(91) then account.path = upcase(account.path) ;* 0414
+      initial.account.path = account.path
+      who = upcase(account.path[index(account.path, @ds, count(account.path, @ds)) + 1, 99999]) ;* 0414
+      abort.code = 0
+
+      tty = 'vbsrvr'
+
+      openpath "VOC" to voc else
+         abort.message = sysmsg(2026) ;* Cannot open VOC
+         goto connection.failed
+      end
+
+
+      * Open IPC file and delete any items for old versions of this process id
+
+      openpath @qmsys:@ds:'$IPC' to ipc.f then
+         recordlocku ipc.f,'M':@userno     ;* Message queue
+         delete ipc.f, 'M':@userno
+
+         recordlocku ipc.f,'P':@userno     ;* Phantom register
+         delete ipc.f, 'P':@userno
+      end
+
+      * If we are on an NT style system, we need to establish whether this
+      * user is an administrator.  For non-NT style systems this will be
+      * done by the login process.
+
+      if system(1006) then     ;* Windows NT style
+         openpath @qmsys:@ds:'$LOGINS' to lgn.f else
+            abort.message = sysmsg(6050) ;* Cannot open $LOGINS register
+            goto connection.failed
+         end
+
+         lgn.id = logname
+         read lgn.rec from lgn.f, lgn.id else null
+         close lgn.f
+         i = kernel(K$ADMINISTRATOR,lgn.rec<LGN$ADMIN>)
+      end
+   end else   ;* Abort
+      abort.code = abort.cause()
+      clearselect
+      echo on
+      hush off
+
+      if abort.code = K$LOGOUT then goto abort.vbsrvr
+
+      server.error = SV$ON.ERROR
+      st = status()
+      writepkt iconv(server.error, 'ISL'):iconv(st, 'ILL'):@abort.message
+   end
+
+   gosub reset.environment
+
+   if logging then
+      openseq config('TEMPDIR'):@ds:'vbsrvr':@userno:'.log' overwrite to log.f else
+         if status() then logging = @false
+      end
+   end
+
+
+   * Main processing loop
+
+   dim args(MAX.ARG.COUNT)
+
+   error.msg = ''
+   done = @false
+
+   loop
+      unload.object               ;* Unload inactive object code
+
+      * Fetch new command
+
+      cmnd = readpkt()
+      if cmnd = '' then
+         logmsg sysmsg(5271) ;* Connection to client lost
+         goto abort.vbsrvr
+      end
+
+      if logging then
+         s = oconv(cmnd, 'MX0C')
+         writeseq '> ' : s[1,4] : ' ' : s[5,1000] to log.f else null
+      end
+
+      action = oconv(cmnd[1,2], 'ISL')
+
+      cmnd = cmnd[3,99999999]          ;* Strip off action code
+      response = ''
+      server.error = SV$OK           ;* Assume success
+
+      if not(logged.in) then
+         if system(1006) then logged.in = @true ;* Done by QMSvc service
+         else if action # 24 and action # 25 then
+            abort.message = sysmsg(5270) ;* Not logged in
+            goto connection.failed
+         end
+      end
+
+      cproc.date = date()
+      cproc.time = time()
+
+      on action + 1 gosub vb.illegal.action,
+         vb.quit,           ;*   1   Quit
+         vb.geterror,       ;*   2   Get extended error text
+         vb.account,        ;*   3   Set account
+         vb.open,           ;*   4   Open file
+         vb.close,          ;*   5   Close file
+         vb.read,           ;*   6   Read record (READ)
+         vb.readl,          ;*   7   Read record (READL)
+         vb.readlw,         ;*   8   Read record (READL, waiting)
+         vb.readu,          ;*   9   Read record (READU)
+         vb.readuw,         ;*  10   Read record (READU, waiting)
+         vb.select,         ;*  11   Select file
+         vb.readnext,       ;*  12   Read next id from select list
+         vb.clearselect,    ;*  13   Clear select list
+         vb.readlist,       ;*  14   Read select list
+         vb.release,        ;*  15   Release lock
+         vb.write,          ;*  16   Write record
+         vb.writeu,         ;*  17   Write record, retaining lock
+         vb.delete,         ;*  18   Delete record
+         vb.deleteu,        ;*  19   Delete record, retaining lock
+         vb.call,           ;*  20   Call catalogued subroutine
+         vb.execute,        ;*  21   Execute command
+         vb.respond,        ;*  22   Response to input
+         vb.endcommand,     ;*  23   End command
+         vb.login,          ;*  24   Network login
+         vb.local.login,    ;*  25   QMLocal login
+         vb.selectindex,    ;*  26   Select index
+         vb.enter.package,  ;*  27   Enter licensed package
+         vb.exit.package,   ;*  28   Exit licensed package
+         vb.open.qmnet,     ;*  29   Open QMNet file
+         vb.lock.record,    ;*  30   Lock a record
+         vb.clearfile,      ;*  31   Clearfile
+         vb.filelock,       ;*  32   Get file lock
+         vb.fileunlock,     ;*  33   Release file lock
+         vb.recordlocked,   ;*  34   Test lock
+         vb.indices1,       ;*  35   Fetch information about indices
+         vb.indices2,       ;*  36   Fetch information about an index
+         vb.selectlist,     ;*  37   Select file and return list
+         vb.selectindexv,   ;*  38   Select index, returning indexed values
+         vb.selectindexk,   ;*  39   Select index, returning keys for value
+         vb.fileinfo,       ;*  40   Perform FILEINFO() action
+         vb.readv,          ;*  41   READV and variants
+         vb.setleft,        ;*  42   Set index at extreme left
+         vb.setright,       ;*  43   Set index at extreme right
+         vb.selectleft,     ;*  44   Scan index to left
+         vb.selectright,    ;*  45   Scan index to right
+         vb.mark.mapping,   ;*  46   Enable/disable mark mapping
+         vb.illegal.action
+
+      st = status()
+return.status.set:     ;* Return to here if ST already set
+
+      if server.error = SV$ON.ERROR then response = @abort.message
+
+      if logging then
+         s = oconv(iconv(server.error, 'ISL'):iconv(st, 'ILL'):response, 'MX0C')
+         writeseq '< ' : s[1,4] : ' ' : s[5,8] : ' ' : s[13,1000] to log.f else null
+      end 
+
+      writepkt iconv(server.error, 'ISL'):iconv(st, 'ILL'):response
+   until done
+   repeat
+ 
+abort.vbsrvr:
+   return to abort.vbsrvr
+
+connection.failed:
+   server.error = SV$ON.ERROR
+   st = status()
+   writepkt iconv(server.error, 'ISL'):iconv(st, 'ILL'):@abort.message
+   goto abort.vbsrvr
+
+* ======================================================================
+
+reset.environment:
+   i = ospath("", os$flush.cache)
+
+   cleardata               ;* Clear any unused DATA queue entries
+
+   printer close on -3     ;* Close all printers at this or higher level
+   printer off
+   heading ""              ;* Ensure no heading or...
+   footing ""              ;* ...footing on default print unit
+
+   inline.prompts = ""     ;* Cast off inline prompts...
+   inline.responses = ""   ;* ...and responses
+
+   i = kernel(K$CPROC.LEVEL,0)
+   delete.common '$':i   ;* Delete unnamed common
+
+   return
+
+* ======================================================================
+
+vb.illegal.action:
+   server.error = SV$ERROR
+   error.msg = "Illegal action code (" : action : ")"
+   return
+
+* ======================================================================
+* SrvrQuit  -  Disconnect server
+
+vb.quit:
+  done = @true
+  return
+
+* ======================================================================
+* SrvrGetError  -  Return extended error text
+
+vb.geterror:
+   response = error.msg
+   return
+
+* ======================================================================
+* SrvrAccount  -  Logto named account
+* In:  account name or path
+
+vb.account:
+   * Run the ON.LOGTO paragraph, if it exists
+
+   readv i from @voc,'ON.LOGTO',0 on error null
+   then execute 'ON.LOGTO' trapping aborts capturing response
+
+   new.account = upcase(cmnd)
+
+   old.account.path = account.path
+
+   if len(new.account) < 1 or len(new.account) > MAX.ACCOUNT.NAME.LEN then
+      server.error = SV$ERROR
+      error.msg = sysmsg(5037) ;* Invalid account name
+      goto revert.to.old.account
+   end
+
+   account.path = new.account
+   if index(new.account, @ds, 1) = 0 then
+      openpath @qmsys:@ds:'ACCOUNTS' to acc.f then
+         read acc.rec from acc.f, new.account then
+            account.path = parse.pathname.tokens(acc.rec<ACC$PATH>)
+         end
+         close acc.f
+      end
+   end
+
+   if not(ospath(account.path, OS$CD)) then
+      server.error = SV$ERROR
+      error.msg = sysmsg(5019, account.path) ;* Unable to change to directory %1
+      goto revert.to.old.account
+   end
+
+   openpath "VOC" to new.voc else
+      server.error = SV$ERROR
+      error.msg = sysmsg(5163) ;* Directory is not a QM account
+      goto revert.to.old.account
+   end
+
+   i = ospath("", os$flush.cache)
+
+   account.path = ospath("", os$cwd)     ;* Ensure @PATH is absolute path
+   if system(91) then account.path = upcase(account.path)  ;* 0414
+   initial.account.path = account.path   ;* Make WHO show only one element
+   who = new.account
+
+   voc = new.voc
+
+   * 0452 Set up the private catalogue pathname
+
+   private.catalogue = 'cat'
+   read voc.rec from voc, "$PRIVATE.CATALOGUE" then
+      if upcase(voc.rec[1,1]) = 'X' then private.catalogue = voc.rec<2>
+   end
+
+   i = kernel(K$PRIVATE.CATALOGUE, private.catalogue)
+
+   * Run the LOGIN paragraph, if it exists
+
+   readv i from @voc,'LOGIN',0 on error null
+   then execute 'LOGIN' trapping aborts capturing response
+
+   return
+
+revert.to.old.account:
+   if not(ospath(old.account.path, OS$CD)) then
+      server.error = SV$ERROR
+      error.msg = sysmsg(5162) ;* Fatal error : Cannot return to previous account
+      return to abort.vbsrvr
+   end
+
+   return
+
+* ======================================================================
+* Open file
+* In:  fname
+* Out: fileno (short integer)
+
+vb.open:
+   if kernel(K$QMNET, -1)  or config("QMCLIENT") # 0 then
+      abort.message = sysmsg(5262) ;* File access is disabled
+      server.error = SV$ON.ERROR
+      return
+   end
+
+   * Locate a spare file table entry
+
+   n = inmat(files)
+
+   for i = 1 to n
+      if not(fileinfo(files(i), FL$OPEN)) then goto vb.open.continue
+   next i
+
+   * Extend file table
+
+   dim files(n + 50)
+   i = n + 1
+
+vb.open.continue:
+   * Open file to file table entry i
+
+   open cmnd to files(i)
+   on error server.error = SV$ON.ERROR
+   then
+      if bitand(fileinfo(files(i), FL$FLAGS), FL$FLAGS.TRUSTED) then
+         server.error = SV$ELSE
+      end else
+         response = iconv(i, 'ISL')
+      end
+   end
+   else server.error = SV$ELSE
+
+   return
+
+* ======================================================================
+* Close file
+* In:  fileno (short integer)
+* Out:
+
+vb.close:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   close files(fno)   ;* 0346
+
+   return
+
+* ======================================================================
+* Read record
+* In:  fileno (short integer)
+*      id
+* Out: record
+
+vb.read:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   id = cmnd[3,99]
+   read rec from files(fno), id
+   on error
+      server.error = SV$ON.ERROR
+   end then
+      response = rec
+   end else
+      server.error = SV$ELSE
+   end
+
+   return
+
+* ======================================================================
+* Read record with shared lock
+* In:  fileno (short integer)
+*      id
+* Out: record
+
+vb.readl:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   id = cmnd[3,99]
+   readl rec from files(fno), id
+   on error
+      server.error = SV$ON.ERROR
+   end locked
+      server.error = SV$LOCKED
+   end then
+      response = rec
+   end else
+      server.error = SV$ELSE
+   end
+
+   return
+
+* ======================================================================
+* Read record with shared lock, waiting if locked
+* In:  fileno (short integer)
+*      id
+* Out: record
+
+vb.readlw:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   id = cmnd[3,99]
+   readl rec from files(fno), id
+   on error
+      server.error = SV$ON.ERROR
+   end then
+      response = rec
+   end else
+      server.error = SV$ELSE
+   end
+
+   return
+
+* ======================================================================
+* Read record with exclusive lock
+* In:  fileno (short integer)
+*      id
+* Out: record
+
+vb.readu:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   id = cmnd[3,99]
+   readu rec from files(fno), id
+   on error
+      server.error = SV$ON.ERROR
+   end locked
+      server.error = SV$LOCKED
+   end then
+      response = rec
+   end else
+      server.error = SV$ELSE
+   end
+
+   return
+
+* ======================================================================
+* Read record with exclusive lock, waiting if locked
+* In:  fileno (short integer)
+*      id
+* Out: record
+
+vb.readuw:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   id = cmnd[3,99]
+   readu rec from files(fno), id
+   on error
+      server.error = SV$ON.ERROR
+   end then
+      response = rec
+   end else
+      server.error = SV$ELSE
+   end
+
+   return
+
+* ======================================================================
+* Select file
+* In:  file no  (short int)
+*      list no  (short int)
+
+vb.select:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   listno = oconv(cmnd[3,2], 'ISL')
+   gosub check.list
+   if err then return
+
+   select files(fno) to listno
+
+   return
+
+* ======================================================================
+* Read next entry from select list
+* In:  listno (short integer)
+* Out: id
+
+vb.readnext:
+   listno = oconv(cmnd[1,2], 'ISL')
+   gosub check.list
+   if err then return
+
+   readnext response from listno else server.error = SV$ELSE
+
+   return
+
+* ======================================================================
+* Clear select list
+* In:  listno (short integer)
+
+vb.clearselect:
+   listno = oconv(cmnd[1,2], 'ISL')
+   gosub check.list
+   if err then return
+
+   clearselect listno
+
+   return
+
+* ======================================================================
+* Read select list
+* In:  listno (short integer)
+
+vb.readlist:
+   listno = oconv(cmnd[1,2], 'ISL')
+   gosub check.list
+   if err then return
+
+   readlist response from listno else response = ''
+
+   return
+
+* ======================================================================
+* Release lock
+* In:  fileno (short integer)
+*      id
+
+vb.release:
+   fno = oconv(cmnd[1,2], 'ISL')
+   if fno then               ;* 0249
+      gosub check.file
+      if err then return
+   end
+
+   id = cmnd[3,99]
+
+   begin case
+      case fno = 0
+         release
+
+      case id = ''
+         release files(fno)
+
+      case 1
+         release files(fno), id
+   end case
+
+   return
+
+* ======================================================================
+* Write record
+* In:  fileno (short integer)
+*      id_len (short integer)
+*      id
+*      data
+
+vb.write:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   id.len = oconv(cmnd[3,2], 'ISL')
+   id = cmnd[5,id.len]
+
+   write cmnd[5 + id.len, 99999999] to files(fno), id
+   on error server.error = SV$ON.ERROR
+
+   return
+
+* ======================================================================
+* Write record, retaiining lock
+* In:  fileno (short integer)
+*      id_len (short integer)
+*      id
+*      data
+
+vb.writeu:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   id.len = oconv(cmnd[3,2], 'ISL')
+   id = cmnd[5,id.len]
+
+   writeu cmnd[5 + id.len, 99999999] to files(fno), id
+   on error server.error = SV$ON.ERROR
+
+   return
+
+* ======================================================================
+* Delete record
+* In:  fileno (short integer)
+*      id
+
+vb.delete:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   id = cmnd[3,99]
+   delete files(fno), id
+   on error server.error = SV$ON.ERROR
+
+   return
+
+* ======================================================================
+* Delete record, retaining lock
+* In:  fileno (short integer)
+*      id
+
+vb.deleteu:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   id = cmnd[3,99]
+
+   deleteu files(fno), id
+   on error server.error = SV$ON.ERROR
+
+   return
+
+* ======================================================================
+* Call catalogued subroutine
+* In:  subr name len (short integer)
+*      subr name (rounded to 2 byte boundary)
+*      arg count (short integer)
+*      arg len (long integer)
+*      arg data (rounded to 2 byte boundary)
+*
+* Out: arg no (short integer)   Always in ascending arg no order
+*      arg len (long integer)
+*      arg data (rounded to 2 byte boundary)
+
+vb.call:
+   name.len = oconv(cmnd[1,2], 'ISL')
+   if name.len < 1 or name.len > MAX.CALL.NAME.LEN then
+      abort.message = sysmsg(5263) ;* Invalid call name
+      server.error = SV$ON.ERROR
+      return
+   end
+
+   subr.name = cmnd[3,name.len]
+   pos = 3 + name.len + bitand(name.len, 1)
+
+   arg.count = oconv(cmnd[pos,2], 'ISL')
+   pos += 2
+
+   * Are we allowed to run this program?
+
+   obj.flags = load.object(subr.name)
+   if subr.name[1,1] = '$' or config("QMCLIENT") = 2 or kernel(K$QMNET, -1) then
+      if not(bitand(obj.flags, HDR.QMCALL.ALLOWED)) then
+         abort.message = sysmsg(5264, subr.name) ;* %1 cannot be called from a QMClient session
+         server.error = SV$ON.ERROR
+      end
+   end
+
+   if arg.count then
+      mat args = ''
+      for i = 1 to arg.count
+         arg.len = oconv(cmnd[pos,4], 'ILL')
+         pos += 4
+         args(i) = cmnd[pos,arg.len]
+         pos += arg.len + bitand(arg.len, 1)
+      next i
+
+      callv @subr.name, arg.count, args
+
+      * Now return values of changed arguments (if any)
+
+      for i = 1 to arg.count
+         if changed(args(i)) then
+            response := iconv(i, 'ISL') : iconv(len(args(i)), 'ILL') : args(i)
+            if bitand(len(args(i)), 1) then response := ' '
+         end
+      next i
+   end else
+      call @subr.name
+   end
+
+   gosub reset.environment
+   
+   return
+
+* ======================================================================
+* Execute command
+* In:  Command string
+* Out: Command output
+
+vb.execute:
+   if config("QMCLIENT") # 0  or kernel(K$QMNET, -1) then
+      abort.message = sysmsg(5265) ;* Command execution is disabled
+      server.error = SV$ON.ERROR
+      return
+   end
+
+   execute cmnd capturing response
+   st = @system.return.code
+   return to return.status.set
+
+* ======================================================================
+* Response to input
+* In:  Command string
+* Should never happen as client end should detect this
+
+vb.respond:
+   server.error = SV$ERROR
+   error.msg = sysmsg(5266) ;* Response to prompt sent when no prompt outstanding
+   return
+
+* ======================================================================
+* End command
+* Should never happen as client end should detect this
+
+vb.endcommand:
+   server.error = SV$ERROR
+   error.msg = sysmsg(5267) ;* End command request sent when no prompt outstanding
+   return
+
+* ======================================================================
+* Login user (Windows platforms except Windows 98 do this in QMSvc)
+* In:  username len (short integer)
+*      username padded to 2 byte multiple
+*      password len (short integer)
+*      password padded to 2 byte multiple
+
+vb.login:
+   openpath @qmsys:@ds:'$LOGINS' to lgn.f else
+      abort.message = sysmsg(6050) ;* Cannot open $LOGINS register
+      server.error = SV$ON.ERROR
+      return
+   end
+
+   read security.rec from lgn.f, '$SECURE' then
+      i = kernel(K$SECURE, security.rec<1>)
+   end
+
+   if kernel(K$SECURE, -1) or not(system(91)) then
+      * Extract user name
+
+      n = oconv(cmnd[1,2], 'ISL')
+      if n < 1 or n > MAX.USERNAME.LEN or cmnd[3,1] = '$' then
+         abort.message = sysmsg(5017) ;* Invalid user name or password
+         server.error = SV$ON.ERROR
+         goto exit.vb.login
+      end
+
+      username = cmnd[3,n]
+      if system(91) then username = upcase(username)
+      pos = 3 + n + bitand(n, 1)
+
+      * Extract password
+
+      n = oconv(cmnd[pos,2], 'ISL')
+      if n > MAX.USERNAME.LEN then
+         abort.message = sysmsg(5017) ;* Invalid user name or password
+         server.error = SV$ON.ERROR
+         goto exit.vb.login
+      end
+
+      password = cmnd[pos+2,n]
+      pos = 3 + n + bitand(n, 1)
+
+
+      if login(username, password) then
+         readu lgn.rec from lgn.f, username else
+            if security.rec<1> then
+               * To get here, we must be running an NT or Linux
+               * system, the user is not in the $LOGINS register and
+               * the security system is on. Reject this connection.
+
+               server.error = SV$ON.ERROR
+               abort.message = sysmsg(5009) ;* This user is not registered for QM use
+               goto exit.vb.login
+            end
+         end
+
+         lgn.rec<LGN$DATE> = date()
+         lgn.rec<LGN$TIME> = time()
+         recordlocku lgn.f, username
+         write lgn.rec to lgn.f, username
+
+         logname = username
+         i = kernel(K$ADMINISTRATOR,lgn.rec<LGN$ADMIN>)
+      end else
+         server.error = SV$ON.ERROR
+         abort.message = sysmsg(5017) ;* Invalid user name or password
+         sleep 3
+      end
+   end else      ;* System is insecure - no username/password checks
+      i = kernel(K$ADMINISTRATOR,1)    ;* All users are administrators
+   end
+
+exit.vb.login:
+   close lgn.f
+   if server.error = SV$OK then logged.in = @true
+   else done = @true
+
+   return
+
+* ======================================================================
+* Login user for QMLocal connection
+
+vb.local.login:
+   openpath @qmsys:@ds:'$LOGINS' to lgn.f else
+      abort.message = sysmsg(6050) ;* Cannot open $LOGINS register
+      server.error = SV$ON.ERROR
+      return
+   end
+
+   read security.rec from lgn.f, '$SECURE' then
+      i = kernel(K$SECURE, security.rec<1>)
+   end
+
+   username = logname
+
+   if kernel(K$SECURE, -1) then
+      readu lgn.rec from lgn.f, username else
+         if security.rec<1> then
+            * To get here, we must be running an NT or Linux
+            * system, the user is not in the $LOGINS register and
+            * the security system is on. Reject this connection.
+
+            server.error = SV$ON.ERROR
+            abort.message = sysmsg(5009) ;* This user is not registered for QM use
+            goto exit.vb.local.login
+         end
+      end
+
+      lgn.rec<LGN$DATE> = date()
+      lgn.rec<LGN$TIME> = time()
+      recordlocku lgn.f, username
+      write lgn.rec to lgn.f, username
+
+      logname = username
+      i = kernel(K$ADMINISTRATOR,lgn.rec<LGN$ADMIN>)
+   end else      ;* System is insecure
+      i = kernel(K$ADMINISTRATOR,1)    ;* All users are administrators
+   end
+
+exit.vb.local.login:
+   close lgn.f
+   if server.error = SV$OK then logged.in = @true
+   else done = @true
+
+   return
+
+* ======================================================================
+* Select index
+* In:  file no  (short int)
+*      list no  (short int)
+*      index name len (short int)
+*      index name (padded to 2 byte interval)
+*      index value len (short int)
+*      index value (padded to 2 byte interval)
+
+vb.selectindex:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   listno = oconv(cmnd[3,2], 'ISL')
+   gosub check.list
+   if err then return
+
+   * Extract index name
+
+   pos = 5
+   n = oconv(cmnd[pos,2], 'ISL')
+   pos += 2
+   index.name = cmnd[pos, n]
+   pos += n + bitand(n, 1)
+
+   * Extract index value
+
+   n = oconv(cmnd[pos,2], 'ISL')
+   pos += 2
+   index.value = cmnd[pos, n]
+
+   selectindex index.name, index.value from files(fno) to listno
+
+   return
+
+* ======================================================================
+* Enter licensed package
+* In:  name
+
+vb.enter.package:
+   if not(package(cmnd,1,0)) then server.error = SV$ELSE
+   return
+
+* ======================================================================
+* Exit licensed package
+* In:  name
+
+vb.exit.package:
+   if not(package(cmnd,0,0)) then server.error = SV$ELSE
+   return
+
+* ======================================================================
+* Open file QMNet file
+* In:  Account name;filename
+* Out: fileno (short integer)
+
+vb.open.qmnet:
+   if not(bitand(config('NETFILES'), 2)) then
+      set.status ER$XREMOTE
+      server.error = SV$ELSE
+      return
+   end
+
+   * Use of this operation identifies the process as a QMNet user.
+   * Set the appropriate process flag so that LISTU etc show this.
+
+   i = kernel(K$QMNET, 1)
+
+   * Locate a spare file table entry
+
+   n = inmat(files)
+
+   for i = 1 to n
+      if not(fileinfo(files(i), FL$OPEN)) then goto vb.open.qmnet.continue
+   next i
+
+   * Extend file table
+
+   dim files(n + 50)
+   i = n + 1
+
+vb.open.qmnet.continue:
+
+   * Open file to file table entry i
+
+   acc = field(cmnd, ';', 1)   ;* Account name or path
+   file = field(cmnd, ';', 1)  ;* File name
+
+   openpath @qmsys:@ds:'ACCOUNTS' to acc.f then
+      read acc.rec from acc.f, acc then
+         acc = parse.pathname.tokens(acc.rec<ACC$PATH>)
+      end
+      close acc.f
+   end
+
+   qvoc.path = acc:@ds:'VOC'
+   openpath qvoc.path to qvoc.f else
+      server.error = SV$ELSE
+      return
+   end
+
+   file = field(cmnd, ';', 2)
+   if file[1,5] = 'DICT ' then
+      j = 3
+      file = file[6,999]
+   end else
+       j = 2
+   end
+
+   read voc.rec from qvoc.f, file else null
+   close qvoc.f
+
+   if voc.rec[1,1] # 'F' then
+      set.status ER$VNF
+      server.error = SV$ELSE
+      return
+   end
+
+   path = voc.rec<j>
+   if path = '' then
+      set.status ER$NPN
+      server.error = SV$ELSE
+      return
+   end
+
+   if upcase(path[1,6]) = '@QMSYS' then path = @qmsys:path[7,9999]
+
+   if system(91) then   ;* Windows
+      if path[1,1] # @ds and path[2,2] # ':':@ds then
+         * Convert voc item to absolute path
+         if path[1,2] = ':' then  ;* Drive letter present
+            path = path[1,2] : acc : @ds : path[3,99999]
+         end else                  ;* No drive letter present
+            path = acc : @ds : path
+         end
+      end
+   end else             ;* Linux
+      if path[1,1] # @ds then
+         * Convert voc item to absolute path
+         path = acc : @ds : path
+      end
+   end
+
+   openpath path to files(i)
+   on error server.error = SV$ON.ERROR
+   then
+      if bitand(fileinfo(files(i), FL$FLAGS), FL$FLAGS.TRUSTED) then
+         server.error = SV$ELSE
+      end else
+         response = iconv(i, 'ISL')
+      end
+   end
+   else server.error = SV$ELSE
+
+   return
+
+* ======================================================================
+* Lock record
+* In:  fileno (short integer)
+*      flags (short integer)    0x0001 = Update lock, 0x0002 = no wait.
+*      id
+
+vb.lock.record:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   flags = oconv(cmnd[3,2], 'ISL')
+
+   id = cmnd[5,99]
+
+   begin case
+      case flags = 0
+         recordlockl files(fno), id
+      case flags = 1
+         recordlocku files(fno), id
+      case flags = 2
+         recordlockl files(fno), id locked server.error = SV$LOCKED
+      case flags = 3
+         recordlocku files(fno), id locked server.error = SV$LOCKED
+   end case
+
+   return
+
+* ======================================================================
+* Clear file
+* In:  fileno (short integer)
+* Out:
+
+vb.clearfile:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   clearfile files(i)
+
+   return
+
+* ======================================================================
+* Get file lock
+* In:  fileno (short integer)
+*      Wait?  (short integer)
+* Out:
+
+vb.filelock:
+   fno = oconv(cmnd[1,2], 'ISL')
+   wait = oconv(cmnd[3,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   if wait then
+      filelock files(i)
+   end else
+      filelock files(i) locked server.error = SV$LOCKED
+   end
+
+   return
+
+* ======================================================================
+* Release file lock
+* In:  fileno (short integer)
+* Out:
+
+vb.fileunlock:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   fileunlock files(i)
+
+   return
+
+* ======================================================================
+* Test lock
+* In:  fileno (short integer)
+*      id
+
+vb.recordlocked:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   id = cmnd[3,99]
+   i = recordlocked(files(fno), id)
+   st = status()
+   response = iconv(i, 'ILL');
+   set.status st
+
+   return
+
+* ======================================================================
+* Fetch information about indices
+* In:  fileno (short integer)
+
+vb.indices1:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   response = indices(files(fno))
+
+   return
+
+* ======================================================================
+* Fetch information about indices
+* In:  fileno (short integer)
+*      Index name
+
+vb.indices2:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   response = indices(files(fno), cmnd[3,99])
+
+   return
+
+* ======================================================================
+* Select file and return list
+* In:  fileno (short integer)
+
+vb.selectlist:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   select files(fno) to 11
+   readlist response from 11 else null
+
+   return
+
+* ======================================================================
+* Select index, returning indexed values
+* In:  fileno (short integer)
+*      index name
+
+vb.selectindexv:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   index.name = cmnd[3,999]
+   selectindex cmnd[3,99] from files(fno) to 11
+   readlist response from 11 else null
+
+   return
+
+* ======================================================================
+* Select index, returning keys for indexed value
+* In:  fileno (short integer)
+*      index name len (short integer)
+*      index name
+*      indexed value
+
+vb.selectindexk:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   i = oconv(cmnd[3,2], 'ISL')
+   index.name = cmnd[5,i]
+
+   selectindex index.name, cmnd[5+i,999] from files(fno) to 11
+   readlist response from 11 else null
+
+   return
+
+* ======================================================================
+* Perform FILEINFO() action
+* In:  fileno (short integer)
+*      key (long integer)
+
+vb.fileinfo:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   i = oconv(cmnd[3,4], 'ILL')
+   response = fileinfo(files(fno), i)
+
+   return
+
+* ======================================================================
+* READV and variants
+* In:  fileno (short integer)
+*      flags  (short integer) 1 = update lock, 2 = shared lock, 4 = no wait
+*      field no (long integer)
+*      id
+* Out: record data
+
+vb.readv:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   flags = oconv(cmnd[3,2], 'ISL')
+   field_no = oconv(cmnd[5,4], 'ILL')
+
+   id = cmnd[9,99]
+
+   begin case
+      case flags = 0
+         readv rec from files(fno), id, field_no
+         on error server.error = SV$ON.ERROR
+         then response = rec
+         else server.error = SV$ELSE
+
+      case flags = 1
+         readvu rec from files(fno), id, field_no
+         on error server.error = SV$ON.ERROR
+         then response = rec
+         else server.error = SV$ELSE
+
+      case flags = 2
+         readvl rec from files(fno), id, field_no
+         on error server.error = SV$ON.ERROR
+         then response = rec
+         else server.error = SV$ELSE
+
+      case flags = 5
+         readvu rec from files(fno), id, field_no
+         on error server.error = SV$ON.ERROR
+         locked server.error = SV$LOCKED
+         then response = rec
+         else server.error = SV$ELSE
+
+      case flags = 6
+         readvl rec from files(fno), id, field_no
+         on error server.error = SV$ON.ERROR
+         locked server.error = SV$LOCKED
+         then response = rec
+         else server.error = SV$ELSE
+   end case
+
+   return
+
+* ======================================================================
+* SetLeft
+* In:  fileno (short integer)
+*      index name
+
+vb.setleft:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   setleft cmnd[3,999] from files(fno)
+
+   return
+
+* ======================================================================
+* SetRight
+* In:  fileno (short integer)
+*      index name
+
+vb.setright:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   setright cmnd[3,999] from files(fno)
+
+   return
+
+* ======================================================================
+* SelectLeft
+* In:  fileno (short integer)
+*      list no (short integer)
+*      index name
+
+vb.selectleft:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   listno = oconv(cmnd[3,2], 'ISL')
+
+   selectleft cmnd[5,999] from files(fno) setting response to listno
+
+   return
+
+* ======================================================================
+* SelectRight
+* In:  fileno (short integer)
+*      list no (short integer)
+*      index name
+
+vb.selectright:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   listno = oconv(cmnd[3,2], 'ISL')
+
+   selectright cmnd[5,999] from files(fno) setting response to listno
+
+* ======================================================================
+* MarkMapping
+* In:  fileno (short integer)
+*      state (short integer)
+
+vb.mark.mapping:
+   fno = oconv(cmnd[1,2], 'ISL')
+   gosub check.file
+   if err then return
+
+   mark.mapping files(fno), oconv(cmnd[3,2], 'ISL')
+
+   return
+
+* ======================================================================
+check.file:
+   err = @true
+
+   if fno < 1 or fno > inmat(files) then      ;* Invalid file number
+      server.error = SV$ERROR
+      error.msg = sysmsg(5268) ;* Invalid file number
+      return
+   end
+
+   if not(fileinfo(files(fno), FL$OPEN)) then ;* File not open
+      server.error = SV$ERROR
+      error.msg = sysmsg(5268) ;* Invalid file number
+      return
+   end    
+
+   err = @false
+   return
+
+
+* ======================================================================
+check.list:
+   err = @true
+
+   if listno < 0 or listno > 10 then      ;* Invalid list number   0225
+      server.error = SV$ERROR
+      error.msg = sysmsg(5269) ;* Invalid select list number
+      return
+   end
+
+   err = @false
+   return
+end
+
+
+
+* END-CODE

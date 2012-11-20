@@ -1,0 +1,137 @@
+* CREATEU
+* CREATE.USER verb
+* Copyright (c) 2005 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 15 Apr 05  2.1-12 Allow spaces in user names for Windows compatibility.
+* 13 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* CREATE.USER username {account}
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+$flags trusted
+program $create.user
+$catalog $CREATEU
+
+$include int$keys.h
+$include parser.h
+$include err.h
+
+   prompt ''
+
+   parser = "!PARSER"
+   letters= 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+   others = '0123456789.- '
+
+   @system.return.code = -ER$ARGS     ;* Preset for argument errors
+
+
+   if not(kernel(K$ADMINISTRATOR,-1)) then
+      stop sysmsg(2001) ;* Command requires administrator privileges
+   end
+
+   openpath @qmsys:@ds:'$LOGINS' to lgn.f else
+      @system.return.code = -status()
+      stop sysmsg(6050) ;* Cannot open $LOGINS register in QMSYS account
+   end
+
+   openpath @qmsys:@ds:'ACCOUNTS' to acc.f else
+      @system.return.code = -status()
+      stop sysmsg(6000) ;* Cannot open ACCOUNTS register in QMSYS account
+   end
+
+
+   call @parser(parser$reset, 0, @sentence, 0)
+   call @parser(parser$get.token, token.type, token, keyword) ;* Verb
+
+   * Get and process user name
+
+   call @parser(parser$get.token, token.type, username, keyword)
+   if token.type = PARSER$END then
+      display sysmsg(6051) :  ;* User name:
+      input username
+      username = trim(username)
+      if username = '' then stop
+   end
+
+   * Validate user name
+
+   if system(91) then username = upcase(username)
+   if len(username) < 1 or len(username) > MAX.USERNAME.LEN or convert(letters:others, '', username) # '' then
+      stop sysmsg(6052) ;* User name is invalid
+   end
+
+
+   * Check if already exists in $LOGINS file.
+
+   readu lgn.rec from lgn.f, username then
+      @system.return.code = -ER$USER.EXISTS
+      stop sysmsg(6053) ;* User already exists
+   end
+
+
+   * Check for account name argument
+
+   call @parser(parser$get.token, token.type, token, keyword)
+   if token.type # PARSER$END then
+
+      token = upcase(token)
+      if token = '' then stop sysmsg(6054) ;* Illegal null account name
+
+      read acc.rec from acc.f, token else
+         stop 'Account is not in register'
+      end
+
+      lgn.rec<LGN$FORCE.ACCOUNT> = token
+
+      * Check no more command arguments
+
+      call @parser(parser$get.token, token.type, token, keyword)
+      if token.type # PARSER$END then
+         stop sysmsg(2018, token) ;* Unexpected token (xx)
+      end
+   end
+
+   * Add $LOGINS entry
+
+   write lgn.rec to lgn.f, username
+   close lgn.f
+
+   if system(91) and not(system(1006)) then
+      display sysmsg(6055, username) ;* User xx created with no password
+   end else
+      display sysmsg(6056, username) ;* User xx created
+   end
+
+   @system.return.code = 0
+   return
+
+   * Avoid compiler warning
+   acc.rec = acc.rec
+end
+
+* END-CODE

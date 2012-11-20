@@ -1,0 +1,145 @@
+* _BINDKEY
+* BINDKEY() function recursive code.
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 24 May 06  2.4-5 Include lone Esc handling flag in save/restore bindings.
+* 23 May 06  2.4-4 Added kc.disable.esc flag for lone Esc handling control.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* X = BINDKEY(key.string, action)
+*
+* action >= 0   Bind as given key code (0 - 255)
+* action = -1   Remove binding
+* action = -2   Query binding. Returns corresponding action, -1 if not bound.
+* action = -3   Save key bindings (returns a string to save)
+* action = -4   Restore key bindings (uses a previously saved binding set)
+* action = -5   Disable lone Esc handling of KEYCODE(). Returns old state.
+* action = -6   Enable lone Esc handling of KEYCODE(). Returns old state.
+*
+* STATUS() = 0     Success
+*          = 1     Invalid key string
+*          = 2     Invalid action
+*          = 3     Key string prefix matches an existing binding
+*
+* Because retrieval of a binding returns -1 if there is no such binding, it is
+* easy to stack and restore key bindings.
+*
+* To bind a new key and stack any old binding:
+*   OLD.BINDING = BINDKEY(key.string, -2)
+*   IF BINDKEY(key.string, new.action) THEN ....
+*
+* To restore original, unbinding if not perviously bound:
+*   X = BINDKEY(key.string, OLD.BINDING)
+*
+* Or, even easier...
+*
+*   SAVED.KEYS = BINDKEY('', -3)
+*   ...rebind a few keys and do some processing...
+*   X = BINDKEY(SAVED.KEYS, -4)
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+$recursive
+$no.symbols
+$no.xref
+
+subroutine bindkey(key.string, action)
+$include keycode.h
+
+   * Force load of standard key bindings if first time for this terminal
+
+   if kc.term.type # @term.type then i = keycode(-1)
+
+   set.status 0
+
+   begin case
+      case action >= 0        ;* Adding binding
+         if len(key.string) = 0 or index(key.string, @fm, 1) then
+            set.status 1
+            return value @false
+         end
+
+         if action > 255 then
+            set.status 2
+            return value @false
+         end
+
+         locate key.string in kc.keys<1> by 'AL' setting i then  ;* Replace binding
+            kc.codes<i> = action
+         end else                                                ;* Add binding
+            * Check for partial matches
+
+            n = len(key.string) - 1
+            for j = 1 to n
+               locate key.string[1,j] in kc.keys<1> by 'AL' setting pos then
+                  set.status 3
+                  return value @false
+               end
+            next j
+
+            ins key.string before kc.keys<i>
+            ins action before kc.codes<i>
+         end
+
+      case action = -1        ;* Removing binding
+         locate key.string in kc.keys<1> by 'AL' setting i then
+            del kc.keys<i>
+            del kc.codes<i>
+         end
+
+      case action = -2        ;* Querying binding
+         locate key.string in kc.keys<1> by 'AL' setting i then
+            return value kc.codes<i>
+         end else
+            return value -1
+         end
+
+      case action = -3        ;* Return a key binding list to be saved
+         return value kc.keys : @im : kc.codes : @im : kc.disable.esc
+
+      case action = -4        ;* Restore a saved key binding list
+         kc.keys = field(key.string, @im, 1)
+         kc.codes = field(key.string, @im, 2)
+         kc.disable.esc = field(key.string, @im, 3)
+
+      case action = -5        ;* Disable lone Esc handling of KEYCODE()
+         n = not(kc.disable.esc)
+         kc.disable.esc = @true
+         return value n
+
+      case action = -6        ;* Enable lone Esc handling of KEYCODE()
+         n = not(kc.disable.esc)
+         kc.disable.esc = @false
+         return value n
+   end case
+
+   return value @true
+
+   * Avoid compiler warnings
+   pos = pos
+end
+
+* END-CODE

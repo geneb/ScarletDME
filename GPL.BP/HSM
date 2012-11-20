@@ -1,0 +1,164 @@
+* HSM
+* HSM command.
+* Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 20 Mar 07  2.5-1 Distinguish non-response from no data.
+* 25 Nov 04  2.0-11 Added USER parameter.
+* 17 Nov 04  2.0-10 New program.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    HSM {ON | OFF | DISPLAY} {USER n}
+*
+*    The default mode is DISPLAY
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program hsm
+$catalog $hsm
+
+$include parser.h
+$include syscom.h
+$include err.h
+$include keys.h
+$include int$keys.h
+
+   parser = "!PARSER"
+
+   mode = -1  ;* Default is to report
+   user = 0
+
+   @system.return.code = -ER$ARGS    ;* Preset for command format errors
+
+
+   call @parser(parser$reset, 0, @sentence, 0)
+   call @parser(parser$get.token, token.type, token, keyword)  ;* Verb
+
+   * Get mode keyword
+
+   loop
+      call @parser(parser$get.token, token.type, token, keyword)
+   until token.type = PARSER$END
+      begin case
+         case keyword = KW$DISPLAY
+            if mode >= 0 then goto incompatible.modes
+
+         case keyword = KW$OFF
+            if mode >= 0 then goto incompatible.modes
+            mode = 0
+
+         case keyword = KW$ON
+            if mode >= 0 then goto incompatible.modes
+            mode = 1
+
+         case keyword = KW$USER
+            if user then goto incompatible.modes
+
+            call @parser(parser$get.token, token.type, token, keyword)
+            if not(token matches '0N') or token = 0 then
+               display sysmsg(2100)
+               return
+            end
+
+            user = token + 0
+         case 1
+            display sysmsg(2018, token)     ;* Unexpected token (%1)
+      end case
+   repeat
+
+   begin case
+      case mode = 0  ;* Disable
+         if user then display sysmsg(3353)  ;* Cannot disable HSM for another user
+         i = kernel(K$HSM, 0)
+
+      case mode = 1  ;* Enable
+         if user then i = events(user, EVT$HSM.ON)
+            else i = kernel(K$HSM, 1)
+
+      case mode = 2 or mode = -1  ;* Report
+         if user then
+            id = 'H':user
+            recordlocku ipc.f, id
+            deleteu ipc.f, id
+
+            i = events(user, EVT$HSM.DUMP)
+            if status() then
+               release ipc.f, id
+               print sysmsg(6802)  ;* Not logged in
+               return
+            end
+
+            response = @false
+            for i = 1 to 20
+               read s from ipc.f, 'H':user then
+                  response = @true
+                  exit
+               end
+               nap 200
+            next i
+
+            if not(response) then
+               release ipc.f, id
+               i = events(user, -EVT$HSM.DUMP)  ;* Clear event flag of unresponsive process
+               display sysmsg(3354)  ;* Process is not responding
+            end else
+               delete ipc.f, 'H':user
+            end
+         end else
+            s = kernel(K$HSM, 2)
+            response = @true
+         end
+
+         if response then
+            n = dcount(s, @fm)
+            if n = 0 then
+               display sysmsg(3350)     ;* There is no data to report - check HSM is enabled
+            end else
+               * Calls..  CP time...  Program
+               * 1234567  123456.789  xxxxxxxxxxxxxxxxxxxxx
+
+               if user then display sysmsg(3352, user)  ;* Data for user %1
+               display sysmsg(3351)     ;* Calls..  CP time...  Program
+               for i = 1 to n
+                  ss = s<i>
+                  display fmt(ss<1, 2>, '7R') : '  ' :         ;* Calls
+                  display fmt(ss<1, 3> / 1000, '10R3') : '  ' :     ;* CP time
+                  display ss<1, 1>                             ;* Program name
+               next i
+            end
+         end
+   end case
+
+   @system.return.code = 0
+
+   return
+
+incompatible.modes:
+   display sysmsg(2054)  ;* Illegal combination of options
+   return
+
+end
+
+* END-CODE

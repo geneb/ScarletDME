@@ -1,0 +1,214 @@
+* SETTRIG
+* SET.TRIGGER verb
+* Copyright (c) 2005 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 28 Mar 05  2.1-11 Use PARSER$MFILE.
+* 12 Jan 05  2.1-0 Added open and close triggers.
+* 13 Oct 04  2.0-5 Use message handler.
+* 11 Oct 04  2.0-5 Added modes.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* SET.TRIGGER file.name trigger.name {modes}   Set to given name and modes
+* SET.TRIGGER file.name ""                     Remove trigger function
+* SET.TRIGGER file.name                        Display trigger function name
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program settrig
+$catalog $SETTRIG
+
+$include keys.h
+$include int$keys.h
+$include parser.h
+$include err.h
+
+
+   parser = "!PARSER"
+
+   prefix.chars = "*!_$"
+   leading.chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+   following.chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.%$-_"
+
+   @system.return.code = -ER$ARGS     ;* Preset for argument errors
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+
+   * Get and process file name
+
+   dict.flag = ''
+   call @parser(PARSER$MFILE, token.type, filename, keyword)
+   if keyword = KW$DICT then
+      dict.flag = 'DICT'
+      call @parser(PARSER$MFILE, token.type, filename, keyword)
+   end
+   if token.type = PARSER$END then stop sysmsg(2102)  ;* File name required
+
+   * Check file exists and is a dynamic file
+
+   open dict.flag, filename to fu else
+      open dict.flag, upcase(filename) to fu else
+         stop sysmsg(2019)  ;* File not found
+      end
+      filename = upcase(filename)
+   end
+
+   if fileinfo(fu, FL$TYPE) # FL$TYPE.DH then
+      stop sysmsg(2020)  ;* Dynamic file required
+   end
+
+
+   * Process second argument
+
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   trigger.name = upcase(token)
+
+   begin case
+      case token.type = PARSER$END     ;* Report trigger state
+
+         trigger.name = fileinfo(fu, FL$TRIGGER)
+         if trigger.name = '' then
+            crt sysmsg(3001) ;* File has no trigger function
+         end else
+            modes = fileinfo(fu, FL$TRG.MODES)
+            if modes = 0 then modes = FL$TRG.PRE.WRITE + FL$TRG.PRE.DELETE
+            gosub report.trigger
+         end
+
+      case trigger.name = ""             ;* Removing trigger
+         call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+         if token.type # PARSER$END then 
+            stop sysmsg(2018, token)  ;* Unexpected token (xx)
+         end
+
+         modes = 0
+         gosub set.trigger
+
+      case 1                             ;* Setting trigger
+         gosub validate.call.name
+
+         * Look for trigger modes
+
+         call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+         if token.type = PARSER$END then
+            modes = 3
+         end else
+            modes = 0
+            loop
+               begin case
+                  case keyword = KW$PRE.WRITE   ; modes = bitor(modes, FL$TRG.PRE.WRITE)
+                  case keyword = KW$PRE.DELETE  ; modes = bitor(modes, FL$TRG.PRE.DELETE)
+                  case keyword = KW$POST.WRITE  ; modes = bitor(modes, FL$TRG.POST.WRITE)
+                  case keyword = KW$POST.DELETE ; modes = bitor(modes, FL$TRG.POST.DELETE)
+                  case keyword = KW$READ        ; modes = bitor(modes, FL$TRG.READ)
+                  case keyword = KW$PRE.CLEAR   ; modes = bitor(modes, FL$TRG.PRE.CLEAR)
+                  case keyword = KW$POST.CLEAR  ; modes = bitor(modes, FL$TRG.POST.CLEAR)
+                  case 1
+                     stop sysmsg(2018, token)  ;* Unexpected token (xx)
+               end case
+               call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+            until token.type = PARSER$END
+            repeat
+         end
+
+         gosub set.trigger
+   end case
+
+   @system.return.code = 0
+   
+   return
+
+
+* ======================================================================
+
+validate.call.name:
+!!CALLNAME!!
+   if len(trigger.name) > MAX.TRIGGER.NAME.LEN ~
+    or index(prefix.chars:leading.chars, trigger.name[1,1], 1) = 0 ~
+    or convert(following.chars, '', trigger.name[2,99]) # '' ~
+    or (index(prefix.chars, trigger.name[1,1], 1) and len(trigger.name) = 1) then
+      stop sysmsg(3002) ;* Illegal trigger function name
+   end
+
+   if not(catalogued(trigger.name)) then
+      stop sysmsg(3003) ;* Trigger function is not catalogued
+   end
+
+   return
+
+* ======================================================================
+
+set.trigger:
+   i = ospath("", os$flush.cache)
+
+   * Set exclusive access to file
+
+   if not(fileinfo(fu, FL$EXCLUSIVE)) then
+      stop sysmsg(2602) ;* Cannot gain exclusive access to file
+   end
+
+   * Set/remove trigger
+
+   set.trigger fu, trigger.name, modes
+   if status() then
+      crt sysmsg(3004, status()) ;* Error xx updating trigger function in file header
+   end else
+      if trigger.name # '' then gosub report.trigger
+   end
+
+   * Ensure that this file does not go into the DH cache
+
+   close fu
+   i = ospath("", os$flush.cache)
+   
+   return
+
+* ======================================================================
+
+report.trigger:
+   crt sysmsg(3005, trigger.name) ;* Trigger function: xx
+
+   i = 1
+   mode.bits = modes   ;* Use a local copy as we will destroy it
+   mode.list = ''
+   trigger.mode.names = sysmsg(3000)
+   loop
+      if bitand(mode.bits, 1) then
+         if mode.list # '' then mode.list := ', '
+         mode.list := field(trigger.mode.names, ',', i)
+      end
+      mode.bits = shift(mode.bits, 1)
+      i += 1
+   while mode.bits
+   repeat
+
+   crt sysmsg(3006, mode.list) ;* Modes: xx
+
+   return
+
+end
+
+* END-CODE

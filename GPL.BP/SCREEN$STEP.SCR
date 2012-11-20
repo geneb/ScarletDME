@@ -1,0 +1,86 @@
+* SCREENS SCREEN$STEP.SCR
+* Generated at 14:46:53 on 14 DEC 2002
+
+equate SS.NAME           to 1
+equate SS.TYPE           to 2
+equate SS.CLEAR          to 3
+equate SS.TEXT           to 4
+equate SS.PRE.TEXT       to 5
+equate SS.TEXT.ROW       to 6
+equate SS.TEXT.COL       to 7
+equate SS.TEXT.MODE      to 8
+equate SS.FIELD          to 9
+equate SS.VALUE          to 10
+equate SS.SUBVALUE       to 11
+equate SS.PROMPT.CHAR    to 12
+equate SS.FILL.CHAR      to 13
+equate SS.DATA.ROW       to 14
+equate SS.DATA.COL       to 15
+equate SS.DATA.MODE      to 16
+equate SS.OUTPUT.LEN     to 17
+equate SS.OUTPUT.CONV    to 18
+equate SS.JUSTIFY        to 19
+equate SS.END.MARK       to 20
+equate SS.INPUT.LEN      to 21
+equate SS.REQUIRED       to 22
+equate SS.VAL.1          to 23
+equate SS.INPUT.CONV     to 24
+equate SS.VAL.2          to 25
+equate SS.BACKSTEP       to 26
+equate SS.NEXT.STEP      to 27
+equate SS.HELP.MSG       to 28
+equate SS.ERROR.MSG      to 29
+equate SS.EXIT.KEY       to 30
+equate SS.F2             to 31
+equate SS.FKEYS          to 32
+equate SS.KEY.VAL        to 33
+equate SS.HEADER         to 34
+equate SS.STEP           to 35
+equate SS.ACTION         to 36
+equate SS.MV             to 37
+equate SS.LOSE.UPDATE    to 38
+equate SS.PAINT.ACTION   to 39
+equate SS.SCREEN.NAME    to 40
+equate SS.MAIN.ACTION    to 41
+equate SS.CONFIRM.DELETE to 42
+equate SS.TEXT.LEN       to 43
+equate SS.FGC            to 44
+equate SS.BGC            to 45
+scrn.step = ""
+scrn.step<-1> = "NAMEıTYPEıCLEARıTEXTıPRE.TEXTıTEXT.ROWıTEXT.COLıTEXT.MODEıFIELDıVALUEıSUBVALUEıPROMPT.CHARıFILL.CHARıDATA.ROWıDATA.COLıDATA.MODEıOUTPUT.LENıOUTPUT.CONVıJUSTIFYıEND.MARKıINPUT.LENıREQUIREDıVAL.1ıINPUT.CONVıVAL.2ıBACKSTEPıNEXT.STEPıHELP.MSGıERROR.MSGıEXIT.KEYıF2ıFKEYSıKEY.VALıHEADERıSTEPıACTIONıMVıLOSE.UPDATEıPAINT.ACTIONıSCREEN.NAMEıMAIN.ACTIONıCONFIRM.DELETEıTEXT.LENıFGCıBGC"
+scrn.step<-1> = "IıIıIıIıIıIıIıIıIıIıIıIıIıIıIıIıIıIıIıIıIıIıIıIıIıIıIıIıIıIıIıIıIıDıDıIıIıIıIıIıIıIıDıIıI"
+scrn.step<-1> = "NıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıYıNıNıNıı"
+scrn.step<-1> = "01 Nameı02 Typeı03 Clearı04 Textı05 Disp stepı06 Text rowı07 Text colı08 Text modeı09 Fieldı10 Valueı11 Subvalueı12 Prompt charı13 Fill charı14 Data rowı15 Data colı16 Data modeı17 Output lenı18 Output convı19 Justifyı20 End markı21 Input lenı22 Requiredı23 Input val 1ı24 Input convı25 Input val 2ı26 Back stepı27 Next stepı28 Help msgı29 Error msgı30 Exit keyı31 F2 actionı32 Func keysı33 Key valııStepıAction (n/Cn/D/I/Mn/Sn/N/P/R)ıMulti-valueıChanges have been made. Ok to exit? (Y/N)ıAction (X/n)ıScreen nameıAction (A/D/F/H/I/L/P/Sn/LPTR/X)ıDelete entire screen (Y/N)ııForegroundıBackground"
+scrn.step<-1> = "ıııııııııııııııııııııııııııııııııııııııııııı"
+scrn.step<-1> = "2ı2ı2ı3ı4ı5ı6ı7ı8ı9ı10ı11ı12ı13ı14ı15ı16ı17ı18ı19ı4ı5ı6ı7ı8ı9ı10ı11ı12ı13ı14ı15ı16ı1ı2ı22ı22ı23ı24ı5ı22ı23ıı14ı15"
+scrn.step<-1> = "10ı53ı68ı0ı0ı0ı0ı0ı0ı0ı0ı0ı0ı0ı0ı0ı0ı0ı0ı0ı40ı40ı40ı40ı40ı40ı40ı40ı40ı40ı40ı40ı40ı0ı0ı29ı0ı0ı61ı10ı40ı0ıı0ı0"
+scrn.step<-1> = "ııııııııııııııııııııııııııııııııııXııXıXıXıXıXıXııXıX"
+scrn.step<-1> = "1ı2ı3ı4ı5ı6ı7ı8ı33ı10ı11ı12ı13ı14ı15ı16ı17ı18ı19ı20ı21ı22ı23ı24ı25ı26ı27ı28ı29ı30ı31ı32ı36ı34ı1ı1ı1ı1ı1ı1ı1ı1ı4ı1ı2"
+scrn.step<-1> = "1ı1ı1ı1ı1ı1ı1ı1ı1ı1ı1ı1ı1ı1ı1ı1ı1ı1ı1ı1ı1ı1ı1ı1ı1ı1ı1ı1ı1ı1ı1ı1ı1ıııııııııı1ıı"
+scrn.step<-1> = "ıııııııııııııııııııııııııııııııııııııııııııı"
+scrn.step<-1> = "[ı[ı[ı[ı[ı[ı[ı[ı[ı[ı[ı[ı[ı[ı[ı[ı[ı[ı[ı[ı[ı[ı[ı[ı[ı[ı[ı[ı[ı[ı[ı[ı[ıııı[ıı[ı[ı[ı[ıı[ı["
+scrn.step<-1> = "ıııııııııııııııııııııııııııııııııııııııııııı"
+scrn.step<-1> = "2ı2ı2ı3ı4ı5ı6ı7ı8ı9ı10ı11ı12ı13ı14ı15ı16ı17ı18ı19ı4ı5ı6ı7ı8ı9ı10ı11ı12ı13ı14ı15ı16ı1ı2ı22ı22ı23ı24ı5ı22ı23ı3ı14ı15"
+scrn.step<-1> = "19ı62ı78ı9ı15ı15ı15ı15ı15ı15ı15ı15ı15ı15ı15ı15ı15ı15ı15ı15ı55ı55ı55ı55ı55ı55ı55ı55ı55ı55ı55ı55ı55ı0ı5ı60ı12ı42ı75ı22ı74ı28ı77ı14ı14"
+scrn.step<-1> = "HıHıHıHıHıHıHıHıHıHıHıHıHıHıHıHıHıHıHıHıHıHıHıHıHıHıHıHıHıHıHıHıHıHıHXıHXıHXıHXıHXıHXıHXıHXıHıHXıHX"
+scrn.step<-1> = "32ı4ı1ı66ı20ı20ı2ı10ı20ı4ı4ı1ı1ı4ı2ı10ı5ı20ı1ı1ı4ı20ı20ı20ı20ı1ı20ı20ı20ı20ı20ı1ı20ı80ı3ı14ı64ı1ı3ı30ı4ı1ı3ı2ı2"
+scrn.step<-1> = "ııııııııııııııııııııııııııııııııııııııııııLıı"
+scrn.step<-1> = "LıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıLıL"
+scrn.step<-1> = "]ı]ı]ı]ı]ı]ı]ı]ı]ı]ı]ı]ı]ı]ı]ı]ı]ı]ı]ı]ı]ı]ı]ı]ı]ı]ı]ı]ı]ı]ı]ı]ı]ıııı]ıı]ı]ı]ı]ıı]ı]"
+scrn.step<-1> = "32ı4ı1ı80ı200ı2ı2ı10ı50ı4ı4ı1ı1ı4ı2ı10ı5ı999ı1ı1ı4ı20ı999ı999ı999ı1ı999ı1200ı80ı999ı999ı1ı100ııı80ı64ı1ı3ı30ı4ı1ıı2ı2"
+scrn.step<-1> = "NıYıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNıNııNıYıNıYıYıNıYıYııYıY"
+scrn.step<-1> = "ııııı0-24ı0-79ıı0-9999üM0X' '0XüM0N+ı1-9999üM0N+ı1-9999üM0N+ıııM0NüM0N+0Nı0-79ıı0-2000üM1-2N,1-2Nıııı0-2000ııııııııııııM1A0X','0Xııııııııııı0-15ı0-15"
+scrn.step<-1> = "MCUıMCUıMCUııMCUıııMCUııııııııMCUıııMCUıııııııMCUııııııMCUııııMCUııMCUıMCUıMCUıMCUıMCUııı"
+scrn.step<-1> = "ıı=Yü=Nıııııııııııııııı=Lü=Rııı=Yü=Nü=FüM<0X>0Xıııı=Yü=Nıııııı=Yü=NııııM1N0NüM'C'1N0Nü=Dü=IüM'M'1N0NüM'S'1N0Nü=RüM'C'0X','0Xü=Nü=Pıı=Yü=Nı=XüM1N0Nıı=Aü=Dü=Fü=Hü=Lü=PüMS1N0Nü=Xü=LPTRü=Iı=Yü=Nııı"
+scrn.step<-1> = "ıYıNıYıYıYıYıYıYıYıYıYıYıYıYıYıYıYıYıYıYıYıYıYıYıYıYıYıYıYıYıYıYııııYııNıııııNıN"
+scrn.step<-1> = "XıııTEXT.LENıııııXııııııııııııııııııııııııXııXıXıXıXıXıXıXıXıPRE.TEXTıXıX"
+scrn.step<-1> = "Enter a unique name for this step (optional)ıD = display, I = Input.üAppend H to incude header display.üAppend C to clear field after step.üAppend B to beepıClear screen before display? (Y/N)ıEnter text to be displayedıEnter step names or numbers of steps to be displayed before this stepıEnter row coordinate for textıEnter column coordinate for start of textıAny combination of H (half intensity), R (reverse), X (omit from full paint)ıEnter field position in data recordıEnter value position or leave blankıEnter subvalue position or leave blankıEnter character to appear to left of input areaıEnter character to fill unused positionsıEnter row coordinate for data fieldıEnter column coordinate for start of data fieldıAny combination of H (half intensity), R (reverse), X (omit from full paint)ıEnter data field display widthıEnter any required output conversion codesıEnter L for left justified display, R for right justified displayıEnter character to appear to right of input areaıEnter maximum data width allowed in fieldıYes, No, First, <fld>condıEnter validation to be performed prior to input conversionıEnter any conversion codes to be performed on inputıEnter validation to be performed after input conversionıEnter Y if backtab is allowed, otherwise enter N or leave blankıEnter next step or leave blank to continue at the next stepıEnter any help text to be displayed using the F1 keyıEnter an error message to be displayed on validation errorsıIf the exit key is allowed, enter the step to be executed or X to exitıEnter the action to be performed for the F2 keyıEnter Y to return function keys to the calling programıEnter key validation: subroutine name,error textııııııEnter step number or X to exit paint modeıEnter screen nameıAttributes, Delete, File, Header, Include, List, Paint, Step n, print, eXitıııEnter foreground colour valueıEnter background colour value"
+scrn.step<-1> = "ııY or N onlyıııııııııııııııııııııııııııııııııııııııııı"
+scrn.step<-1> = "XıXıXıXıXıXıXıXıXıXıXıXıXıXıXıXıXıXıXıXıXıXıXıXıXıXıXıXıXıXıXıXıXııııXıııııııı"
+scrn.step<-1> = "ıııııııııııııııııııııııııııııııııııııııSCREENS, BY @ID,0ıııı#DICT $SCREENS,COLOURS,2R,2 3ı#DICT $SCREENS,COLOURS,2R,2 3"
+scrn.step<-1> = "ııııYıııııııııııııYıııııYıYıYııYıYıYıYıııııııYıııııııı"
+scrn.step<-1> = "1ı2ı3ı4ı5ı6ı7ı8ı33ı10ı11ı12ı13ı14ı15ı16ı17ı18ı19ı20ı21ı22ı23ı24ı25ı26ı27ı28ı29ı30ı31ı32ı36ı34ı1ı1ı1ı1ıı1ı1ı1ı4ı1ı2"
+scrn.step<-1> = "SCREEN.STEP                 Define/Display Screen Step"
+scrn.step<-1> = "BP"
+scrn.step<-1> = "ıııııııııııııııııııııııııııııııııııııııııııı"
+scrn.step<-1> = "7"

@@ -1,0 +1,3648 @@
+* ED
+* ED verb
+* Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 15 Jan 07  2.4-19  Extended EV to handle compound I-types.
+* 02 Nov 06  2.4-15 Added $ED.OPTIONS record.
+* 02 Nov 06  2.4-15 Apply case sensitivity to C/old/new/ as well as L/F.
+* 06 Oct 06  2.4-15 "ED file *" no longer relies on select list 0.
+* 06 Oct 06  2.4-15 Added @FILE (etc) to XEQ processing.
+* 25 Sep 06  2.4-14 Improved messages in EV mode to track level.
+* 23 Sep 06  2.4-14 0521 Null insert into null record was setting posn to 1.
+* 17 Aug 06  2.4-11 0514 Deleting large number of lines needs to invalidate
+*                   last.base to avoid referencing chunk(0).
+* 29 Apr 06  2.4-2 0485 Using MOVE immediately after insert could insert
+*                  unwanted blank lines.
+* 30 Nov 05  2.2-18 Prompt before overwriting an existing record in SAVE/FILE.
+* 10 Aug 05  2.2-7 Added use of NO.SEL.LIST.QUERY option.
+* 09 Aug 05  2.2-7 Added OPT.ED.NO.QUERY.FD handling.
+* 12 May 05  2.1-14 Prompt for file/record details if absent in LOAD/UNLOAD.
+* 14 Apr 05  2.1-12 0343 Resequenced CASE clauses for L to make LOAD work.
+* 08 Apr 05  2.1-12 Added wildcard character for C, F and L commands.
+* 08 Apr 05  2.1-12 0340 process.escapes would loop with ^^^^^^^^^^.
+* 28 Mar 05  2.1-11 Allow C command options before opening delimiter as well
+*                   as after final delimiter.
+* 28 Mar 05  2.1-11 Use PARSER$MFILE.
+* 23 Mar 05  2.1-10 Added Ln/string, also allowing alternative delimiter in F.
+* 10 Mar 05  2.1-8 Removed SUPPRESS.FF flag.
+* 04 Mar 05  2.1-8 Reworded block messages for clarity.
+* 08 Feb 05  2.1-6 0315 Ln command was changing default lines of P command.
+* 29 Jan 05  2.1-5 0312 Leaving EV mode must get current line.
+* 29 Jan 05  2.1-5 0311 Made ev.posn and ev.depth into dimensioned matrices as
+*                  otherwise subvalue edit overwrites value edit information.
+* 21 Dec 04  2.1-0 Added EV and SV commands.
+* 14 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program $ed
+$catalog $ED
+
+$include parser.h
+$include err.h
+$include keys.h
+$include keyin.h
+$include dictdict.h
+
+$include int$keys.h
+
+$define MERGE.LOAD  50
+$define IDEAL.LOAD 100
+$define SPLIT.LOAD 200
+
+$define COMMAND.STACK.DEPTH 99
+
+
+*-----------------------------------------------------------------------------
+
+   parser = "!PARSER"
+   source.control = "SOURCE.CONTROL"
+
+   @system.return.code = ER$ARGS   ;* Preset for command errors
+
+   dict.flag = ""
+   no.query = @false
+
+   terminate = @false              ;* Controls end of select list or prompt
+   a.text = ""                     ;* Default text for A command
+   c.command = ""                  ;* Last change command
+   f.text = ""                     ;* Default text and...
+   f.col = 1                       ;* ...column for F command
+   l.text = ""                     ;* Default text for L command
+   m.text = ""                     ;* Default template for M command
+   p.len = 23                      ;* Default length for P command
+   pl.len = 21                     ;* Default length for PL command
+   pp.len = 21                     ;* Default length for PP command
+   r.text = ''                     ;* Default string for R command
+   wildchar = ''                   ;* No wildcard character
+
+   printing.chars = ''
+   for i = 32 to 126
+      printing.chars := char(i)
+   next i
+
+!  for i = 160 to 250              ;* 0244
+   for i = 128 to 250              ;* Allow C1 set for some languages
+      printing.chars := char(i)
+   next i
+
+   chunks = 0                      ;* No chunks allocated (includes free)
+   free.chunks = 0                 ;* No free chunks
+   free.chain = 0
+
+   open.prestore.file = ''
+   prestore.position = 0           ;* Position of next command to do
+   resume.position = 0             ;* Position to restart from .XR
+
+   current.line = ''
+
+   allow.non.printing = @false     ;* Allow typing of non-printing characters?
+   expand.non.printing = @false    ;* Replace by ^nnn?
+   query.block.actions = @true
+   match.case = @true
+
+   command.stack = ""
+   help.text = ""
+
+   delimiters = '!"' : "#$%&()*+,-./:=@[]\_`'{}|"
+
+   * Look for $ED.OPTIONS record in VOC
+
+   read rec from @voc, '$ED.OPTIONS' then
+      if upcase(rec[1,1]) = 'X' then
+         n = dcount(rec, @fm)
+         for i = 2 to n
+            s = upcase(field(rec<i>, ' ', 1))
+            s2 = upcase(field(rec<i>, ' ', 2))
+                       
+            * The tests below are cosntructed so that invalid input is ignored
+            begin case
+               case s = 'BLOCK'
+                  query.block.actions = (s2 # 'OFF')
+               case s = 'CASE'
+                  match.case = (s2 # 'OFF')
+               case s = 'NPRINT'
+                  allow.non.printing = (s2 = 'ON')
+            end case
+         next i
+      end
+   end
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+
+   * Get name of input file
+
+   call @parser(PARSER$MFILE, token.type, file.name, keyword)
+
+   if token.type = PARSER$END then
+      display sysmsg(6501) :  ;* File name?
+      prompt ""
+      input file.name
+      file.name = trimf(trimb(file.name))
+      if file.name = "" then stop
+
+      if (file.name[1,5] = "DICT ") and len(file.name[6,999999]) then
+         dict.flag = "DICT"
+         file.name = file.name[6,999999]
+      end
+   end else
+      if keyword = KW$DICT then
+         dict.flag = "DICT"
+         call @parser(PARSER$MFILE, token.type, file.name, keyword)
+      end
+   end
+
+   if len(dict.flag) then full.file.name = "DICT " : file.name
+   else full.file.name = file.name
+
+   open dict.flag, file.name to file else
+      open dict.flag, upcase(file.name) to file else
+         stop sysmsg(2019) ;* File not found
+      end
+
+      file.name = upcase(file.name)
+      full.file.name = upcase(full.file.name)
+   end
+
+   if fileinfo(file, FL$READONLY) then
+      display sysmsg(6500, file.name) ;* Warning: xx is a read-ony file
+   end
+
+   @system.return.code = 0
+
+   * Get name of source record(s) (if any)
+
+   id.list = ''
+   loop
+      call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   until token.type = PARSER$END
+      begin case
+         case keyword = KW$NO.QUERY
+            no.query = @true
+         case 1
+            id.list<-1> = token
+      end case
+   repeat
+
+   if id.list # '' then
+      if id.list = '*' then gosub edit.all
+      else
+         edit.from.list = @false    ;* Not a select list
+         loop
+            record.name = remove(id.list, more.ids)
+            gosub edit
+         while more.ids
+         repeat
+      end
+   end else
+      readlist id.list then      ;* Edit using SELECT list
+         edit.from.list = @true
+         record.name = remove(id.list, more.ids)
+            if not(no.query) and not(option(OPT.NO.SEL.LIST.QUERY)) then
+               loop
+                  display sysmsg(2050, record.name) :  ;* Use active select list (First item 'xx')?
+                  prompt ""
+                  input reply
+
+                  if upcase(reply[1,1]) = "N" then stop
+
+               until upcase(reply[1,1]) = "Y"
+               repeat
+            end
+
+         loop
+            gosub edit
+         until terminate
+         while more.ids
+            record.name = remove(id.list, more.ids)
+         repeat
+      end else         ;* No select list - prompt for names
+         edit.from.list = @false
+         first.record = @true
+         loop
+            display sysmsg(6502, full.file.name) ;* File name = xx
+            display sysmsg(6503) :  ;* Record name?
+            prompt ""
+            input record.name
+            record.name = trimf(trimb(record.name))
+         while len(record.name)
+            if first.record and (record.name = "*") then
+               gosub edit.all
+               exit
+            end
+            gosub edit
+            first.record = @false
+         repeat
+      end
+   end
+
+   return
+
+*****************************************************************************
+* EDIT.ALL  -  Edit all records in file
+
+edit.all:
+   edit.from.list = @true
+   select file to 11
+   readlist id.list from 11 then   
+      loop
+         record.name = remove(id.list, more.ids)
+         gosub edit
+      until terminate
+      while more.ids
+      repeat
+   end
+
+   return
+
+*****************************************************************************
+* ALLOCATE.CHUNKS  -  Allocate N more chunks to free chain
+
+allocate.chunks:
+   n += chunks
+
+   dim chunk(n)
+   dim chunk.next(n)
+   dim chunk.lines(n)
+
+   loop
+      chunks += 1
+      chunk(chunks) = ""
+      chunk.lines(chunks) = 0
+      chunk.next(chunks) = free.chain
+      free.chain = chunks
+      free.chunks += 1
+   until chunks = n
+   repeat
+
+   return
+
+*******************************************************************************
+* split.into.chunks  -  Split record into chunks, setting all associated
+*                       control items.
+
+split.into.chunks:
+   n = int((lines + IDEAL.LOAD - 1) / IDEAL.LOAD)   ;* No of required chunks
+   n += 5 - free.chunks     ;* Allow 5 spare and use free space
+   if n > 0 then gosub allocate.chunks
+
+   head = free.chain
+
+   j = IDEAL.LOAD
+   remaining.lines = lines
+   k = 1
+   loop
+      i = free.chain               ;* Select chunk from free chain
+      free.chain = chunk.next(i)
+      free.chunks -= 1
+
+      if j > remaining.lines then j = remaining.lines
+      chunk(i) = field(rec, @fm, k, j)
+      k += j
+      chunk.lines(i) = j
+      remaining.lines -= j
+   while remaining.lines
+      chunk.next(i) = free.chain
+   repeat
+
+   chunk.next(i) = 0
+   rec = ""
+
+   last.base = 99999999 ;* Force restart of line calculations
+
+   return
+
+*****************************************************************************
+* EDIT  -  Main editor control routine
+
+edit:
+   if record.name = '' then
+      display 'Illegal null record id'
+      return
+   end
+
+   * Read record
+
+   display full.file.name : " " : record.name
+   readu rec from file, record.name
+   locked
+      display sysmsg(1433, record.name, status()) ;* Record 'xx' is locked by user xx
+      return
+   end then
+      s = rec[1,1]
+      if len(dict.flag) and listindex('A,C,I,S', ',', s) then
+         rec = trim(field(rec, @fm, 1, DICT.SYS.INFO - 1), @fm, 'T')
+      end
+
+      lines = dcount(rec, @fm)
+      display sysmsg(6504, lines)   ;* xx lines
+   end else
+      if status() = ER$IID then
+         release file, record.name
+         display 'Illegal record id'
+         return
+      end
+
+      rec = ""
+      lines = 0
+      display sysmsg(6505) ;* New record
+   end
+
+   * If this record is from the VOC, flush the DH file cache as we could be
+   * changing the pathname of a file.
+
+   if fileinfo(file, FL$PATH) = fileinfo(@voc, FL$PATH) then
+      i = ospath("", os$flush.cache)
+   end
+
+   gosub split.into.chunks
+   posn = 0                                ;* Position at top
+   block.top = 0                           ;* No block defined
+   block.bottom = 0
+   ev.depth = 0                            ;* Not in EV
+                                            * 1-2 = values, subvalues
+                                            * 3 = compound I-type elements
+   dim ev.posn(3)
+   dim ev.record(3)
+
+   oops.command = ''
+
+   record.updated = @false                 ;* No changes to record
+
+   done = @false
+   prompt ""
+
+   loop
+      * Get command
+      if prestore.position then
+         if prestore.position > prestored.lines then
+            prestore.position = 0
+            goto end.prestored.sequence
+         end
+         new.command = prestored<prestore.position>
+         prestore.position += 1
+      end else
+end.prestored.sequence:
+         if resume.position then display sysmsg(6506) ;* Paused
+         loop
+            if lines > 9999 then display str("-", len(lines)) : ": " :
+            else display "----: ":
+            input new.command
+         until convert(printing.chars, '', new.command) = ''
+         until allow.non.printing
+            display sysmsg(6507) ;* Command contains non-printing characters
+         repeat
+         i = @(0,0)      ;* Kill screen pagination
+      end
+
+reparse:
+      raw.command = new.command  ;* Prior to ^nnn substiution
+      s = new.command            ;*  0191
+      gosub process.escapes      ;* Check for ^nnn non-printing characters
+      new.command = s            ;* 0191
+      if escape.error then continue
+
+      command = trimf(new.command)
+
+      if len(command) then
+         if command[1,1] = "." then
+            c = upcase(matchfield(command, "'.'0A0X", 2))   ;* Command letter(s)
+            if command matches "'.'1A0A1N0X" then
+               n = matchfield(command, "'.'0A0N0X", 3)      ;* Stack position
+               if n = 0 then
+                  message = sysmsg(6508) ;* Invalid stack position
+                  gosub error
+                  continue
+               end
+            end else
+               n = 0                                        ;* No stack pos
+            end
+            command = matchfield(command, "'.'0A0N0X", 4)
+            if command[1,1] = ' ' then command = command[2,999]
+
+            stack.depth = dcount(command.stack, @fm)
+
+            begin case
+               case c = "A"                             ;* .A[n] [text]
+                  if n = 0 then n = 1
+                  if n > stack.depth then goto stack.position.error
+
+                  s = command.stack<n> : command
+                  command.stack<n> = s
+                  display fmt(n, "2'0'R"): ': ' : s
+
+               case c = "C"
+                  if n = 0 then n = 1
+                  if n > stack.depth then goto stack.position.error
+
+                  delimiter = command[1,1]
+                  i = index(command, delimiter, 2)
+                  if i = 0 then goto format.error
+
+                  old = field(command, delimiter, 2)
+                  new = field(command, delimiter, 3)
+                  command = field(command, delimiter, 4)
+
+                  if upcase(command) = "G" then i = count(new.command, old)
+                  else
+                     if len(command) then goto format.error
+                     i = 1
+                  end
+
+                  s = command.stack<n>
+                  if index(s, old, 1) then
+                     loop
+                        j = index(s, old, i)
+                     while j
+                        s = s[1, j - 1] : new : s[j + len(new), 999999]
+                        i -= 1
+                     while i
+                     repeat
+                     command.stack<n> = s
+                     display fmt(n, "2'0'R"): ': ' : s
+                  end
+
+               case c = "D"                                    ;* .D
+                  if command # '' then                         ;* .D name
+                     gosub parse.prestore.reference
+                     if prestore.file = '' then
+                        display sysmsg(6509) ;* Format error in .D command
+                        continue
+                     end
+
+                     gosub open.prestore.file
+                     if open.prestore.file = '' then continue
+
+                     readu s from prestore.f, prestore.id locked
+                        display sysmsg(1433, prestore.id, status()) ;* Record xx is locked by user xx
+                     end then
+                        if s[1,1] = 'E' then
+                           delete prestore.f, prestore.id
+                           display sysmsg(6510, open.prestore.file) ;* Record deleted from xx
+                        end else
+                           release prestore.f, prestore.id
+                           display sysmsg(6511) ;* Record is not a prestored edit sequence
+                        end
+                     end else
+                        release prestore.f, prestore.id
+                        display sysmsg(2108, prestore.id) ;* Record xx not found
+                     end
+                  end else
+                     if n = 0 then n = 1
+                     if n > stack.depth then goto stack.position.error
+                     del command.stack<n>
+                  end
+
+               case c = "I"                                    ;* .I text
+                  if n = 0 then n = 1
+                  if n > (stack.depth + 1) then goto stack.position.error
+                  del command.stack<command.stack.depth>
+                  ins command before command.stack<n>
+
+               case c = "L"                                    ;* .L
+                  if command # '' then                         ;* .L name
+                     gosub parse.prestore.reference
+                     if prestore.file = '' then
+                        display sysmsg(6512) ;* Format error in .L command
+                        continue
+                     end
+
+                     gosub open.prestore.file
+                     if open.prestore.file = '' then continue
+
+                     if prestore.id = '*' then
+                        sselect prestore.f to 11
+                        i = @true
+                        loop
+                           readnext n from 11 else exit
+                           read s from prestore.f, n then
+                              if s[1,1] = 'E' then
+                                 if i then
+                                    display sysmsg(6513, open.prestore.file) 
+                                    * Edit sequences in xx
+                                    i = @false
+                                 end
+                                 display n
+                              end
+                           end
+                        repeat
+                        if i then
+                           display sysmsg(6514, open.prestore.file)
+                           * There are no edit sequences in xx
+                        end
+                        display
+                     end else
+                        gosub read.prestore.rec
+                        if prestore.rec = '' then continue
+
+                        if prestore.rec[1,1] = 'E' then
+                           n = dcount(prestore.rec, @fm)
+                           for i = 1 to n
+                              display fmt(i,"3'0'R"):' ': prestore.rec<i>
+                           next i
+                        end else
+                           display sysmsg(6511) ;* Record is not a prestored edit sequence
+                        end
+                     end
+                  end else                                     ;* .Ln
+                     if n = 0 then n = 9
+                     if n > stack.depth then n = stack.depth
+                     loop
+                     while n
+                        display fmt(n, "2'0'R") : ": " : command.stack<n>
+                        n -= 1
+                     repeat
+                  end
+
+               case c = "R"                                    ;* .R
+                  if command # '' then                         ;* .R name
+                     gosub parse.prestore.reference
+                     if prestore.file = '' then
+                        display sysmsg(6515) ;* Format error in .R command
+                        continue
+                     end
+
+                     gosub open.prestore.file
+                     if open.prestore.file = '' then continue
+
+                     gosub read.prestore.rec
+                     if prestore.rec = '' then continue
+
+                     if prestore.rec[1,1] = 'E' then
+                        n = dcount(prestore.rec, @fm)
+                        for i = 2 to n
+                           ins prestore.rec<i> before command.stack<1>
+                        next i
+                        command.stack = field(command.stack, @fm, 1, COMMAND.STACK.DEPTH)
+                     end else
+                        display sysmsg(6511) ;* Record is not a prestored edit sequence
+                     end
+                  end else
+                     if n = 0 then n = 1
+                     if n > stack.depth then n = stack.depth
+                     s = command.stack<n>
+                     del command.stack<command.stack.depth>
+                     ins s before command.stack<1>
+                     display fmt(n, "2'0'R") : ": " : s
+                  end
+
+               case c = "S"                                    ;* .S
+                  begin case
+                     case command = ''
+                        display sysmsg(6516) ;* Invalid syntax
+                        continue
+
+                     case n > 0                              ;* .S4 xx
+                        hi = n
+                        lo = n
+
+                     case command matches "0X 1N0N','1N0N"   ;* .S xx 1,4
+                        hi = matchfield(command, "0X' '0N','0N", 3)
+                        lo = matchfield(command, "0X' '0N','0N", 5)
+                        command = matchfield(command, "0X' '0N','0N", 1)
+
+                     case command matches "0X 1N0N' '1N0N"   ;* .S xx 1 4
+                        hi = matchfield(command, "0X' '0N' '0N", 3)
+                        lo = matchfield(command, "0X' '0N' '0N", 5)
+                        command = matchfield(command, "0X' '0N' '0N", 1)
+
+                     case command matches "0X 1N0N"          ;* .S xx 4
+                        hi = matchfield(command, "0X' '0N", 3)
+                        lo = hi
+                        command = matchfield(command, "0X' '0N", 1)
+
+                     case 1
+                        hi = 1
+                        lo = 1
+                  end case
+
+                  if hi > stack.depth then hi = stack.depth
+                  if lo > stack.depth then lo = stack.depth
+                  if hi < 1 then hi = 1
+                  if lo < 1 then lo = 1
+
+                  if hi < lo then
+                     n = hi
+                     hi = lo
+                     lo = n
+                  end
+
+                  gosub parse.prestore.reference
+                  if prestore.file = '' then
+                     display sysmsg(6517) ;* Format error in .S command
+                     continue
+                  end
+
+                  * Create $ED if necessary
+
+                  if prestore.file = '$ED' then
+                     read s from @voc, '$ED' else
+                        display sysmsg(6518) ;* Creating $ED file...
+                        execute 'CREATE.FILE DATA $ED'
+                     end
+                  end
+
+                  gosub open.prestore.file
+                  if open.prestore.file = '' then continue
+
+                  s = sysmsg(6519, @logname, timedate()) ;* Edit commands saved by %1 %2
+                  for i = hi to lo step - 1
+                     s<-1> = command.stack<i>
+                  next i
+
+                  * Check for use of multi-line insert
+
+                  n = upcase(s)
+                  locate 'I' in n<1> setting i else
+                     locate 'IB' in n<1> setting i else i = 0
+                  end
+                  if i then
+                     display sysmsg(6520) ;* Multi-line inserts cannot be saved in this way
+                     continue
+                  end
+
+                  readu n from prestore.f, prestore.id locked
+                     display sysmsg(1433, prestore.id, status()) ;* Record xx is locked by user xx
+                     continue
+                  end then
+                     loop
+                        display sysmsg(6521) :  ;* Record already exists. Overwrite (y/n)?
+                        input yn
+                        yn = upcase(yn)
+                     until yn = 'Y' or yn = 'N'
+                     repeat
+
+                     if yn = 'N' then 
+                        release prestore.f, prestore.id
+                        continue
+                     end
+                  end
+
+                  write s to prestore.f, prestore.id
+                  display sysmsg(6522, prestore.id, open.prestore.file)
+                  * Saved edit sequence %1 to %2
+
+               case c = "X"           ;* Execute
+                  if n = 0 and command # '' then   ;* Execute stored command
+                     gosub parse.prestore.reference
+                     if prestore.file = '' then
+                        display sysmsg(6523) ;* Format error in .X command
+                        continue
+                     end
+
+                     gosub open.prestore.file
+                     if open.prestore.file = '' then continue
+
+                     gosub read.prestore.rec
+                     if prestore.rec = '' then continue
+
+                     if upcase(prestore.rec[1,1]) = 'E' then
+                        prestored = prestore.rec
+                        prestored.lines = dcount(prestored, @fm)
+                        prestore.position = 1
+                        resume.position = 0
+                        del command.stack<COMMAND.STACK.DEPTH>
+                        ins raw.command before command.stack<1>
+                     end else
+                        display sysmsg(6511) ;* Record is not a prestored edit sequence
+                     end
+                  end else                   ;* Execute from stack
+                     if n = 0 then n = 1
+                     if n > stack.depth then n = stack.depth
+                     new.command = command.stack<n>
+                     if n = 1 then del command.stack<1> ;* Stack ends up unchanged
+                     display new.command
+                     goto reparse
+                  end
+
+               case c = "XK"
+                  if resume.position then resume.position = 0
+                  else display sysmsg(6524) ;* There is no paused prestored edit sequence
+
+               case c = "XR"
+                  if resume.position then
+                     prestore.position = resume.position
+                     resume.position = 0
+                  end else display sysmsg(6524) ;* There is no paused prestored edit sequence
+
+               case 1
+                  gosub unrecognised
+            end case
+
+            continue
+
+stack.position.error:
+            display sysmsg(6508) ;* Invalid stack position
+            continue
+
+format.error:
+            display sysmsg(6525) ;* Format error
+            continue
+         end
+
+parse.command:
+         u.command = upcase(command)
+         command.prefix = u.command[1,1]
+
+         * Add new command to command stack
+
+         if prestore.position = 0 then
+            del command.stack<COMMAND.STACK.DEPTH>
+            ins raw.command before command.stack<1>
+         end
+
+         begin case
+            case command matches "1N0N"     ;* Position to line command
+               n = command + 0
+               if n < 1 then
+                 message = sysmsg(6526) ;* Invalid line number
+                 gosub error
+               end else
+                  posn = n
+                  if posn > lines then posn = lines
+                  if posn then
+                     gosub get.current
+                     gosub show.current
+                  end
+               end
+
+            case alpha(command.prefix)   ;* Alphabetic commands
+               on seq(command.prefix) - 64 gosub a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z
+
+            case command matches "'+'1N0Ný'-'1N0N" ;* Position to relative line command
+               n = command + posn
+               if n < 1 then
+                   message = sysmsg(6526) ;* Invalid line number
+                   gosub error
+               end else
+                  posn = n
+                  if posn > lines then posn = lines
+                  if posn then
+                     gosub get.current
+                     gosub show.current
+                  end
+               end
+
+            ************************* < *************************
+            case u.command = "<"
+               block.top = posn
+               if posn = 0 then        ;* At top - clear block
+                  block.bottom = 0
+                  display sysmsg(6527) ;* Block pointers have been cleared
+               end
+               else display sysmsg(6528, block.top) ;* Block start set to line xx
+
+            ************************* > *************************
+            case u.command = ">"
+               if posn = 0 then
+                  message = sysmsg(6530) ;* No current line
+                  gosub error
+               end else
+                  block.bottom = posn
+                  display sysmsg(6529, block.bottom) ;* Block end set to line xx
+               end
+
+            ************************* <> ************************
+            case u.command = "<>"
+               if posn = 0 then
+                  message = sysmsg(6530) ;* No current line
+                  gosub error
+               end else
+                  block.top = posn
+                  block.bottom = posn
+                  display sysmsg(6531, block.top) ;* Line %1 defined as single line block
+               end
+
+            ************************* ^ *************************
+            case u.command = "^"
+               if expand.non.printing then
+                  expand.non.printing = @false
+                  display sysmsg(6532) ;* Expansion of non-printing characters disabled
+               end else
+                  expand.non.printing = @true
+                  display sysmsg(6533) ;* Expansion of non-printing characters enabled
+               end
+           
+            ************************* ? *************************
+            case u.command = "?"
+               display sysmsg(6534, full.file.name)  ;* File name = xx
+               display sysmsg(6535, record.name)     ;* Record name = xx
+               display sysmsg(6536, if posn then posn else 'Top') ;* Current line = xx
+               if block.top & (block.bottom >= block.top) then
+                  display sysmsg(6537, block.top)    ;* Block start line = xx
+                  display sysmsg(6538, block.bottom) ;* Block end line = xx
+               end
+               else display sysmsg(6539) ;* No block defined
+
+               if oops.command # '' then
+                  display sysmsg(6540, oops.command) ;* OOPS will undo 'xx'
+               end
+
+               if match.case then display sysmsg(6541) ;* Searches are case-sensitive
+               else display sysmsg(6542) ;* Searches are not case-sensitive
+
+               if expand.non.printing then
+                  display sysmsg(6543) ;* Expansion of non-printing characters : Enabled
+               end else
+                  display sysmsg(6544) ;* Expansion of non-printing characters : Disabled
+               end
+
+               if allow.non.printing then
+                  display sysmsg(6545) ;* Non-printing character entry         : Enabled
+               end else
+                  display sysmsg(6546) ;* Non-printing character entry         : Disabled
+               end
+
+               if query.block.actions then
+                  display sysmsg(6547) ;* Verification of block actions        : Enabled
+               end else
+                  display sysmsg(6548) ;* Verification of block actions        : Disabled
+               end
+
+               if wildchar # '' then
+                  display sysmsg(6980,wildchar) ;* Wildcard character = '%1'
+               end
+
+               display
+               if lines then
+                  gosub get.current
+                  gosub show.current
+               end
+         
+            case 1
+               gosub unrecognised
+         end case
+      end else    ;* Null command - advance one line
+         if lines = 0 then continue
+
+         if posn < lines then
+            if command.stack<1> matches "'+'1N0N" then
+               command.stack<1> = "+" : (command.stack<1>[2,999] + 1)
+            end else
+               del command.stack<COMMAND.STACK.DEPTH>
+               ins "+1" before command.stack<1>
+            end
+
+            posn += 1
+            gosub get.current
+            gosub show.current
+         end else
+            posn = 0
+            display sysmsg(6549)  ;* Top
+         end
+      end
+
+   until done
+
+      if posn = lines and prestore.position = 0 then
+         if lines then display sysmsg(6550, lines) ;* Bottom at line xx
+         else display sysmsg(6551) ;* Null record
+      end
+   repeat
+
+   release file, record.name
+
+   return
+
+* ----------------------------------------------------------------------
+a:
+   begin case
+      ********************** A **********************
+      case u.command matches "'A'ý'A '0X"
+         if posn = 0 then
+            message = sysmsg(6530) ;* No current line
+            gosub error
+            return
+         end
+
+         if len(command) > 2 then a.text = command[3,999999]
+         gosub get.current
+
+         gosub save.oops.rec
+
+         current.line := a.text
+         gosub save.current
+         gosub show.current
+  
+      case 1
+         gosub unrecognised
+   end case
+
+   return
+
+* ----------------------------------------------------------------------
+b:
+   begin case
+      ********************** B **********************
+      case u.command = "B"
+         posn = lines
+         if posn then
+            gosub get.current
+            gosub show.current
+         end
+
+      ****************** B string *******************
+      case u.command matches "'B '1X0X"
+         if posn = 0 then
+            message = sysmsg(6530) ;* No current line
+            gosub error
+            return
+         end
+
+         s = command[3,999999]
+         gosub get.current
+         i = index(current.line, s, 1)
+         if i then
+            i += len(s)
+
+            gosub save.oops.rec
+
+            current.line = current.line[1, i - 1] : @fm : current.line[i, 999999]
+            gosub save.current
+            chunk.lines(current.chunk) += 1
+            lines += 1
+
+            if block.top > posn then block.top += 1
+            if block.bottom > posn then block.bottom += 1
+
+            if chunk.lines(current.chunk) > SPLIT.LOAD then
+               ch = current.chunk
+               gosub split
+            end
+
+            gosub get.current
+            gosub show.current
+         end else
+            message = "String not found"
+            gosub error
+         end
+
+      ******************** BLOCK ********************
+      case u.command = "BLOCK"
+         if query.block.actions then
+            query.block.actions = @false
+            display sysmsg(6553) ;* Verification of block actions disabled
+         end else
+            query.block.actions = @true
+            display sysmsg(6552) ;* Verification of block actions enabled
+         end
+
+      case 1
+         gosub unrecognised
+
+      end case
+
+   return
+
+* ----------------------------------------------------------------------
+c:
+   begin case
+      ******************** CASE *********************
+      case u.command matches "'CASE '1X0X"
+         s = field(u.command, " ", 2)
+         begin case 
+            case s = "OFF"
+               match.case = @false
+
+            case s = "ON"
+               match.case = @true
+
+            case 1
+               gosub unrecognised
+         end case
+
+      ********************* CAT *********************
+      case u.command matches "'CAT'ý'CAT '0X"
+         if posn = 0 then
+            message = sysmsg(6530) ;* No current line
+            gosub error
+            return
+         end
+
+         if posn < lines then
+            gosub save.oops.rec
+
+            gosub get.current
+            n = posn + 1
+            gosub find.line
+
+            current.line := command[5,99999] : chunk(ch)<fld>
+            gosub save.current
+            gosub show.current
+
+            n.lines = 1             ;* Delete second line of pair
+            gosub delete.lines
+         end
+   
+      ********************* COL *********************
+      case u.command = "COL"
+         if lines > 9999 then s = space(len(lines))
+         else s = space(4)
+
+         display (s : "           1         2         3         4         5         6         7         8         9         0         1         2         3         4         5         6         7         8         9")[1,@crtwide]:
+         display (s : "  " : str("1234567890", idiv(@crtwide + 9, 10)))[1, @crtwide] :
+
+         gosub get.current
+         gosub show.current
+
+      ******************** COPY *********************
+      case u.command = "COPY"
+         gosub check.block
+         if err then return
+
+         if query.block.actions then
+            if block.top = block.bottom then
+               display sysmsg(6977, block.top, posn) :
+               * Copy line %1 to under line %2?
+            end else
+               display sysmsg(6554, block.top, block.bottom, posn) :
+               * Copy lines %1-%2 to under line %3?
+            end
+            gosub yes.no
+            if no then return
+         end
+            
+         gosub copy.block
+         record.updated = @true
+
+         posn += 1        ;* First line of copied block is now current
+
+         gosub save.oops.rec
+
+         gosub get.current
+         gosub show.current
+
+      ****************** C/s1/s2/ *******************
+      case 1
+         gosub change
+
+      end case
+
+   return
+
+* ----------------------------------------------------------------------
+d:
+   begin case
+      ********************** D **********************
+      case u.command matches "'D'ý'D'1N0Ný'DE'ý'DE'1N0N"
+         if posn = 0 then
+            if lines = 0 then return
+            posn = 1
+            gosub get.current
+         end
+
+         if (u.command = "D") or (u.command = "DE") then n.lines = 1
+         else n.lines = matchfield(u.command, "0A0N", 2)
+
+         if (posn + n.lines) > lines then n.lines = (lines - posn) + 1
+
+         gosub save.oops.rec
+         n = posn
+         posn -= 1
+         gosub delete.lines
+
+         gosub get.current
+
+      ******************* DELETE ********************
+      case u.command = "DELETE"
+         if ev.depth then
+            display sysmsg(6971) ;* This edit command is not allowed in EV mode
+            return
+         end
+
+         if not(option(OPT.ED.NO.QUERY.FD)) then
+            display sysmsg(6555) : ;* Are you sure you want to delete the entire record?
+            gosub yes.no
+            if no then return
+         end
+
+         delete file, record.name
+         done = @true
+
+      ********************* DUP *********************
+      case u.command matches "'DUP'ý'DUP '1N0Ný'DUP'1N0N"
+         if posn = 0 then
+            message = sysmsg(6530) ;* No current line
+            gosub error
+            return
+         end
+
+         dup.ct = matchfield(command, '0X0N', 2)
+         if dup.ct = '' then dup.ct = 1
+
+         if dup.ct then
+            gosub save.oops.rec
+
+            gosub get.current
+            current.line := str(@fm : current.line, dup.ct)
+            gosub save.current
+            chunk.lines(current.chunk) += dup.ct
+            lines += dup.ct
+            if chunk.lines(current.chunk) > SPLIT.LOAD then
+               ch = current.chunk
+               gosub split
+            end
+
+            if block.top > posn then block.top += dup.ct
+            if block.bottom > posn then block.bottom += dup.ct
+
+            posn += 1
+
+            gosub get.current
+            gosub show.current
+         end
+
+      ******************** DROP *********************
+      case u.command = "DROP"
+         gosub check.block
+         if err then return
+
+         if query.block.actions then
+            if block.top = block.bottom then
+               display sysmsg(6978, block.top) :
+               * Delete line %1?
+            end else
+               display sysmsg(6556, block.top, block.bottom) :
+               * Delete block from line %1 to line %2?
+            end
+            gosub yes.no
+            if no then return
+         end
+
+         gosub save.oops.rec
+
+         gosub save.oops.rec
+         gosub drop.block
+         block.top = 0
+         block.bottom = 0
+               
+         record.updated = @true
+
+         gosub get.current
+         gosub show.current
+
+      case 1
+         gosub unrecognised
+   end case
+
+   return
+
+* ----------------------------------------------------------------------
+e:
+   begin case
+      ********************** EV **********************
+      case u.command = "EV"
+         if dict.flag = 'DICT' and posn = 2 and chunk(head)[1,1] = 'I' then
+            * It's field 2 of an I-type
+
+            if ev.depth then
+               display sysmsg(6971) ;* This edit command is not allowed in EV mode
+               return
+            end
+
+            ev.depth = 3
+            ev.posn(ev.depth) = posn
+         
+            gosub assemble.record
+            ev.record(ev.depth) = rec
+
+            * Free memory for chunks currently in use
+            hd = head ; gosub release.chunks
+
+            * Split the I-type line sensibly (quotes and brackets 'protect' stuff)
+            rec = ''
+            parenthesis.level = 0
+            s = current.line
+            loop            
+               c = s[1,1]
+               begin case
+                  case c = ''
+                     exit
+
+                  case c = '"' or c = "'" or c = '\'
+                     j = index(s[1,9999999], c, 2)
+                     if j = 0 then j = len(s)
+                     rec := current.line[i,j]
+                     s = s[j+1,9999999]
+
+                  case parenthesis.level
+                     rec := c
+                     s = s[2,9999999]
+                     if c = ')' then parenthesis.level -= 1
+
+                  case c = ';'
+                     rec := @fm
+                     s = s[2,9999999]
+
+                  case c = '('
+                     parenthesis.level += 1
+                     rec := c
+                     s = s[2,9999999]
+
+                  case 1
+                     rec := c
+                     s = s[2,9999999]
+               end case
+            repeat
+    
+            lines = dcount(rec, @fm)
+            gosub split.into.chunks
+            posn = 0                                ;* Position at top
+            block.top = 0                           ;* No block defined
+            block.bottom = 0
+
+            oops.command = ''
+
+            display sysmsg(6972) ;* Entered EV mode. Use SV to save changes or Q to discard changes
+            return
+         end
+
+         if ev.depth = 2 then
+            display sysmsg(6969) ;* Maximum depth for EV reached
+            return
+         end
+
+         ev.depth += 1
+         if posn > 0 then                  ;* 0521
+            ev.posn(ev.depth) = posn
+            gosub get.current
+
+            gosub assemble.record
+         end else
+            ev.posn(ev.depth) = 0
+            rec = ''
+         end
+
+         ev.record(ev.depth) = rec
+         * Free memory for chunks currently in use
+         hd = head ; gosub release.chunks
+
+         rec = raise(current.line)
+         lines = dcount(rec, @fm)
+         gosub split.into.chunks
+         posn = 0                                ;* Position at top
+         block.top = 0                           ;* No block defined
+         block.bottom = 0
+
+         oops.command = ''
+
+         gosub display.ev.level
+
+      ********************** EX **********************
+      case u.command = "EX"
+         if record.updated then
+            display sysmsg(6557) :  ;* Record changed - OK to quit?
+            input command
+            done = upcase(command) = 'Y'
+         end
+         else done = @true
+
+      case 1
+         * Ignore if line 1 of prestore sequence (position already incremented)
+         if prestore.position # 2 then gosub unrecognised
+   end case
+
+   return
+
+* ----------------------------------------------------------------------
+f:
+   begin case
+      ********************* FD **********************
+      case u.command = "FD"
+         if ev.depth then
+            display sysmsg(6971) ;* This edit command is not allowed in EV mode
+            return
+         end
+
+         if not(option(OPT.ED.NO.QUERY.FD)) then
+            display sysmsg(6558) :  ;* Are you sure you want to delete the entire record?
+            gosub yes.no
+            if no then return
+         end
+         delete file, record.name
+         done = @true
+
+      ********************* FI **********************
+      case field(u.command, ' ', 1) matches "'FI'ý'FIB'ý'FIBR'ý'FILE'"
+         if ev.depth then
+            display sysmsg(6971) ;* This edit command is not allowed in EV mode
+            return
+         end
+
+         done = @true        ;* Must be before calling save.record
+         gosub save.record
+         if not(saved.ok) then
+            done = @false
+            return
+         end
+
+         s = field(u.command, ' ', 1)
+         z = file.name : ' '  : record.name
+         begin case
+            case new.dict.flag = 'DICT'
+               if s = 'FIB' or s = 'FIBR' then
+                  display sysmsg(6559) ;* Compile option ignored for dictionary item
+               end
+            case s = 'FIB'
+!               display sysmsg(6560, z) ;* Compiling xx
+               execute 'BASIC ' : z
+            case s = 'FIBR'
+!               display sysmsg(6560, z) ;* Compiling xx
+               execute 'BASIC ' : z
+               if @system.return.code < 1 then return
+               execute 'RUN ' : z
+         end case
+
+      ******************* FORMAT ********************
+      case u.command = "FORMAT"
+         if ev.depth then
+            display sysmsg(6971) ;* This edit command is not allowed in EV mode
+            return
+         end
+
+         if dict.flag # '' then
+            display sysmsg(6561) ;* Cannot format dictionary item
+            return
+         end
+
+* 0078 Removed:   gosub save.current
+
+         gosub assemble.record
+         call !format(rec, rec, file.name, 3, @false, err.count)
+         block.top = 0
+         block.bottom = 0
+
+         * Free memory for chunks currently in use
+         hd = head ; gosub release.chunks
+
+         lines = dcount(rec, @fm)
+         if lines = 0 then lines = 1
+
+         * Split modified record
+         saved.posn = posn
+         gosub split.into.chunks
+         if posn <= lines then posn = saved.posn
+
+         gosub get.current
+         record.updated = @true
+
+      ********************** F **********************
+      case u.command matches "'F'ý'F'1X0Xý'F'1N0N1X0X"
+         begin case
+            case u.command = 'F'
+               null
+            case u.command matches "'F'1N0N1X0X"
+               f.col = matchfield(u.command, "'F'0N0X", 2)
+               f.text = matchfield(command, "1A0N1X0X", 4)
+               c = matchfield(command, "1A0N1X0X", 3)
+               if c # ' ' and index(delimiters, c, 1) = 0 then
+                  message = sysmsg(6590) ;* Invalid string delimiter
+                  gosub error
+                  return
+               end
+            case 1
+               f.col = 1
+               f.text = command[3,999999]
+         end case
+         
+         if not(match.case) then u.text = upcase(f.text)
+         f.text.len = len(f.text)
+
+         if posn >= lines then posn = 0
+
+         n = posn + 1
+         gosub find.line
+         loop
+         while ch
+            loop
+            while fld <= chunk.lines(ch)
+               s = chunk(ch)<fld>
+
+               if wildchar # '' and index(f.text, wildchar, 1) then
+                  if match.case then
+                     wildstring = s
+                     wildtemplate = f.text
+                  end else
+                     wildstring = upcase(s)
+                     wildtemplate = u.text
+                  end
+                  wildstart = f.col
+                  gosub wildscan
+                  i = (wildindex = f.col)
+               end else
+                  if match.case then i = s[f.col, f.text.len] = f.text
+                  else i = upcase(s[f.col, f.text.len]) = u.text
+               end
+
+               if i then   ;* Found a match
+                  posn = n
+                  gosub get.current
+                  gosub show.current
+                  return
+               end
+
+               n += 1
+               fld += 1
+            repeat
+            ch = chunk.next(ch)
+            fld = 1
+         repeat
+
+         * Not found - position at bottom
+
+         posn = lines
+         if posn then gosub get.current
+
+      case 1
+         gosub unrecognised
+   end case
+
+   return
+
+* ----------------------------------------------------------------------
+g:
+   begin case
+      ********************* G< **********************
+      case u.command = "G<"
+         if block.top = 0 then
+            message = sysmsg(6562) ;* Error - Block start line not defined
+            gosub error
+            return
+         end
+
+         posn = block.top
+         gosub get.current
+         gosub show.current
+
+      ********************* G> **********************
+      case u.command = "G>"
+         if block.bottom  = 0 then
+            message = sysmsg(6563) ;* Error - Block end line not defined
+            gosub error
+            return
+         end
+
+         posn = block.bottom
+         gosub get.current
+         gosub show.current
+
+      ********************* Gn **********************
+      case u.command matches "'G'1N0N"
+         n = command[2,99999] + 0
+         if n < 1 then
+            message = sysmsg(6526) ;* Invalid line number
+            gosub error
+         end else
+            posn = n
+            if posn > lines then posn = lines
+            if posn then
+               gosub get.current
+               gosub show.current
+            end
+         end
+
+      case 1
+         gosub unrecognised
+   end case
+
+   return
+
+* ----------------------------------------------------------------------
+h:
+   begin case
+      ******************** HELP *********************
+      case u.command matches "'HELP'ý'HELP '0X"
+         s = trimf(trimb(u.command[6,99999]))
+         i = 0
+
+         if len(s) then
+            if help.text = '' then help.text = sysmsg(6603)  ;* Help text
+
+            help.text = help.text
+            loop
+               n = remove(help.text, delimiter)
+               if len(n) and (upcase(n[1,len(s)]) = s) then
+                  i = index(n, "	", 1)
+                  if i > 14 then
+                     display n[1, i - 1]
+                     display space(16) : n[i + 1, 99]
+                  end else
+                     display n[1, i - 1] : space(17 - i) : n[i + 1, 99]
+                  end
+
+                  loop
+                  while delimiter and (delimiter # 2)
+                     n = remove(help.text, delimiter)
+                     display space(16) : n
+                  repeat
+
+                  display
+               end else       ;* Skip entry
+                  loop
+                  while delimiter and (delimiter # 2)
+                     n = remove(help.text, delimiter)
+                  repeat
+               end
+            while delimiter
+            repeat
+
+            if i = 0 then display sysmsg(6564) ;* No help available for this topic
+         end else
+            s = ""
+            gosub get.help
+         end
+
+      case 1
+         gosub unrecognised
+   end case
+
+   return
+
+* ----------------------------------------------------------------------
+i:
+   begin case
+      ******************** I, IB ********************
+      case u.command matches "'I'ý'I '0Xý'IB'ý'IB '0X"
+         if index(u.command, " ", 1) then      ;* Single line insert
+            insert.text = field(command, " ", 2, 999999)
+            insert.lines = 1
+            if posn = 0 then     ;* Inserting after T - Treat as IB at line 1
+               posn = 1
+               insert.posn = 1
+               u.command = 'IB'
+            end
+
+            if prestore.position then
+               n = if lines > 9999 then len(lines) else 4
+               display fmt(posn, n : "'0'R") : ": " : insert.text
+            end
+         end else                              ;* Multi-line insert
+            if prestore.position then
+               display sysmsg(6565) ;* **** Multi-line insert ignored in prestored sequence ****
+               return
+            end
+
+            if posn = 0 then     ;* Inserting after T - Treat as IB at line 1
+               posn = 1
+               insert.posn = 1
+               u.command = 'IB'
+            end else
+               insert.posn = posn
+               if (u.command[2,1] # "B") and lines then insert.posn += 1
+            end
+
+            insert.text = ""
+            insert.lines = 0
+
+            loop
+               loop
+                  if lines > 9999 then
+                     display fmt(insert.posn, len(lines) : "'0'R") : "= ":
+                  end
+                  else display fmt(insert.posn, "4'0'R") : "= ":
+                  input s
+               until convert(printing.chars, '', s) = ''
+               until allow.non.printing
+                  display sysmsg(6566) ;* Data contains non-printing characters. Please re-enter.
+               repeat
+* ******************************
+* WARNING!
+* Side entry from command error.
+* All above set up must be done
+* before arriving here.
+* ******************************
+forgotten.insert:
+               gosub process.escapes
+               if escape.error then continue
+            while len(s)
+               if s = ' ' then s = ''
+               insert.lines += 1
+               insert.text<insert.lines> = s
+               insert.posn += 1
+            repeat
+         end
+
+         if insert.lines then
+            gosub save.oops.rec
+
+            if lines then
+               gosub get.current
+               if u.command[2,1] # "B" then
+                  fld += 1
+               end
+               ins insert.text before chunk(ch)<fld>
+               chunk.lines(ch) += insert.lines
+            end else ;* Record is currently empty
+               chunk(head) = insert.text
+               chunk.lines(head) = insert.lines
+               chunk.next(head) = 0
+               current.chunk = head
+            end
+
+            if block.top > posn then block.top += insert.lines
+            if block.bottom > posn then block.bottom += insert.lines
+
+            lines += insert.lines
+            posn += insert.lines - (u.command[2,1] = "B")   ;* 0202
+            if posn > lines then posn = lines
+            if posn then gosub get.current
+            record.updated = @true
+
+            if chunk.lines(current.chunk) > SPLIT.LOAD then
+               ch = current.chunk
+               gosub split
+            end
+
+            gosub get.current  ;* 0485
+         end else
+            if lines = 0 then posn = 0   ;* 0521
+         end
+
+      case 1
+         gosub unrecognised
+   end case
+
+   return
+
+* ----------------------------------------------------------------------
+l:
+   begin case
+      ********************* Ln **********************
+      case u.command matches "'L'1N0N"
+         l.len = command[2,99999] + 0    ;* 0315 Use l.len throughout
+         if posn = 0 then
+            if lines = 0 then return
+            posn = 1
+         end
+
+         if l.len then
+            n = posn
+            n.lines = l.len
+            gosub show.lines
+
+            posn += l.len - 1
+            if posn > lines then posn = lines
+            if posn then gosub get.current
+         end
+
+      ******************** LOAD *********************
+      case u.command[1,4] = 'LOAD'
+         begin case
+            case u.command = 'LOAD'
+               display sysmsg(6636) :  ;* Import file:
+               input new.file
+               if new.file = '' then return
+               if upcase(new.file[1,5]) = 'DICT' then
+                  new.dict.flag = 'DICT'
+                  new.file = field(new.file, ' ', 2)
+               end else
+                  new.dict.flag = ''
+               end
+
+               display sysmsg(6637) :  ;* Record:
+               input new.record
+               if new.record = '' then return
+
+            case u.command matches "'LOAD DICT '1X0X' '1X0X"
+               new.dict.flag = "DICT"
+               new.file = field(command, " ", 3)        ;* 0107 was 2
+               new.record = field(command, " ", 4)      ;* 0107 was 3
+
+            case u.command matches "'LOAD '1X0X' '1X0X"
+               new.dict.flag = ""
+               new.file = field(command, " ", 2)
+               new.record = field(command, " ", 3)
+
+            case u.command matches "'LOAD '1X0X"
+               new.dict.flag = dict.flag
+               new.file = file.name
+               new.record = field(command, " ", 2)
+
+            case 1
+               gosub unrecognised
+               return
+         end case
+
+         open new.dict.flag, new.file to n.file else
+            open new.dict.flag, upcase(new.file) to n.file else
+               if len(new.dict.flag) then
+                  message = sysmsg(6567, new.file) ;* File DICT %1 does not exist
+               end else
+                  message = sysmsg(6568, new.file) ;* File %1 does not exist
+               end
+               gosub error
+               return
+            end
+            new.file = upcase(new.file)
+         end
+         if len(new.dict.flag) then new.file = "DICT " : new.file
+
+         read s from n.file, new.record else
+            message = sysmsg(6569) ;* Record does not exist
+            gosub error
+            return
+         end
+
+         close n.file
+
+         n.lines = dcount(s, @fm)
+
+         loop
+            display sysmsg(6570) :  ;* Start line number (default 1)?
+            input n
+            if len(n) = 0 then n = 1
+         while not(num(n)) or (n < 1) or (n > n.lines)
+            display sysmsg(6571, n.lines) ;* Start line must be in range 1 to xx
+         repeat
+         n += 0
+
+         loop
+            display sysmsg(6572, n.lines) : ;* End line number (default xx)?
+            input i
+            if len(i) = 0 then i = n.lines
+         while not(num(i)) or (i < n) or (i > n.lines)
+            display sysmsg(6573, n, n.lines) ;* End line must be in range %1 to %2
+         repeat
+         n.lines = (i - n) + 1
+         s = field(s, @fm, n, n.lines)
+
+         gosub save.oops.rec
+
+         if lines then
+* 0077 Need to treat load at top as a special case as current.line is
+* meaningless when posn = 0.
+            if posn then    ;* Not at top
+               gosub get.current
+               current.line := @fm : s
+               gosub save.current
+            end else        ;* At top
+               current.chunk = head
+               chunk(current.chunk) = s : @fm : chunk(current.chunk)
+            end
+            chunk.lines(current.chunk) += n.lines
+         end else ;* Record is currently empty
+!!0070      head = free.chain     ;* Must exist
+!!0070      free.chain = chunk.next(head)
+            chunk(head) = s
+            chunk.lines(head) = n.lines
+            chunk.next(head) = 0
+            current.chunk = head
+         end
+
+         lines += n.lines
+         record.updated = @true
+         if chunk.lines(current.chunk) > SPLIT.LOAD then
+            ch = current.chunk
+            gosub split
+         end
+
+         if block.top > posn then block.top += n.lines
+         if block.bottom > posn then block.bottom += n.lines
+         
+         posn += 1
+
+         display sysmsg(6574, n.lines, new.file, new.record)
+         * %1 lines loaded from %2 %3
+         gosub get.current
+         gosub show.current
+
+      ******************** LOOP *********************
+      case u.command matches "'LOOP'0X" and prestore.position
+         * On first execution, parsing adds V2 = running loop counter
+
+         loop.count = command<1,2>
+         if loop.count # '' then            ;* Been here before
+            loop.count -= 1                 ;* Remaining loop count
+            prestored<prestore.position-1,2> = loop.count
+         end else                       ;* First time - Parse command
+            command = trim(command<1,1>)
+
+            * Validate repeat position
+            loop.top = field(command, ' ', 2)
+            if loop.top = '' then loop.top = 1
+            else
+               if not(loop.top matches '1N0N') then goto invalid.loop
+               if loop.top < 1 then goto invalid.loop
+               if loop.top >= prestore.position - 2  then goto invalid.loop
+            end
+
+            * Validate repeat count
+            loop.count = field(command, ' ', 3)
+            if loop.count = '' then loop.count = 1
+            else
+               if not(loop.count matches '1N0N') then goto invalid.loop
+               if loop.count < 1 then goto invalid.loop
+            end
+
+            s = 'LOOP ' : loop.top : ' ' : loop.count : @vm : loop.count
+            prestored<prestore.position-1> = s
+         end
+
+         if loop.count then  ;* Jump back
+            prestore.position = field(command, ' ', 2) + 0
+         end else   ;* Reset counter for next time
+            prestored<prestore.position-1,2> = field(command, ' ', 3) + 0
+         end
+
+      ********************** L **********************
+      case u.command matches "'L'ý'L'1X0Xý'L'1N0N1X0X"
+         begin case
+            case u.command = 'L'
+               l.lines = 0
+               null
+            case u.command matches "'L'1N0N1X0X"
+               l.lines = matchfield(u.command, "'L'0N0X", 2)
+               c = matchfield(command, "1A0N1X0X", 3)
+               if c # ' ' and index(delimiters, c, 1) = 0 then
+                  message = sysmsg(6590) ;* Invalid string delimiter
+                  gosub error
+                  return
+               end
+               l.text = matchfield(command, "1A0N1X0X", 4)
+            case 1
+               l.lines = 0
+               l.text = command[3,999999]
+         end case
+
+         if not(match.case) then u.text = upcase(l.text)
+
+         if posn >= lines then posn = 0
+
+         l.start = posn + 1
+         l.count = 0
+
+         loop
+            * Check the rest of the current chunk
+
+            n = posn + 1
+            gosub find.line           ;* Find the next line details if...
+            if not(ch) then exit      ;* ...there is a next line
+            s = field(chunk(ch), @fm, fld, 9999999)
+
+            if wildchar # '' and index(l.text,wildchar,1) then
+               if match.case then
+                  wildstring = s
+                  wildtemplate = l.text
+               end else
+                  wildstring = upcase(s)
+                  wildtemplate = u.text
+               end
+               wildstart = 1
+               gosub wildscan
+               i = wildindex
+            end else
+               if match.case then i = index(s, l.text, 1)
+               else i = index(upcase(s), u.text, 1)
+            end
+
+            if i then                               ;* Found in current chunk
+               posn += count(s[1,i], @fm) + 1
+               if l.lines then
+                  if posn > l.start + l.lines then goto l.not.found
+                  l.count += 1
+               end
+               gosub get.current
+               gosub show.current
+               if l.lines = 0 then return
+            end else
+               * Check subsequent chunks
+
+               offset = last.base - posn
+               loop
+                  offset += chunk.lines(ch)
+                  ch = chunk.next(ch)
+               while ch
+                  if wildchar # '' and index(l.text,wildchar,1) then
+                     if match.case then
+                        wildstring = chunk(ch)
+                        wildtemplate = l.text
+                     end else
+                        wildstring = upcase(chunk(ch))
+                        wildtemplate = u.text
+                     end
+                     wildstart = 1
+                     gosub wildscan
+                     i = wildindex
+                  end else
+                     if match.case then i = index(chunk(ch), l.text, 1)
+                     else i = index(upcase(chunk(ch)), u.text, 1)
+                  end
+
+                  if i then
+                     posn += offset + count(chunk(ch)[1,i], @fm)
+                     if l.lines then
+                        if posn > l.start + l.lines then goto l.not.found
+                        l.count += 1
+                     end
+                     gosub get.current
+                     gosub show.current
+                     if l.lines = 0 then return
+                     exit
+                  end              
+               repeat
+            end
+         while l.lines and ch
+         repeat
+
+l.not.found:
+         * Not found
+
+         if l.lines then   ;* Position after last valid search line
+            posn = l.start + l.lines
+            if posn > lines then posn = lines
+            display 'At line ' : posn : '. Found ' : l.count : ' lines.'
+         end else          ;* Position at bottom
+            posn = lines
+         end
+         if posn then gosub get.current
+
+      case 1
+         gosub unrecognised
+   end case
+
+   return
+
+invalid.loop:
+   message = sysmsg(6575) ;* Invalid LOOP command
+   gosub error
+   return
+
+* ----------------------------------------------------------------------
+m:
+   begin case
+      ********************** M **********************
+      case u.command matches "'M'ý'M '0X"
+         if len(command) > 2 then m.text = command[3,99999]
+
+         if posn >= lines then posn = 0
+
+         if posn < lines then
+            posn += 1
+            gosub get.current
+
+            if len(m.text) then
+               loop
+               while ch
+                  loop
+                  while fld <= chunk.lines(ch)
+                     if chunk(ch)<fld> matches m.text then
+                        posn = n
+                        gosub get.current
+                        gosub show.current
+                        return
+                     end
+
+                     n += 1
+                     fld += 1
+                  repeat
+                  ch = chunk.next(ch)
+                  fld = 1
+               repeat
+
+               * Not found - position at bottom
+
+               posn = lines
+               if posn then gosub get.current
+            end
+            else gosub show.current
+         end
+
+      ******************** MOVE *********************
+      case u.command = "MOVE"
+         gosub get.current    ;* 0485
+         gosub check.block
+         if err then return
+
+         if (posn >= block.top) and (posn <= block.bottom) then
+            message = sysmsg(6576) ;* Illegal MOVE. Current line is within moved block.
+            gosub error
+            return
+         end
+
+         if query.block.actions then
+            if block.top = block.bottom then
+               display sysmsg(6979, block.top, posn) :
+               * Move line %1 to under line %2?
+            end else
+               display sysmsg(6577, block.top, block.bottom, posn) :
+               * Move lines %1-%2 to under line %3?
+            end
+            gosub yes.no
+            if no then return
+         end
+
+         gosub save.oops.rec
+
+         gosub copy.block
+         gosub drop.block
+         record.updated = @true
+
+         posn += 1
+         block.top = posn
+         block.bottom = posn + block.lines - 1
+
+         gosub get.current
+         gosub show.current
+
+         if chunk.lines(current.chunk) > SPLIT.LOAD then
+            ch = current.chunk
+            gosub split
+         end
+
+      case 1
+         gosub unrecognised
+   end case
+
+   return
+
+n:
+   begin case
+      ********************** N **********************
+      case u.command = 'N'
+         if edit.from.list then
+            if record.updated then
+               display sysmsg(6557) :  ;* Record changed - OK to quit?
+               input command
+               done = upcase(command) = 'Y'
+            end else
+               done = @true
+            end
+         end else
+            message = sysmsg(6578) ;* This command can only be used when a select list is in use
+            gosub error
+         end
+
+      case u.command = 'NPRINT'
+         allow.non.printing = not(allow.non.printing)
+
+      case 1
+         gosub unrecognised
+   end case
+
+   return
+
+* ----------------------------------------------------------------------
+o:
+   begin case
+      ******************** OOPS *********************
+      case u.command = "OOPS"
+         if oops.command = '' then
+            display sysmsg(6579) ;* There is no edit to undo
+         end else
+            display "Undoing '" : oops.command : "'"
+            rec = oops.rec
+            lines = dcount(rec, @fm)
+            gosub split.into.chunks
+
+            posn = oops.posn
+            if posn > lines then posn = lines
+            block.top = oops.block.top
+            if block.top > lines then block.top = lines
+            block.bottom = oops.block.bottom
+            if block.bottom > lines then block.bottom = lines
+
+            oops.command = ''
+            gosub get.current
+            display
+            gosub show.current
+         end
+
+      case 1
+         gosub unrecognised
+   end case
+
+   return
+
+* ----------------------------------------------------------------------
+p:
+   begin case
+      ********************* Pn **********************
+      case u.command matches "'P'ý'P'1N0N"               ;* P[n]
+         if len(command) > 1 then p.len = command[2,99999] + 0
+         if posn = 0 then
+            if lines = 0 then return
+            posn = 1
+         end
+
+         if p.len then
+            n = posn
+            n.lines = p.len
+            gosub show.lines
+
+            posn += p.len - 1
+            if posn > lines then posn = lines
+            if posn then gosub get.current
+         end
+
+      ******************** PAUSE ********************
+      case u.command = "PAUSE" and prestore.position
+         display sysmsg(6580, prestore.position - 1)
+         * Paused at line %1 of prestored command sequence
+         resume.position = prestore.position
+         prestore.position = 0
+
+      ********************* PB **********************
+      case u.command = "PB"                          ;* PB
+         gosub check.block
+         if not(err) then
+            n = block.top
+            n.lines = block.lines
+            gosub show.lines
+         end
+
+      ********************* PL **********************
+      case u.command matches "'PL'ý'PL'1N0Ný'PL-'1N0N"   ;* PL[[-]n]
+         if len(command) > 2 then pl.len = command[3,99999] + 0
+
+         if lines then
+            if pl.len < 0 then n = posn + pl.len + 1   ;* Backwards
+            else n = posn                              ;* Forwards
+            if n < 1 then n = 1
+            n.lines = abs(pl.len)
+            gosub show.lines
+            display
+
+            gosub get.current
+            gosub show.current
+         end
+
+      ********************* PO **********************
+      case u.command matches "'PO'1N0N"                ;* POn
+         n = command[3,99999] + 0
+         if n < 1 then
+            message = sysmsg(6526) ;* Invalid line number
+            gosub error
+         end else
+            posn = n
+            if posn > lines then posn = lines
+            if posn then
+               gosub get.current
+               gosub show.current
+            end
+         end
+
+      ********************* PP **********************
+      case u.command matches "'PP'ý'PP'1N0N"           ;* PP[n]
+         if len(command) > 2 then pp.len = command[3,99999] + 0
+         if lines and pp.len then
+            n = posn - idiv(pp.len, 2)
+            if n < 1 then n = 1
+            n.lines = pp.len
+            gosub show.lines
+            display
+            gosub show.current
+         end
+
+      case 1
+         gosub unrecognised
+   end case
+
+   return
+
+* ----------------------------------------------------------------------
+q:
+   begin case
+      ********************** Q **********************
+      case (u.command = "QUIT") or (u.command = "Q")
+         if ev.depth then
+            display sysmsg(6971) ;* This edit command is not allowed in EV mode
+         end else
+            if record.updated then
+               display sysmsg(6557) :  ;* Record changed - OK to quit?
+               input command
+               done = upcase(command) = 'Y'
+            end else
+               done = @true
+            end
+         end
+
+      ************************* QV *************************
+      case u.command = "QV"
+         if ev.depth = 0 then
+            display sysmsg(6970) ;* You are not in EV mode
+            return
+         end
+
+         display sysmsg(6983)  ;* EV mode changes discarded
+
+         * Free memory for chunks currently in use
+         hd = head ; gosub release.chunks
+
+         rec = ev.record(ev.depth)
+         ev.record(ev.depth) = ''  ;* Free memory
+         lines = dcount(rec, @fm)
+         gosub split.into.chunks
+         posn = 0                                ;* Position at top
+         block.top = 0                           ;* No block defined
+         block.bottom = 0
+         posn = ev.posn(ev.depth)
+         ev.depth = if ev.depth = 3 then 0 else ev.depth - 1
+         oops.command = ''
+
+         gosub get.current    ;* 0312
+
+         gosub display.ev.level
+
+   case 1
+      gosub unrecognised
+
+   end case
+
+   return
+
+* ----------------------------------------------------------------------
+r:
+   begin case
+      ********************** R **********************
+      case u.command = 'R' or u.command[2,1] = " "
+         if posn = 0 then
+            message = sysmsg(6530) ;* No current line
+            gosub error
+            return
+         end
+
+         gosub get.current
+
+         gosub save.oops.rec
+
+         if u.command # 'R' then r.text = command[3,99999]
+
+         current.line = r.text
+         gosub save.current
+         gosub show.current
+
+      ****************** RELEASE ********************
+      case u.command = 'RELEASE'
+         release file, record.name
+
+      ****************** R/s1/s2/ *******************
+      case 1
+         gosub change
+* 1.1.1         gosub unrecognised
+   end case
+
+   return
+
+* ----------------------------------------------------------------------
+s:
+   begin case
+      ******************** SAVE *********************
+      case u.command matches "'SAVE'ý'SAVE '0Xý'SA'ý'SA '0X"
+         if ev.depth then
+            display sysmsg(6971) ;* This edit command is not allowed in EV mode
+            return
+         end
+
+         oops.command = ''
+         gosub save.record
+
+      ******************** SIZE *********************
+      case u.command = 'SIZE'
+         if ev.depth then
+            display sysmsg(6971) ;* This edit command is not allowed in EV mode
+            return
+         end
+
+         n = len(chunk(head))
+         ch = chunk.next(head)
+         loop
+         while ch
+            n += len(chunk(ch)) + 1
+            ch = chunk.next(ch)
+         repeat
+
+         display sysmsg(6581, record.name, lines, n)
+         * Size of '%1' is %2 lines and %3 characters
+
+      ******************** SPOOL ********************
+      case u.command matches "'SPOOL'ý'SPOOL' 0N"
+         if ev.depth then
+            display sysmsg(6971) ;* This edit command is not allowed in EV mode
+            return
+         end
+
+         if lines = 0 then
+            display sysmsg(6551) ;* Null record
+            return
+         end
+
+         printer on
+
+         ss = full.file.name : ' ' : record.name
+         if record.updated then ss := ' ' : sysmsg(6582) ;* (modified)
+         heading ss : "   'TGSL'"
+
+         n.lines = field(u.command, ' ', 2) + 0 ;* 0 if no numbering, else lines
+
+         if n.lines then
+            n = posn
+            if n = 0 then n = 1
+         end else
+            n = 1
+            n.lines = lines
+         end
+
+         num.width = if lines > 9999 then len(lines) else 4
+         num.fmt = num.width:"'0'R"
+         width = @lptrwide - 2 - num.width
+
+         gosub find.line
+
+         loop
+            print fmt(n, num.fmt) : ': ' :
+            ss = chunk(ch)<fld>
+            loop
+               print ss[1, width]
+            while len(ss) > width
+               ss = ss[width + 1, 99999]
+               print space(num.width + 2) :
+            repeat
+            n.lines -= 1
+         while n.lines
+            n += 1
+            fld += 1
+            if fld > chunk.lines(ch) then
+               ch = chunk.next(ch)
+               if ch = 0 then exit
+               fld = 1
+            end
+         repeat
+
+         printer off
+         gosub get.current
+
+      ******************* STAMP ********************
+      case u.command = 'STAMP'
+         if ev.depth then
+            display sysmsg(6971) ;* This edit command is not allowed in EV mode
+            return
+         end
+
+         gosub save.oops.rec
+
+         s = '* Updated by ' : @who : ' (' : @logname :') ' : timedate()
+         if posn = 0 then
+            ch = head
+            fld = 0
+         end else
+            n = posn
+            gosub find.line
+         end
+         ins s before chunk(ch)<fld + 1>
+         chunk.lines(ch) += 1
+         lines += 1
+         record.updated = @true
+
+         if block.top > posn then block.top += 1
+         if block.bottom > posn then block.bottom += 1
+
+         posn += 1
+
+         gosub get.current
+         gosub show.current
+
+      ********************** SV *********************
+      case u.command = "SV"
+         if ev.depth = 0 then
+            display sysmsg(6970) ;* You are not in EV mode
+            return
+         end
+
+         display sysmsg(6984)  ;* EV mode changes saved
+
+         gosub assemble.record
+
+         * Free memory for chunks currently in use
+         hd = head ; gosub release.chunks
+
+         if ev.depth = 3 then
+            convert @fm to ';' in rec
+            ev.record(ev.depth)<2> = rec
+         end else
+            ev.record(ev.depth)<ev.posn(ev.depth)> = lower(rec)
+         end
+         rec = ev.record(ev.depth)
+         ev.record(ev.depth) = ''  ;* Free memory
+         lines = dcount(rec, @fm)
+         gosub split.into.chunks
+         posn = 0                                ;* Position at top
+         block.top = 0                           ;* No block defined
+         block.bottom = 0
+         posn = ev.posn(ev.depth)
+         ev.depth = if ev.depth = 3 then 0 else ev.depth - 1
+         oops.command = ''
+
+         gosub get.current      ;* 0312
+
+         gosub display.ev.level
+      case 1
+         gosub unrecognised
+   end case
+
+   return
+
+* ----------------------------------------------------------------------
+t:
+   begin case
+      ********************** T **********************
+      case u.command = "T"
+         posn = 0
+         display sysmsg(6549) ;* Top
+
+      case 1
+         gosub unrecognised
+   end case
+
+   return
+
+* ----------------------------------------------------------------------
+u:
+   begin case
+      ******************* UNLOAD ********************
+      case u.command[1,6] = 'UNLOAD'
+         if lines = 0 then
+            display sysmsg(6551) ;* Null record
+            return
+         end
+
+         begin case
+            case u.command = 'UNLOAD'
+               display sysmsg(6636) :  ;* Import file:
+               input new.file
+               if new.file = '' then return
+               if upcase(new.file[1,5]) = 'DICT' then
+                  new.dict.flag = 'DICT'
+                  new.file = field(new.file, ' ', 2)
+               end else
+                  new.dict.flag = ''
+               end
+
+               display sysmsg(6637) :  ;* Record:
+               input new.record
+               if new.record = '' then return
+
+            case u.command matches "'UNLOAD DICT '1X0X' '1X0X"
+               new.dict.flag = "DICT"
+               new.file = field(command, " ", 3)     ;* 0107 was 2
+               new.record = field(command, " ", 4)   ;* 0107 was 3
+
+            case u.command matches "'UNLOAD '1X0X' '1X0X"
+               new.dict.flag = ""
+               new.file = field(command, " ", 2)
+               new.record = field(command, " ", 3)
+
+            case u.command matches "'UNLOAD '1X0X"
+               new.dict.flag = dict.flag
+               new.file = file.name
+               new.record = field(command, " ", 2)
+
+            case 1
+               gosub unrecognised
+               return
+         end case
+
+         open new.dict.flag, new.file to n.file else
+            open new.dict.flag, upcase(new.file) to n.file else
+               if len(new.dict.flag) then
+                  message = sysmsg(6567, new.file) ;* File DICT xx does not exist
+               end else
+                  message = sysmsg(6568, new.file) ;* File xx does not exist
+               end
+               gosub error
+               return
+            end
+            new.file = upcase(new.file)
+         end
+         if len(new.dict.flag) then new.file = "DICT " : new.file
+
+         if fileinfo(n.file, FL$READONLY) then
+            message = sysmsg(6583, new.file) ;* Cannot unload xx is a read-only file
+            gosub error
+            return
+         end
+
+         loop
+            display sysmsg(6570) : ;* Start line number (default 1)?
+            input n
+            if len(n) = 0 then n = 1
+         while not(num(n)) or (n < 1) or (n > lines)
+            display sysmsg(6571, lines) ;* Start line must be in range 1 to xx
+         repeat
+         n += 0
+         gosub find.line
+         start.chunk = ch
+         start.fld = fld
+
+         loop
+            display sysmsg(6572, lines) ;* End line number (default xx)?
+            input i
+            if len(i) = 0 then i = lines
+         while not(num(i)) or (i < n) or (i > lines)
+            display sysmsg(6573, n, lines) ;* End line must be in range %1 to %2
+         repeat
+         n.lines = (i - n) + 1
+         n = i
+         gosub find.line
+         end.chunk = ch
+         end.fld = fld
+         
+         gosub get.region
+
+         readvu i from n.file, new.record, 0 locked
+            display sysmsg(1429, status()) ;* Record is locked by user %1
+            goto abort.unload
+         end then
+            display sysmsg(6584, new.record, new.file)
+            * Record %1 already exists on %2
+            display sysmsg(6585) :  ;* OK to overwrite (Y/N)?
+            gosub yes.no
+            if no then
+               release n.file, new.record
+               goto abort.unload
+            end
+         end
+
+         write s to n.file, new.record
+         display sysmsg(6586, n.lines, new.file, new.record)
+         * %1 lines unloaded to %2 %3
+
+abort.unload:
+         close n.file
+
+      case 1
+         gosub unrecognised
+   end case
+
+   return
+
+* ----------------------------------------------------------------------
+w:
+   begin case
+      ********************** W **********************
+      case u.command matches "'W'0-1X"
+         c = command[2,1]
+         if alpha(c) or c = '^' then
+            display sysmsg(6981) ;* Illegal wildcard character
+         end else
+            wildchar = c
+         end
+
+      case 1
+         gosub unrecognised
+   end case
+
+   return
+
+* ----------------------------------------------------------------------
+x:
+   begin case
+      ********************** X **********************
+      case u.command = "X"
+         if record.updated then
+            display sysmsg(6557) :  ;* Record changed - OK to quit?
+            input command
+            done = upcase(command) = 'Y'
+         end
+         else done = @true
+         terminate = done
+
+      ********************* XEQ *********************
+      case u.command matches "'XEQ'ý'XEQ '0X"
+         s = command[5,999999]
+         if index(s, '@', 1) then
+            i = 1
+            s2 = ''
+            loop
+            while i <= len(s)
+               begin case
+                  case s[i,5] = '@FILE'
+                     s2 := file.name
+                     i += 5
+                  case s[i,3] = '@ID'
+                     s2 := record.name
+                     i += 3
+                  case s[i,5] = '@LINE'
+                     if posn then
+                        gosub get.current
+                        s2 := current.line
+                     end
+                     i += 5
+                  case s[i,3] = '@FM'
+                     s2 := @fm
+                     i += 3
+                  case s[i,3] = '@VM'
+                     s2 := @vm
+                     i += 3
+                  case s[i,3] = '@SM'
+                     s2 := @sm
+                     i += 3
+                  case 1
+                     s2 := s[i,1]
+                     i += 1
+               end case
+            repeat
+            s = s2
+         end
+         execute s
+
+      case 1
+         gosub unrecognised
+   end case
+
+   return
+
+j:
+k:
+v:
+y:
+z:
+unrecognised:
+   message = sysmsg(6587) ;* Error - Unrecognised command
+   gosub error
+   loop
+      display sysmsg(6588) :  ;* Did you mean to insert this text (Y/N)?
+      input x
+      x = upcase(x)
+   until x = 'Y' or x = 'N' or x = ''
+   repeat
+
+   if x = 'Y' then
+* ******************************
+* WARNING!
+* The code below must reflect
+* the set up in the I command.
+* ******************************
+
+      s = command
+      if posn = 0 then     ;* Inserting after T - Treat as IB at line 1
+         posn = 1
+         insert.posn = 1
+         u.command = 'IB'
+      end else
+         insert.posn = posn
+         if (u.command[2,1] # "B") and lines then insert.posn += 1
+      end
+
+      insert.text = ""
+      insert.lines = 0
+
+      if lines > 9999 then
+         display fmt(insert.posn, len(lines) : "'0'R") : "= " : s
+      end
+      else display fmt(insert.posn, "4'0'R") : "= " : s
+
+      command = 'I'
+      u.command = 'I'
+      goto forgotten.insert
+   end
+
+   return
+
+* ----------------------------------------------------------------------
+change:
+   if len(command) = 1 then
+      if c.command = '' then
+         message = sysmsg(6589) ;* No previous change command to repeat
+         gosub error
+         return
+      end
+      command = c.command
+   end
+
+   global = @false
+   block.mode = @false
+   multi.line = @false
+   change.lines = 1
+
+   p = 1
+   loop
+      p += 1
+   while p <= len(command)
+      c = upcase(command[p, 1])
+      begin case
+         case c = "G" and not(global)
+            global = @true
+
+         case c = "B" and not(block.mode)
+            block.mode = @true
+
+         case command[p,999] matches '1N0N0X' and not(multi.line)
+            change.lines = matchfield(command[p,999], '0N0X', 1)
+            p += len(change.lines) - 1
+            change.lines += 0
+            if change.lines < 1 then
+               message = sysmsg(6592) ;* Error - Number of lines must be greater than zero
+               gosub error
+               return
+            end
+            multi.line = @true
+
+         case 1
+            exit
+      end case
+   repeat
+
+   delimiter = command[p,1]
+   if not(index(delimiters, delimiter, 1)) then
+      message = sysmsg(6590) ;* Invalid string delimiter
+      gosub error
+      return
+   end
+
+   q = index(command, delimiter, 2)
+   if q = 0 then
+      message = sysmsg(6591) ;* Unmatched delimiter
+      gosub error
+      return
+   end
+
+   * Add a trailing delimiter if there is none present
+
+   r = index(command, delimiter, 3)
+   if r = 0 then
+      command := delimiter
+      r = len(command)
+   end
+
+   old.string = command[p + 1, q - p - 1]
+   new.string = command[q + 1, r - q - 1]
+
+
+   loop
+      r += 1
+   while r <= len(command)
+      c = upcase(command[r, 1])
+      begin case
+         case c = "G" and not(global)
+            global = @true
+
+         case c = "B" and not(block.mode)
+            block.mode = @true
+
+         case command[r,999] matches '1N0N0X' and not(multi.line)
+            change.lines = matchfield(command[r,999], '0N0X', 1)
+            r += len(change.lines) - 1
+            change.lines += 0
+            if change.lines < 1 then
+               message = sysmsg(6592) ;* Error - Number of lines must be greater than zero
+               gosub error
+               return
+            end
+            multi.line = @true
+
+         case 1
+            message = sysmsg(6593) ;* Error - Unexpected character in change command
+            gosub error
+            return
+      end case
+   repeat
+
+   if block.mode then
+      if multi.line then
+         message = sysmsg(6594) ;* Error - B option cannot be used with line count
+         gosub error
+         return
+      end
+
+      gosub check.block
+      if err then return
+
+      saved.posn = posn             ;* Remember current position and...
+      posn = block.top              ;* ...move to head of block
+      change.lines = block.lines
+   end else
+      if posn = 0 then
+         if lines = 0 then return
+         posn = 1
+      end
+   end
+
+   c.command = command      ;* Save for repeated command
+
+   gosub save.oops.rec
+
+   loop
+      gosub get.current
+
+      if wildchar # '' and index(old.string, wildchar, 1) then
+         i = @false
+         wildtemplate = old.string
+         wildstart = 1
+         loop
+            wildstring = current.line
+            gosub wildscan
+         while wildindex
+            i = @true
+            current.line = current.line[1,wildindex-1]:new.string:current.line[wildindex+len(old.string),999999]
+            wildstart = wildindex + len(new.string) + 1
+         while global
+         repeat
+      end else
+         if global then
+            if match.case then
+               z = count(current.line, old.string)
+            end else
+               z = count(upcase(current.line), upcase(old.string))
+            end
+         end else z = 1
+         i = 0
+         loop
+            if match.case then
+               n = index(current.line, old.string, z)
+            end else
+               n = index(upcase(current.line), upcase(old.string), z)
+            end
+         while n
+            i = 1
+            current.line = current.line[1, n - 1] : new.string : current.line[n + len(old.string), 999999]
+            z -= 1
+         while z
+         repeat
+      end
+
+      if i then
+         gosub show.current
+         gosub save.current
+      end
+
+      change.lines -= 1
+   while change.lines
+   until posn = lines
+      posn += 1
+   repeat
+
+   if block.mode then
+      posn = saved.posn             ;* Go back where we came from
+      gosub get.current
+      gosub show.current
+   end
+
+   return
+
+*****************************************************************************
+* PROCESS.ESCAPES  -  Expand ^nnn etc in input line
+
+* 0191 use s as data to process
+* 0240 Process forwards rather than backwards
+process.escapes:
+   escape.error = @false
+   i = 1
+   loop
+      j = index(s[i,999999], '^', 1)
+   while j
+      i += j - 1
+      begin case
+         case s[i+1,1] = "^"           ;* Literal up arrow
+            s = s[1, i] : s[i+2, 999999]
+
+         case s[i+1, 3] matches '3N'
+            qchar = s[i+1, 3] + 0
+            if qchar < 254 then
+               s = s[1, i-1] : char(qchar) : s[i+4, 99999]
+            end else
+               message = sysmsg(6595) ;* Invalid ^nnn character reference
+               gosub error
+               escape.error = @true
+               return
+            end
+      end case
+      i += 1
+   repeat
+
+   return
+
+*****************************************************************************
+* CHECK.BLOCK  -  Validate block settings
+
+check.block:
+   err = @false
+
+   if (block.top = 0) or (block.bottom = 0) then
+      message = sysmsg(6539) ;* No block defined
+      gosub error
+      err = @true
+   end
+   else if (block.top > block.bottom) or (block.bottom > lines) then
+      message = sysmsg(6596) ;* Block incorrectly defined
+      gosub error
+      err = @true
+   end
+
+   block.lines = 1 + block.bottom - block.top
+
+   return
+
+*****************************************************************************
+* COPY.BLOCK  -  Copy a block after current line
+
+copy.block:
+   * Fetch a copy of the block to be copied
+
+   n = block.top
+   gosub find.line
+   start.chunk = ch
+   start.fld = fld
+
+   n = block.bottom
+   gosub find.line
+   end.chunk = ch
+   end.fld = fld
+
+   gosub get.region
+
+   * Insert the text at the new position (0108 treat insert at top as special)
+
+   if posn then   ;* Not at top
+      ins s before chunk(current.chunk)<current.chunk.field + 1>
+   end else       ;* At top
+      current.chunk = head
+      chunk(current.chunk) = s : @fm : chunk(current.chunk)
+   end
+
+   last.base = 99999999   ;* 0157
+
+   chunk.lines(current.chunk) += block.lines
+   lines += block.lines
+
+   if chunk.lines(current.chunk) > split.load then
+      ch = current.chunk
+      gosub split
+   end
+
+   if block.top > posn then block.top += block.lines
+   if block.bottom > posn then block.bottom += block.lines
+
+   return
+
+*****************************************************************************
+* DROP.BLOCK  -  Delete block
+
+drop.block:
+   if posn > block.bottom then posn -= block.lines
+   else if posn > block.top then posn = block.top
+
+   n = block.top
+   n.lines = block.lines
+   gosub delete.lines
+
+   return
+
+*****************************************************************************
+* GET.CURRENT  -  Fetch copy of current line
+
+get.current:
+   if posn = 0 then return
+
+   n = posn
+   gosub find.line
+
+   current.line = chunk(ch)<fld>
+   current.chunk = ch
+   current.chunk.field = fld
+
+   return
+
+*****************************************************************************
+* SAVE.CURRENT  -  Save update of current line
+*
+* Uses current.chunk and current.chunk.field set by get.current
+
+save.current:
+   if posn then
+      chunk(current.chunk)<current.chunk.field> = current.line
+      record.updated = @true
+   end
+
+   return
+
+*****************************************************************************
+* FIND.LINE  -  Return chunk and offset of a line
+*
+* Input:      N    Desired line number
+*
+* Output:     CH   Chunk index (0 if not found)
+*             FLD  Field number 
+
+find.line:
+   if n < last.base then  ;* Start at head of chain
+      ch = head
+      base = 1
+   end else               ;* Use current line as shortcut
+      ch = last.chunk
+      base = last.base
+   end
+
+   loop
+   while n >= (base + chunk.lines(ch))
+       base += chunk.lines(ch)
+       ch = chunk.next(ch)
+       if ch = 0 then return
+   repeat
+
+   last.base = base
+   last.chunk = ch
+   fld = (n - base) + 1
+
+   return
+
+*****************************************************************************
+* SHOW.LINES  -  Display lines from arbitrary position
+* N = Start line (updated)
+* N.LINES = Number of lines to show
+
+show.lines:
+   gosub find.line
+   loop
+      if lines > 9999 then display fmt(n, len(lines) : "'0'R") :
+      else display fmt(n, "4'0'R") :
+      begin case
+         case n = block.top
+            if n = block.bottom then display '<>' :
+            else display '< ' :
+         case n = block.bottom
+            display '> ' :
+         case 1
+            display ': ' :
+      end case
+
+      s = chunk(ch)<fld>
+      gosub print.line
+      n.lines -= 1
+   while n.lines
+      n += 1
+      fld += 1
+      if fld > chunk.lines(ch) then
+         ch = chunk.next(ch)
+         if ch = 0 then exit
+         fld = 1
+      end
+   repeat
+
+   return
+
+*****************************************************************************
+* SHOW.CURRENT  -  Show current line
+
+show.current:
+   if posn = 0 then return
+
+   if lines > 9999 then display fmt(posn, len(lines) : "'0'R") :
+   else display fmt(posn, "4'0'R") :
+   begin case
+      case posn = block.top
+         if posn = block.bottom then display '<>' :
+         else display '< ' :
+      case posn = block.bottom
+         display '> ' :
+      case 1
+         display ': ' :
+   end case
+
+   s = current.line
+
+print.line:                          ;* Side entry from SHOW.LINES
+   if expand.non.printing then
+      s.len = len(s)
+      s.posn = 1
+
+      loop
+      while s.len
+         xch = s[s.posn, 1]
+         ch.val = seq(xch)
+         if ch.val < 128 and ch.val >= 32 then display xch:
+         else display "^" : fmt(ch.val, "3'0'R"):
+
+         s.posn += 1
+         s.len -= 1
+      repeat
+
+      display
+   end
+   else display s
+
+   return
+
+*****************************************************************************
+* GET.REGION
+* Copy text from start.chunk, start.fld to end.chunk, end.fld into s
+
+get.region:
+   if start.chunk = end.chunk then       ;* All in one chunk
+      s = field(chunk(start.chunk), @fm, start.fld, (end.fld - start.fld) + 1)
+   end else
+      i = (chunk.lines(start.chunk) - start.fld) + 1
+      s = field(chunk(start.chunk), @fm, start.fld, i)
+
+      n = start.chunk
+      loop
+         n = chunk.next(n)
+      until n = end.chunk
+         s<i> = chunk(n)
+         n = chunk.next(n)
+         i += chunk.lines(n)
+      repeat
+
+      s<i> = field(chunk(end.chunk), @fm, 1, end.fld)
+   end
+
+   return
+
+*****************************************************************************
+* DELETE.LINES  -  Delete n.lines lines from line n
+
+delete.lines:
+   if n.lines = 0 then return
+
+   record.updated = @true
+
+   first.deleted.line = n
+   gosub find.line          ;* First line to delete
+   start.chunk = ch
+   start.fld = fld
+
+   n += n.lines - 1         ;* Last line to delete
+   gosub find.line
+   end.chunk = ch
+   end.fld = fld
+
+   * Make a new chunk containing all of the start chunk before the first line
+   * to delete and all of the end chunk after the last line to delete
+
+   if start.fld > 1 then s = field(chunk(start.chunk), @fm, 1, start.fld - 1)
+   else s = ""
+
+   if chunk.lines(end.chunk) > end.fld then
+      s<start.fld> = field(chunk(end.chunk), @fm, end.fld + 1, 9999)
+   end
+   chunk(start.chunk) = s
+   chunk.lines(start.chunk) = (start.fld - 1) + (chunk.lines(end.chunk) - end.fld)
+      
+   if start.chunk # end.chunk then
+      * Delete all chunks after the start chunk up to and including the end
+      * chunk.
+
+      n = chunk.next(start.chunk)                      ;* First to delete
+      chunk.next(start.chunk) = chunk.next(end.chunk)  ;* Dechain deleted part
+
+      * Release memory used by chunk text
+      i = n
+      loop
+         chunk(i) = ""
+      until i = end.chunk
+         i = chunk.next(i)
+      repeat
+
+      * Add deleted chunks to head of free chain
+      chunk.next(end.chunk) = free.chain
+      free.chain = n
+   end
+
+   lines -= n.lines
+   if posn > lines then posn = lines
+
+   * Adjust block position if we have deleted above it
+
+   if block.top >= first.deleted.line then
+      if block.top < first.deleted.line + n.lines then block.top = 0
+      else block.top -= n.lines
+   end 
+
+   if block.bottom >= first.deleted.line then
+      if block.bottom < first.deleted.line + n.lines then block.bottom = 0
+      else block.bottom -= n.lines
+   end 
+
+   if chunk.lines(start.chunk) < MERGE.LOAD then
+      ch = start.chunk
+      gosub merge
+   end
+
+   last.base = 99999999 ;* 0514 Force restart of line calculations
+
+   return
+
+*****************************************************************************
+* SPLIT  -  Split chunk CH
+
+split:
+   loop
+   while chunk.lines(ch) > SPLIT.LOAD
+      if free.chain = 0 then      ;* Must allocate new free chunk
+         n = 10
+         gosub allocate.chunks
+      end
+
+      next.chunk = free.chain
+      free.chain = chunk.next(next.chunk)
+
+      chunk(next.chunk) = field(chunk(ch), @fm, IDEAL.LOAD + 1, 999999)
+      chunk.lines(next.chunk) = chunk.lines(ch) - IDEAL.LOAD
+      chunk.next(next.chunk) = chunk.next(ch)
+
+      chunk(ch) = field(chunk(ch), @fm, 1, IDEAL.LOAD)
+      chunk.lines(ch) = IDEAL.LOAD
+      chunk.next(ch) = next.chunk
+   repeat
+
+   return
+
+*****************************************************************************
+* MERGE  -  Merge chunk CH with an adjacent one
+
+merge:
+   * We merge with the adjacent chunk that has fewest lines
+
+   * Find the previous chunk (if any)
+
+   if ch # head then
+      prev.chunk = head
+      loop
+         z = chunk.next(prev.chunk)
+      until z = ch
+         prev.chunk = z
+      repeat
+   end
+   else prev.chunk = 0
+
+   next.chunk = chunk.next(ch)
+   if next.chunk = 0 then                      ;* This is the final chunk
+      if prev.chunk = 0 then                   ;* This is the only chunk
+* 0.3-7
+*        if lines = 0 then
+*           chunk.next(ch) = free.chain
+*           free.chain = ch
+*           head = 0
+*           posn = 0
+*        end
+
+         return
+      end
+      * Fall through to merge with previous chunk
+   end else                         ;* There is a next chunk
+      if prev.chunk # 0 then
+         if chunk.lines(prev.chunk) < chunk.lines(next.chunk) then
+            goto merge.previous
+         end
+      end
+
+      * Merge with following chunk
+
+      chunk(ch) := @fm : chunk(next.chunk)
+      chunk.lines(ch) += chunk.lines(next.chunk)
+      chunk.next(ch) = chunk.next(next.chunk)
+      
+      chunk.next(next.chunk) = free.chain
+      free.chain = next.chunk
+
+      goto check.split
+   end
+
+merge.previous:
+   * Merge with previous chunk
+
+   chunk(prev.chunk) := @fm : chunk(ch)
+
+   chunk.lines(prev.chunk) += chunk.lines(ch)
+   chunk.next(prev.chunk) = chunk.next(ch)
+     
+   chunk.next(ch) = free.chain
+   free.chain = ch
+
+   last.base = 99999999
+
+check.split:
+   * Although we have just merged two chunks, we could need to split the
+   * newly formed chunk to even out the load.
+
+   if chunk.lines(ch) > SPLIT.LOAD then gosub split
+
+   return
+
+*****************************************************************************
+* SAVE.RECORD  -  Save updated record
+*
+* Note: new.dict.flag is used on return by FI
+
+save.record:
+   saved.ok = @false
+   new.file = field(command, " ", 2)
+
+   if new.file = "" then                  ;* SAVE
+      new.dict.flag = dict.flag
+      new.file = file.name
+      new.record = record.name
+   end else
+      new.dict.flag = ""
+      new.record = field(command, " ", 3)
+
+      if new.record = "" then             ;* SAVE ID
+         new.dict.flag = dict.flag
+         new.record = new.file
+         new.file = file.name
+      end else                            ;* SAVE {DICT} FILE ID
+         if (new.record = "DICT") and len(field(command, " ", 4)) then
+            new.record = field(command, " ", 4)
+            new.dict.flag = "DICT"
+         end
+      end
+   end
+
+   open new.dict.flag, new.file to n.file else
+      open new.dict.flag, upcase(new.file) to n.file else
+         if len(new.dict.flag) then
+            message = sysmsg(6567, new.file) ;* File DICT xx does not exist
+         end else
+            message = sysmsg(6568, new.file) ;* File xx does not exist
+         end
+         gosub error
+         return
+      end
+      new.file = upcase(new.file)
+   end
+
+   if fileinfo(n.file, FL$READONLY) then
+      message = sysmsg(6597, new.file) ;* Cannot write record: xx is a read-only file
+      gosub error
+      return
+   end
+
+   readvu s from n.file, new.record, 0 locked
+      display sysmsg(1429, status()) ;* Record is locked by user %1
+      release n.file, new.record
+      return
+   end then
+      if new.dict.flag # dict.flag or new.file # file.name or new.record # record.name then
+         * Not writing to original location. Check if target already exists
+
+         loop
+            display sysmsg(6521) :  ;* Record already exists. Overwrite (y/n)?
+            input yn
+            yn = upcase(yn)
+         until yn = 'Y' or yn = 'N'
+         repeat
+
+         if yn = 'N' then
+            release n.file, new.record
+            return
+         end
+      end
+   end
+
+   gosub assemble.record
+
+   * Process source control actions if required
+
+   write.allowed = @true
+   source.control.update = @false
+   if catalogued(source.control) then
+      call @source.control(new.dict.flag,
+                           new.file,
+                           new.record,
+                           rec,
+                           @false,                 ;* Not full screen editor
+                           write.allowed,
+                           source.control.update)
+   end
+
+   if write.allowed then
+      saved.ok = @true
+      writeu rec to n.file,new.record
+      on error
+         saved.ok = @false
+         if status() = ER$TRIGGER then
+            message = sysmsg(3007, @trigger.return.code) ;* Data validation error: xx
+            gosub error
+         end else
+            message = sysmsg(6598, status(), os.error()) ;* Write error %1 - Data not saved
+            gosub error
+         end
+      end
+   end else
+      release n.file,new.record
+      saved.ok = @false
+      message = sysmsg(6599) ;* Write disallowed
+      gosub error
+   end
+   close n.file
+
+   if source.control.update then
+      lines = dcount(rec, @fm)
+      gosub split.into.chunks
+   end
+
+   rec = ""
+
+   if saved.ok then
+      if new.dict.flag # '' then
+         display sysmsg(6600, new.record, new.file) ;* '%1' filed in DICT %2
+      end else
+         display sysmsg(6601, new.record, new.file) ;* '%1' filed in %2
+      end
+
+      record.updated = @false
+   end
+
+   return
+
+*****************************************************************************
+
+assemble.record:
+   rec = chunk(head)
+   ch = chunk.next(head)
+   loop
+   while ch
+      rec := @fm : chunk(ch)
+      ch = chunk.next(ch)
+   repeat
+
+   return
+
+* *****************************************************************************
+* Release a chunk chain
+*
+* hd = head of chain to release
+
+release.chunks:
+   i = hd + 0
+   n = 1
+   loop
+      chunk(i) = ""
+      j = chunk.next(i)
+   while j
+      n += 1
+      i = j
+   repeat
+
+   * Add to head of free chain
+   chunk.next(i) = free.chain
+   free.chain = hd + 0
+   free.chunks += n
+
+   return
+
+*****************************************************************************
+* YES.NO  -  Read yes/no response
+
+yes.no:
+   input response
+   response = upcase(response[1,1])
+   begin case
+      case response = "Y"
+         no = @false
+      case response = "N"
+         no = @true
+      case 1
+         display sysmsg(6602) :  ;* Please answer Y or N
+         goto yes.no
+   end case
+
+   return
+
+*****************************************************************************
+get.help:
+   i = kernel(K$HELP,'')
+   return
+
+
+* ======================================================================
+
+save.oops.rec:
+   oops.command = command
+   oops.posn = posn
+   oops.block.top = block.top
+   oops.block.bottom = block.bottom
+
+   oops.rec = chunk(head)
+   ch = chunk.next(head)
+   loop
+   while ch
+      oops.rec := @fm : chunk(ch)
+      ch = chunk.next(ch)
+   repeat
+
+   return
+
+* ======================================================================
+
+parse.prestore.reference:
+   command = trim(command)
+   n = dcount(command, ' ')
+   begin case
+      case n = 1
+         prestore.file = '$ED'
+         prestore.id = field(command, ' ', 1)
+      case n = 2
+         prestore.file = field(command, ' ', 1)
+         prestore.id = field(command, ' ', 2)
+      case 1
+         prestore.file = ''
+         return
+   end case
+   return
+
+open.prestore.file:
+   if prestore.file # open.prestore.file then
+      open prestore.file to prestore.f else
+         prestore.file = upcase(prestore.file)
+         open prestore.file to prestore.f else
+            open.prestore.file = ''
+            display sysmsg(6604) ;* Prestored command file not found
+            return
+         end
+      end
+      open.prestore.file = prestore.file
+   end
+   return
+
+read.prestore.rec:
+   read prestore.rec from prestore.f, prestore.id else
+      read prestore.rec from prestore.f, upcase(prestore.id) else
+         display sysmsg(6605) ;* Prestored command not found
+      end
+   end
+   return
+
+* ======================================================================
+
+error:
+   if (prestore.position) then
+      display sysmsg(6606, message, prestore.position - 1) ;* %1 at line %2 of prestored commands
+      prestore.position = 0
+   end else
+      display message
+   end
+
+   return
+
+* ======================================================================
+* wildscan - Wildcard search
+
+* wildstring = string to search
+* wildtemplate = substring to find
+* wildstart = start character position
+* Returns wildindex as start position into wildstring, zero if not found
+
+wildscan:
+   w.template.len = len(wildtemplate)
+   w.starts = len(wildstring) - w.template.len + 1  ;* Max possible start position
+
+   for w.start.pos = wildstart to w.starts
+      for w.cpos = 1 to w.template.len
+         w.c = wildtemplate[w.cpos,1] 
+         if match.case then
+            if w.c # wildchar and w.c # wildstring[w.start.pos+w.cpos-1,1] then exit
+         end else
+            if w.c # wildchar and upcase(w.c) # upcase(wildstring[w.start.pos+w.cpos-1,1]) then exit
+         end
+         if w.cpos = w.template.len then  ;* Found a match
+            wildindex = w.start.pos
+            return
+         end
+      next w.cpos
+   next w.start.pos
+
+   wildindex = 0
+   return
+
+* ======================================================================
+
+display.ev.level:
+   begin case
+      case ev.depth = 1
+         display sysmsg(6972) ;* Editing values. Use SV to save changes or Q to discard changes
+      case ev.depth = 2
+         display sysmsg(6982) ;* Editing subvalues. Use SV to save changes or Q to discard changes
+      case 1
+         display sysmsg(6973) ;* Returned from EV mode
+   end case
+
+   return
+end
+
+* END-CODE

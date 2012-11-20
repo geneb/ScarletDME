@@ -1,0 +1,1685 @@
+* DEBUG
+* Debugger
+* Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 29 Aug 07  2.6-0 Added SRC m,n for non-full screen mode.
+* 25 May 07  2.5-6 0554 VAR.TYPE not set before tesing when processing matrix.
+* 16 May 07  2.5-5 Scroll stack report.
+* 16 May 07  2.5-5 show.stack used same loop variable as emit.msg.
+* 15 Dec 06  2.4-17 0530 Allow PMATRIX in SET.
+* 31 Oct 06  2.4-15 Use @SYS.BELL to honour BELL ON/OFF setting.
+* 30 Jun 06  2.4-6 0499 WATCH caused unassigned variable error.
+* 30 May 06  2.4-5 Added DUMP command.
+* 11 Apr 06  2.4-1 Keep program header flags in common.
+* 30 Mar 06  2.3-9 Added Gn command.
+* 11 Feb 06  2.3-6 Allow /var, ?var, var? as alternatives for var/.
+* 27 Jan 06  2.3-5 DEBUG.INFO(0) now returns VM after program name to allow
+*                  spaces in pathnames.
+* 01 Jul 05  2.2-3 Added AccuTerm key rebinding.
+* 30 Jun 05  2.2-3 Added SOCK data type for sockets.
+* 19 May 05  2.2-0 Added OS.ERROR() to available system variables.
+* 16 Mar 05  2.1-10 0325 DEBUG.DATA.AREA is now a dimensioned matrix.
+* 28 Jan 05  2.1-4 Added command stack.
+* 28 Jan 05  2.1-4 0309 Full screen mode relied on IT$DL support.
+* 25 Jan 05  2.1-4 Show remove pointer position for string display.
+* 25 Jan 05  2.1-4 0307 S<f>/ should show length of extracted field, not the
+*                  entire string.
+* 29 Oct 04  2.0-8 Added STACK command.
+* 18 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+subroutine $debug(prog.id, dtm, line, sub.ref, event)
+$catalog $DEBUG
+
+$flags debugger
+
+$include keys.h
+$include keyin.h
+$include debug.h
+$include syscom.h
+
+$include int$keys.h
+$include header.h
+
+deffun atvar(name) calling "!atvar"
+deffun dbg.info(mode, qualifier) local
+
+$define SOURCE.AREA            1
+
+   wm1 = @crtwide - 1
+   command.line = @crthigh - 1
+   data.area = command.line - DATA.AREA.LINES
+   source.area.lines = data.area -1 
+   return.key = seq(pterm(PT$INEWLINE,''))
+   phantom = bitand(event, 0x80000000) # 0
+
+   if debug.initialised and not(phantom) then
+      screen.image = save.screen(0, 0, @crtwide, @crthigh)
+      if full.screen then restore.screen debug.screen.image, @true
+   end
+   else gosub initialise
+
+   * Find program details
+
+   for idx = 0 to last.program
+      if program.id(idx) = prog.id then goto found.program
+   next idx
+
+   gosub allocate.new.program
+
+found.program:
+   case.sensitive = bitand(program.flags(idx), HDR.CASE.SENSITIVE)
+
+   if rebind.string then display rebind.string :
+
+   * ------------------------------------------------------------
+   * Display source program window
+
+   src.idx = idx
+   src.line = line
+   gosub display.source
+
+   if bitand(event, DE$WATCH) then
+      message = sysmsg(6700, watch.var.name) ;* Watched variable %1 has changed
+      gosub emit.msg
+
+      var.name = watch.var.name
+      dump.path = ''    ;* 0499
+      mouse.action = @false
+      gosub display.variable
+   end
+
+   * ------------------------------------------------------------
+   * Command processing loop
+
+   done = @false
+   prompt ""
+
+   loop
+      gosub get.input
+      dump.path = ''
+
+      if command = '' then
+         if array.offset >= 0 then  ;* Show next element
+            if array.offset > 0 and cols then
+               hi = cols * rows
+               n = array.offset - 1
+               message = array.name : '(' : idiv(n, cols) + 1 : ',' : rem(n, cols) + 1 : ') = '
+            end else
+               hi = rows
+               message = array.name : '(' : array.offset : ') = '
+            end
+            gosub display.array.element
+            if array.offset > hi then array.offset = -1
+         end else if src.pos # 0 then
+            src.line = src.pos
+            for src.ct = 1 to src.incr
+            until src.line > lines(src.idx)
+               gosub display.source
+               src.line += 1
+               src.pos = src.line
+            next src.ct
+         end
+      end else
+         array.offset = -1  ;* Kill array walking mode...
+         src.pos = 0        ;* ...and "source walk"
+
+         n = seq(command[1,1])
+         if n >= 128 then      ;* Function key
+            begin case
+               case n = K$F1             ;* Help
+                  gosub help
+
+               case n = K$F2             ;* Abort
+                  gosub abort.debug
+
+               case n = K$F3             ;* Stop
+                  gosub stop.debug
+
+               case n = K$F4 and full.screen and not(phantom)  ;* Show user screen
+                  gosub view
+
+               case n = K$F5             ;* Free run
+                  gosub dbg.breakpoint(BRK$RUN, 0)
+                  done = @true
+
+               case n = K$F7             ;* Step debug element
+                  n = 1
+                  gosub step
+
+               case n = K$F8             ;* Step line
+                  n = 1
+                  gosub step.line
+
+               case n = K$F11 and kernel(K$INTERNAL, -1)
+                  gosub dbg.breakpoint(BRK$TRACE, 0)
+                  done = @true
+
+               case n = K$CTRL.F7        ;* Run to parent
+                  gosub dbg.breakpoint(BRK$PARENT, 0)
+                  done = @true
+
+               case n = K$CTRL.F8        ;* Run to parent program
+                  gosub dbg.breakpoint(BRK$PARENT.PROGRAM, 0)
+                  done = @true
+
+               case n = K$CTRL.PAGE.UP and full.screen
+                  src.line = 1
+                  gosub display.source
+
+               case n = K$CTRL.PAGE.DOWN and full.screen
+                  src.line = lines(src.idx)
+                  gosub display.source
+
+               case n = K$PAGE.UP and full.screen
+                  src.line -= source.area.lines - 1
+                  if src.line < 1 then src.line = 1
+                  gosub display.source
+
+               case n = K$PAGE.DOWN and full.screen
+                  src.line += source.area.lines - 1
+                  if src.line > lines(src.idx) then src.line = lines(src.idx)
+                  gosub display.source
+
+               case 1
+                  display @sys.bell :
+            end case
+         end else                              ;* Text command
+            if full.screen then
+               message = prefix : command[1,wm1]
+               gosub emit.msg
+            end
+
+            command = trimf(trimb(command))
+            u.command = upcase(command)
+            action = matchfield(u.command, "0A0X", 1)
+
+            begin case
+               case action = 'HELP' or u.command = '?'
+                  gosub help
+
+               case u.command[1] = '/' or u.command[1] = '?' or ~
+                    u.command[1,1] = '/' or u.command[1,1] = '?'
+                  begin case
+                     case len(u.command) > 1
+                        if u.command[1] = '/' or u.command[1] = '?' then
+                           var.name = command[1, len(u.command) - 1]
+                        end else
+                           var.name = command[2, 9999]
+                        end
+                        if not(case.sensitive) then var.name = upcase(var.name)
+                        mouse.action = @false
+                        last.display = var.name
+                        gosub display.variable
+
+                     case last.display # ''
+                        var.name = last.display
+                        mouse.action = @false
+                        gosub display.variable
+                  end case
+
+               case action = "ABORT" or action = "Q" or action = "QUIT"
+                  gosub abort.debug
+
+               case action = "BRK"
+                  n = trim(matchfield(u.command, '0A0X', 2))
+                  begin case
+                     case n = ''
+                        message = sysmsg(6701) ;* Line number or CLR required
+                        gosub emit.err.msg
+
+                     case not(n matches '1N0N')
+                        message = sysmsg(6702) ;* Command format error
+                        gosub emit.err.msg
+
+                     case n = 0 or n > lines(src.idx)
+                        message = sysmsg(6703) ;* Invalid source line number
+                        gosub emit.err.msg
+
+                     case dcount(breakpoints, @fm) = MAX.BREAKPOINTS
+                        message = sysmsg(6704) ;* Too many breakpoints defined
+                        gosub emit.err.msg
+
+                     case 1
+                        locate src.idx:'.':n in breakpoints<1> setting i then
+                           message = sysmsg(6705) ;* Specified breakpoint already set
+                           gosub emit.err.msg
+                        end else
+                           gosub check.debugable
+                           if ok then
+                              breakpoints<-1> = src.idx:'.':n
+                              gosub dbg.breakpoint(BRK$ADD.LINE, n)
+                              if full.screen then gosub display.source
+                           end else
+                              message = sysmsg(6706) ;* Cannot set breakpoint on this line
+                              gosub emit.err.msg
+                           end
+                        end
+                  end case
+
+               case action = 'CLR'
+                  n = trim(matchfield(u.command, '0A0X', 2))
+                  begin case
+                     case n = ''
+                        gosub dbg.breakpoint(BRK$CLEAR, 0)
+                        breakpoints = ''
+                        if full.screen then gosub display.source
+
+                     case not(n matches "1N0N")
+                        message = sysmsg(6702) ;* Command format error
+                        gosub emit.err.msg
+
+                     case n = 0 or n > lines(src.idx)
+                        message = sysmsg(6703) ;* Invalid source line number
+                        gosub emit.err.msg
+
+                     case 1
+                        locate src.idx:'.':n in breakpoints<1> setting i then
+                           del breakpoints<i>
+                           gosub dbg.breakpoint(BRK$CLR.LINE, n)
+                           if full.screen then gosub display.source
+                        end else
+                           message = sysmsg(6707) ;* Specified breakpoint not found
+                           gosub emit.err.msg
+                        end
+                  end case
+
+               case action = 'DUMP'
+                  command = trim(command) ;* Tidy up embedded spaces
+                  var.name = field(command, ' ', 2)
+                  if not(case.sensitive) then var.name = upcase(var.name)
+                  dump.path = field(command, ' ', 3, 999) ;* Allow spaces in path
+                  if dump.path = '' then
+                     message = sysmsg(6702) ;* Command format error
+                     gosub emit.err.msg
+                  end else
+                     mouse.action = @false
+                     gosub display.variable
+                  end
+
+               case action = 'EP'
+                  gosub dbg.breakpoint(BRK$PARENT.PROGRAM, 0)
+                  done = @true
+
+               case action = 'EX' or action = 'EXIT'
+                  gosub dbg.breakpoint(BRK$PARENT, 0)
+                  done = @true
+
+               case action = 'G' or action = 'GOTO'
+                  s = trim(u.command[2,9999])
+                  if s matches '1N0N' and s <= lines(src.idx) then
+                     gosub dbg.breakpoint(BRK$GOTO.LINE, s)
+                     if status() then
+                        line = status()
+                        sub.ref = 0
+                        src.line = line
+                        gosub display.source
+                     end else
+                        message = sysmsg(6726)  ;* Cannot find source line
+                        gosub emit.err.msg
+                     end
+                  end else
+                     message = sysmsg(6703)  ;* Invalid source line number
+                     gosub emit.err.msg
+                  end
+
+               case action = "R" or action = "RUN"
+                  n = matchfield(u.command, '0X0N', 2)
+                  if n = '' then
+                     gosub dbg.breakpoint(BRK$RUN, 0)
+                  end else
+                     n += 0
+                     gosub dbg.breakpoint(BRK$LINE, n)
+                  end
+                  done = @true
+
+               case action = 'SET'
+                  s = field(command, ' ', 2, 999999)
+                  var.name = trimb(field(s, '=', 1))
+                  if not(case.sensitive) then var.name = upcase(var.name)
+                  new.value = trimb(trimf(field(command, '=', 2, 999999)))
+                  gosub setvar
+
+               case action = "S" or action = "STEP"
+                  s = trim(matchfield(u.command, '0A0X', 2))
+                  begin case
+                     case s = ''
+                        n = 1
+                        gosub step.line
+
+                     case s matches "1N0N"
+                        n = s + 0
+                        gosub step.line
+
+                     case s matches "'.'1N0N"
+                        n = matchfield(s, "'.'0N", 2)
+                        gosub step
+
+                     case 1
+                        goto error
+                  end case
+
+               case action = "SRC"    ;* Adjust source window
+                  s = trim(matchfield(u.command, '0A0X', 2))
+
+                  if full.screen then
+                     if s = '' then    ;* Reset to default display
+                        src.idx = idx
+                        src.line = line
+                        gosub display.source
+                     end else
+                        u.command = s
+                        s = field(u.command, " ", 1)
+                        u.command = u.command[col2() + 1, 9999]
+                        for i = 0 to last.program
+                           if program.name(i) = s then
+                              * Token is a program name  -  Switch display
+                              src.idx = i
+                              src.line = 1
+   
+                              s = field(u.command, " ", 1)
+                              u.command = u.command[col2() + 1, 9999]
+                           end
+                        next i
+   
+                        begin case
+                           case s = ""
+                              null
+
+                           case s matches "1N0N"             ;* Position to line
+                              src.line = s + 0
+
+                           case s matches "'+'1N0Ný'-'1N0N"  ;* Relative position
+                              src.line += s
+
+                           case 1
+                              message = sysmsg(6708) ;* Invalid SRC command
+                              gosub emit.err.msg
+                              continue
+                        end case
+
+                        if src.line < 1 then src.line = 1
+                        if src.line > lines(src.idx) then src.line = lines(src.idx)
+                        gosub display.source
+                     end
+                  end else   ;* Not full screen mode
+                     begin case
+                        case s = ''    ;* Display current line
+                           src.idx = idx
+                           src.line = line
+                           gosub display.source.and.name
+
+                        case s matches "1N0N"             ;* Display given line
+                           src.line = s + 0
+                           src.incr = 1
+                           gosub display.source
+                           src.pos = src.line + 1
+
+                        case s matches "1N0N','1N0N"     ;* Display from given line
+                           src.line = matchfield(s, "0N','0N",1) + 0
+                           src.incr = min(matchfield(s, "0N','0N",3) + 0, @crthigh - 3)
+                           for src.ct = 1 to src.incr
+                           until src.line > lines(src.idx)
+                              gosub display.source
+                              src.line += 1
+                              src.pos = src.line
+                           next src.ct
+
+                        case 1
+                           message = sysmsg(6708) ;* Invalid SRC command
+                           gosub emit.err.msg
+                           continue
+                     end case
+                  end
+
+               case action = "STACK"
+                  gosub show.call.stack
+
+               case action = "STOP"
+                  gosub stop.debug
+
+               case action = "TRACE" and kernel(K$INTERNAL, -1)
+                  gosub dbg.breakpoint(BRK$TRACE, 0)
+                  done = @true
+
+               case action = "UW" or action = "UNWATCH"
+                  gosub dbg.watch(-1, 0)
+
+               case (action = "V" or action = "VIEW") and full.screen and not(phantom)
+                  gosub view
+
+               case action = 'W' or action = 'WATCH'
+                  var.name = field(command, ' ', 2)
+                  if not(case.sensitive) then var.name = upcase(var.name)
+                  gosub watch
+
+               case 1
+error:
+                  message = sysmsg(6709) ;* Unrecognised command
+                  gosub emit.err.msg
+            end case
+         end
+      end
+   until done
+   repeat
+
+exit.debug:
+   if full.screen and not(phantom) then
+      debug.screen.image = save.screen(0, 0, @crtwide, @crthigh)
+      restore.screen screen.image, @true
+   end
+
+exit.loop:
+   return to exit.loop
+
+* **********************************************************************
+* EMIT.MSG
+
+emit.err.msg:
+   crt @sys.bell :
+
+emit.msg:
+   if full.screen then
+      ct = 0
+      loop                           ;* 0309 Reworked this loop
+      while len(message)
+         for i = 2 to DATA.AREA.LINES
+            debug.data.area(i-1) = debug.data.area(i)
+         next i
+         debug.data.area(5) = message[1,wm1]
+         ct += 1
+         if rem(ct, DATA.AREA.LINES) = 0 then
+            gosub paint.data.area
+            display @(0, command.line) : sysmsg(6710) :  ;* ---more---
+            s = upcase(keycode())
+            display @(0, command.line) : space(wm1) :
+            if s = 'Q' or s = char(27) then exit
+            ct = 0
+         end
+
+         message = message[wm1+1, 9999999]
+      repeat
+      gosub paint.data.area
+   end else
+      display message
+   end
+
+   return
+
+paint.data.area:
+   display command.attr : @(0,data.area) :
+   for i = 1 to DATA.AREA.LINES
+      display fmt(debug.data.area(i), wm1:'L')
+   next i
+   return
+
+* ======================================================================
+* INITIALISE  -  Initialise common block
+
+initialise:
+   full.screen = terminfo('sreg') # ''
+   if full.screen then
+      if not(phantom) then
+         screen.image = save.screen(0, 0, @crtwide, @crthigh)
+      end
+
+      if upcase(@term.type[3]) = '-AT' and terminfo('kmous') # '' then
+         mouse.on = char(27):char(2):'1'
+         mouse.off = char(27):char(2):'0'
+      end
+
+      if option(OPT.DEBUG.REBIND.KEYS) then
+         * Construct key rebind string
+
+         s = char(27):char(2):'F':'NU0':terminfo('kf1'):char(13)     ;* F1
+         s := char(27):char(2):'F':'NU1':terminfo('kf2'):char(13)    ;* F2
+         s := char(27):char(2):'F':'NU2':terminfo('kf3'):char(13)    ;* F3
+         s := char(27):char(2):'F':'NU3':terminfo('kf4'):char(13)    ;* F4
+         s := char(27):char(2):'F':'NU4':terminfo('kf5'):char(13)    ;* F5
+         s := char(27):char(2):'F':'NU5':terminfo('kf6'):char(13)    ;* F6
+         s := char(27):char(2):'F':'NU6':terminfo('kf7'):char(13)    ;* F7
+         s := char(27):char(2):'F':'NU7':terminfo('kf8'):char(13)    ;* F8
+         s := char(27):char(2):'F':'NU:':terminfo('kf11'):char(13)   ;* F11
+         ! Ctrl-Fn not in terminfo. Cannot rebind Ctrl-F7, Ctrl-F8
+         s := char(27):char(2):'F':'KU4':terminfo('khome'):char(13)  ;* Home
+         s := char(27):char(2):'F':'KU5':terminfo('kend'):char(13)   ;* End
+         s := char(27):char(2):'F':'KU6':terminfo('kpp'):char(13)    ;* PgUp
+         s := char(27):char(2):'F':'KU7':terminfo('knp'):char(13)    ;* PgDown
+         ! Absent AccuTerm codes. Cannot rebind ctrl-PgUp, ctrl-PgDown
+         s := char(27):char(2):'F':'KU8':terminfo('kcub1'):char(13)  ;* Left
+         s := char(27):char(2):'F':'KU9':terminfo('kcuf1'):char(13)  ;* Right
+         s := char(27):char(2):'F':'KU2':terminfo('kich1'):char(13)  ;* Insert
+         s := char(27):char(2):'F':'KU3':terminfo('kdch1'):char(13)  ;* Delete
+         s := char(27):char(2):'F':'KU0':terminfo('kbs'):char(13)    ;* Backspace
+         s := char(27):char(2):'F':'KU:':terminfo('kcuu1'):char(13)  ;* Up
+         s := char(27):char(2):'F':'KU;':terminfo('kcud1'):char(13)  ;* Down
+         rebind.string = s
+      end
+   end
+
+   * Display attributes
+
+   title.attr = @(IT$FGC, IT$BLACK) : @(IT$BGC, IT$WHITE)
+   source.attr = @(IT$FGC, IT$BRIGHT.WHITE) : @(IT$BGC, IT$BLUE)
+   highlight.source.attr = @(IT$FGC, IT$BRIGHT.WHITE) : @(IT$BGC, IT$BRIGHT.BLUE)
+   breakpoint.source.attr = @(IT$FGC, IT$BLACK) : @(IT$BGC, IT$YELLOW)
+   command.attr = @(IT$FGC, IT$BLACK) : @(IT$BGC, IT$WHITE)
+
+   basic.chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789$.%@"
+
+   banned = ''
+   for i = 0 to 31
+     banned := char(i)
+   next i
+   banned := char(127)
+   replacements = str("?", len(banned))
+
+   debug.command.stack = ''
+   mat debug.data.area = ''
+
+   if full.screen then
+      * Set up initial display and save screen image
+
+      display @(-1) : title.attr : space(@crtwide) :
+
+      i = SOURCE.AREA
+      display source.attr :
+      loop
+         crt @(0,i) : space(@crtwide) :
+         i += 1
+      while i < data.area
+      repeat
+
+      display command.attr :
+      loop
+         crt @(0,i) : space(@crtwide - (i = @crthigh)) :
+         i += 1
+      while i < @crthigh
+      repeat
+
+      if not(phantom) then
+         debug.screen.image = save.screen(0, 0, @crtwide, @crthigh)
+      end
+   end
+
+   * Program source control
+
+   mat chunk = ''
+   for i = 0 to INITIAL.CHUNKS
+      next.chunk(i) = i - 1       ;* Note: next.chunk(0) = -1, end of chain
+   next i
+   free.chunk = INITIAL.CHUNKS    ;* Free chunk chain
+
+   last.program = -1                      ;* Last used program entry (none)
+   mat program.id = 0 ; program.id(0) = 0
+   mat symbols = ""
+
+   src.pos = 0
+   array.offset = -1
+   last.display = ''
+
+   system.variables = 'STATUS()ýINMAT()ýCOL1()ýCOL2()ýOS.ERROR()'
+
+   debug.initialised = @true
+
+   return
+
+* ======================================================================
+* GET.INPUT  -  Keyboard input
+
+get.input:
+   pan.increment = 32
+
+   spos = 0               ;* Stack position
+   command = ''
+
+
+   prefix = '>'
+   prefix.len = len(prefix)
+   command.width = wm1 - prefix.len
+
+   loop
+      command.pan = 1
+
+      csr.x = -1
+      x = len(command) + 1
+      image = space(wm1)
+
+      if full.screen then
+         display command.attr : @(0, command.line) : space(wm1) :
+      end else display @(0) : @(-4) :
+
+      first = @true
+      loop
+         if (x < command.pan) or (x >= (command.pan + command.width)) then
+            command.pan = (int((x - 1) / pan.increment) * pan.increment) - pan.increment
+            if command.pan <= 0 then command.pan = 1
+         end
+
+         ss = prefix : command[command.pan, command.width]
+         gosub zoned.update
+
+         i = prefix.len + x - command.pan
+         if i # csr.x then
+            display @(i) :
+            csr.x = i
+         end
+
+         c = keycode()
+         n = seq(c)
+
+         if first and n >= 32 and n < 128 then
+            command = ''
+            x = 1
+         end
+         first = @false
+
+         begin case
+            case n = 254    ;* Ignore field marks (Destroys the stack)
+               display @sys.bell :
+
+            case n = K$HOME or n = 1
+               x = 1
+
+            case n = K$LEFT or n = 2
+               if x > 1 then x -= 1
+
+            case n = K$DELETE or n = 4
+               command = command[1, x - 1] : command[x + 1, 999]
+
+            case n = K$END or n = 5
+               x = len(command) + 1
+
+            case n = K$RIGHT or n = 6
+               if x <= len(command) then x += 1
+
+            case n = K$BACKSPACE
+               if x > 1 then
+                  x -= 1
+                  command = command[1, x - 1] : command[x + 1, 999]
+               end
+
+            case n = 11      ;* Ctrl-K
+               command = command[1, x - 1]
+
+            case n = 20      ;* Ctrl-T
+               if x > 1 and x < len(command) then
+                  command[x-1,2] = command[x,1]:command[x-1,1]
+               end
+
+            case n = K$RETURN
+               command = trim(command, ' ', 'B')
+               if not(full.screen) then display
+               debug.command.stack = command : @fm : field(debug.command.stack, @fm, 1, 98)
+               goto exit.get.input
+
+            case n = K$DOWN or n = 14
+               if spos > 1 then
+                  spos -= 1
+                  command = debug.command.stack<spos>
+               end else
+                  spos = 0
+                  command = ''
+               end
+               exit
+   
+            case n = K$INSERT or n = 15   ;* Ctrl-O
+               debug.overlay = not(debug.overlay)
+         
+            case n = K$UP or n = 16 or n = 26
+               if spos < dcount(debug.command.stack, @fm) then
+                  spos += 1
+                  command = debug.command.stack<spos>
+               end
+               exit
+
+            case n = 7          ;* Ctrl-G
+               spos = 0
+               command = ''
+               exit
+
+            case n = 21         ;* Ctrl-U
+               command = upcase(command)
+
+
+            case len(command) = 0 and n > 127
+               command = c
+               goto exit.get.input
+
+            case n >= 32
+               if debug.overlay then
+                  if x <= len(command) then command[x, 1] = c
+                  else command := c
+               end else
+                  command = command[1, x - 1] : c : command[x, 999]
+               end
+               x += 1
+
+            case 1
+               display @sys.bell :
+         end case
+      repeat
+   repeat
+
+exit.get.input:
+   return
+
+
+* ======================================================================
+
+zoned.update:
+   left = 0
+   text.line = ss : space(wm1)
+
+   if image # text.line then
+      for cl = 1 to wm1
+         if text.line[cl,1] # image[cl,1] then
+            left = cl ; right = cl
+            loop
+               cl += 1
+            while cl <= wm1
+               if text.line[cl,1] # image[cl,1] then right = cl
+            repeat
+
+            w = right - left + 1
+            i = left - 1
+            if i # csr.x then display @(i) :
+            display text.line[left,w] :
+            csr.x = i + w
+            image = text.line[1,wm1]
+            exit
+         end
+      next cl
+   end
+
+   return
+
+* ======================================================================
+* GET.SOURCE.LINE  -  Return source line
+* In:
+*   n = line number
+* Out:
+*   n = unchanged
+*   s = source line group starting at line n
+
+get.source.line:
+   if n > lines(src.idx) then
+      s = ''
+   end else
+      nn = n
+      j = head(src.idx)
+      loop
+         nn -= CHUNK.LOAD
+      while nn > 0
+         j = next.chunk(j)
+      repeat
+
+      s = field(chunk(j), @fm, mod(n - 1, CHUNK.LOAD) + 1, 9999)
+      if next.chunk(j) >= 0 then s := @fm : chunk(next.chunk(j))
+   end
+
+   return
+
+* ======================================================================
+* ALLOCATE.NEW.PROGRAM  -  Allocate data for new program
+
+allocate.new.program:
+   * Try to find program source
+   *    Check for existance of a source record
+   *    Check that its DTM not greater than that of the debugged program
+
+   source.path = dbg.info(3,0)
+   n = count(source.path, @ds)
+   source.file = field(source.path, @ds, 1, n)
+   source.record = field(source.path, @ds, n + 1)
+   openpath source.file to program.file then
+      readv rec from program.file, source.record, 0 then
+         source.dtm = ospath(source.path, OS$DTM)
+         if source.dtm <= dtm then
+            read rec from program.file, source.record then
+               * Looks ok as source
+               goto found.source.record
+            end
+         end
+      end
+      close program.file
+   end
+
+   message = sysmsg(6711, source.path) ;* Unable to find source record xx
+   gosub emit.err.msg
+   debug.off
+   return to exit.debug
+
+found.source.record:
+   * Scan the program table for an unused entry. In the same scan, check
+   * that all programs we encounter are still loaded into memory.
+   * Although we do not flush the object cache until we get back to the
+   * command prompt, we could have hit a cache limit and unloaded a program
+   * that the debugger knows about. Since its id will change next time it
+   * is loaded, we need to discard the debugger knowledge of this program.
+   * By doing it from this side, rather than object cache unload telling the
+   * debugger that the program has gone, we only take the performance hit
+   * when the debugger is in use instead of on every unload.
+
+   for idx = 0 to last.program
+      if program.id(idx) = 0 then goto found.spare.entry
+      if not(loaded(program.id(idx))) then
+         * Give away this entry as the program has been unloaded from memory
+         i = head(idx)
+         loop
+         while i >= 0
+            chunk(i) = ''
+            j = next.chunk(i)
+            next.chunk(i) = free.chunk
+            free.chunk = i
+            i = j
+         repeat
+         program.id(idx) = 0
+         head(idx) = -1
+         goto found.spare.entry
+      end
+   next idx
+
+   * No spare entry  -  Make new entry
+
+   last.program += 1
+
+   old.table.size = inmat(program.id)
+   if last.program > old.table.size then  ;* All entries are in use  -  Extend tables
+      new.table.size = old.table.size + 5
+      dim program.id(new.table.size)
+      dim head(new.table.size)
+      dim symbols(new.table.size)
+
+      for idx = last.program to new.table.size
+         program.id(idx) = 0
+         head(idx) = 0
+      next idx
+   end
+   idx = last.program
+
+found.spare.entry:
+   program.id(idx) = prog.id
+!   s = convert(" ", @vm, dbg.info(0,0))   ;* Fetch symbols
+   s = dbg.info(0,0)   ;* Fetch symbols
+   symbols(idx) = field(s, @vm, 2, 9999999)
+   program.name(idx) = s<1,1>
+   program.flags(idx) = dbg.info(5,0)
+
+   * Load source record to memory chain
+
+   source.lines = dcount(rec, @fm)
+
+   * Split record into chunks
+
+   if free.chunk < 0 then gosub allocate.new.chunks
+   head(idx) = free.chunk
+   lines(idx) = source.lines
+
+   j = chunk.load
+   remaining.lines = source.lines
+
+   loop
+      k = free.chunk
+      chunk(k) = removef(rec, j)
+      free.chunk = next.chunk(free.chunk)
+      if j > remaining.lines then j = remaining.lines
+      remaining.lines -= j
+   while remaining.lines
+      if free.chunk < 0 then gosub allocate.new.chunks
+      next.chunk(k) = free.chunk
+   repeat
+   next.chunk(k) = -1
+
+   rec = ""      ;* Free source record memory
+
+   return
+
+* ======================================================================
+
+allocate.new.chunks:
+   nn = inmat(chunk)
+   dim chunk(nn + 20)
+   dim next.chunk(nn + 20)
+
+   for i = 1 to 20
+      nn += 1
+      chunk(nn) = ''
+      next.chunk(nn) = free.chunk
+      free.chunk = nn
+   next i
+
+   return
+
+* ======================================================================
+* DISPLAY.SOURCE
+
+display.source.and.name:
+   if sub.ref then
+      display program.name(idx) : ", Line " : line : "." : sub.ref
+   end else
+      display program.name(idx) : ", Line " : line
+   end
+
+display.source:
+   n = len(lines(src.idx))
+   line.no.fmt = n : "R"
+   src.width = @crtwide - (n + 3)
+
+   if full.screen then
+      s = program.name(src.idx) : " : "
+      if src.idx = idx then s := src.line : "." : sub.ref
+      else s := src.line
+      display @(0, 0) : title.attr : fmt(s, wm1:'L') :
+
+      n = src.line - idiv(source.area.lines, 2) ;* First line to display
+      if n < 1 then n = 1
+
+      gosub get.source.line
+      convert "	" to "¨¨¨" in s
+
+      j = SOURCE.AREA
+      display @(0, SOURCE.AREA) :
+      for i = 1 to source.area.lines
+      until keyready()
+         if n <= lines(src.idx) then
+            locate src.idx:'.':n in breakpoints<1> setting pos then
+               display breakpoint.source.attr :
+            end else
+               display source.attr:
+            end
+            display fmt(n, line.no.fmt) : ": " :
+
+            if n = line and src.idx = idx then display highlight.source.attr :
+            else display source.attr :
+
+            display s<i>[1, src.width] : @(IT$CLEOL)
+         end else
+            display source.attr : @(IT$CLEOL)
+         end
+         n += 1
+      next i
+   end else     ;* Not full screen mode
+      n = src.line
+      gosub get.source.line
+      convert "	" to "¨¨¨" in s
+      display fmt(src.line, line.no.fmt) : ": " : s<1>
+   end
+
+   return
+
+* ======================================================================
+* HELP
+
+help:
+   if full.screen then
+      debug.screen.image = save.screen(0, 0, @crtwide, @crthigh)
+      
+      display source.attr : @(-1) :
+      s = change(sysmsg(6712), char(10), @fm) ;* Help text
+      loop
+         display remove(s, more)
+      while more
+      repeat
+      display @(0, 24) : sysmsg(6713) :  ;* Press RETURN to continue
+
+      loop
+         while seq(keyin()) # return.key
+      repeat
+
+      restore.screen debug.screen.image, @true
+   end else     ;* Not full screen
+      display sysmsg(6714)  ;* Help text
+   end
+
+   return
+
+* ======================================================================
+* VIEW
+
+view:
+   debug.screen.image = save.screen(0, 0, @crtwide, @crthigh)
+   restore.screen screen.image, @true
+   s = keycode()
+   screen.image = save.screen(0, 0, @crtwide, @crthigh)
+   restore.screen debug.screen.image, @true
+   return
+
+* ======================================================================
+* ABORT.DEBUG:
+
+abort.debug:
+   if full.screen and not(phantom) then
+      restore.screen screen.image, @true
+   end
+   gosub dbg.stop(6716) ;* ABORT : Debugging terminated
+   return
+
+* ======================================================================
+* STOP.DEBUG:
+
+stop.debug:
+   if full.screen and not(phantom) then
+      restore.screen screen.image, @true
+   end
+   gosub dbg.stop(6715) ;* STOP : Debugging terminated
+   return
+
+* ======================================================================
+* STEP  -  Step n debug elements
+
+step:
+   gosub dbg.breakpoint(BRK$STEP, n)
+   done = @true
+   return
+
+* ======================================================================
+* STEP.LINE  -  Step n lines
+
+step.line:
+   gosub dbg.breakpoint(BRK$STEP.LINE, n)
+   done = @true
+   return
+
+* ======================================================================
+* DISPLAY.VARIABLE  -  Display a variable
+* var.name - variable name
+* dump.path = path if doing DUMP, else null
+
+display.array.element:
+   var.info = dbg.info(2, array.offset)
+   array.offset += 1
+   fpos = 0 ; vpos = 0 ; spos = 0
+   goto display.data.common
+
+display.variable:
+   if var.name matches '...<1N...>' then
+      fpos = matchfield(var.name, '...<0N...', 3) + 0
+      vpos = matchfield(var.name, '...<0N,0N...', 5) + 0
+      spos = matchfield(var.name, '...<0N,0N,0N...', 7) + 0
+      var.name = matchfield(var.name, '...<1N...>', 1)
+   end else
+      fpos = 0 ; vpos = 0 ; spos = 0
+   end
+
+   * Is it a system variable?
+
+   locate upcase(var.name) in system.variables<1,1> setting i then
+      s = dbg.info(4,0)
+      message = var.name : ' = ' : s<i>
+      gosub emit.msg
+      return
+   end
+
+   * Is it an @-variable?
+
+   if var.name[1,1] = '@' then
+      message = var.name : ' = '
+      var.name = upcase(var.name)
+      s = atvar(var.name)
+      if status() then message = sysmsg(6717) ;* Unrecognised @-variable
+      else message := s
+      gosub emit.msg
+      return
+   end
+
+   begin case
+      case var.name matches "0X'('1N0N')'"
+         var.row = matchfield(var.name, "0X'('0N')'", 3)
+         var.name = field(var.name, '(', 1)
+         var.dim = 1
+
+      case var.name matches "0X'('1N0N','1N0N')'"
+         var.row = matchfield(var.name, "0X'('0N','0N')'", 3)
+         var.col = matchfield(var.name, "0X'('0N','0N')'", 5)
+         var.name = field(var.name, '(', 1)
+         var.dim = 2
+
+      case 1 
+         var.dim = 0
+   end case
+
+   find var.name in symbols(idx) setting f, v, sv else
+      if not(mouse.action) then
+         message = sysmsg(6718) ;* Variable not defined
+         gosub emit.err.msg
+      end
+      return
+   end
+
+   if f = 1 then  ;* Local variable
+      var.no = v - 1  ;* Form variable number
+   end else       ;* Common variable
+      var.no = symbols(idx)<f,1> + shift(sv, -16)
+   end
+
+   var.info = dbg.info(1, var.no)
+   var.type = var.info<1> + 0   ;* 0554
+
+   if var.dim then
+      var.flags = var.info<4>
+      if var.info<1> # V$ARRAY and var.info<1> # V$PMATRIX then
+         message = sysmsg(6719) ;* Index not allowed with scalar variable
+         gosub emit.err.msg
+         return
+      end
+
+      rows = var.info<2> + 0
+      cols = var.info<3> + 0
+      if var.dim = 1 then  ;* One index value
+         if cols and var.row # 0 then
+            message = sysmsg(6720) ;* Two dimensional matrix requires two index values
+            gosub emit.err.msg
+            return
+         end
+         if var.row > rows ~
+         or (var.row = 0 and (var.type = V$PMATRIX or bitand(var.flags, AH$PICK.STYLE))) then
+            message = sysmsg(6725) ;* Index out of range
+            gosub emit.err.msg
+            return
+         end
+         var.info = dbg.info(2, var.row)
+      end else  ;* Two index values
+         if cols = 0 then
+            message = sysmsg(6721) ;* Single dimensional matrix requires one index value
+            gosub emit.err.msg
+            return
+         end
+         if var.col < 1 or var.col > cols then
+            message = sysmsg(6722) ;* Column index out of range
+            gosub emit.err.msg
+            return
+         end
+         if var.row < 1 or var.row > rows then
+            message = sysmsg(6723) ;* Row index out of range
+            gosub emit.err.msg
+            return
+         end
+         var.info = dbg.info(2, cols * (var.row - 1) + var.col)
+      end
+   end
+
+   message = if mouse.action then var.name : '=' else ''
+
+display.data.common:
+   var.type = var.info<1> + 0   ;* Will not have set above if enter here
+   s = ''  ;* Will end up as data for DUMP command
+
+   * ++ALLTYPES++
+   begin case
+      case len(var.info) = 0
+         message := sysmsg(6724) ;* Unable to fetch variable information
+
+      case var.type = V$UNASSIGNED
+         message := 'Unassigned'
+
+      case var.type = V$INTEGER
+         s = var.info<2>
+         message := 'Integer: ' : s
+
+      case var.type = V$FLOATNUM
+         s = var.info<2>
+         message := 'Float: ' : s
+
+      case var.type = V$SUBR
+         s = var.info<2>
+         message := 'Subr: ' : s
+
+      case var.type = V$STRING
+         s = field(var.info, @fm, 3, 9999999)
+         if fpos or vpos or spos then
+            s = s<fpos,vpos,spos>
+            rmv = 0
+         end else
+            rmv = var.info<2,2> + 0
+         end
+
+         if dump.path = '' then
+            s = convert(banned, replacements, s)
+            message := 'String (' : len(s) : ' bytes'
+            if rmv then message := ',R=' : rmv
+            message := '): "' : s : '"'  ;* 0307
+         end
+
+      case var.type = V$FILE.REF
+         message := 'File: ' : var.info<3>
+         n = var.info<2>
+         begin case
+            case n = FVAR.DIRECTORY
+               message := ' (Directory)'
+            case n = FVAR.DYNAMIC
+               message := ' (Dynamic)'
+            case n = FVAR.SEQ
+               message := ' (Sequential)'
+            case n = FVAR.NET
+               message := ' (Networked)'
+         end case
+
+      case var.type = V$ARRAY
+         var.flags = var.info<4>
+         message := if bitand(var.flags, AH$PICK.STYLE) then 'Matrix: ' else 'Array: '
+         rows = var.info<2> + 0
+         cols = var.info<3> + 0
+         if cols then message := 'Dim (' : rows : ',' : cols :')'
+         else message := 'Dim (' : rows :')'
+         array.offset = if bitand(var.flags, AH$PICK.STYLE) then 1 else 0
+         array.name = var.name
+
+      case var.type = V$COMMON
+         message := 'Common: '
+
+      case var.type = V$IMAGE
+         message := 'Image: '
+
+      case var.type = V$BTREE
+         message := 'BTree: '
+
+      case var.type = V$SELLIST
+         s = field(var.info, @fm, 3, 99999)
+         if fpos or vpos or spos then s = s<fpos,vpos,spos>
+         if dump.path = '' then
+            s = convert(banned, replacements, s[1,10240])
+            message := 'Select list (' : var.info<2> : ' bytes): "' : s : '"'
+         end
+
+      case var.type = V$PMATRIX
+         message := 'Matrix: '
+         rows = var.info<2> + 0
+         cols = var.info<3> + 0
+         if cols then message := 'Dim (' : rows : ',' : cols :')'
+         else message := 'Dim (' : rows :')'
+         array.offset = 1
+         array.name = var.name
+
+      case var.type = V$SOCK
+         message := 'Socket: '
+
+      case var.type = V$LOCALVARS
+         message := 'Local: '
+
+      case var.type = V$OBJ
+         message := 'Object: ' : var.info<2>
+
+      case var.type = V$PERSISTENT
+         message := 'Persistent: '
+   end case
+
+   if dump.path = '' then
+      gosub emit.msg
+   end else
+      message = ''
+      openseq dump.path overwrite to dump.f on error
+         message = sysmsg(2105, status())   ;* Error %1 opening file
+      end else
+         if status() then
+            message = sysmsg(2105, status())   ;* Error %1 opening file
+         end
+      end
+
+      if message = '' then
+         writeblk s to dump.f on error
+            message = sysmsg(1435, status(), os.error())   ;* Write error %1 (os.error %2)
+         end else
+            message = sysmsg(1435, status(), os.error())   ;* Write error %1 (os.error %2)
+         end
+         closeseq dump.f
+      end
+
+      if message # '' then gosub emit.err.msg
+   end
+
+   return
+
+* ======================================================================
+* Watch variable
+
+watch:
+   watch.var.name = var.name
+
+   begin case
+      case var.name matches "0X'('1N0N')'"
+         var.row = matchfield(var.name, "0X'('0N')'", 3)
+         var.name = field(var.name, '(', 1)
+         var.dim = 1
+
+      case var.name matches "0X'('1N0N','1N0N')'"
+         var.row = matchfield(var.name, "0X'('0N','0N')'", 3)
+         var.col = matchfield(var.name, "0X'('0N','0N')'", 5)
+         var.name = field(var.name, '(', 1)
+         var.dim = 2
+
+      case 1 
+         var.dim = 0
+   end case
+
+   find var.name in symbols(idx) setting f, v, sv else
+      message = sysmsg(6718) ;* Variable not defined"
+      gosub emit.err.msg
+      return
+   end
+
+   if f = 1 then  ;* Local variable
+      var.no = v - 1  ;* Form variable number
+   end else       ;* Common variable
+      var.no = symbols(idx)<f,1> + shift(sv, -16)
+   end
+
+   var.info = dbg.info(1, var.no)
+
+   if var.dim then
+      if var.info<1> # V$ARRAY and var.info<1> # V$PMATRIX then
+         message = sysmsg(6719) ;* Index not allowed with scalar variable
+         gosub emit.err.msg
+         return
+      end
+
+      rows = var.info<2> + 0
+      cols = var.info<3> + 0
+      if var.dim = 1 then  ;* One index value
+         if cols and var.row # 0 then
+            message = sysmsg(6720) ;* Two dimensional matrix requires two index values
+            gosub emit.err.msg
+            return
+         end
+         if var.row > rows then
+            message = sysmsg(6725) ;* Index out of range
+            gosub emit.err.msg
+            return
+         end
+         gosub dbg.watch(var.no, var.row)
+      end else  ;* Two index values
+         if cols = 0 then
+            message = sysmsg(6721) ;* Single dimensional matrix requires one index value
+            gosub emit.err.msg
+            return
+         end
+         if var.col < 1 or var.col > cols then
+            message = sysmsg(6722) ;* Column index out of range
+            gosub emit.err.msg
+            return
+         end
+         if var.row < 1 or var.row > rows then
+            message = sysmsg(6723) ;* Row index out of range
+            gosub emit.err.msg
+            return
+         end
+         gosub dbg.watch(watch var.no, cols * (var.row - 1) + var.col)
+      end
+   end else    ;* Scalar variable
+      gosub dbg.watch(var.no, 0)
+   end
+
+   return
+
+* ======================================================================
+* Set variable
+
+setvar:
+   c = new.value[1,1]
+   begin case
+      case (c = '"' or c = "'" or c = '\') and len(new.value) > 1 and new.value[1] = c
+         new.value = new.value[2,len(new.value)-2]
+
+      case num(new.value) and new.value # ''
+         new.value = new.value + 0
+
+      case 1
+         message = "Illegal value"
+         gosub emit.err.msg
+         return
+   end case
+
+   begin case
+      case var.name matches "0X'('1N0N')'"
+         var.row = matchfield(var.name, "0X'('0N')'", 3)
+         var.name = field(var.name, '(', 1)
+         var.dim = 1
+
+      case var.name matches "0X'('1N0N','1N0N')'"
+         var.row = matchfield(var.name, "0X'('0N','0N')'", 3)
+         var.col = matchfield(var.name, "0X'('0N','0N')'", 5)
+         var.name = field(var.name, '(', 1)
+         var.dim = 2
+
+      case 1 
+         var.dim = 0
+   end case
+
+   find var.name in symbols(idx) setting f, v, sv else
+      message = sysmsg(6718) ;* Variable not defined
+      gosub emit.err.msg
+      return
+   end
+
+   if f = 1 then  ;* Local variable
+      var.no = v - 1  ;* Form variable number
+   end else       ;* Common variable
+      var.no = symbols(idx)<f,1> + shift(sv, -16)
+   end
+
+   var.info = dbg.info(1, var.no)
+   var.type = var.info<1>
+
+   if var.dim then
+      var.flags = var.info<4>
+
+      if var.type # V$ARRAY and var.type # V$PMATRIX then ;* 0530
+         message = sysmsg(6719) ;* Index not allowed with scalar variable
+         gosub emit.err.msg
+         return
+      end
+
+      rows = var.info<2> + 0
+      cols = var.info<3> + 0
+      if var.dim = 1 then  ;* One index value
+         if cols and var.row # 0 then
+            message = sysmsg(6720) ;* Two dimensional matrix requires two index values
+            gosub emit.err.msg
+            return
+         end
+         if var.row > rows ~
+         or (var.row = 0 and (var.type = V$PMATRIX or bitand(var.flags, AH$PICK.STYLE))) then
+            message = sysmsg(6725)  ;* Index out of range
+            gosub emit.err.msg
+            return
+         end
+         gosub dbg.set(var.no, var.row, new.value)
+      end else  ;* Two index values
+         if cols = 0 then
+            message = sysmsg(6721) ;* Single dimensional matrix requires one index value
+            gosub emit.err.msg
+            return
+         end
+         if var.col < 1 or var.col > cols then
+            message = sysmsg(6722) ;* Column index out of range
+            gosub emit.err.msg
+            return
+         end
+         if var.row < 1 or var.row > rows then
+            message = sysmsg(6723) ;* Row index out of range
+            gosub emit.err.msg
+            return
+         end
+         gosub dbg.set(var.no, cols * (var.row - 1) + var.col, new.value)
+      end
+   end else    ;* Scalar variable
+      gosub dbg.set(var.no, 0, new.value)
+   end
+
+   return
+
+* ======================================================================
+* Check line looks executable
+* In:
+*   n  = line number
+* Out:
+*   n  = unchanged
+*   ok = result
+
+check.debugable:
+   gosub get.source.line
+
+   s = upcase(trimf(s<1>))
+   c = s[1,1]
+   s = field(s, ' ', 1)
+   ok = @false
+   begin case
+      case s = ''
+      case c = '*' or c = '!' or s = 'REM' or s = 'REMARK'
+      case s = '$'
+      case s = 'PROGRAM' or s = 'SUBROUTINE' or s = 'FUNCTION'
+      case s = 'EQU' or s = 'EQUATE'
+      case 1
+         ok = @true
+   end case
+
+   return
+
+* ======================================================================
+
+show.call.stack:
+   s = system(1002)
+   n = dcount(s, @fm)
+   zz = 1
+   for stack.index = 2 to n      ;* Skip debugger
+      ss = s<stack.index>
+      message = ss<1,1>
+      begin case
+         case message = '$CPROC'
+            message = 'Command processor'
+            gosub emit.msg
+         case 1
+            k = dcount(ss, @vm)
+            for j = 2 to k
+               if rem(zz, DATA.AREA.LINES) = 0 then
+                  display @(0, command.line) : sysmsg(6710) :  ;* ---more---
+                  if upcase(keycode()) = 'Q' then return
+                  display @(0, command.line) : @(-4) :
+               end
+               ln = ss<1,j,2>
+               if ln then message := ' @ ' : ln           ;* If no line no...
+               else message := ' @ (x' : ss<1,j,1> : ')'  ;* ...use address
+               message = zz:': ':message
+               gosub emit.msg
+               message = '   '
+               zz += 1
+            next j 
+      end case
+   next stack.index
+   return
+
+* ======================================================================
+
+local subroutine dbg.breakpoint(mode, qualifier)
+   if phantom then
+      out.msg = 'BRK'
+      out.msg<2> = mode
+      out.msg<3> = qualifier
+      gosub send.message
+   end else
+      breakpoint mode, qualifier
+   end
+   return
+end
+
+local subroutine dbg.set(var, index, new)
+   if phantom then
+      out.msg = 'SET'
+      out.msg<2> = var
+      out.msg<3> = index
+      out.msg<4> = new
+      gosub send.message
+   end else
+      debug.set var, index to new
+   end
+   return
+end
+
+local subroutine dbg.watch(var, index)
+   if phantom then
+      out.msg = 'WATCH'
+      out.msg<2> = var
+      out.msg<3> = index
+      gosub send.message
+   end else
+      watch var, index
+   end
+   return
+end
+
+local function dbg.info(mode, qualifier)
+   if phantom then
+      out.msg = 'INFO'
+      out.msg<2> = mode
+      out.msg<3> = qualifier
+      gosub send.message
+      return field(in.msg, @fm, 3, 99999)
+   end else
+      return debug.info(mode, qualifier)
+   end
+end
+
+local subroutine send.message
+   id = 'DR.':@userno
+   recordlocku ipc.f, id
+   write out.msg to ipc.f, id
+   wake debugger.uid
+
+   id = 'D.':@userno
+   loop
+      readu in.msg from ipc.f, id then exit
+      release ipc.f, id
+      pause
+   repeat
+   delete ipc.f, id
+   set.status in.msg<2>
+
+   return
+end
+
+local subroutine dbg.stop(msgno)
+   if phantom then
+      id = 'DR.':@userno
+      recordlocku ipc.f, id
+      write 'STOP' to ipc.f, id
+      wake debugger.uid
+      break on      ;* Will have been turned off by PDEBUG
+      display sysmsg(msgno)
+      done = @true
+   end else
+      stop sysmsg(msgno)
+   end
+   return
+end
+
+* ======================================================================
+   * Avoid compiler warnings
+   pos = pos
+end
+
+* END-CODE

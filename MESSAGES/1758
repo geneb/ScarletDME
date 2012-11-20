@@ -1,0 +1,1 @@
+A  Abort: Aborts all activity and runs ON.ABORT action\nD  Debug: Enters debugger\nG  Go:    Continues execution\nP  Pdump  Generates a process dump recording the state of the process\nQ  Quit:  Exits from program to caller\nS  Stack: Displays call stack\nW  Where: Displays current program name and location\nX  Exit:  Exits from QM\n\n

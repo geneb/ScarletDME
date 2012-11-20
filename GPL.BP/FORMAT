@@ -1,0 +1,148 @@
+* FORMAT
+* FORMAT command  -  Apply format rules to QMBasic program.
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 02 Nov 06  2.4-15 VOC record types now case insensitive.
+* 28 Mar 05  2.1-11 Use PARSER$MFILE.
+* 13 Oct 04  2.0-5 Use message handler.
+* 01 Oct 04  2.0-3 Added multifile support.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    FORMAT {file.name} {record.name} {CASE}
+*
+*    file.name        File name. Defaults to BP.
+*
+*    record.name      Record name.  If omitted, checks for select list.
+*
+*    CASE             Perform case conversion actions.
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program format
+$catalog $format
+
+$include parser.h
+$include err.h
+
+
+   parser = "!PARSER"
+
+   @system.return.code = -ER$ARGS      ;* Preset for command format errors
+
+* ---------------  Step 1 -  Parse command
+
+   file.name = 'BP'
+   case.option = @false
+   using.list = @false
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, verb, keyword) ;* Verb
+
+
+   * Examine the first command argument (if any).  This might be the file
+   * name.  If it is not a VOC F or Q type entry, leave it for processing
+   * as a record id or option keyword and use the default name (BP).
+
+   call @parser(PARSER$MFILE, token.type, token, keyword)
+
+   if token.type # PARSER$END then
+      fn = field(token, ',', 1)
+      read voc.rec from @voc, fn else
+         read voc.rec from @voc, upcase(fn) then
+            token = upcase(token)
+         end
+      end   
+
+      voc.type = upcase(voc.rec[1,1])
+      if voc.type = 'F' or voc.type = 'Q' then
+         file.name = token
+         call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+      end
+   end
+
+
+   * Open the file
+
+   open file.name to src.f else stop sysmsg(2019) ;* File not found
+
+
+   * Get record id(s)
+
+   if token.type # PARSER$END and keyword = -1 then  ;* Looks like a record id
+      id.list = token
+      call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   end else
+      readlist id.list then using.list = @true    ;* Select list active?
+   end
+
+   if id.list = '' then stop sysmsg(2109) ;* Record name required
+
+
+   * Look for options
+
+   loop
+   while token.type # PARSER$END
+      begin case
+         case keyword = KW$CASE
+            case.option = @true
+
+         case 1
+            stop sysmsg(2018, token) ;* Unexpected token (xx)
+      end case
+
+      call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   repeat
+
+* ---------------  Step 2 -  Process records
+
+   @system.return.code = 0  ;* Assume success from here on
+
+   loop
+      id = remove(id.list, id.delim)
+      if upcase(id[2]) # '.H' then
+         readu in.rec from src.f, id else
+            release src.f, id
+            display sysmsg(2108 ,id)  ;* Record 'xx' not found
+            @system.return.code = -ER$RNF
+            return
+         end
+
+         if using.list then display id
+
+         call !format(in.rec, out.rec, file.name, 3, case.option, errors)
+
+         write out.rec to src.f, id
+      end
+
+   while id.delim
+
+      display
+   repeat
+
+   return
+end
+
+* END-CODE

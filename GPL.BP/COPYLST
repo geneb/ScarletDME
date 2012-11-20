@@ -1,0 +1,291 @@
+* COPYLST
+* COPY.LIST command
+* Copyright (c) 2005 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 28 Mar 05  2.1-11 Use PARSER$MFILE.
+* 13 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    COPY.LIST list.name [,new.name] [FROM src.file] [TO tgt.file] [options]
+*
+* list.name = name of list to copy. * to copy all lists.
+*
+* new.name  = name of copied list.  Default is as source list.
+*
+* src.file  = file from which to copy. Default is $SAVEDLISTS.
+*
+* tgt.file  = file to which to copy. Default is $SAVEDLISTS.
+*
+* options   = CRT
+*             DELETING
+*             LPTR [n]
+*             NO.PAGE
+*             OVERWRITING
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+
+$internal
+program $copy.list
+$catalog $copylst
+
+$include err.h
+$include keys.h
+$include parser.h
+
+
+   parser = "!PARSER"
+
+   @system.return.code = -ER$ARGS      ;* Preset for command format errors
+
+* ---------------  Step 1 -  Parse the command
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+
+   * Get source list name
+
+   call @parser(PARSER$GET.TOKEN, token.type, src.list, keyword)
+   if token.type = PARSER$END then stop sysmsg(3240) ;* Source list name required
+
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+
+   * Get target list name if present
+
+   if token.type = PARSER$COMMA then
+      call @parser(PARSER$GET.TOKEN, token.type, tgt.list, keyword)
+      if token.type = PARSER$END then
+         stop sysmsg(3241) ;* Target list name required
+      end
+      call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   end
+   else tgt.list = src.list
+
+   * Get source file if present
+
+   if keyword = KW$FROM then
+      call @parser(PARSER$MFILE, token.type, src.file.name, keyword)
+      if token.type = PARSER$END then
+         stop sysmsg(3242) ;* Source list file name not found where expected
+      end
+      call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   end
+   else src.file.name = "$SAVEDLISTS"
+
+   * Get target file if present
+
+   if keyword = KW$TO then
+      call @parser(PARSER$MFILE, token.type, tgt.file.name, keyword)
+      if token.type = PARSER$END then
+         stop sysmsg(3243) ;* Target list file name not found where expected
+      end
+      call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   end
+   else tgt.file.name = "$SAVEDLISTS"
+
+   * Process options
+
+   deleting = @false
+   overwriting = @false
+   to.file = @true
+   lptr = -1
+   no.page = @false
+
+   loop
+   while token.type # PARSER$END
+      begin case
+         case keyword = KW$CRT
+            to.file = @false
+
+         case keyword = KW$DELETING
+            deleting = @true
+
+         case keyword = KW$LPTR
+            lptr = 0
+            to.file = @false
+            call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+            if not(token matches "1N0N") then continue
+            lptr = token + 0
+            if lptr > LPTR$HIGH.PRINT.UNIT then
+               stop sysmsg(2053) ;* Invalid print unit number
+            end
+
+         case keyword = KW$NO.PAGE
+            no.page = @true
+
+         case keyword = KW$OVERWRITING
+            overwriting = @true
+
+         case 1
+            stop sysmsg(2018, token) ;* Unexpected token (xx)
+      end case
+
+      call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   repeat
+
+
+   * Check for illegal actions
+
+   if src.list = '' then stop sysmsg(3244) ;* Null source list name not allowed
+
+   if tgt.list = '' then stop sysmsg(3245) ;* Null target list name not allowed
+
+   if (src.list = "*") and (tgt.list # "*") then
+      stop sysmsg(3246) ;* Cannot copy all lists to a single named list
+   end
+
+   if to.file then
+     if no.page or (lptr >= 0) then stop sysmsg(2054) ;* Illegal combination of options
+
+     if (src.file.name = tgt.file.name) and (src.list = tgt.list) then
+        stop sysmsg(3247) ;* Target of copy is the same as the source
+     end
+   end else
+      if overwriting then stop sysmsg(2054) ;* Illegal combination of options
+   end
+
+
+* ---------------  Step 2 -  Create the save list file if necessary
+
+   if (src.file.name = "$SAVEDLISTS") or (tgt.file.name = "$SAVEDLISTS") then
+      open "$SAVEDLISTS" to saved.lists.file else
+         if status() # ER$NVR then
+            stop sysmsg(3248, status()) ;* Erorr xx opening $SAVEDLISTS
+         end
+
+         recordlocku @voc, '$SAVEDLISTS'
+
+         create.file "$SVLISTS" dynamic on error
+            release @voc, '$SAVEDLISTS'
+            @system.return.code = -status()
+            stop sysmsg(3249, status()) ;* Erorr xx creating $SAVEDLISTS
+         end
+
+         voc.rec = "F" : @fm : "$SVLISTS"
+         write voc.rec to @voc, "$SAVEDLISTS"
+
+         display sysmsg(3250) ;* Created $SAVEDLISTS
+
+         open "$SAVEDLISTS" to saved.lists.file else
+            stop sysmsg(3248, status()) ;* Error xx opening $SAVEDLISTS
+         end
+      end
+   end
+
+* ---------------  Step 3 -  Open files
+
+   if src.file.name = "$SAVEDLISTS" then src.file = saved.lists.file
+   else
+      open src.file.name to src.file else
+         open upcase(src.file.name) to src.file else
+            stop sysmsg(2021, src.file.name) ;* File xx not found
+         end
+      end
+   end
+
+   if tgt.file.name = "$SAVEDLISTS" then tgt.file = saved.lists.file
+   else
+      open tgt.file.name to tgt.file else
+         open upcase(tgt.file.name) to tgt.file else
+            stop sysmsg(2021, tgt.file.name) ;* File xx not found
+         end
+      end
+
+      if fileinfo(tgt.file, FL$READONLY) then
+         @system.return.code = -ER$RDONLY
+         stop sysmsg(1431) ;* File is read-only
+      end
+   end
+
+* ---------------  Step 4 -  Do the copy
+
+   @system.return.code = 0
+   if lptr = 0 then printer on
+   if no.page then s = @(0,0)    ;* Turn of pagination
+   
+   if src.list = "*" then      ;* Copy all lists
+      select src.file to 11
+      loop
+         readnext src.list from 11 else exit
+         tgt.list = src.list
+         gosub copy.list
+      repeat
+   end else                    ;* Copy specific list
+      gosub copy.list
+   end
+
+   if lptr = 0 then printer off
+
+   display sysmsg(3251, @system.return.code) ;* xx record(s) copied"
+
+   return
+
+* ======================================================================
+
+copy.list:
+   read list.rec from src.file, src.list else
+      release src.file, src.list
+      @system.return.code = -status()
+      stop sysmsg(2108, src.list) ;* Record xx not found
+   end
+
+   if to.file then
+      readvu s from tgt.file, tgt.list, 0 then exists = @true
+      else exists = @false
+
+      if not(overwriting) then
+         * Do not copy if the target record already exists
+         if exists then
+            release tgt.file, tgt.list
+            display sysmsg(3252, tgt.list) ;* Select list 'xx' already exists - Not overwritten
+            return
+         end
+      end
+
+      write list.rec to tgt.file, tgt.list on error
+         @system.return.code = -status()
+         stop sysmsg(3253, status(), tgt.list) ;* Error xx writing saved list record 'xx'
+      end
+
+      * Check for DELETING action
+
+      if deleting then
+         recordlocku src.file, src.list
+         delete src.file, src.list
+      end
+   end else
+      loop
+         remove s from list.rec setting delim
+         print on lptr s
+      while delim
+      repeat
+   end
+
+   @system.return.code += 1
+
+   return
+end
+
+* END-CODE

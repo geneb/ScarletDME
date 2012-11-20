@@ -1,0 +1,777 @@
+* LOGIN
+* LOGIN  -  Startup user session
+* Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 20 Mar 09 gwb Took the sharp edges off the signon message.
+* 03 Oct 07  2.6-5 Use parse.pathname.tokens() when processing ACCOUNTS record.
+* 21 Aug 07  2.6-0 Create $COMMAND.STACK on creation of new account.
+* 19 Jun 07  2.5-7 Moved terminal type determination to here from kernel.
+* 17 May 07  2.5-5 User name is now maintained by kernel.
+* 10 Dec 06  2.4-17 Added timeout to account name prompt.
+* 02 Nov 06  2.4-15 VOC record types now case insensitive.
+* 11 Oct 06  2.4-15 Treat update of MD VOC record as a special case to avoid a
+*                   prompt when upgrading from 2.4-14.
+* 25 May 06  2.4-5 Trap error writing to $LOGINS.
+* 19 May 06  2.4-4 Do not offer a default account name if the account no longer
+*                  exists in the ACCOUNTS file.
+* 12 Apr 06  2.4-1 $IPC must be opened as a non-transactional file.
+* 15 Sep 05  2.2-10 Introduced -quiet.
+* 28 Apr 05  2.1-13 Entry from the operating system command prompt on Linux and
+*                   FreeBSD systems should use the user's real login name when
+*                   checking $LOGINS for administrator rights rather than using
+*                   "Console" as on Windows systems.
+* 08 Apr 05  2.1-12 Added handling of "QM -Aname" to set initial account.
+* 08 Mar 05  2.1-8 Repeat username prompt at blank entry. This is to survive a
+*                  system that sends a CR on connection.
+* 24 Jan 05  2.1-4 Added ON ERROR clause to VOC open as attempting to open VOC
+*                  with wrong byte ordering causes an interminable sequence of
+*                  errors.
+* 05 Nov 04  2.0-10 Modified the rules regarding when users are considered to
+*                   be administrators. On Windows, anyone coming in via
+*                   QMConsole is always an administrator. On other platforms,
+*                   they are not unless they are registered as an adminstrator
+*                   in the operating system.
+* 29 Oct 04  2.0-9 (DBD) Add call to CCALL.INIT
+* 18 Oct 04  2.0-5 Use message handler.
+* 28 Sep 04  2.0-3 Suppress display of licence for single command execution.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* Mode argument:
+*   0   Interactive user
+*   1   QMVbSrvr session
+*   2   Updating VOC only
+*   3   End of install - offer to upgrade all VOCs (non-GPL version only)
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+$flags trusted
+
+subroutine login(ok, mode)
+$catalogue $LOGIN
+
+$include revstamp.h
+
+$include syscom.h
+$include header.h
+$include parser.h
+$include int$keys.h
+$include debug.h
+
+$include err.h
+$include keys.h
+$include keyin.h
+$include keycode.h
+
+   ok = @false
+   is.phantom = kernel(K$IS.PHANTOM, 0)
+   windows = system(91)
+
+   * If the terminal type has not yet been set, work out what it is
+
+   if mode = 0 then    ;* Interactive session startup
+      s = system(7)
+      if s = '' then
+         if system(1006) then     ;* Windows NT/2000/XP/etc
+            if system(42) or system(1027) then    ;* Network/serial connection
+               * Telnet negotiation in QMSvc has failed to establish the
+               * terminal type. Default to vt100.
+               s = 'vt100'
+            end else              ;* QMConsole connection
+               s = 'qmterm'
+            end
+         end else           ;* Windows 95/98/ME, Linux, FreeBSD
+            if system(42) or system(1027) then   ;* Network/serial connection
+               * Kernal has fired off telnet negotiation commands but we may
+               * have got here before the response arrives. Pause for up to
+               * two seconds waiting for the terminal type to be set.
+
+               for i = 1 to 20
+                  s = system(7)
+               until s # ''
+                  nap 100
+               next i   
+
+               if s = '' then s = 'vt100'
+            end else
+               * This user has come in from a command prompt of some sort.
+               if system(91) then s = 'qmterm'
+               else
+                  s = env('TERM')
+                  if s = '' then s = 'vt100'
+               end
+            end
+         end
+      end
+
+      void kernel(K$TERM.TYPE, s)
+
+      * Set terminal depth and width
+
+      s = env('LINES');
+      if not(s matches '1N0N') then s = terminfo('lines')
+      if s <= 0 then s = DEFAULT.DEPTH
+      setpu PU$LENGTH, -1, max(s, MIN.DEPTH)
+
+      s = env('COLUMNS');
+      if not(s matches '1N0N') then s = terminfo('cols')
+      if s <= 0 then s = DEFAULT.WIDTH
+      setpu PU$WIDTH, -1, max(s, MIN.WIDTH)
+
+      * Clear screen except for phantoms and single command execution
+
+      if not(is.phantom) and system(1026) = '' then
+         if not(bitand(kernel(K$COMMAND.OPTIONS, 0), CMD.QUIET)) then
+            display @(-1) :
+         end
+
+         if system(7) = 'qmterm' then
+            if getpu(PU$WIDTH, -1) < 256 and getpu(PU$LENGTH, -1) < 256 then
+               display @(-256, getpu(PU$WIDTH, -1) + 256 * getpu(PU$LENGTH, -1)) :
+            end
+         end
+      end
+   end
+
+   if mode = 2 or mode = 3 then     ;* Just doing a VOC upgrade or install
+      if mode = 2 then              ;* VOC update
+         update.voc.f = voc
+         gosub update.voc
+         close update.voc.f
+      end
+
+      if @who = 'QMSYS' and kernel(K$ADMINISTRATOR,-1) then
+         loop
+            display sysmsg(5003) :  ;* Update VOC in all registered accounts (Y/N)?
+            input yn
+            yn = upcase(yn)
+         until yn = 'Y' or yn = 'N'
+         repeat
+
+         if yn = 'Y' then
+            voc.paths = @path
+            openpath @qmsys:@ds:'ACCOUNTS' to acc.f then
+               select acc.f to 12
+               loop
+                  readnext acc.name from 12 else exit
+                  read acc.rec from acc.f, acc.name then
+                     acc.path = parse.pathname.tokens(acc.rec<ACC$PATH>)
+
+                     locate acc.path in voc.paths<1> setting i else
+                        s = acc.path:@ds:'VOC'
+                        openpath s to update.voc.f then
+                           display sysmsg(5004, s) ;* Updating xx
+                           gosub update.voc
+                           close update.voc.f
+                           voc.paths<-1> = acc.path
+                        end
+                     end
+                  end
+               repeat
+               close acc.f
+            end else
+               display sysmsg(2200) ;* Cannot open accounts register
+            end
+         end
+      end 
+
+      ok = @true
+      return
+   end
+
+
+
+   if not(bitand(kernel(K$COMMAND.OPTIONS, 0), CMD.QUIET)) then
+      display "[ OpenQM Rev " : QM.REV.STAMP : "   Copyright Ladybridge Systems, " : QM.COPYRIGHT.YEAR : " ]"
+      display
+      display "Welcome to OpenQM!  Multi-Value for the masses, not the classes."
+      *following must be left to comply with clause 1 of the gpl licence
+      display "This program is free software and is supplied with ABSOLUTELY NO WARRANTY."
+      display "You are welcome to modify or redistribute this software subject to certain"
+      display "conditions.  For details type CONFIG GPL."
+      display
+   end
+
+
+   * Display origin of network connection for telnet sessions
+
+   if not(bitand(kernel(K$COMMAND.OPTIONS, 0), CMD.QUIET)) then
+      if system(42) then crt sysmsg(5008, system(42)) ;* Telnet connection from %1
+      else if system(1027) then crt sysmsg(5074, system(1027)) ;* Serial connection from %1
+   end
+
+   * Open the ACCOUNTS register
+
+   openpath @qmsys:@ds:'ACCOUNTS' to acc.f else
+      display sysmsg(2200) ;* Cannot open accounts register
+      goto terminate.connection
+   end
+
+   * Open the $LOGINS file
+   
+   openpath @qmsys:@ds:'$LOGINS' to lgn.f else
+      display sysmsg(6050) ;* Cannot open $LOGINS register in QMSYS account
+      goto terminate.connection
+   end
+
+   * Set security mode (affects all users)
+   * If the user has not run the SECURITY command to set this one way or
+   * other, we will fall back on the default which is for a secure system.
+
+   read security.rec from lgn.f, '$SECURE' then
+      i = kernel(K$SECURE, security.rec<1>)
+   end
+
+   * Handle login username and password checks
+
+   if system(1006) then     ;* Windows NT/2000/XP
+      * On these platforms, the user has already gone through authentication
+      * however he arrived here. All we need to do is to check whether this
+      * is a secure system and, if so, whether he is a registered QM user.
+
+      if system(42) or system(1027) then    ;* Network/serial connection
+         lgn.id = logname
+         if kernel(K$SECURE, -1) then
+            * Get any saved account data for this user
+            read lgn.rec from lgn.f, lgn.id else
+               if security.rec<1> then
+                  * The user is not in the $LOGINS register and the security
+                  * system is on. Reject this connection.
+                  display sysmsg(5009) ;* This user is not registered for QM use
+                  goto terminate.connection
+               end
+            end
+         end else
+            lgn.rec = ''
+         end
+      end else              ;* QMConsole connection
+         * This user has come in using QMConsole and hence is always treated
+         * as an adminitrator.
+
+         lgn.id = 'Console'
+         read lgn.rec from lgn.f, lgn.id else null
+         lgn.rec<LGN$ADMIN> = @true ;* Force on
+      end
+   end else           ;* Windows 95/98/ME, Linux, FreeBSD
+      * On these platforms a user entering QM directly over a network has not
+      * yet been authenticated whereas a user who is entering from a Linux
+      * shell has been.
+
+      if system(42) or system(1027) then   ;* Network/serial connection
+         * This user is connecting via a network and needs authentication
+         * unless we have opted to run with security checking off. This
+         * is definitely not a good thing to do on Linux as the user will
+         * run as root (who created this process). On Windows 95/98/ME,
+         * this is quite useful as authentication is alien to these systems.
+
+         if kernel(K$SECURE, -1) then
+            logname = ''
+            i = pterm(PT$INVERT, @false)
+
+            for i = 1 to 3
+               for j = 1 to 3
+                  display sysmsg(5015) :  ;* Username:
+                  input lgn.id,50_ timeout 30 else
+                     display sysmsg(5075)  ;* Timeout
+                     goto terminate.connection
+                  end
+               until lgn.id # ''
+               next j
+               if lgn.id = '' then return
+         
+               if windows then lgn.id = upcase(lgn.id)
+   
+               display sysmsg(5016) :  ;* Password:
+               input password,50_ hidden timeout 30 else
+                  display sysmsg(5075)  ;* Timeout
+                  goto terminate.connection
+               end
+               display
+
+               if lgn.id[1,1] # '$' then   ;* Names cannot start with $ 
+                  if login(lgn.id, password) then
+                     logname = lgn.id
+
+                     * Get any saved account data for this user
+
+                     read lgn.rec from lgn.f, lgn.id else
+                        if security.rec<1> then
+                           * To get here, we must be running an NT or Linux
+                           * system, the user is not in the $LOGINS register and
+                           * the security system is on. Reject this connection.
+
+                           display sysmsg(5009) ;* This user is not registered for QM use
+                           goto terminate.connection
+                        end
+                     end
+
+                     exit
+                  end
+               end
+
+               display sysmsg(5017) ;* Invalid username or password
+               sleep 3
+            next i
+
+            if logname = '' then   ;* Failed at all attempts
+               s = if system(42) then system(42) else system(1027)
+               logmsg sysmsg(5063, s)  ;* Failed login authentication from %1
+               goto terminate.connection
+            end
+         end else   ;* Insecure system
+            lgn.rec = ''
+            lgn.rec<LGN$ADMIN> = @true    ;* All users are administrators
+         end
+      end else
+         * This user has come in from a command prompt of some sort.
+         * On a Windows system, we will treat him as an administrator. On
+         * other systems, we do not though he will become one later if he
+         * is registered by the operating system as an administrator.
+
+         if system(91) then lgn.id = 'Console'
+         else lgn.id = @logname
+         read lgn.rec from lgn.f, lgn.id else null
+         if system(91) then lgn.rec<LGN$ADMIN> = @true ;* Force on for Windows
+      end
+   end
+
+   * Set administrator rights if appropriate
+
+   i = kernel(K$ADMINISTRATOR, lgn.rec<LGN$ADMIN>)
+
+   i = pterm(PT$INVERT, @true)
+
+   * Determine account
+
+   forced.account = lgn.rec<LGN$FORCE.ACCOUNT>
+   initial.account = ''
+   begin case
+      case bitand(kernel(K$COMMAND.OPTIONS,0),CMD.QUERY.ACCOUNT)
+         * Entry from console shortcut
+         gosub query.account
+
+      case forced.account # ''            ;* $LOGINS forces specific account
+         * Read ACCOUNTS record
+
+         read acc.rec from acc.f, forced.account else
+            display sysmsg(5018, forced.account) ;* Account %1 not in register
+            goto terminate.connection
+         end
+
+         acc.path = parse.pathname.tokens(acc.rec<ACC$PATH>)
+
+         if not(ospath(acc.path, OS$CD)) then
+            display sysmsg(5019, acc.rec<1>) ;* Unable to change to directory xx
+            goto terminate.connection
+         end
+
+         initial.account = forced.account
+         lgn.rec<LGN$LAST.ACCOUNT> = lgn.rec<LGN$FORCE.ACCOUNT>
+
+      case kernel(K$FORCED.ACCOUNT,0) # ''   ;* QM -Aname
+         initial.account = upcase(kernel(K$FORCED.ACCOUNT,0))
+
+         read acc.rec from acc.f, initial.account else
+            display sysmsg(5018, initial.account) ;* Account %1 not in register
+            goto terminate.connection
+         end
+
+         acc.path = parse.pathname.tokens(acc.rec<ACC$PATH>)
+
+         if not(ospath(acc.path, OS$CD)) then
+            display sysmsg(5019, acc.path) ;* Unable to change to directory xx
+            goto terminate.connection
+         end
+
+         lgn.rec<LGN$LAST.ACCOUNT> = initial.account
+
+      case system(42) or system(1027)     ;* Network/serial connection
+         gosub query.account
+
+      case 1                              ;* Must be console
+         null
+   end case
+
+   if kernel(K$SECURE, -1) or (system(42) = '' and system(1027) = '') then
+      lgn.rec<LGN$DATE> = date()
+      lgn.rec<LGN$TIME> = time()
+      recordlocku lgn.f, lgn.id
+      write lgn.rec to lgn.f, lgn.id on error
+         display 'Error ' : status() : ' writing to $LOGINS.'
+         goto terminate.connection
+      end
+   end
+
+   close lgn.f
+
+   * Set @PATH
+
+   account.path = ospath("", OS$CWD)
+   if windows then account.path = upcase(account.path)
+
+   initial.account.path = account.path
+   if initial.account = '' then
+      * Try to work out account name by checking to see if it is in the
+      * ACCOUNTS register.
+
+      select acc.f to 12
+      loop
+         readnext acc.id from 12 else exit
+         read acc.rec from acc.f, acc.id then
+            acc.path = parse.pathname.tokens(acc.rec<ACC$PATH>)
+            if windows then acc.path = upcase(acc.path)
+            if account.path = acc.path then
+               initial.account = acc.id
+               exit
+            end
+         end
+      repeat
+      clearselect 12
+
+      if initial.account = '' then
+         * Just use final part of pathname
+         initial.account = upcase(account.path[index(account.path, @ds, count(account.path, @ds)) + 1, 99999])
+      end
+   end
+
+   who = initial.account
+   close acc.f
+
+   * Set @TTY
+
+   begin case
+      case is.phantom          ; tty = 'phantom'
+      case system(42) # ''     ; tty = 'telnet'
+      case system(1027) # ''   ; tty = 'port'
+      case 1                   ; tty = kernel(K$TTY, 0)
+   end case
+
+   * Open the VOC file
+
+   openpath "VOC" to voc on error
+      display 'Error ' : status() : ' opening VOC file. Check access rights.'
+      goto terminate.connection
+   end else
+      gosub create.account
+   end
+
+   if catalogued('CCALL.INIT') then call ccall.init
+
+
+   * Open IPC file and delete any items for old versions of this process id
+
+   openpath @qmsys:@ds:'$IPC' to ipc.f then
+      recordlocku ipc.f,'M':@userno     ;* Message queue
+      delete ipc.f, 'M':@userno
+
+      recordlocku ipc.f,'P':@userno     ;* Phantom register
+      delete ipc.f, 'P':@userno
+
+      void fcontrol(ipc.f, FC$NON.TXN, 0) ;* Set non-transactional
+   end
+
+   if not(is.phantom) and not(fileinfo(voc, FL$READONLY)) then
+      read voc.rec from voc, "$RELEASE" then
+         * ----- Field 2 - Release level
+         s = matchfield(voc.rec<2>, "0X0A", 1)
+         if s # QM.REV.STAMP then
+            display sysmsg(5025, s) ;* Your VOC is at release level xx
+            loop
+               display char(7) :
+               display sysmsg(5026) :  ;* Update VOC to new release?
+               input s
+
+               s = upcase(s[1,1])
+               begin case
+                  case s = "N"
+                     exit
+                  case s = "Y"
+                     update.voc.f = voc
+                     gosub update.voc
+                     close update.voc.f
+                     exit
+               end case
+               display sysmsg(5027) ;* Please answer Y or N"
+            repeat
+         end
+
+         * ----- Field 3 - Command processing modes
+         s = voc.rec<3>
+         cursor.at.end = (index(s, 'E', 1) # 0)
+         command.overlay = (index(s, 'O', 1) # 0)
+         show.stack = (index(s, 'S', 1) # 0)
+         clear.on.data = not(index(s, 'X', 1)) and not(cursor.at.end)
+      end else
+         display sysmsg(5028) ;* $RELEASE VOC record not found
+         goto terminate.connection
+      end
+
+      * Cross-check revisions
+
+      if compare(system(1012), QM.REV.STAMP) then
+         display sysmsg(5029) ;* Revision level cross-check error
+         if not(kernel(K$INTERNAL,-1)) then goto terminate.connection
+      end
+
+      * Look for a saved command stack
+
+      read voc.rec from voc,"$COMMAND.STACK" then
+         if upcase(voc.rec[1,1]) = "X" THEN
+            if tty = 'console' then  ;* Windows console session
+               * Use fields 2 onwards as the initial command stack.
+               command.stack = field(voc.rec, @fm, 2, command.stack.depth)
+            end else
+               openpath initial.account.path:@ds:'stacks' to stk.f then
+                  read command.stack from stk.f, @logname else null
+                  close stk.f
+               end
+            end
+         end
+      end
+   end
+
+   ok = @true
+   return
+
+terminate.connection:
+   display sysmsg(5024) ;* Connection terminated
+   sleep 2
+abort.login:
+   return to abort.login
+
+* ======================================================================
+
+query.account:
+   * Do not offer a default account if it no longer exists
+
+   if lgn.rec<LGN$LAST.ACCOUNT> # '' then
+      readv acc.rec from acc.f, lgn.rec<LGN$LAST.ACCOUNT>, 0 else
+         lgn.rec<LGN$LAST.ACCOUNT> = ''
+      end
+   end
+
+   for i = 1 to 3
+      if lgn.rec<LGN$LAST.ACCOUNT> # '' then
+         crt sysmsg(5033, lgn.rec<LGN$LAST.ACCOUNT>) :  ;* Account (%1):
+      end else
+         crt sysmsg(5032) :  ;* Account:
+      end
+
+      input initial.account,50_ timeout 30 else
+         display sysmsg(5075)  ;* Timeout
+         goto terminate.connection
+      end
+
+      initial.account = trim(upcase(initial.account))
+      if initial.account = '' then initial.account = lgn.rec<LGN$LAST.ACCOUNT>
+      if initial.account = '' or initial.account = 'Q' then goto terminate.connection
+
+      * Read ACCOUNTS record
+
+      read acc.rec from acc.f, initial.account else
+         crt sysmsg(5018, initial.account) ;* Account xx not in register
+         continue
+      end
+
+      acc.path = parse.pathname.tokens(acc.rec<ACC$PATH>)
+
+      if not(ospath(acc.path, OS$CD)) then
+         display sysmsg(5019, acc.path) ;* Unable to change to directory xx
+         continue
+      end
+
+      lgn.rec<LGN$LAST.ACCOUNT> = initial.account
+      return
+   next i
+
+   goto terminate.connection
+
+* ======================================================================
+* CREATE.ACCOUNT  -  Make current directory into an account
+
+create.account:
+   loop
+      * This is not a valid account directory. Query whether to make it one.
+
+      display char(7)
+      display sysmsg(5034, @path) :
+      * Current directory %1 is not a valid account. Create account?
+      prompt ""
+      input s
+      if upcase(s[1,1]) = "N" then goto abort.login
+
+   until upcase(s[1,1]) = "Y"
+   repeat
+
+   openpath @qmsys:@ds:'ACCOUNTS' to acc.f else
+      display sysmsg(2200) ;* Cannot open accounts register
+      goto abort.login
+   end
+
+   loop
+      readu acc.rec from acc.f, who else
+         release acc.f, who
+         exit
+      end
+
+      display sysmsg(5035, who) ;* An account with this name (xx) already exists
+      loop
+         display sysmsg(5036) : ;* Enter alternative account name:
+         input who
+         who = upcase(who)
+         if who = '' then goto abort.login
+      until len(who) <= 16 and convert('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-', '', who) = ''
+         display sysmsg(5037) ;* Invalid account name
+      repeat
+   repeat
+
+* ----------------------------------------
+   display "Creating VOC..."
+
+   create.file "VOC" dynamic on error
+      release acc.f, who
+      display sysmsg(5038) ;* Cannot create new VOC
+      goto abort.login
+   end
+
+   openpath "VOC" to voc else
+      release acc.f, who
+      display sysmsg(5039) ;* Cannot open new VOC
+      goto abort.login
+   end
+
+   update.voc.f = voc
+   gosub update.voc
+   close update.voc.f
+
+   * Set up $COMMAND,STACK VOC entry
+
+   write 'X' to voc, '$COMMAND.STACK'
+
+* ----------------------------------------
+   display sysmsg(6021, '$HOLD') ;* Creating $HOLD...
+
+   execute "CREATE.FILE $HOLD DIRECTORY"
+
+* ----------------------------------------
+   display sysmsg(6021, '$SAVEDLISTS') ;* Creating $SAVEDLISTS...
+
+   create.file "$SVLISTS" directory on error
+      release acc.f, who
+      display sysmsg(1431, status(), '$SAVEDLISTS') ;* Error %1 creating $SAVEDLISTS
+      goto abort.login
+   end
+
+   write "F":@fm:"$SVLISTS" to voc, "$SAVEDLISTS"
+
+* ----------------------------------------
+   display sysmsg(6019) ;* Creating private catalogue directory...
+
+   create.file "cat" directory on error
+      release acc.f, who
+      display sysmsg(6020) ;* Unable to create private catalogue directory
+      goto abort.login
+   end
+
+* ----------------------------------------
+   display sysmsg(6014) ;* Adding to register of accounts...
+   s = ''
+   s<ACC$PATH> = account.path
+   write s to acc.f, who
+   close acc.f
+
+   return
+
+* ======================================================================
+* UPDATE.VOC  -  Copy NEWVOC to VOC
+
+update.voc:
+   yn = ''
+
+   openpath @qmsys:@ds:"NEWVOC" to qmsys.file else
+      display sysmsg(2210) ;* Cannot open QMSYS NEWVOC
+      goto abort.login
+   end
+
+   select qmsys.file to 11
+   loop
+      readnext id from 11 else exit
+
+      read rec from qmsys.file,id then
+         new.type = upcase(rec[1,1])
+         if new.type = 'P' then new.type = upcase(rec[1,2])
+
+         readu old.rec from update.voc.f, id then
+            old.type = upcase(old.rec[1,1])
+            if old.type = 'P' then old.type = upcase(old.rec[1,2])
+
+            * Special case to avoid prompt for 2.4-15 change to MD item
+
+            if id = 'MD' and (old.type = 'Q' or old.type = 'F') then
+               goto accept.without.query
+            end
+
+            if new.type # old.type then
+               if yn # 'A' then
+                  display
+                  display sysmsg(5048, id, old.type) ;* Existing VOC record %1 is of type %2
+                  display sysmsg(5049, new.type) :  ;* Update VOC record is of type %1. Replace record(Y/N)?
+                  loop
+                     input yn
+                     yn = upcase(yn)
+                  until yn = 'Y' or yn = 'N' or yn = 'A'
+                    display sysmsg(5058) : ;* Replace record (Yes/No/All)?
+                  repeat
+                  if yn = 'N' then
+                     release update.voc.f, id
+                     continue
+                  end
+               end
+            end
+         end
+
+accept.without.query:
+         rec<1> = new.type   ;* Remove comment text
+         if new.type = 'K' and rec<3> # '' then   ;* Keyword with other use
+            s = upcase(rec<3>)
+            rec<3> = if s[1,1] = 'P' then s<1>[1,2] else s[1,1]
+         end
+
+         if compare(old.rec, rec) then
+            write rec to update.voc.f, id
+            display '.' :
+         end else
+            release update.voc.f, id
+         end
+      end
+   repeat
+   display 
+
+   close qmsys.file
+
+   return
+end
+
+* END-CODE

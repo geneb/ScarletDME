@@ -1,0 +1,178 @@
+* SETFILE
+* SET.FILE command
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 03 Oct 07  2.6-5 Use parse.pathname.tokens() when processing ACCOUNTS record.
+* 02 Nov 06  2.4-15 VOC record types now case insensitive.
+* 04 May 06  2.4-4 Do not prompt for pointer name if it is the only item not
+*                  in the command line.
+* 28 Mar 05  2.1-11 Use PARSER$MFILE.
+* 14 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* SET.FILE account file.name pointer.name
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program setfile
+$catalogue $setfile
+
+$include parser.h
+$include syscom err.h
+$include syscom keys.h
+$include int$keys.h
+
+   parser = "!PARSER"
+   prompt ''
+   prompting = @false
+
+   @system.return.code = -ER$ARGS    ;* Preset for command format errors
+
+   openpath @qmsys:@ds:'ACCOUNTS' to acc.f else
+      @system.return.code = -status()
+      stop sysmsg(2200) ;* Cannot open ACCOUNTS register
+   end      
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+
+   * Account name
+
+   call @parser(PARSER$GET.TOKEN, token.type, account, keyword)
+   prompting = (token.type = PARSER$END)
+
+   loop
+      if prompting then
+         display sysmsg(5032) :  ;* Account:
+         input account
+         account = trim(account, ' ', 'B')
+         if account = '' then stop sysmsg(2059) ;* Command aborted
+      end
+
+      account = upcase(account)
+      read acc.rec from acc.f, account then exit
+
+      display sysmsg(2201, account) ;* Account name '%1' is not in register
+      if not(prompting) then goto exit.set.file
+   repeat
+
+   acc.path = parse.pathname.tokens(acc.rec<ACC$PATH>)
+
+   openpath acc.path:@ds:'VOC' to rvoc.f else
+      @system.return.code = -status()
+      stop sysmsg(6870) ;* Cannot open target account VOC file
+   end
+
+   * File name
+
+   call @parser(PARSER$MFILE, token.type, filename, keyword)
+   prompting = (token.type = PARSER$END)
+
+   loop
+      if prompting then
+         display sysmsg(6871) :  ;* Filename:
+         input filename
+         filename = trim(filename, ' ', 'B')
+         if filename = '' then stop sysmsg(2059) ;* Command aborted
+      end
+
+      read voc.rec from rvoc.f, filename else
+         filename = upcase(filename)
+         read voc.rec from rvoc.f, filename else
+            display sysmsg(6872) ;* File name is not in target VOC
+            if not(prompting) then goto exit.set.file
+            continue
+         end
+      end
+
+      if upcase(voc.rec[1,1]) = 'F' then exit
+
+      display sysmsg(6873) ;* Target VOC entry is not a file
+      if not(prompting) then goto exit.set.file
+   repeat
+
+   * Pointer name
+
+   call @parser(PARSER$GET.TOKEN, token.type, pointer, keyword)
+! 2.4-4   prompting = (token.type = PARSER$END)
+
+   loop
+      if prompting then
+         display sysmsg(6874) :  ;* Pointer (default QFILE):
+         input pointer
+         pointer = trim(pointer, ' ', 'B')
+      end
+
+      if pointer = '' then
+         pointer = 'QFILE'
+         read voc.rec from @voc, pointer else exit
+         if voc.rec[1,1] = 'Q' then exit
+         display sysmsg(6875) ;* QFILE is already in the VOC but not as a Q-pointer
+         if not(prompting) then goto exit.set.file
+         continue
+      end
+
+      read voc.rec from @voc, pointer else exit
+
+      display sysmsg(6876) ;* Pointer name is already in VOC
+
+      if pointer # 'QFILE' and voc.rec[1,1] = 'Q' then
+prompting = @true
+         loop
+            display sysmsg(2060) :  ;* Overwrite (Y/N/Q)?
+            input yn upcase
+         until yn = 'Y' or yn = 'N'
+            if yn = 'Q' then
+               @system.return.code = -ER$STOPPED
+               stop
+            end
+         repeat
+         if yn = 'Y' then exit
+      end else
+         if not(prompting) then goto exit.set.file
+      end
+   repeat
+
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   if token.type # PARSER$END then
+      stop sysmsg(2018, token) ;* Unexpected token (xx)
+   end
+
+   * Add new VOC entry
+
+   voc.rec = 'Q'
+   voc.rec<2> = account
+   voc.rec<3> = filename
+   recordlocku @voc, pointer
+   write voc.rec to @voc, pointer
+
+   @system.return.code = 0
+
+exit.set.file:
+   return
+end
+
+* END-CODE

@@ -1,0 +1,8 @@
+Stop Codes
+The optional Stops item is a comma separated list of case insensitive codes
+that the user may enter at the menu prompt to terminate the menu and all other
+active programs, menus, paragraphs, etc.  An abort event is generated and any
+ON.ABORT paragraph will be executed before returning to the command prompt.
+
+If no stop codes are specified, entry of QUIT at the prompt will abort the
+menu.

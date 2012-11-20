@@ -1,0 +1,1075 @@
+* MED
+* Menu editor
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 02 Nov 06  2.4-15 VOC record types now case insensitive.
+* 31 Oct 06  2.4-15 Use @SYS.BELL to honour BELL ON/OFF setting.
+* 24 May 06  2.4-5 Rely on key binding restore to reset lone Esc handling
+*                  correctly. Previous method always enabled it.
+* 23 May 06  2.4-4 Disable KEYCODE() lone Esc handling.
+* 28 Mar 05  2.1-11 Use PARSER$MFILE.
+* 12 Jan 05  2.1-0 0301 Value indices were missing on M$ACCESS and
+*                  M$ACCESS.HIDE when loading an existing menu record.
+* 15 Oct 04  2.0-5 Reworked to use keycode().
+* 14 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*   0         1         2         3         4         5         6         7
+*   01234567890123456789012345678901234567890123456789012345678901234567890123456789
+*22 File record
+*23 <Prompt line>
+*
+*
+*         CTRL-             ESC-              CTRL-X            CTRL-X CTRL-
+*   A     Start line
+*   B     Back char
+*   C                                         Exit              Exit
+*   D     Del char
+*   E     End line
+*   F     Forward char
+*   G     Cancel
+*   H     Backspace
+*   I
+*   J     Newline
+*   K     Kill line
+*   L     Refresh
+*   M     Newline
+*   N     Next line
+*   O                                         Overlay
+*   P     Up line
+*   Q
+*   R
+*   S                                         Save file         Save file
+*   T
+*   U
+*   V     Forward screen    Back screen
+*   W
+*   X     Ctrl-X prefix
+*   Y     Paste             Paste
+*   Z     Up line
+*   <                       Top
+*   >                       Bottom
+* Bkspc   Backspace
+* Del     Del char
+*
+* F1  Help
+* F4  Show menu
+* F10 Save
+* F11 Quit
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program med
+$catalog $med
+
+$include menu.h
+$include parser.h
+$include err.h
+$include keys.h
+$include keyin.h
+
+$define PREFIX.WIDTH 7     ;* Width of line prefix
+$define INDENT 8           ;* Column number for leftmost editable text
+$define PAN.INCREMENT 30   ;* Pan step
+
+* ======================================================================
+
+   parser = "!PARSER"
+
+   @system.return.code = -ER$ARGS      ;* Preset for command format errors
+
+
+   * Set terminal modes
+
+   tty.modes = ttyget()
+   execute "PTERM BREAK OFF"
+
+   single.line.help = sysmsg(6626)
+
+   * Get screen characteristics
+
+   screen.lines = @crthigh
+   displayed.lines = screen.lines - 2
+   last.data.line = displayed.lines - 1
+   file.line = displayed.lines
+   prompt.line = displayed.lines + 1
+
+   screen.width = @crtwide
+   swm1 = screen.width - 1
+   sw.space = space(screen.width)
+
+   prompt ''
+   overlay = @false
+   prompt.text = ''         ;* Message to appear on prompt line
+
+
+   * Screen attributes
+
+   erev = @(-14)
+   srev = @(-13)
+
+   * Screen image buffer
+
+   dim image(screen.lines)
+   image(0) = sw.space
+   mat image = sw.space
+
+   dim refresh(screen.lines)        ;* Refresh this line?
+
+
+   * Get name of menu file
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+
+   call @parser(PARSER$MFILE, token.type, file.name, keyword)
+
+   if token.type = PARSER$END then
+      display 'File name (VOC): ' :
+      input file.name :
+      if file.name = '' then
+         file.name = 'VOC'
+         crt file.name
+      end else
+         crt
+      end
+   end
+
+   open file.name to mnu.f else
+      open upcase(file.name) to mnu.f else
+         display 'Cannot open menu file'
+         goto exit.med
+      end
+      file.name = upcase(file.name)
+   end
+
+   if fileinfo(mnu.f, FL$READONLY) then
+      display sysmsg(6500, file.name) ;* Warning: xx is a read-only file
+   end
+
+   call @parser(PARSER$GET.TOKEN, token.type, menu.name, keyword)
+   loop
+      if menu.name = '' then
+         loop
+            display sysmsg(6607) :  ;* Menu name (? for list):
+            input menu.name
+         while menu.name = '?'
+            select mnu.f to 11
+            menu.found = @false
+            i = @(0,0)    ;* Turn off pagination
+            n = @crthigh - 3
+            loop
+               readnext mnu.id from 11 else exit
+               read menu.rec from mnu.f, mnu.id then
+                  if upcase(menu.rec[1,1]) = 'M' then
+                     if n = 0 then
+                        display sysmsg(5061) :  ;* Press return to continue
+                        input x
+                        if upcase(x) = 'Q' then exit
+                        n = @crthigh - 3
+                     end
+
+                     menu.found = @true
+                     display mnu.id
+                  end
+               end
+            repeat
+            if not(menu.found) then display sysmsg(6608) ;* No menus found in file
+            clearselect 11
+         repeat
+      end
+   until menu.name = ''
+
+      read menu.rec from mnu.f, menu.name then
+         if upcase(menu.rec[1,1]) = 'M' then
+            gosub edit.menu
+         end else
+            display sysmsg(6609, menu.name) ;* %1 is not an M-type record
+         end
+      end else
+         loop
+            display sysmsg(6610) :  ;* Create new menu?
+            input yn
+            yn = upcase(yn)
+         until yn = 'Y' or yn = 'N'
+         repeat
+         if yn = 'Y' then gosub edit.menu
+      end
+
+      menu.name = ''
+   repeat
+
+exit.med:
+   ttyset tty.modes
+
+final.exit:   
+   return to final.exit
+
+
+*****************************************************************************
+* edit.menu  -  Edit the menu
+
+edit.menu:
+   * Bind special keys.
+   saved.keys = bindkey('', -3)
+   void bindkey('', -5)
+   i = bindkey(char(24):'c', K$F11)               ;* Ctrl-X c
+   i = bindkey(char(24):'C', K$F11)               ;* Ctrl-X C
+   i = bindkey(char(24):char(3), K$F11)           ;* Ctrl-X Ctrl-C
+   i = bindkey(char(24):'o', K$INSERT)            ;* Ctrl-X o
+   i = bindkey(char(24):'O', K$INSERT)            ;* Ctrl-X O
+   i = bindkey(char(24):'s', K$F10)               ;* Ctrl-X s
+   i = bindkey(char(24):'S', K$F10)               ;* Ctrl-X S
+   i = bindkey(char(24):char(19), K$F10)          ;* Ctrl-X Ctrl-S
+   i = bindkey(char(25), K$F7)                    ;* Ctrl-Y
+   i = bindkey(char(27):'<', K$CTRL.PAGE.UP)      ;* Esc->
+   i = bindkey(char(27):'>', K$CTRL.PAGE.DOWN)    ;* Esc-<
+   i = bindkey(char(27):'v', K$PAGE.UP)           ;* Esc-v
+   i = bindkey(char(27):'V', K$PAGE.UP)           ;* Esc-V
+   i = bindkey(char(27):'y', CTRL.Y)              ;* Esc-y
+   i = bindkey(char(27):'Y', CTRL.Y)              ;* Esc-Y
+   i = bindkey(char(CTRL.A), K$HOME)
+   i = bindkey(char(CTRL.B), K$LEFT)
+   i = bindkey(char(CTRL.D), K$DELETE)
+   i = bindkey(char(CTRL.E), K$END)
+   i = bindkey(char(CTRL.F), K$RIGHT)
+   i = bindkey(char(CTRL.N), K$DOWN)
+   i = bindkey(char(CTRL.O), K$INSERT)
+   i = bindkey(char(CTRL.P), K$UP)
+   i = bindkey(char(CTRL.V), K$PAGE.DOWN)
+   i = bindkey(char(CTRL.Z), K$UP)
+
+   old.menu.rec = crop(menu.rec)
+
+   menu.data = ''
+   menu.data<-1> = 'Title :' : menu.rec<M$TITLE>
+   menu.data<-1> = 'Subr  :' : menu.rec<M$ACCESS.SUB>
+   menu.data<-1> = 'Prompt:' : menu.rec<M$PROMPT>
+   menu.data<-1> = 'Exits :' : menu.rec<M$EXITS>
+   menu.data<-1> = 'Stops :' : menu.rec<M$STOPS>
+
+   num.items = dcount(menu.rec<M$TEXT>, @vm)
+   i = 1
+   loop
+      menu.data<-1> = str('-', swm1)
+   while i <= num.items
+      menu.data<-1> = 'Text' : fmt(i, '2R') : ':' : menu.rec<M$TEXT,i>
+      menu.data<-1> = 'Action:' : menu.rec<M$ACTION,i>
+      menu.data<-1> = 'Help  :' : menu.rec<M$HELP,i>
+      menu.data<-1> = 'Access:' : menu.rec<M$ACCESS,i>       ;* 0301
+      menu.data<-1> = 'Hide  :' : menu.rec<M$ACCESS.HIDE,i>  ;* 0301
+      i += 1
+   repeat
+
+   lines = dcount(menu.data, @fm)
+   
+   gosub clear.screen
+   gosub refresh.all
+   top.line = 1
+   pan = 1
+
+   line = 1
+   col = INDENT
+   gosub get.current
+
+   terminate = @false
+   last.action = 0
+   loop
+      line.len = len(current.line)
+
+      gosub update.screen
+      gosub place.cursor
+      gosub get.key
+
+      begin case
+         case action = K$RETURN
+            begin case
+               case current.line[1,1] = '-'    ;* Add a new item below this one
+                  new.item     = 'Text  :'
+                  new.item<-1> = 'Action:'
+                  new.item<-1> = 'Help  :'
+                  new.item<-1> = 'Access:'
+                  new.item<-1> = 'Hide  :'
+                  new.item<-1> = str('-', swm1)
+                  ins new.item before menu.data<line + 1>
+                  lines = dcount(menu.data, @fm)
+                  gosub renumber
+
+                  line += 1
+                  gosub get.current
+                  col = INDENT
+                  gosub refresh.below
+
+               case 1
+                  gosub save.current
+                  line += 1
+                  gosub get.current
+                  col = INDENT
+            end case
+
+         case action = K$HOME
+            col = INDENT
+
+         case action = K$END
+            col = line.len + 1
+
+         case action = K$LEFT
+            if col > line.len then col = line.len + 1
+            if col > INDENT then col -= 1
+
+         case action = K$RIGHT
+            col += 1
+            if col > line.len then col = line.len + 1
+
+         case action = K$UP
+            if line > 1 then
+               gosub save.current
+               line -= 1
+               gosub get.current
+            end
+
+         case action = K$DOWN
+            if line < lines then
+               gosub save.current
+               line += 1
+               gosub get.current
+            end
+
+         case action = K$CTRL.PAGE.UP    ;* Top
+            gosub save.current
+            line = 1
+            col = INDENT
+            gosub get.current
+
+         case action = K$CTRL.PAGE.DOWN  ;* Bottom
+            gosub save.current
+            line = lines
+            col = INDENT
+            gosub get.current
+
+         case action = K$PAGE.UP
+            gosub save.current
+            n = displayed.lines - 3
+            line -= n ; if line < 1 then line = 1
+            top.line -= n ; if top.line < 1 then top.line = 1
+            gosub get.current
+            gosub refresh.all
+
+         case action = K$PAGE.DOWN
+            gosub save.current
+            n = displayed.lines - 3
+            line += n ; if line > lines then line = lines
+            top.line += n ; if top.line > lines - n then top.line = lines - n
+            gosub get.current
+            gosub refresh.all
+
+         case action = K$DELETE
+            if current.line[1,1] = '-' then
+               display @sys.bell :
+            end else
+               if col > line.len then col = line.len + 1
+               current.line = current.line[1, col - 1] : current.line[col + 1, 99999999]
+               line.len -= 1
+               gosub refresh.line
+            end
+
+         case action = K$BACKSPACE
+            if current.line[1,1] = '-' then
+               display @sys.bell :
+            end else
+               if col > line.len then col = line.len + 1
+               if col > INDENT then
+                   col -= 1
+                   current.line = current.line[1, col - 1] : current.line[col + 1, 99999999]
+               end
+               gosub refresh.line
+            end
+
+         case action = CTRL.K
+            if current.line[1,1] = '-' then
+               if line = lines then display @sys.bell :
+               else
+                  if last.action # CTRL.K then kill.buffer = ''
+                  kill.buffer.is.text = @false
+                  loop
+                     kill.buffer<-1> = menu.data<line>
+                     del menu.data<line>
+                     lines -= 1
+                  until menu.data<line>[1,1] = '-'
+                  repeat
+                  gosub renumber
+                  gosub refresh.below
+               end
+            end else
+               if col > line.len then col = line.len + 1
+               kill.buffer = current.line[col,99999]
+               kill.buffer.is.text = @true
+               current.line = current.line[1,col-1]
+               gosub refresh.line
+            end
+
+         case action = K$INSERT
+            overlay = not(overlay)
+
+         case action = CTRL.L
+            gosub clear.screen
+            gosub refresh.all
+
+         case action = CTRL.G
+            null
+
+         case action = CTRL.Y  ;* Paste
+            if kill.buffer.is.text then
+               if current.line[1,1] = '-' then
+                  crt @sys.bell :
+               end else
+                  current.line = current.line[1,col-1]:kill.buffer:current.line[col,99999]
+                  gosub refresh.line
+               end
+            end else
+               loop
+               until menu.data<line>[1,1] = '-'
+                  line += 1
+               repeat
+
+               ins kill.buffer before menu.data<line>
+               lines = dcount(menu.data, @fm)
+
+               gosub get.current
+               col = INDENT
+               gosub refresh.below
+            end
+
+         case action = K$F1    ;* Help
+            gosub show.help
+
+         case action = K$F4    ;* Show menu
+            gosub show.menu
+
+         case action = K$F10      ;* Save
+            if fileinfo(mnu.f, FL$READONLY) then
+               display @sys.bell :
+            end else
+               gosub build.menu
+               writeu menu.rec to mnu.f, menu.name
+               old.menu.rec = menu.rec
+            end
+
+         case action = K$F11  ;* Quit
+            gosub build.menu
+            if menu.rec # old.menu.rec then
+               prefix = sysmsg(6611) ;* Menu changed. Do you really want to quit (Y/N)
+               display @sys.bell :
+               gosub yes.no
+               terminate = yes
+            end else
+               terminate = @true
+            end
+
+         case action >= 32
+            if current.line[1,1] = '-' then
+               display @sys.bell :
+            end else
+               if col > line.len then col = line.len + 1
+               if overlay then
+                  current.line = current.line[1, col - 1] : c : current.line[col + 1, 99999999]
+               end else
+                  current.line = current.line[1, col - 1] : c : current.line[col, 99999999]
+               end
+
+               col += 1
+               gosub refresh.line
+            end
+
+         case 1
+            display @sys.bell :
+      end case
+
+      last.action = action
+   until terminate
+   repeat
+
+   gosub clear.screen
+
+exit.edit:
+   * Unbind special keys
+
+   i = bindkey(saved.keys, -4)
+
+   return
+
+* ======================================================================
+* show.menu  -  Show a picture of the menu
+
+show.menu:
+   gosub build.menu
+
+   display @(IT$FGC, IT$WHITE) : @(IT$BGC, IT$BLACK) : @(IT$CS) :
+
+   * Heading
+
+   s = menu.rec<M$TITLE>[1,@crtwide]
+   if len(s) then display @((@crtwide - len(s)) / 2, 0) : s :
+
+   * Display menu options
+
+   n = dcount(menu.rec<M$TEXT>, @vm)
+   cl = 0
+   key = 0
+   menu.prompt.line = 0
+
+   i = 0
+   ln = 1
+   loop
+      i += 1
+      ln += 1
+
+      if ln > @crthigh - 4 then
+         if cl = 0 and maximum(lens(menu.rec<M$TEXT>)) <= @crtwide - 8 then
+            cl = idiv(@crtwide, 2)
+            ln = 2
+            menu.prompt.line = @crthigh - 2
+         end else
+            exit
+         end
+      end
+
+   while i <= n
+      descr = menu.rec<M$TEXT, i>
+      action = menu.rec<M$ACTION, i>
+
+      * Check user is allowed this option
+
+$ifdef FORMATTED.MENUS
+      if descr matches "'@('1N0N','1N0N')'0X" then  ;* Formatted option
+         cl = matchfield(descr, "'@('0N','0N')'0X", 2)
+         ln = matchfield(descr, "'@('0N','0N')'0X", 4)
+         descr = matchfield(descr, "'@('0N','0N')'0X", 6)
+      end
+$endif
+
+      crt @(cl, ln) :
+
+      if len(action) then
+         key += 1
+         crt fmt(key, "2R") : " = " :
+      end
+
+      crt descr : @(IT$FGC, IT$WHITE)
+   repeat
+
+   * Display input prompt
+
+   ln += 1
+   cl = 0
+   descr = "Select option (1 - " : key : ") = "
+
+   if menu.prompt.line then ln = menu.prompt.line
+
+   if len(menu.rec<M$PROMPT>) then
+      descr = menu.rec<M$PROMPT>
+$ifdef FORMATTED.MENUS
+      if descr matches "'@('1N0N','1N0N')'0X" then
+         cl = matchfield(descr, "'@('0N','0N')'0X", 2)
+         ln = matchfield(descr, "'@('0N','0N')'0X", 4)
+         descr = matchfield(descr, "'@('0N','0N')'0X", 6)
+      end
+$endif
+   end
+   crt @(cl, ln) : descr : @(IT$CLEOL) :
+
+   c = keycode()
+
+   gosub clear.screen
+   gosub refresh.all
+
+   return
+
+* ======================================================================
+* show.help  -  Context sensitive help
+
+show.help:
+   key = upcase(trimb(field(current.line, ':', 1)))
+
+   gosub clear.screen
+
+   s = ''
+   begin case
+      case key = 'TITLE'  ; s = sysmsg(6612)
+      case key = 'SUBR'   ; s = sysmsg(6613)
+      case key = 'PROMPT' ; s = sysmsg(6614)
+      case key = 'EXITS'  ; s = sysmsg(6615)
+      case key = 'STOPS'  ; s = sysmsg(6616)
+      case key = 'TEXT'   ; s = sysmsg(6617)
+      case key = 'ACTION' ; s = sysmsg(6618)
+      case key = 'HELP'   ; s = sysmsg(6619)
+      case key = 'ACCESS' ; s = sysmsg(6620)
+      case key = 'HIDE'   ; s = sysmsg(6621)
+      case key[1,1] = '-' ; s = sysmsg(6622)
+   end case
+
+   n = s<1>   ;* Extract title...
+   del s<1>   ;* ...and remove from rest of text
+
+   crt @(0,0) : n
+   crt @(0,1) : str('=', len(n))
+
+   s<-1> = ''
+   s<-1> = str('=', @crtwide)
+   s<-1> = ''
+   s<-1> = sysmsg(6623) ;* Press F1 again for help on key bindings
+   s<-1> = sysmsg(6624) ;* Press any other key to return to menu editor
+
+   ln = 3
+   loop
+      crt @(0,ln) : remove(s, delim)
+      ln += 1
+   while delim
+   repeat
+
+   c = keycode()
+   if seq(c) = K$F1 then gosub key.help    ;* Display key binding help
+
+   gosub clear.screen
+   gosub refresh.all
+   return
+
+key.help:
+   gosub clear.screen
+   crt @(0,0) :
+   display sysmsg(6625) ;* Key Bindings
+
+   c = keycode()
+
+   return
+
+* *****************************************************************************
+*                          SCREEN HANDLING FUNCTIONS
+* *****************************************************************************
+
+* ======================================================================
+* UPDATE.SCREEN  -  Update screen image
+
+update.screen:
+   * Horizontal panning checks
+
+   if col > line.len then pan.col = line.len + 1
+   else pan.col = col
+   pan.col -= PREFIX.WIDTH
+   if (pan.col < pan) or (pan.col >= (pan + screen.width - PREFIX.WIDTH)) then
+      pan = (int((pan.col - 1) / PAN.INCREMENT) * PAN.INCREMENT) - 20
+      if pan <= 0 then pan = 1
+      gosub refresh.all
+   end
+
+   * Vertical scrolling checks
+
+   if (line < top.line) or (line >= (top.line + displayed.lines)) then
+      top.line = line - int(displayed.lines / 2)
+      if top.line < 1 then top.line = 1
+      gosub refresh.all
+   end
+
+   * Refresh lines that have changed
+
+   n = top.line       ;* Data record line
+   for ln = 0 to last.data.line
+      if keyready() then goto exit.update.screen
+
+      if refresh(ln) then
+         if n > lines then
+            if image(ln) # sw.space then
+               display @(0, ln) : @(-4) :
+               image(ln) = sw.space
+            end
+         end else
+            if n = line then
+               ss = current.line
+               if pan > 1 then
+                  ss = ss[1,PREFIX.WIDTH]:ss[pan+PREFIX.WIDTH,screen.width - PREFIX.WIDTH]
+               end else
+                  ss = ss[1,screen.width]
+               end
+            end else
+               ss = menu.data<n>
+            end
+
+            gosub zoned.update
+         end
+         refresh(ln) = @false
+      end
+      n += 1
+   next ln
+
+   if refresh(file.line) then
+      if keyready() then goto exit.update.screen
+      gosub paint.file.line
+      refresh(file.line) = @false
+   end
+
+   if refresh(prompt.line) then
+      if keyready() then goto exit.update.screen
+      gosub paint.prompt.line
+      refresh(prompt.line) = @false
+   end
+
+exit.update.screen:
+   return
+
+* ======================================================================
+
+paint.prompt.line:
+   ln = prompt.line
+   image(ln) = str(char(255), swm1):' ' ;* Force repaint of entire line
+   ss = prompt.text
+   display srev :
+   gosub zoned.update
+   display erev :
+
+   return
+
+* ======================================================================
+
+paint.file.line:
+   ln = file.line
+   image(ln) = str(char(255), swm1):' ' ;* Force repaint of entire line
+   ss = fmt(file.name : ' ' : menu.name, (screen.width-8):'L')
+   ss := 'F1=Help'
+   display srev :
+   gosub zoned.update
+   display erev :
+
+   return
+
+* ======================================================================
+* Position cursor
+
+place.cursor:
+   if col > line.len then
+      cx = (line.len + 1) - pan
+      if cx < 0 then cx = 0
+   end else
+      cx = col - pan
+   end
+
+   display @(cx, line - top.line) :
+
+   return
+
+* ======================================================================
+* zoned.update  -  Update mimimum area of screen
+* ln = line number
+* ss = data for line
+
+zoned.update:
+   left = 0
+   image.line = image(ln)
+   text.line = ss : sw.space
+
+   for cl = 1 to screen.width
+      if text.line[cl,1] # image.line[cl,1] then
+         left = cl ; right = cl
+         loop
+            cl += 1
+         while cl <= screen.width
+            if text.line[cl,1] # image.line[cl,1] then right = cl
+         repeat
+
+         w = (right - left) + 1
+         zone.string = text.line[left,w]
+         crt @(left-1, ln) : zone.string :
+         image(ln)[left,w] = zone.string
+         exit
+      end
+   next cl
+
+   return
+
+* ======================================================================
+* REFRESH.BELOW  -  Set refresh flags for current line and below
+
+refresh.below:
+   i = line - top.line
+   if i < 0 then i = 0
+   loop
+   while i < screen.lines
+      refresh(i) = @true
+      i += 1
+   repeat
+
+   return
+
+* ======================================================================
+* refresh.line  -  Refresh current screen line
+
+refresh.line:
+   refresh.line = line - top.line
+   if refresh.line >= 0 and refresh.line <= last.data.line then
+      refresh(refresh.line) = @true
+   end
+
+   return
+
+* ======================================================================
+* clear.screen  -  Clear the screen
+
+clear.screen:
+   mat image = sw.space
+   image(0) = sw.space
+   display erev : @(-1) :
+   return
+
+* ======================================================================
+* REFRESH.ALL  -  Set all refresh flags
+
+refresh.all:
+   mat refresh = @true
+   refresh(0) = @true
+   return
+
+
+* *****************************************************************************
+*                       KEYBOARD HANDLING FUNCTIONS
+* *****************************************************************************
+
+
+* ======================================================================
+* get.key  -  Get an action key
+* Returns c as character entered
+*         action as internal key value or action code
+
+get.key:
+   c = keycode()
+   action = seq(c)
+   return
+
+* ======================================================================
+* PRESS.RETURN - Display "Press return..." message and wait
+* WAIT.RETURN  - Wait until return key is pressed
+
+press.return:
+   display sysmsg(5061) ;* Press RETURN to continue
+
+wait.return:
+   loop
+      gosub get.key
+   until action = K$RETURN or action = CTRL.G
+   repeat
+
+   return
+
+* ======================================================================
+* get.string
+
+get.string:
+   gs.width = swm1 - len(prefix)
+   gs.pan = 1
+   gs = s
+
+   aborted = @false
+   gosub update.screen
+
+   prompt.text = prefix : gs[1,gs.width]
+   gosub paint.prompt.line
+
+   display @(len(prefix), prompt.line) :
+
+   gosub get.key
+   if action = K$RETURN then goto exit.get.string   ;* Use last string
+
+   if action >= 32 and action <= 126 then gs = ""   ;* Clear unless control character
+   x = 1
+
+   loop
+      begin case
+         case action = K$HOME
+            x = 1
+
+         case action = K$LEFT
+            if x > 1 then x -= 1
+
+         case action = K$DELETE
+            gs = gs[1, x - 1] : gs[x + 1, 999]
+
+         case action = K$END
+            x = len(gs) + 1
+
+         case action = K$RIGHT
+            if x <= len(gs) then x += 1
+
+         case action = CTRL.G
+            aborted = @true
+            action = 0
+            exit
+
+         case action = K$BACKSPACE
+            if x > 1 then
+               x -= 1
+               gs = gs[1, x - 1] : gs[x + 1, 999]
+            end
+
+         case action = CTRL.K
+            gs = gs[1, x - 1]
+
+         case action = K$RETURN
+            exit
+
+         case action = CTRL.L
+            gosub clear.screen
+            gosub refresh.all
+            gosub update.screen
+
+         case action >= 32
+            if overlay then
+               if x <= len(gs) then gs[x, 1] = c
+               else gs := c
+            end else
+               gs = gs[1, x - 1] : c : gs[x, 999]
+            end
+            x += 1
+
+         case 1
+            display @sys.bell :
+      end case
+
+      if (x < gs.pan) or (x >= (gs.pan + gs.width)) then
+         gs.pan = (int((x - 1) / PAN.INCREMENT) * PAN.INCREMENT) - 20
+         if gs.pan <= 0 then gs.pan = 1
+      end
+
+      prompt.text = prefix : gs[gs.pan, gs.width]
+      gosub paint.prompt.line
+
+      display @(len(prefix) + x - gs.pan, prompt.line) :
+      gosub get.key
+   repeat
+
+   if not(aborted) then s = gs
+
+exit.get.string:
+   prompt.text = ''
+
+   return
+
+* ======================================================================
+* yes.no  -  Get yes/no response
+
+yes.no:
+   prefix := ' '
+   loop
+      s = ''
+      gosub get.string
+      c = upcase(s[1,1])
+   until c = "Y" or c = "N" or aborted
+      display @sys.bell :
+   repeat
+
+   yes = (c = "Y")
+
+   return
+
+* *****************************************************************************
+*                     MENU DATA HANDLING FUNCTIONS
+* *****************************************************************************
+
+build.menu:
+   gosub save.current
+
+   * Reconstruct menu record
+   menu.rec = 'M'
+   j = 0
+   for i = 1 to lines
+      s = menu.data<i>
+      key = oconv(upcase(field(s, ':', 1)), 'MCA')
+      text = field(s, ':', 2, 99999)
+      begin case
+         case key = 'TITLE'  ; menu.rec<M$TITLE> = text
+         case key = 'SUBR'   ; menu.rec<M$ACCESS.SUB> = text
+         case key = 'PROMPT' ; menu.rec<M$PROMPT> = text
+         case key = 'EXITS'  ; menu.rec<M$EXITS> = convert(',', @vm, text)
+         case key = 'STOPS'  ; menu.rec<M$STOPS> = convert(',', @vm, text)
+         case key = 'TEXT'   ; menu.rec<M$TEXT,j> = text
+         case key = 'ACTION' ; menu.rec<M$ACTION,j> = text
+         case key = 'HELP'   ; menu.rec<M$HELP,j> = text
+         case key = 'ACCESS' ; menu.rec<M$ACCESS,j> = text
+         case key = 'HIDE'   ; menu.rec<M$ACCESS.HIDE,j> = text
+         case s[1,1] = '-'   ; j += 1
+      end case
+   next i
+
+   menu.rec = crop(menu.rec)
+
+   return
+
+* ======================================================================
+* get.current  -  Get current line
+
+get.current:
+   current.line = menu.data<line>
+
+   key = oconv(upcase(field(current.line, ':', 1)), 'MCA')
+   begin case
+      case key = 'TITLE'  ; ss = single.line.help<1>
+      case key = 'SUBR'   ; ss = single.line.help<2>
+      case key = 'PROMPT' ; ss = single.line.help<3>
+      case key = 'EXITS'  ; ss = single.line.help<4>
+      case key = 'STOPS'  ; ss = single.line.help<5>
+      case key = 'TEXT'   ; ss = single.line.help<6>
+      case key = 'ACTION' ; ss = single.line.help<7>
+      case key = 'HELP'   ; ss = single.line.help<8>
+      case key = 'ACCESS' ; ss = single.line.help<9>
+      case key = 'HIDE'   ; ss = single.line.help<10>
+      case current.line[1,1] = '-' ; ss = single.line.help<11>
+   end case
+
+   prompt.text = ss
+   refresh(prompt.line) = @true
+
+   return
+
+* ======================================================================
+* save.current  -  Save current line
+
+save.current:
+   menu.data<line> = current.line
+   
+   return
+
+* ======================================================================
+* Renumber menu entries
+
+renumber:
+   optno = 1
+   for idx = 1 to lines
+      if upcase(menu.data<idx>[1,4]) = 'TEXT' then
+         menu.data<idx>[1,6] = 'Text' : fmt(optno, '2R')
+         optno += 1
+      end
+   next idx
+   return
+end
+
+* END-CODE

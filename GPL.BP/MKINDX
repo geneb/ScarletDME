@@ -1,0 +1,603 @@
+* MKINDEX
+* Index construction
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 02 Nov 06  2.4-15 Dictionary record types now case insensitive.
+* 18 Jul 06  2.4-10 Added BT.DATA flag to SORTINIT.
+* 17 May 06  2.4-4 Added preliminary support for case insensitivity.
+* 14 Nov 05  2.2-16 Set index key sort mode.
+* 11 Oct 05  2.2-14 Added ak.path argument.
+* 26 Aug 05  2.2-8 0398 A/S type indices are always multivalued.
+* 20 May 05  2.2-0 Code extracted from CREATE.INDEX and BUILD.INDEX.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* CALL $MKINDX(data.path, dict.path, ak.path, ak.list, flags, err)
+*
+* DATA.PATH = Pathname of data file
+* DICT.PATH = Pathname of dictionary (Only needed for create mode)
+* AK.PATH   = Pathname for relocated AK subfiles (Create mode only)
+* AK.LIST   = Field mark delimited list of AK names, blank for all
+* FLAGS     = Additive:
+*               MKI$CREATE    Create indices
+*               MKI$BUILD     Build indices
+*               MKI$NO.NULLS  NO.NULLS (for create mode)
+*               MKI$NOCASE    NO.CASE (for create mode)
+* ERR       = Returned error code
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+subroutine mkindx((data.path), dict.path, (ak.path), (ak.list), flags, err)
+$catalog $MKINDX
+
+$include syscom.h
+$include keys.h
+$include int$keys.h
+$include parser.h
+$include err.h
+$include dictdict.h
+$include ak_info.h
+$include bcomp.h
+
+   err = 0
+
+   if bitand(flags, MKI$CREATE) then
+      gosub create.index
+      if err then return
+   end
+
+   if bitand(flags, MKI$BUILD) then
+      gosub build.index
+   end
+
+   return
+
+* ======================================================================
+
+create.index:
+   dim ak.data(MAX$INDICES)         ;* Existing indices
+
+   ak.path.created = @false
+
+   * Open the file
+
+   openpath data.path to data.f else
+      display sysmsg(2021, data.path)  ;* File %1 not found
+      err = ER$FNF
+      return
+   end
+   data.path = fileinfo(data.f, FL$PATH)
+
+   if fileinfo(data.f, FL$TYPE) # FL$TYPE.DH then
+      display sysmsg(2010)  ;* Inappropriate file type
+      err = ER$NDYN
+      return
+   end
+
+   * Open the dictionary
+
+   openpath dict.path to dict.f else
+      display sysmsg(2012)  ;* Cannot open dictionary
+      err = ER$FNF
+      return
+   end
+
+   * Get data on existing indices
+
+   ak.names = indices(data.f)
+   num.aks = dcount(ak.names, @fm)
+   for i = 1 to num.aks
+      ak.data(i) = indices(data.f, ak.names<i>)
+   next i
+
+
+   * Where are new indices to be created?
+
+   if ak.path = '' then                            ;* Not specified...
+      ak.path = fileinfo(data.f, FL$AKPATH)        ;* ...so use current setting
+   end else                                        ;* AK location specified
+      * Get full pathname
+
+      ak.path = ospath(ak.path, OS$FULLPATH)
+
+      if num.aks then
+         if ak.path # fileinfo(data.f, FL$AKPATH) then
+            display sysmsg(2634) ;* Index pathname differs from location of existing indices
+            err = ER$ARGS
+            return
+         end
+      end else                            ;* First AK and path specified
+         * Validate the pathname
+
+         if not(ospath(ak.path, OS$PATHNAME)) then
+            display sysmsg(6109) ;* Directory path name is not valid
+            err = ER$INVA.PATH
+            return
+         end
+   
+         * Check that this directory does not already exist
+
+         if ospath(ak.path, OS$EXISTS) then
+            display sysmsg(2635) ;* Index directory must not already exist when creating first index
+            err = ER$EXISTS
+            return
+         end
+   
+         * Create the directory
+
+         if not(ospath(ak.path, OS$MKPATH)) then
+            display sysmsg(6196, ak.path) ;* Unable to create %1
+            err = ER$NOT.CREATED
+            return
+         end
+
+         ak.path.created = @true
+      end
+   end
+
+   num.new.indices = dcount(ak.list, @fm)
+   for idx = 1 to num.new.indices
+      new.index.name = ak.list<idx>
+
+      locate new.index.name in ak.names<1> setting pos then
+         display sysmsg(2609, new.index.name)
+         err = DHE$AK.EXISTS
+         return
+      end
+
+      read dict.rec from dict.f, new.index.name else
+         display sysmsg(2608, new.index.name) ;* %1 is not defined in the dictionary
+         err = ER$RNF
+         return
+      end
+
+      if num.aks = MAX$INDICES then
+         display sysmsg(2610) ;* Too many indices
+         err = DHE$AK.TOO.MANY
+         return
+      end
+
+      type = upcase(dict.rec[1,1])
+      dict.rec<1> = type   ;* Ensure AK gets created with uppercase type code
+
+      begin case
+         case (type = 'A' or type = 'S') and dict.rec<DICT.A.CORRELATIVE> = ''
+            fno = trimb(dict.rec<DICT.A.LOC>)
+            if not(fno matches '1N0N') then
+               display sysmsg(2611, new.index.name)
+               err = ER$BAD.DICT
+               return 
+            end
+
+            fno += 0
+            expr = ''
+
+         case type = 'A' or type = 'C' or type = 'I' or type = 'S'
+            call $dcomp(dict.f,          ;* File var to source file
+                        new.index.name,  ;* Record name
+                        dict.rec,        ;* Dictionary record
+                        z,               ;* I-type format
+                        z,               ;* I-type conversion
+                        z,               ;* I-type S/M
+                        z,               ;* I-type association
+                        z,               ;* I-type constant
+                        1)               ;* Compiler recursion depth
+            if dict.rec<DICT.ITYPE.OBJECT> = '' then
+               display sysmsg(2612, new.index.name)
+               err = ER$ICOMP
+               return
+            end
+
+            * Write object code to dictionary
+
+            if not(fileinfo(dict.f, FL$READONLY)) then
+               recordlocku dict.f, new.index.name
+               write dict.rec to dict.f, new.index.name
+            end
+
+            fno = -1
+            if type = 'I' or type = 'C' then expr = dict.rec<DICT.ITYPE.SOURCE>
+            else expr = dict.rec<DICT.A.CORRELATIVE>
+
+         case type = 'D'
+            * Field number
+
+            fno = trimb(dict.rec<DICT.LOC>)
+            if not(fno matches '1N0N') then
+               display sysmsg(2611, new.index.name)
+               err = ER$BAD.DICT
+               return
+            end
+
+            fno += 0
+            expr = ''
+
+         case 1
+            display sysmsg(2613, new.index.name) ;* %1 is not a A, C, D, I or S-type dictionary item 
+      end case
+
+      * AK flags
+
+      ak.flags = 0
+
+      read id.rec from dict.f, '@ID' then
+         fmt.code = id.rec<DICT.FORMAT>
+         gosub determine.justification
+      end else
+         right.justify = @false
+      end
+      ak.flags = bitor(ak.flags, if right.justify then AK$RSORT else AK$LSORT)
+
+      begin case
+         case type = 'D' or type = 'I' or type = 'C'
+            right.justify = @false
+            fmt.code = dict.rec<DICT.FORMAT>
+            gosub determine.justification
+
+            * Multi-valued?
+
+            if dict.rec<DICT.S.M>[1,1] = 'M' then
+               ak.flags = bitor(ak.flags, AK$MV)
+            end
+
+         case type = 'A' or type = 'S'
+            right.justify = dict.rec<DICT.A.JUSTIFY> = 'R'
+            ak.flags = bitor(ak.flags, AK$MV)
+
+         case 1
+            stop 'Internal error - AK type is unrecognised (':type:')'
+      end case
+
+      if right.justify then ak.flags = bitor(ak.flags, AK$RIGHT)
+
+
+      if not(bitand(flags, MKI$NO.NULLS)) then   ;* Enable indexing of nulls
+         ak.flags = bitor(ak.flags, AK$NULLS)
+      end
+
+      if bitand(flags, MKI$NO.CASE) then   ;* Enable case insensitivity
+         ak.flags = bitor(ak.flags, AK$NOCASE)
+      end
+
+
+      * Test for "equivalent" indices
+
+      for j = 1 to num.aks
+         other.type = ak.data(j)<DICT.TYPE,1>
+         begin case
+            case other.type = 'D'
+               other.fno = ak.data(j)<DICT.LOC>
+               other.expr = ''
+
+            case other.type = 'I' or other.type = 'C'
+               other.fno = -1
+               other.expr = ak.data(j)<DICT.ITYPE.SOURCE>
+
+            case other.type = 'A' or other.type = 'S'
+               if ak.data(j)<DICT.A.CORRELATIVE> = '' then
+                  other.fno = ak.data(j)<DICT.A.LOC>
+                  other.expr = ''
+               end else
+                  other.fno = -1
+                  other.expr = ak.data(j)<DICT.A.CORRELATIVE>
+               end
+         end case
+
+         other.fno = ak.data(j)<DICT.LOC>
+
+         if fno # other.fno then continue
+
+         if expr # other.expr then continue
+
+         if bitand(ak.flags,AK$NULLS) then            ;* New AK includes nulls
+            if ak.data(j)<1,3> then continue
+         end else                                     ;* New AK omits nulls
+            if not(ak.data(j)<1,3>) then continue
+         end
+
+         if bitand(ak.flags,AK$NOCASE) then           ;* New AK is case insensitive
+            if ak.data(j)<1,8> then continue
+         end else                                     ;* New AK is case sensitive
+            if not(ak.data(j)<1,8>) then continue
+         end
+
+         if bitand(ak.flags, AK$RIGHT) then           ;* New AK is right aligned
+            if ak.data(j)<5> = 'L' then continue
+         end else                                     ;* New AK is left aligned
+            if ak.data(j)<5> = 'R' then continue
+         end
+
+         if bitand(ak.flags, AK$MV) then              ;* New AK is multi-valued
+            if ak.data(j)<6> = 'S' then continue
+         end else                                     ;* New AK is single valued
+            if ak.data(j)<6> = 'M' then continue
+         end
+
+         * Equivalent index found
+
+         display sysmsg(2616, new.index.name, ak.names<j>)
+         goto skip.index
+      next j
+
+      collation.map.name = ''
+      collation.map = ''
+      create.ak data.path, ak.path, new.index.name, ak.flags, fno, dict.rec,
+                collation.map.name, collation.map
+      then
+         display sysmsg(2617, new.index.name)  ;* Added index
+      end else
+         display sysmsg(2618, new.index.name)  ;* Failed to create alternate key index %1
+         err = status()
+      end
+
+      num.aks += 1
+      ak.data(num.aks) = indices(data.f, new.index.name)
+
+skip.index:
+   next idx
+
+   if num.aks = 0 then  ;* All index creation appears to have failed
+      if ak.path.created then
+         if not(ospath(ak.path, OS$DELETE)) then
+            display sysmsg(2636)  ;* Failed to delete index directory
+         end
+      end
+   end
+
+   * Must close files so that the new index data is seen by the next open
+
+   close data.f
+   close dict.f
+   i = ospath("", os$flush.cache)
+
+   return
+
+* ======================================================================
+
+build.index:
+   void ospath("", os$flush.cache)
+
+   * Open the file
+
+   openpath data.path to data.f else
+      display sysmsg(2019)  ;* File not found
+      err = ER$FNF
+      return
+   end
+
+   if fileinfo(data.f, FL$TYPE) # FL$TYPE.DH then
+      display sysmsg(2010)  ;* Inappropriate file type
+      err = ER$NDYN
+      return
+   end
+
+   * Set exclusive access to file
+
+   if not(fileinfo(data.f, FL$EXCLUSIVE)) then
+      display sysmsg(2602)  ;* Cannot gain exclusive access to file
+      err = ER$EXCLUSIVE
+      return
+   end
+
+   * Get names of existing indices
+
+   ak.names = indices(data.f)
+   num.aks = dcount(ak.names, @fm)
+   if num.aks = 0 then
+      err = DHE$NO.INDICES
+      return
+   end
+   u.ak.names = upcase(ak.names)
+
+
+   * Validate supplied AK names
+
+   num.ak.builds = dcount(ak.list, @fm)
+   for i = 1 to num.ak.builds
+      s = ak.list<i>
+      locate s in ak.names<1> setting pos else
+         s = upcase(s)
+         locate s in u.ak.names<1> setting pos else
+            display sysmsg(2604, s) ;* Unrecognised index name (%1)
+            err = ER$AKNF
+            return
+         end
+         ak.list<i> = ak.names<pos>    ;* Correct casing
+      end
+   next i
+
+
+   * Do the build
+
+   for ak = 1 to num.aks
+      index.name = ak.names<ak>
+
+      * Test if to build this index
+
+      if ak.list # '' then
+         locate index.name in ak.list<1> setting pos else continue
+      end
+
+      display sysmsg(2605, index.name)
+      ak.info = indices(data.f, index.name)
+      akno = ak.info<1,5> + 0
+
+      dim key.data(2) ; mat key.data = BT.DATA
+      if ak.info<6> = 'R' then key.data(1) += BT.RIGHT.ALIGNED
+      if ak.info<1,6> = 'R' then key.data(2) += BT.RIGHT.ALIGNED
+
+      sortinit 2, key.data
+
+      ct = 0
+      interval = 100
+
+      ak.type = ak.info[1,1]
+      begin case
+         case ak.type = 'D'
+            fno = ak.info<2> + 0
+            mv = ak.info<DICT.S.M> = 'M'
+         case (ak.type = 'A' or ak.type = 'S') and ak.info<8> = ''
+            fno = ak.info<2> + 0
+            mv = @true   ;* 0398
+         case ak.type = 'A' or ak.type = 'S'
+            fno = -1
+            itype.code = field(ak.info, @fm, DICT.ITYPE.OBJECT, 99999)
+            mv = @true   ;* 0398
+         case ak.type = 'I' or ak.type = 'C'
+            fno = -1
+            itype.code = field(ak.info, @fm, DICT.ITYPE.OBJECT, 99999)
+            mv = ak.info<DICT.S.M> = 'M'
+         case 1
+            stop 'Internal error: AK type not recognised (:'ak.type:')'
+      end case
+
+      index.nulls = not(ak.info<1,3>)
+
+      akclear data.f, akno             ;* Clear existing index
+
+      select data.f
+      loop
+         readnext id else exit
+
+         if fno = 0 then
+            key = id
+            gosub add.key
+         end else
+            read rec from data.f, id then
+               if fno < 0 then                 ;* I-type
+                  @id = id
+                  @record = rec
+                  @itype.mode = 2
+                  data = itype(itype.code)
+               end else                        ;* Data field
+                  data = rec<fno>
+               end
+
+               if mv then   ;* Multi-value
+                  keys = ''
+
+                  * The loop below will extract a single null value if the
+                  * data is completely null.  This is what we want.
+
+                  loop
+                     key = remove(data, delim)
+                     if key = '' then
+                        if index.nulls then
+                           gosub add.key
+                        end
+                     end else
+                        locate key in keys<1> setting pos else  ;* Not duplicate key
+                           keys<-1> = key
+                           gosub add.key
+                        end
+                     end
+                  while delim
+                  repeat
+               end else
+                  if data # '' or index.nulls then
+                     key = data
+                     gosub add.key
+                  end
+               end
+            end
+         end
+
+         ct += 1
+         if rem(ct, interval) = 0 then
+            i = kernel(K$SUPPRESS.COMO,1)
+            crt @(0) : sysmsg(2700, ct) :
+            i = kernel(K$SUPPRESS.COMO,0)
+            if ct = 1000 then interval = 1000
+            else if ct = 10000 then interval = 5000
+         end
+      repeat
+
+      void kernel(K$SUPPRESS.COMO,1)
+      crt @(0) :
+      void kernel(K$SUPPRESS.COMO,0)
+      crt sysmsg(2700, ct)
+
+      crt sysmsg(2606)  ;* Populating index...
+      ids = ''
+      id = sortnext(key.data)
+      last.key = key.data(1)
+
+      loop
+      until status()
+         if compare(key.data(1), last.key) then    ;* Change of key
+            akwrite ids to data.f, akno, last.key else null
+            ids = id
+            last.key = key.data(1)
+         end else                                  ;* Same key
+            ids<-1> = id
+         end
+         id = sortnext(key.data)
+      repeat
+
+      if ids # '' then  ;* Write final record
+         akwrite ids to data.f, akno, last.key else null
+      end
+
+      sortclear
+
+      akenable data.f, akno         ;* Enable AK
+   next ak
+
+   * Ensure that this file does not go into the DH cache
+
+   close data.f
+   void ospath("", os$flush.cache)
+
+   return
+
+* ======================================================================
+
+add.key:
+   key.data(1) = key
+   key.data(2) = id
+   sortadd key.data, id
+   return
+
+* ======================================================================
+
+determine.justification:
+   if fmt.code matches '1N0N0X' then
+      fmt.code = matchfield(fmt.code, '0N0X', 2)
+   end
+   c = fmt.code[1,1]
+   if c # 'L' and c # 'R' and c # 'T' then  ;* Fill char present
+      if c = '"' or c = "'" then  ;* Quoted fill char
+         fmt.code = fmt.code[4,99999]
+      end else
+         fmt.code = fmt.code[2,99999]
+      end
+   end
+   right.justify = fmt.code[1,1] = 'R'
+
+   return
+
+end
+
+* END-CODE

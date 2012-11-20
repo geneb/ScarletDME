@@ -1,0 +1,5 @@
+The Prompt Text
+The prompt text appears under the menu item list, inviting the user to select
+an option from the displayed menu.  The prompt is displayed exactly as entered,
+with no trailing space.  If no prompt text is specified, a default prompt text
+is used.

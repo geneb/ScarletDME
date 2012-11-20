@@ -1,0 +1,295 @@
+* _AK
+* Recursive code to perform AK actions
+* Copyright (c) 2005 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 14 Nov 05  2.2-16 Added support for sorted indices.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*   AK(mode, ak.data, id, old.rec, new.rec)
+*
+*      mode    : AK$ADD = add, AK$DEL = delete, AK$MOD = modify
+*      ak.data : AK data structure (matrix)
+*      id      : record id
+*      old.rec : old record data for delete or modify
+*      new.rec : new record data for add or modify
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+$no.symbols
+$no.xref
+$recursive
+
+subroutine ak(mode, mat ak.data, id, old.rec, new.rec)
+   dim ak.data(1, 1)
+
+$include ak_info.h
+$include int$keys.h
+
+   num.aks = inmat(ak.data)<1, 1> + 0
+
+   saved.id = @id
+   saved.record = @record
+
+   @id = id
+
+   for ak = 1 to num.aks
+      flags = ak.data(ak, AKD$FLGS)
+      if bitand(flags, AK$ENABLED) = 0 then continue
+
+      begin case
+         case mode = AK$ADD
+            begin case
+               case bitand(flags, AK$LSORT) ; sort = 'AL'
+               case bitand(flags, AK$RSORT) ; sort = 'AR'
+               case 1 ; sort = ''
+            end case
+
+            fno = ak.data(ak, AKD$FNO)
+            if fno < 0 then   ;* I-type
+               @record = new.rec
+               @itype.mode = 2
+               new.data = itype(ak.data(ak, AKD$OBJ))
+            end else
+               if fno then new.data = new.rec<fno>
+                  else new.data = id
+            end
+
+            index.nulls = bitand(flags, AK$NULLS)
+            if bitand(flags, AK$MV) then  ;* Multi-value AK
+               keys = ''
+!             null.key.seen = @false
+               * The loop below will extract a single null value if the
+               * data is completely null.  This is what we want.
+
+               loop
+                  key = remove(new.data, delim)
+                  if key = '' then
+                     if index.nulls then
+!                      null.key.seen = @true
+                        gosub add.key
+                     end
+                  end else
+                     locate key in keys<1> setting pos else  ;* Not duplicate key
+                        keys<-1> = key
+                        gosub add.key
+                     end
+                  end
+               while delim
+               repeat
+            end else
+               if new.data # '' or index.nulls then
+                  key = new.data
+                  gosub add.key
+               end
+            end
+
+         case mode = AK$DEL
+            begin case
+               case bitand(flags, AK$LSORT) ; sort = 'AL'
+               case bitand(flags, AK$RSORT) ; sort = 'AR'
+               case 1 ; sort = ''
+            end case
+
+            fno = ak.data(ak, AKD$FNO)
+            if fno < 0 then   ;* I-type
+               @record = old.rec
+               @itype.mode = 1
+               old.data = itype(ak.data(ak, AKD$OBJ))
+            end else
+               if fno then old.data = old.rec<fno>
+                  else old.data = id
+            end
+
+            index.nulls = bitand(flags, AK$NULLS)
+            if bitand(flags, AK$MV) then  ;* Multi-value AK
+               keys = ''
+!             null.key.seen = @false
+               * The loop below will extract a single null value if the
+               * data is completely null.  This is what we want.
+
+               loop
+                  key = remove(old.data, delim)
+                  if key = '' then
+                     if index.nulls then
+!                      null.key.seen = @true
+                        gosub delete.key
+                     end
+                  end else
+                     locate key in keys<1> setting pos else  ;* Not duplicate key
+                        keys<-1> = key
+                        gosub delete.key
+                     end
+                  end
+               while delim
+               repeat
+            end else
+               if old.data # '' or index.nulls then
+                  key = old.data
+                  gosub delete.key
+               end
+            end
+
+         case mode = AK$MOD
+            begin case
+               case bitand(flags, AK$LSORT) ; sort = 'AL'
+               case bitand(flags, AK$RSORT) ; sort = 'AR'
+               case 1 ; sort = ''
+            end case
+
+            fno = ak.data(ak, AKD$FNO)
+            if fno < 0 then   ;* I-type
+               object.code = ak.data(ak, AKD$OBJ)
+               @record = old.rec
+               @itype.mode = 1
+               old.data = itype(object.code)
+               @record = new.rec
+               @itype.mode = 2
+               new.data = itype(object.code)
+            end else
+               if fno = 0 then continue
+               old.data = old.rec<fno>
+               new.data = new.rec<fno>
+            end
+
+            * Do a quick test for the entire (possibly multi-valued) data
+            * being unchanged.
+
+            if compare(new.data, old.data) = 0 then continue
+
+            index.nulls = bitand(flags, AK$NULLS)
+            if bitand(flags, AK$MV) then  ;* Multi-value AK
+                                           * This one is complex. We must identify the changed values but
+                                           * spot both new and deleted keys, allowing for nulls in either
+                                           * set of key values.
+
+               * Handle null key as a special case first
+
+               if index.nulls then
+                  find '' in new.data setting pos then  ;* New keys include null
+                     find '' in old.data setting pos else
+                        key = ''
+                        gosub add.key
+                     end
+                  end else                             ;* No null in new keys
+                     find '' in old.data setting pos then
+                        key = ''
+                        gosub delete.key
+                     end
+                  end
+               end
+
+               * Now work through remaining keys, ignoring any null keys.
+               * First do old keys, ignoring those in the new key list
+
+               keys = ''
+               loop
+                  key = remove(old.data, delim)
+                  if key # '' then
+                     locate key in keys<1> setting pos else  ;* Not duplicate key
+                        keys<-1> = key
+                        find key in new.data setting pos else
+                           gosub delete.key
+                        end
+                     end
+                  end
+               while delim
+               repeat
+
+               * Now do new keys, ignoring those in old key list
+
+               keys = ''
+               loop
+                  key = remove(new.data, delim)
+                  if key # '' then
+                     locate key in keys<1> setting pos else  ;* Not duplicate key
+                        keys<-1> = key
+                        find key in old.data setting pos else
+                           gosub add.key
+                        end
+                     end
+                  end
+               while delim
+               repeat
+            end else
+               if old.data # '' or index.nulls then
+                  key = old.data
+                  gosub delete.key
+               end
+               if new.data # '' or index.nulls then
+                  key = new.data
+                  gosub add.key
+               end
+            end
+      end case
+   next ak
+
+   @itype.mode = 0
+   @id = saved.id
+   @record = saved.record
+
+   return
+
+* =============================================================================
+
+add.key:
+   if len(key) > 255 then key = key[1, 255]
+   akread ak.rec ak-1, key then
+      locate id in ak.rec<1> by sort setting pos then
+         akrelease
+         return
+      end
+      ins id before ak.rec<pos>
+   end else
+      ak.rec = id
+   end
+   akwrite ak.rec ak-1, key else null
+
+   return
+
+* =============================================================================
+
+delete.key:
+   if len(key) > 255 then key = key[1, 255]
+   akread ak.rec ak-1, key then
+      locate id in ak.rec<1> by sort setting pos else
+         akrelease
+         return
+      end
+      del ak.rec<pos>
+      if ak.rec = '' then
+         akdelete ak-1, key else null
+      end else
+         akwrite ak.rec ak-1, key else null
+      end
+   end else
+      akrelease
+   end
+
+   return
+
+end
+
+* END-CODE

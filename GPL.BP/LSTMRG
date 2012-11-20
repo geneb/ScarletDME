@@ -1,0 +1,171 @@
+* LSTMRG
+* LIST.UNION, LIST.INTER and LIST.DIFF commands
+* Copyright (c) 2004 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 13 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    LIST.UNION list.1 {list.2 {tgt.list}} {COUNT.SUP}
+*
+*    Prompts for missing list names
+*
+* @SYSTEM.RETURN.CODE
+*    +ve Successful - number of items in merged list
+*    -1  Command arguments incorrect or missing
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+
+$internal
+program $lstmrg
+$catalog $lstmrg
+
+$include err.h
+$include keys.h
+
+$include syscom.h
+$include parser.h
+
+
+   parser = "!PARSER"
+
+   prompt ''
+
+   @system.return.code = -1      ;* Preset for command format errors
+
+   src.2 = ''
+   tgt = ''
+   suppress.count = @false
+
+   open '$SAVEDLISTS' to svlist.f else
+      @system.return.code = -status()
+      stop sysmsg(3248, status()) ;* Error xx opening $SAVEDLISTS
+   end
+
+   * Parse the command
+
+   call @parser(parser$reset, 0, @sentence, 0)
+   call @parser(parser$get.token, token.type, token, keyword) ;* Verb
+
+   * Get first source list name
+
+   call @parser(parser$get.token, token.type, src.1, keyword)
+   if token.type # PARSER$TOKEN then
+      stop sysmsg(3262) ;* First source list name missing or invalid
+   end
+
+   * Read the first list
+
+   read list1 from svlist.f, src.1 else
+      stop sysmsg(3263) ;* First source list does not exist
+   end
+
+   loop
+      call @parser(parser$get.token, token.type, token, keyword)
+   until token.type = PARSER$END
+      begin case
+         case keyword = KW$COUNT.SUP
+            suppress.count = @true
+         case src.2 = ''
+            src.2 = token
+         case tgt = ''
+            tgt = token
+         case 1
+            stop sysmsg(2018, token) ;* Unexpected token (xx)
+      end case
+   repeat
+
+   * Get second source list name if not on command line
+
+   if src.2 = '' then
+      display 'WITH: ' :
+      input src.2
+      if src.2 = '' then stop
+   end
+
+   * Read the second list
+
+   read list2 from svlist.f, src.2 else
+      stop sysmsg(3264) ;* Second source list does not exist
+   end
+
+   * Get target list name if not on command line
+
+   if tgt = '' then
+      display 'TO: ' :
+      input tgt
+      if tgt = '' then stop
+   end
+
+   * Do the merge
+
+   begin case
+      case @option = 'UNION'
+         if len(list2) then
+            loop
+               key = removef(list2)
+            until status()
+               locate key in list1<1> setting i else list1<-1> = key
+            repeat
+         end
+
+      case @option = 'INTERSECTION'
+         if len(list1) and len(list2) then
+            new.list = ""
+            loop
+               key = removef(list2)
+            until status()
+               locate key in list1<1> setting i then new.list<-1> = key
+            repeat
+            list1 = new.list
+         end
+
+      case @option = 'DIFFERENCE'
+         if len(list2) then
+            loop
+               key = removef(list2)
+            until status()
+               locate key in list1<1> setting i then del list1<i>
+            repeat
+         end
+
+      case 1
+         stop sysmsg(3265) ;* Invalid merge mode in VOC entry
+   end case
+   
+
+   * Save the merged list
+
+   write list1 to svlist.f, tgt
+   @system.return.code = dcount(list1, @fm)
+
+   if not(suppress.count) then
+      display sysmsg(3266, @system.return.code, tgt) ;* xx records saved to select list 'xx'
+   end
+
+   return
+end
+
+* END-CODE

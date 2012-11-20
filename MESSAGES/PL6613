@@ -1,0 +1,9 @@
+The Access Control Subroutine
+A menu can have an associated access control subroutine.  This allows access
+to items on the menu to be restricted in any way the application designer
+wishes.  Some options might, for example, be available only to certain users.
+
+When an access control subroutine is specified, the subroutine is called for
+each menu option as the menu is prepared for display, passing in the access
+control key on the Access line of the menu option details.  The subroutine
+returns a status indicating whether the menu item is available.

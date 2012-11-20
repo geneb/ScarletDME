@@ -1,0 +1,24 @@
+* U50BB
+* 50BB user exit - Equivalent to @WHO
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* START-HISTORY:
+* 06 Sep 06  2.4.13 Changed return data to match D3.
+* 07 Jan 05  New module.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+subroutine u50bb(result, source, status, oconv)
+$catalogue "50BB" global
+
+   result = @userno:' ':@who:' ':@logname
+   status = 0
+   return
+end
+
+* END-CODE

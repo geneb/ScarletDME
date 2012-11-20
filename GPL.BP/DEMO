@@ -1,0 +1,218 @@
+* DEMO
+* Create demonstration database files.
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 02 Nov 06  2.4-15 VOC and Dictionary record types now case insensitive.
+* 18 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program demo
+$catalog $demo
+
+$include syscom.h
+
+   equ FILE.TAG to 'File for demonstration database'
+
+   * TITLES
+   s = ''
+   s<-1> = "DICT|TITLES|@ID|D|0||TITLES|10L|S"
+   s<-1> = "DICT|TITLES|TITLE.REF|D|0||Ref|5R|STITLE|D|1||Title|25T|S"
+   s<-1> = "DICT|TITLES|TITLE|D|1||Title|25T|S"
+   s<-1> = "DICT|TITLES|AUTHOR|D|2||Author|15T|M"
+   s<-1> = "DICT|TITLES|SUBJECT|D|3||Subject|15L|S"
+   s<-1> = "DICT|TITLES|COPIES|D|4||Cpy|2R|S"
+   s<-1> = "DICT|TITLES|@|PH|TITLE.REF TITLE AUTHOR SUBJECT COPIES ID.SUP"
+   s<-1> = "|TITLES|1|Murder at the Vicarage|Christie, Agatha|Mystery|1"
+   s<-1> = "|TITLES|2|Longshot|Francis, Dick|Adventure|2"
+   s<-1> = "|TITLES|3|No Highway|Shute, Neville|Adventure|1"
+
+
+   * BOOKS
+   s<-1> = "DICT|BOOKS|@ID|D|0||BOOKS|10L|S"
+   s<-1> = "DICT|BOOKS|BOOK.REF|D|0||Ref|8R|S"
+   s<-1> = "DICT|BOOKS|READER|D|1||Reader|5R|S"
+   s<-1> = "DICT|BOOKS|DATE.OUT|D|2|D2DMY[,A3]|Date out|9R|S"
+   s<-1> = "DICT|BOOKS|NAME|I|TRANS(READERS,READER,NAME,'X')||Reader Name|20T|S"
+   s<-1> = "DICT|BOOKS|TITLE|I|TRANS(TITLES,TITLE.REF,TITLE,'X')||Title|25T|S"
+   s<-1> = "DICT|BOOKS|TITLE.REF|I|@ID['-',1,1]||TitleRef|5R|S"
+   s<-1> = "DICT|BOOKS|DATE.DUE|I|IF DATE.OUT THEN DATE.OUT + 21 ELSE ''|D2DMY[,A3]|Date due|9R|S"
+   s<-1> = "DICT|BOOKS|@|PH|BOOK.REF READER DATE.OUT DATE.DUE ID.SUP"
+   s<-1> = "|BOOKS|1-1|2|12037"
+   s<-1> = "|BOOKS|2-1|3|12058"
+   s<-1> = "|BOOKS|2-2"
+   s<-1> = "|BOOKS|3-1|2|12040"
+
+
+   * READERS
+   s<-1> = "DICT|READERS|@ID|D|0||READERS|10L|S"
+   s<-1> = "DICT|READERS|READER.REF|D|0||Ref|5R|S"
+   s<-1> = "DICT|READERS|NAME|D|1||Name|20T|S"
+   s<-1> = "DICT|READERS|ADDRESS|D|2||Address|20T|M"
+   s<-1> = "DICT|READERS|LOANS|D|3||Loans|8R|M|BOOKS.OUT"
+   s<-1> = "DICT|READERS|@|PH|READER.REF NAME ADDRESS LOANS ID.SUP"
+   s<-1> = "DICT|READERS|BOOKS.OUT|PH|LOANS DATE.OUT TITLE"
+   s<-1> = "DICT|READERS|DATE.OUT|I|TRANS(BOOKS,LOANS,DATE.OUT,'X')|D2DMY[,A3]|Date out|9R|M|BOOKS.OUT"
+   s<-1> = "DICT|READERS|TITLE|I|TRANS(TITLES,FIELDS(LOANS,'-',1),TITLE,'X')||Titles on loan|25T|M|BOOKS.OUT"
+   s<-1> = "|READERS|1|Smith, A J|14 Park ViewýNottingham"
+   s<-1> = "|READERS|2|Cartwright, D|7 Spring GroveýNottingham|1-1ý3-1"
+   s<-1> = "|READERS|3|King, J|Flat 4ýSeville TerraceýClaythorpe|2-1"
+
+
+   num.records = dcount(s, @fm)
+
+
+   * Perform a few sanity checks
+
+   old.fn = ''
+   for i = 1 to num.records
+      fn = field(s<i>, '|', 2)
+      if fn # old.fn then
+         read voc.rec from @voc, fn then
+            if upcase(voc.rec[1,1]) # 'F' then
+               message = sysmsg(3210, fn ) ;* Your VOC already contains a record named %1 but it is not a file
+               goto error
+            end
+
+            if voc.rec<1> # FILE.TAG then
+               message = sysmsg(3211, fn) ;* Your VOC already contains a file named 51 but it does not appear to be part of the demonstration database
+               goto error
+            end
+
+            open fn to fu else
+               message = sysmsg(3212, fn) ;* Your VOC already contains a file named %1 but the data part cannot be opened
+               goto error
+            end
+
+            open 'DICT', fn to fu else
+               message = sysmsg(3213, fn) ;* Your VOC already contains a file named %1 but the dictionary part cannot be opened
+               goto error
+            end
+
+            close fu
+         end
+         old.fn = fn
+      end
+   next i
+   
+
+   * Process according to dispatch information
+
+   begin case
+      case @option = 'SETUP'
+         * Populate the files
+
+         old.fn = ''
+         for i = 1 to num.records
+            info = s<i>
+            df = field(info, '|', 1)                 ;* Dict flag
+            fn = field(info, '|', 2)                 ;* File name
+            id = field(info, '|', 3)                 ;* Id
+            rec = convert('|',@fm,field(info, '|', 4, 9999))   ;* Data
+
+            if fn # old.fn then
+               if old.fn then gosub end.file
+
+               open fn to data.f then
+                  display sysmsg(3214, fn) ;* Clearing your %1 file...
+                  clearfile data.f
+               end else
+                  display sysmsg(6021, fn) ;* Creating %1...
+                  execute "CREATE.FILE " : fn
+                  open fn to data.f else stop sysmsg(1427, fn) ;* Cannot open %1
+
+                  readu voc.rec from @voc, fn then
+                     voc.rec<1> = FILE.TAG
+                     write voc.rec to @voc, fn
+                  end
+               end
+
+               open 'DICT', fn to dict.f then
+                  clearfile dict.f
+               end else
+                  stop sysmsg(7018, fn) ;* Cannot open dictionary for xx
+               end
+
+               filelock data.f
+               filelock dict.f
+
+               old.fn = fn
+               itypes = @false
+            end
+
+            if len(df) then
+               write rec to dict.f, id
+               if upcase(rec[1,1]) = 'I' then itypes = @true
+            end else
+               write rec to data.f, id
+            end 
+         next i
+
+         * Terminate final file
+
+         gosub end.file
+
+      case @option = 'DELETE'
+         old.fn = ''
+         for i = 1 to num.records
+            fn = field(s<i>, '|', 2)
+            if fn # old.fn then
+               execute 'DELETE.FILE ' : fn
+               old.fn = fn
+            end
+         next i
+
+      case 1
+         stop sysmsg(3215) ;* Unrecognised dispatch information in VOC record
+   end case
+
+   stop
+
+* ----------------------------------------
+
+error:
+   message = fmt(message, (@crtwide - 1):'T')
+   loop
+      display remove(message, delim)
+   while delim
+   repeat
+   stop
+
+* ======================================================================
+
+end.file:
+   if itypes then
+      display sysmsg(3217) ;* Compiling I-types...
+      close dict.f
+      execute "CD " : old.fn
+   end
+
+   return
+
+end
+
+* END-CODE

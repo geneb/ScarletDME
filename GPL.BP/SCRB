@@ -1,0 +1,898 @@
+* SCRB
+* Screen builder
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 02 Nov 06  2.4-15 VOC record types now case insensitive.
+* 31 Oct 06  2.4-15 Use @SYS.BELL to honour BELL ON/OFF setting.
+* 14 Oct 04  2.0-5 Use message handler.
+* 28 Sep 04  2.0-3 Removed A option.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    SCRB {file} {screen}
+*
+*
+*   0         1         2         3         4         5         6         7
+*   01234567890123456789012345678901234567890123456789012345678901234567890123456789
+*00
+*01
+*02 Step:nn   01 Name :--------------------------------  02 Type :xxxx  03 Clear: N
+*03 04 Text: ----------------------------------------------------------------------
+*04 05 Disp step   :                        21 Input len   :
+*05 06 Text row    :                        22 Required    :
+*06 07 Text col    :                        23 Input val 1 :
+*07 08 Text mode   :                        24 Input conv  :
+*08 09 Field       :                        25 Input val 2 :
+*09 10 Value       :                        26 Conditions  :
+*10 11 Subvalue    :                        27 Next step   :
+*11 12 Prompt char :                        28 Help msg    :
+*12 13 Fill char   :                        29 Error msg   :
+*13 14 Data row    :                        30 Exit key    :
+*14 15 Data col    :                        31 F2 action   :
+*15 16 Data mode   :                        32 Func keys   :
+*16 17 Output len  :                        33 Key val     :
+*17 18 Output conv :
+*18 19 Justify     :
+*19 20 End mark    :
+*20
+*21
+*22
+*23
+*24
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+program scrb
+
+
+* -------------------------------- QM Version --------------------------------
+   $internal
+   $catalog $SCRB
+   $include keys.h
+   $include int$keys.h
+   $include screens.h
+   $include screen$step.scr
+   * The screen definition is in the SCREENS file of the QM account but can
+   * also be recovered from the above include record if necessary.
+
+   screen = "!SCREEN"
+   scrn.file.name = "$SCREENS"
+
+* ----------------------------- UniVerse Version -----------------------------
+
+
+   * Construct list of screen definition fields that are multi-valued with
+   * one value for each screen step.
+
+   step.fields = SCR.NAME
+   step.fields<-1> = SCR.TYPE
+   step.fields<-1> = SCR.CLEAR
+   step.fields<-1> = SCR.TEXT
+   step.fields<-1> = SCR.DISP.STEP
+   step.fields<-1> = SCR.TEXT.ROW
+   step.fields<-1> = SCR.TEXT.COL
+   step.fields<-1> = SCR.TEXT.MODE
+   step.fields<-1> = SCR.FIELD
+   step.fields<-1> = SCR.VALUE
+   step.fields<-1> = SCR.SUBVALUE
+   step.fields<-1> = SCR.PROMPT.CHAR
+   step.fields<-1> = SCR.FILL.CHAR
+   step.fields<-1> = SCR.DATA.ROW
+   step.fields<-1> = SCR.DATA.COL
+   step.fields<-1> = SCR.DATA.MODE
+   step.fields<-1> = SCR.OUTPUT.LEN
+   step.fields<-1> = SCR.OUTPUT.CONV
+   step.fields<-1> = SCR.JUSTIFY
+   step.fields<-1> = SCR.END.MARK
+   step.fields<-1> = SCR.INPUT.LEN
+   step.fields<-1> = SCR.REQUIRED
+   step.fields<-1> = SCR.VAL.1
+   step.fields<-1> = SCR.INPUT.CONV
+   step.fields<-1> = SCR.VAL.2
+   step.fields<-1> = SCR.BACKSTEP
+   step.fields<-1> = SCR.NEXT.STEP
+   step.fields<-1> = SCR.HELP.MSG
+   step.fields<-1> = SCR.ERROR.MSG
+   step.fields<-1> = SCR.EXIT.KEY
+   step.fields<-1> = SCR.F2
+   step.fields<-1> = SCR.FKEYS
+   step.fields<-1> = SCR.FIELD.NAME
+   step.fields<-1> = SCR.KEY.VAL
+   num.step.fields = dcount(step.fields, @fm)
+
+
+   open 'VOC' to voc else stop sysmsg(2026) ;* Cannot open VOC
+
+   read s from voc, "$SCRB.FILE" then
+      if upcase(s[1,1]) = 'X' then scrn.file.name = s<2>   ;* Change default name
+   end
+
+   * Capture any active select list
+
+   readlist screen.list else null
+
+   * Parse command line
+
+   screen.name = ''
+   arg1 = field(trim(@sentence), ' ', 2)
+   arg2 = field(trim(@sentence), ' ', 3)
+
+   if arg2 # '' then                      ;* Both arguments present
+      scrn.file.name = arg1
+      screen.name = upcase(arg2)
+   end else if arg1 # '' then             ;* Screen name arg only
+      screen.name = upcase(arg1)
+   end
+
+
+   prompt ""
+
+   open scrn.file.name to scrn.f else
+      open upcase(scrn.file.name) to scrn.f then
+         scrn.file.name = upcase(scrn.file.name)
+      end else
+         display sysmsg(1427, scrn.file.name) ;* Cannot open xx
+         loop
+            display sysmsg(7008) :  ;* Create new screens file?
+            input yn
+            yn = upcase(yn)
+         until yn = 'Y' or yn = 'N'
+         repeat
+         if yn = 'N' then stop
+
+         execute 'CREATE.FILE ' : scrn.file.name : ' DYNAMIC'
+
+         open scrn.file.name to scrn.f else
+            stop sysmsg(1427, scrn.file.name) ;* Cannot open xx
+         end
+      end
+   end
+
+
+   * Modify SCRB's screen definition to refer to the correct screens file
+   * in the F2 action for the screen name prompt.
+
+   s = scrn.step<SCR.F2,SS.SCREEN.NAME>
+   s = scrn.file.name : ',' : field(s, ',', 2, 999)
+   scrn.step<SCR.F2,SS.SCREEN.NAME> = s
+
+
+   display @(IT$CS) :
+
+   loop
+      if screen.name = '' then
+         * Check if we have any screen names left in a select list
+         remove screen.name from screen.list setting i
+         if screen.name = '' then
+            call @screen(scrn.step, screen.name, SS.SCREEN.NAME, ret.status)
+         end
+      end
+
+   while len(screen.name)
+
+      read scrn from scrn.f, screen.name else
+         read scrn from scrn.f, upcase(screen.name) then
+            screen.name = upcase(screen.name)
+         end else
+            display @(10,10) : sysmsg(7009) ;* New screen
+            sleep 1
+         end
+      end
+
+      if screen.name[1,1] = "$" and not(kernel(K$INTERNAL, -1)) then
+         display @(10,10) : sysmsg(7010) ;* This is a reserved name and may not be edited
+         sleep 2
+         screen.name = ''
+         continue
+      end
+
+      if scrn<SCR.FILE.NAME> = '' then scrn<SCR.FILE.NAME> = 'BP'
+      incl.file = scrn<SCR.FILE.NAME>
+      open incl.file to incl.f then incl.file.open = @true
+      else incl.file.open = @false
+
+      original.screen = scrn
+
+      num.steps = dcount(scrn<SCR.TYPE>, @vm)
+
+      loop
+         display @(IT$CS) :
+         s = "SCREEN BUILDER" : space(10) : scrn.file.name : '  ' : screen.name
+         display @(0,0) : @(IT$SREV) : fmt(s, '80L') : @(IT$EREV) :
+
+         display @(0,10) : sysmsg(7011) :  ;* Header:
+         display @(0,11) : @(IT$CLEOL) : @(IT$SREV) : fmt(scrn<SCR.HEADER>[1,80], '80L') : @(IT$EREV) :
+
+         display @(0,13) : @(IT$CLEOL) : sysmsg(7012, scrn<SCR.FILE.NAME>) :
+         * Include file: xx
+
+         action = ''
+         call @screen(scrn.step, action, SS.MAIN.ACTION, ret.status)
+         begin case
+            case action = 'D'
+               action = ''
+               call @screen(scrn.step, action, SS.CONFIRM.DELETE, ret.status)
+               display @(0,24) : @(IT$CLEOL) :
+               if action = 'Y' then
+                  delete scrn.f,screen.name
+                  delete incl.f,screen.name:'.SCR'
+                  exit
+               end
+
+            case action = 'H'
+               gosub set.header
+
+            case action = 'I'
+               gosub set.include.dir
+
+            case action = 'L'    ;* List steps
+               gosub list.steps
+
+            case action = 'LPTR' ;* Print screen template
+               gosub print.screen
+
+            case action = 'P'
+               gosub paint.screen
+
+            case action matches "'S'1N0N"
+               step.no = action[2,3] + 0
+               display @(0,1) : @(IT$CLEOS) :     ;* Preserve header
+               gosub show.step
+
+            case action = 'F'
+               gosub write.screen
+               exit
+
+            case action = 'X'
+               if scrn # original.screen then
+                  action = ''
+                  call @screen(scrn.step, action, SS.LOSE.UPDATE, ret.status)
+                  if action = 'Y' then exit
+                  else display @(0,24) : @(IT$CLEOL) :
+               end else
+                  exit
+               end
+
+            case 1
+               display @sys.bell:
+          end case
+       repeat
+
+       screen.name = ''
+   repeat
+
+   display @(-1):
+
+   @system.return.code = 0
+
+   return
+
+* *****************************************************************************
+
+set.header:
+   s = fmt(scrn<SCR.HEADER>, '80L')
+   display @(IT$SREV) :
+   input @(0,11) : s, 79 :
+   display @(IT$EREV) :
+   scrn<SCR.HEADER> = trimb(s)
+
+   return
+
+* *****************************************************************************
+
+set.include.dir:
+   s = scrn<SCR.FILE.NAME>
+   input @(14,13) : s, 30_:
+   scrn<SCR.FILE.NAME> = trimb(s)
+   display @(14,13) : @(IT$CLEOL) : scrn<SCR.FILE.NAME> :
+
+   return
+
+* *****************************************************************************
+*
+* step    = step in our own screen
+* step.no = step number in screen being processed
+
+show.step:
+   if step.no = num.steps + 1 then
+      num.steps += 1
+   end
+
+   if step.no < 1 or step.no > num.steps then return
+
+   saved.scrn = scrn
+
+   * Steps with a non-null SCR.VALUE field need to have the step number of
+   * the step being edited inserted.
+
+   s = scrn.step<SCR.VALUE>
+   n = dcount(s, @vm)
+   for i = 1 to n
+      if s<1,i> # '' then scrn.step<SCR.VALUE,i> = step.no
+   next i
+
+!! Old method doesn't work on QM
+!!   scrn.step<SCR.VALUE> = ifs(nes(scrn.step<SCR.VALUE>, ''), reuse(step.no), '')
+
+   call @screen(scrn.step, step.no, SS.STEP, ret.status)  ;* Step number
+   call @screen(scrn.step, scrn, -1, ret.status)  ;* Paint screen
+  
+   finished = @false
+   loop   
+      loop
+         action = ''
+         call @screen(scrn.step, action, SS.ACTION, ret.status)
+
+         begin case
+            case num(action)
+               n = action + 0
+               if n > 0 and n <= num.step.fields then
+                  step = n          ;* Step numbers correspond
+                  gosub modify.step
+               end
+
+            case action matches "'S'1N0N"
+               n = action[2,99] + 0
+               if n > 0 and n <= (num.steps + 1) then
+                  step.no = n
+                  goto show.step
+               end
+
+            case action = "N"              ;* Next step
+               if step.no < num.steps then
+                  step.no += 1
+                  goto show.step
+               end
+
+            case action = "P"              ;* Previous step
+               if step.no > 1 then
+                  step.no -= 1
+                  goto show.step
+               end
+
+            case action = 'R'              ;* Return to upper action prompt
+               finished = @true
+
+            case action matches "'C'1N0N"  ;* Copy step n
+               n = action[2,99] + 0
+               if n > 0 and n <= num.steps and n # step.no then
+                  s = 'Overwrite with step ' : n ; gosub confirm
+                  if yes then
+                     for sf = 1 to num.step.fields
+                        i = step.fields<sf> + 0
+                        scrn<i,step.no> = scrn<i,n>
+                     next sf
+                     scrn<SCR.NAME,step.no> = ''  ;* Clear this one
+                     goto show.step
+                  end
+               end
+
+            case action matches "'C'0X,0X"  ;* Copy step from another screen
+               other.screen.name = field(action[2,9999], ',', 1)
+               read other.scrn from scrn.f, other.screen.name then
+                  other.screen.step = field(action, ',', 2)
+                  if other.screen.step matches "1N0N" then
+                     n = other.screen.step + 0
+                  end else
+                     locate other.screen.step in other.scrn<SCR.NAME,1> setting n
+                     else
+                        display @sys.bell :
+                        s = sysmsg(7013) ;* Step name not found in screen template
+                        gosub warning
+                        continue
+                     end
+                  end
+
+                  s = sysmsg(7014) ;* Overwrite step
+                  gosub confirm
+                  if yes then
+                     scrn<SCR.NAME,step.no> = ''
+                     for sf = 1 to num.step.fields
+                        i = step.fields<sf> + 0
+                        scrn<i,step.no> = other.scrn<i,n>
+                     next sf
+                     goto show.step
+                  end
+               end else
+                  display @sys.bell :
+                  s = sysmsg(7015) ;* Screen template not on file
+                  gosub warning
+               end
+
+            case action = 'D'    ;* Delete step
+               s = 'Delete this step' ; gosub confirm
+               if yes then
+                  for sf = 1 to num.step.fields
+                     i = step.fields<sf> + 0
+                     del scrn<i,step.no>
+                  next sf
+                  num.steps -= 1
+                  if step.no > num.steps then step.no = num.steps
+                  goto show.step
+               end
+
+            case action = 'I'    ;* Insert new step
+               s = 'Insert new step before this step' ; gosub confirm
+               if yes then
+                  for sf = 1 to num.step.fields
+                     i = step.fields<sf> + 0
+                     ins "" before scrn<i,step.no>
+                  next sf
+                  num.steps += 1
+                  goto show.step
+               end
+
+            case action matches "'M'1N0N"  ;* Move to become step n
+               n = action[2,99] + 0
+               if n > 0 and n <= num.steps and n # step.no then
+                  s = 'Move this step to become step ' : n ; gosub confirm
+                  if yes then
+                     for sf = 1 to num.step.fields
+                        i = step.fields<sf> + 0
+                        temp = scrn<i,step.no>
+                        del scrn<i,step.no>
+                        ins temp before scrn<i,n>
+                     next sf
+                     step.no = n
+                     goto show.step
+                  end
+               end
+         end case
+      until finished
+      repeat
+   until finished
+   repeat
+
+   return
+
+* *****************************************************************************
+* MODIFY.STEP
+*
+* step    = step in our own screen
+* step.no = step number in screen being processed
+
+modify.step:
+   loop
+      call @screen(scrn.step, scrn, step, ret.status)
+
+      begin case
+         case ret.status = 0  ;* Normal exit
+            begin case
+               case step = SS.NAME
+                  s = scrn<SCR.NAME,step.no>
+                  if s # '' then
+                     ss = scrn<SCR.NAME>
+                     ss<1,step.no> = ''
+                     locate s in ss<1,1> setting i then
+                        display @(0,24) : @sys.bell : @(IT$CLEOL) : sysmsg(7016, i) :
+                        * Step name already used at step %1
+                        input dummy:
+                        display @(0,24) : @(IT$CLEOL) :
+                        scrn<SCR.NAME,step.no> = ''
+                        continue
+                     end
+                  end
+                  step = SS.TYPE
+                  
+               case step = SS.FIELD
+                  s = scrn<SCR.FIELD.NAME,step.no>
+                  begin case
+                     case s matches "0X' '0X"
+                        gosub lookup.field.name
+                        if n then scrn<SCR.FIELD,step.no> = n
+                        else continue
+
+                     case 1
+                        scrn<SCR.FIELD,step.no> = s
+                  end case
+                  step = SS.VALUE
+
+               case 1
+                  return
+            end case
+
+         case ret.status = 1  ;* Exit key
+            return
+
+         case ret.status = 2  ;* Backstep
+            step -= 1
+
+         case ret.status = 129      ;* F2
+            gosub accept.multi.values
+
+         case 1
+            scrn = saved.scrn
+            return
+      end case
+   repeat
+
+   return
+
+* *****************************************************************************
+
+accept.multi.values:
+
+   display @(0,21) : sysmsg(7017) :  ;* Enter/update values, F2 to insert value, F3 to delete value
+
+* Copy validation criteria, etc to multi-value step
+
+   scrn.step<SCR.VAL.1,SS.MV> = scrn.step<SCR.VAL.1, step>
+   scrn.step<SCR.VAL.2,SS.MV> = scrn.step<SCR.VAL.2, step>
+   scrn.step<SCR.INPUT.CONV,SS.MV> = scrn.step<SCR.INPUT.CONV, step>
+   scrn.step<SCR.OUTPUT.CONV,SS.MV> = scrn.step<SCR.OUTPUT.CONV, step>
+
+   s = scrn<step,step.no>
+   n = dcount(s, @sm) + 1
+   i = 1
+   loop
+   while i <= n
+      ss = s<1,1,i>
+
+      call @screen(scrn.step, ss, SS.MV, ret.status)
+      begin case
+         case ret.status = 0  ;* Normal exit
+            if len(ss) then
+               s<1,1,i> = ss
+               i += 1
+               if i > n then n += 1
+            end else
+               if i = n then exit
+               del s<1,1,i>
+               n -= 1
+            end
+
+         case ret.status = 129 ;* F2
+            if i = n then exit
+            ins '' before s<1,1,i>
+            n += 1
+
+         case ret.status = 1  ;* Exit key
+            exit
+
+         case ret.status = 2  ;* Back step
+            if i > 1 then i -= 1
+      end case
+   repeat
+
+   scrn<step,step.no> = s
+   display @(0,21) : @(IT$CLEOL) :
+   display @(0,22) : @(IT$CLEOL) :
+
+   return
+
+* *****************************************************************************
+
+lookup.field.name:
+   n = 0
+
+   file.name = field(s, ' ', 1)
+   item.name = field(s, ' ', 2)
+   open 'DICT', file.name to dict.f else
+      open 'DICT', upcase(file.name) to dict.f else
+         s = sysmsg(7018, file.name) ;* Cannot open dictionary for file %1
+         gosub warning
+         return
+      end
+      file.name = upcase(file.name)
+   end
+
+   read dict.rec from dict.f, item.name else
+      read dict.rec from dict.f, upcase(item.name) else
+         close dict.f
+         s = sysmsg(7019, item.name) ;* %1 is not defined in dictionary
+         gosub warning
+         return
+      end
+      item.name = upcase(item.name)
+   end
+
+   close dict.f
+
+   if dict.rec[1,1] # 'D' then
+      s = sysmsg(7020, item.name) ;* %1 is not a D type dictionary item
+      gosub warning
+      return
+   end
+
+   n = dict.rec<2>
+   if not(n matches "1N0N") or n = 0 then
+      s = sysmsg(7021, item.name) ;* Dictionary entry for %1 has an invalid location field
+      gosub warning
+      return
+   end
+
+   return
+
+* **********************************************************************
+* WRITE.SCREEN  -  Write screen record to file
+
+write.screen:
+**   scrn = field(scrn, @fm, 1, SCR.HEADER)
+   write scrn to scrn.f,screen.name
+
+   if incl.file.open then
+      * Scan for step names
+      include.name = screen.name:'.SCR'
+
+      s = scrn<SS.NAME>
+      if len(convert('', @vm, s)) then
+
+         step.names = "* " : scrn.file.name : " " : include.name
+         step.names<-1> = "* Generated at " : oconv(time(), "MTS") : " on " : oconv(date(), "D4DMY[,A3]")
+         step.names<-1> = ""
+
+         * Find longest step.name
+
+         i = 0
+         for step.no = 1 to num.steps
+            step.name = s<1, step.no>
+            if len(step.name) > i then i = len(step.name)
+         next step.no
+
+         * Emit step name list
+
+         for step.no = 1 to num.steps
+            step.name = s<1, step.no>
+            if len(step.name) then
+               step.names<-1> = 'equate SS.' : fmt(step.name, i:'L') : ' to ' : step.no
+            end
+         next step.no
+
+         * For SCREEN$STEP, emit the screen data itself and remind user to
+         * rebuild this program.
+
+         if screen.name = 'SCREEN$STEP' then
+            step.names<-1> = 'scrn.step = ""'
+
+            n = dcount(scrn, @fm)
+            for i = 1 to n
+               step.names<-1> = 'scrn.step<-1> = "'
+               s = scrn<i>
+               loop
+                  j = index(s, '"', 1)
+               while j
+                  step.names := s[1,j-1] : \":'"':"\
+                  s = s[j+1,999999]
+               repeat
+               step.names := s : '"'
+            next i
+
+            display @(0,23) : @sys.bell : sysmsg(7022) :  ;* SCRB must be rebuilt to use this modified screen definition
+            input dummy :
+         end
+
+         write step.names to incl.f, include.name
+      end else
+         delete incl.f, include.name
+      end
+   end
+
+   return
+
+* *****************************************************************************
+
+paint.screen:
+   scr.data = ''
+   call @screen(scrn, scr.data, 0, scr.status)
+
+   loop
+      action = ''
+      call @screen(scrn.step, action, SS.PAINT.ACTION, scr.status)
+      begin case
+         case action = 'X'
+            exit
+         case num(action)
+            paint.step = action + 0
+            if paint.step > 0 and paint.step <= num.steps then
+               call @screen(scrn, scr.data, paint.step, scr.status)
+               display @(0,24) : sysmsg(7023, paint.step, scr.status) : @(IT$CLEOL) :
+               * Step %1 status %2
+            end
+         case 1
+            exit
+      end case
+   repeat
+
+   return
+
+* *****************************************************************************
+
+list.steps:
+   display @(0,1) : @(IT$CLEOS)    ;* Preserve header
+   
+   for i = 1 to num.steps
+      if i # 1 and mod(i - 1, 22) = 0 then
+         display @(0,24) : sysmsg(5061) : ;* Press RETURN to continue
+         c = keyin()
+         if c = char(27) or c = char(24) then return
+         display @(0,1) : @(IT$CLEOS)    ;* Preserve header
+      end
+      s = scrn<SCR.TEXT,i>[1,74]
+      if len(trimf(s)) = 0 then
+         s = scrn<SCR.NAME,i>
+         if len(s) then s = '<<' : s : '>>'
+      end
+      display fmt(i, '3R') : ': ' : s
+   next i
+  
+   display @(0,24) : sysmsg(5061) : ;* Press RETURN to continue
+   input reply :
+
+   return
+
+* *****************************************************************************
+
+confirm:
+   loop
+      display @(0,24) : s : ' (Y/N) ' : @(IT$CLEOL) :
+      input reply :
+      reply = upcase(reply)
+   until reply = 'Y' or reply = 'N'
+      display @sys.bell :
+   repeat
+
+   yes = (reply = 'Y')
+   display @(0,24) : @(IT$CLEOL) :
+
+   return
+
+* *****************************************************************************
+
+warning:
+   display @(0,24) : s : @(IT$CLEOL) :
+   input dummy:
+   display @(0,24) : @(IT$CLEOL) :
+   return
+
+* *****************************************************************************
+
+print.screen:
+   display @(0,23) : sysmsg(7024) ;* Printing screen...
+
+   dim image(24) ; mat image = space(80)
+   image(0) = scrn<SCR.HEADER>[1,80]
+
+   printer on
+   heading screen.name : "'G'Page 'SLL'"
+
+   * Emit global data
+
+   txt = 'Include file'  ; s = scrn<SCR.FILE.NAME>        ; gosub emit
+   txt = 'Header'        ; s = scrn<SCR.HEADER>           ; gosub emit
+   print str('-', @lptrwide - 1)
+   print
+
+   num.steps = dcount(scrn<SCR.TYPE>, @vm)
+   for i = 1 to num.steps
+      txt = 'Step no'       ; s = i                       ; gosub emit
+      txt = 'Name'          ; s = scrn<SCR.NAME,i>        ; gosub emit
+      txt = 'Type'          ; s = scrn<SCR.TYPE,i>        ; gosub emit
+      txt = 'Clear'         ; s = scrn<SCR.CLEAR,i>       ; gosub emit
+      txt = 'Text'          ; s = scrn<SCR.TEXT,i>        ; gosub emit
+      txt = 'Display step'  ; s = scrn<SCR.DISP.STEP,i>   ; gosub emit.mv
+      txt = 'Text row'      ; s = scrn<SCR.TEXT.ROW,i>    ; gosub emit
+      txt = 'Text col'      ; s = scrn<SCR.TEXT.COL,i>    ; gosub emit
+      txt = 'Text mode'     ; s = scrn<SCR.TEXT.MODE,i>   ; gosub emit
+      txt = 'Field name'    ; s = scrn<SCR.FIELD.NAME,i>  ; gosub emit
+      txt = 'Field'         ; s = scrn<SCR.FIELD,i>       ; gosub emit
+      txt = 'Value'         ; s = scrn<SCR.VALUE,i>       ; gosub emit
+      txt = 'Subvalue'      ; s = scrn<SCR.SUBVALUE,i>    ; gosub emit
+      txt = 'Prompt char'   ; s = scrn<SCR.PROMPT.CHAR,i> ; gosub emit
+      txt = 'Fill char'     ; s = scrn<SCR.FILL.CHAR,i>   ; gosub emit
+      txt = 'Data row'      ; s = scrn<SCR.DATA.ROW,i>    ; gosub emit
+      txt = 'Data col'      ; s = scrn<SCR.DATA.COL,i>    ; gosub emit
+      txt = 'Data mode'     ; s = scrn<SCR.DATA.MODE,i>   ; gosub emit
+      txt = 'Output len'    ; s = scrn<SCR.OUTPUT.LEN,i>  ; gosub emit
+      txt = 'Output conv'   ; s = scrn<SCR.OUTPUT.CONV,i> ; gosub emit.mv
+      txt = 'Justify'       ; s = scrn<SCR.JUSTIFY,i>     ; gosub emit
+      txt = 'End mark'      ; s = scrn<SCR.END.MARK,i>    ; gosub emit
+      txt = 'Input len'     ; s = scrn<SCR.INPUT.LEN,i>   ; gosub emit
+      txt = 'Required'      ; s = scrn<SCR.REQUIRED,i>    ; gosub emit
+      txt = 'Input val 1'   ; s = scrn<SCR.VAL.1,i>       ; gosub emit.mv
+      txt = 'Input conv'    ; s = scrn<SCR.INPUT.CONV,i>  ; gosub emit.mv
+      txt = 'Input val 2'   ; s = scrn<SCR.VAL.2,i>       ; gosub emit.mv
+      txt = 'Back step'     ; s = scrn<SCR.BACKSTEP,i>    ; gosub emit
+      txt = 'Next step'     ; s = scrn<SCR.NEXT.STEP,i>   ; gosub emit.mv
+      txt = 'Help msg'      ; s = scrn<SCR.HELP.MSG,i>    ; gosub emit.mv
+      txt = 'Error msg'     ; s = scrn<SCR.ERROR.MSG,i>   ; gosub emit.mv
+      txt = 'Exit key'      ; s = scrn<SCR.EXIT.KEY,i>    ; gosub emit.mv
+      txt = 'F2 action'     ; s = scrn<SCR.F2,i>          ; gosub emit
+      txt = 'Func keys'     ; s = scrn<SCR.FKEYS,i>       ; gosub emit
+      txt = 'Key val'       ; s = scrn<SCR.KEY.VAL,i>     ; gosub emit
+      print str('-', @lptrwide - 1)
+
+      * Save text for screen image
+
+      text = scrn<SCR.TEXT, i>
+      if len(text) and index(scrn<SCR.TEXT.MODE, i>, 'X', 1) = 0 then
+         row = scrn<SCR.TEXT.ROW, i>
+         col = scrn<SCR.TEXT.COL, i>
+
+         if len(row) and num(row) and len(col) and num(col) then
+            row = row + 0
+            col = col + 0
+            if row <= 24 then image(row)[col + 1,len(text)] = text
+         end
+      end
+
+      if index(scrn<SCR.DATA.MODE, i>, 'X', 1) = 0 then
+         row = scrn<SCR.DATA.ROW, i>
+         col = scrn<SCR.DATA.COL, i>
+      
+         if len(row) and num(row) and len(col) and num(col) then
+            output.len = scrn<SCR.OUTPUT.LEN, i> + 0
+            row = row + 0
+            col = col + 0
+            if row <= 24 then
+               s = scrn<SCR.PROMPT.CHAR,i>[1,1]
+               if len(s) and col > 0 then image(row)[col,1] = s
+
+               s = scrn<SCR.END.MARK,i>[1,1]
+               if len(s) then
+                  col += output.len
+                  if col < 80 then image(row)[col + 1,1] = s
+               end
+            end
+         end
+      end
+   next i
+
+   page
+
+   * Print screen image
+
+   print '             1         2         3         4         5         6         7'
+   print '   01234567890123456789012345678901234567890123456789012345678901234567890123456789'
+   print
+
+   for row = 0 to 24
+      print trimb(fmt(row, '2R') : ' ' : image(row))
+   next row
+
+   printer off
+   printer close
+
+   display @(0,23) : @(-4) :
+
+   return
+
+
+emit:
+   print fmt(txt, '12.L') : ': ' : s
+   return
+
+
+emit.mv:
+   print fmt(txt, '12.L') : ': ' : s<1,1,1>
+   k = dcount(s, @sm)
+   for j = 2 to k
+      print space(12) : ': ' : s<1,1,j>
+   next j
+   return
+
+   * Avoid compiler warnings
+   dummy = dummy
+end
+
+* END-CODE

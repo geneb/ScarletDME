@@ -1,0 +1,90 @@
+* DELCOM
+* DELETE.COMMON verb
+* Copyright (c) 1995, Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 13 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* DELETE.COMMON name
+*
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program $delete.common
+$catalog $delcom
+
+$include parser.h
+$include syscom err.h
+$include syscom keys.h
+
+   parser = "!PARSER"
+
+   @system.return.code = -ER$ARGS    ;* Preset for command format errors
+
+   call @parser(parser$reset, 0, @sentence, 0)
+   call @parser(parser$get.token, token.type, token, keyword) ;* Verb
+
+   call @parser(parser$get.token, token.type, common.name, keyword)
+   if token.type = PARSER$END then stop sysmsg(3230) ;* Common block name required
+
+   call @parser(parser$get.token, token.type, token, k)
+   if token.type # PARSER$END then stop sysmsg(2018, token) ;* Unexpected token (xx)
+
+   if keyword = KW$ALL then
+      delete.common ""
+   end else
+      common.name = upcase(trim(common.name))
+      if len(common.name) = 0 or common.name[1,1] = "$" then
+         stop sysmsg(3231) ;* Illegal common block name
+      end
+      delete.common common.name
+   end
+
+   begin case
+      case status() = 0
+         @system.return.code = 0
+
+      case status() = ER$BAD.NAME
+         @system.return.code = -status()
+         stop sysmsg(3231) ;* Illegal common block name
+
+      case status() = ER$NOT.FOUND
+         @system.return.code = -status()
+         display sysmsg(3232, common.name) ;* Common block xx is not defined
+
+      case status() = ER$IN.USE
+         @system.return.code = -status()
+         display sysmsg(3233, common.name) ;* Common block xx is in use
+
+      case 1
+         @system.return.code = -status()
+         stop sysmsg(3234, status()) ;* Error xx deleting common block
+   end case
+
+   return
+end
+
+* END-CODE

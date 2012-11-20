@@ -1,0 +1,85 @@
+* FTYPE
+* Return file type for given path (LISTF/FL/FR)
+* Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 01 Jun 07  2.5-6 Show error number in Err flag.
+* 01 Oct 04  2.0-3 Added multifile support.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* Mult   Multi-file
+* VFS    Virtual file system
+* Err    Error
+* Dir    Directory file
+* DH     Dynamic hashed file
+*           I  Has indices
+*           S  Stats enabled
+*           T  Has trigger
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+function ftype(path)
+$catalog !FTYPE
+
+$include keys.h
+
+   deffun suffix.flags() local
+
+
+   if dcount(path, @vm) > 1 then return ('Mult')
+
+   if upcase(path[1,4]) = 'VFS:' then return ('VFS')
+
+   if upcase(path[1,6]) = '@QMSYS' then path = @qmsys:path[7,9999]
+
+   openpath path to fu on error return ("Err " : status())
+   then
+      type = fileinfo(fu,FL$TYPE)
+      begin case
+         case type = FL$TYPE.DH
+            return trimb("DH " : suffix.flags())
+
+         case type = FL$TYPE.DIR
+            return ("Dir")
+
+         case 1
+            return (type)
+      end case
+   end
+   else return ("Err " : status())
+
+* ======================================================================
+
+   local function suffix.flags
+      sfx = ''
+      if fileinfo(fu, FL$AK) then sfx := 'I'
+      if fileinfo(fu, FL$STATS.QUERY) then sfx := 'S'
+      if fileinfo(fu, FL$TRIGGER) # '' then sfx := 'T'
+
+      return sfx
+   end
+end
+
+* END-CODE

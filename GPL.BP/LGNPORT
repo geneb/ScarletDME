@@ -1,0 +1,165 @@
+* LGNPORT
+* LOGIN.PORT verb
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 05 May 06  2.4-4 New module.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*   LOGIN.PORT port {account} {params}
+*
+*   Params:
+*      BAUD n
+*      BITS n
+*      PARITY {NONE | OFF | ODD | EVEN}
+*      STOP.BITS {1 | 2}
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+
+program lgnport
+$catalog $lgnport
+
+$include parser.h
+
+$include keys.h
+$include err.h
+
+   prompt ''
+
+   @system.return.code = -ER$ARGS  ;* Preset for command format errors
+   is.windows = system(91)
+
+   if not(is.windows) then
+      * Restriction may be removed in the future
+      stop sysmsg(2008)  ;* This command is not available on this platform
+   end
+
+   baud.rates = '110ý300ý600ý1200ý2400ý4800ý9600ý19200ý38400'
+   begin case
+      case is.windows
+         baud.rates<1,-1> = '14400ý56000ý57600ý115200ý128000ý256000'
+      case system(1010) = 'Linux'
+         baud.rates<1,-1> = '50ý75ý134ý150ý200ý1800ý57600ý115200ý230400'
+      case system(1010) = 'FreeBSD'
+         baud.rates<1,-1> = '50ý75ý134ý150ý200ý1800'
+   end case
+
+   account = @who
+   baud = 9600
+   parity = 0
+   data.bits = 8
+   stop.bits = 1
+
+   call !parser(PARSER$RESET, 0, @sentence, 0)
+   call !parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+
+   * Get port name
+
+   call !parser(PARSER$GET.TOKEN, token.type, port.name, keyword) ;* Verb
+   if token.type # PARSER$TOKEN then
+      stop sysmsg(3500) ;* Port name required
+   end
+
+   if is.windows then
+      if not(upcase(port.name) matches '"COM"1N') then
+         stop sysmsg(3515)  ;* Invalid port name
+      end
+   end
+
+   * Process further options
+
+   first = @true
+   loop
+      call !parser(PARSER$GET.TOKEN, token.type, token, keyword)
+
+   while token.type = PARSER$TOKEN
+      begin case
+         case keyword = KW$BAUD
+            call !parser(PARSER$GET.TOKEN, token.type, baud, keyword)
+            locate baud in baud.rates<1,1> setting pos else
+               stop sysmsg(3502) ;* Baud rate missing or invalid
+            end
+
+         case keyword = KW$BITS
+            call !parser(PARSER$GET.TOKEN, token.type, data.bits, keyword)
+            if not(data.bits matches '1N') or data.bits < 5 or data.bits > 8 then
+               stop sysmsg(3503) ;* Bits per byte missing or invalid
+            end
+
+         case keyword = KW$PARITY
+            call !parser(PARSER$GET.TOKEN, token.type, token, keyword)
+            begin case
+               case keyword = KW$NONE ; parity = 0
+               case keyword = KW$OFF  ; parity = 0 ;* For backward compatibility
+               case keyword = KW$ODD  ; parity = 1
+               case keyword = KW$EVEN ; parity = 2
+               case 1                 ; stop sysmsg(3504) ;* Parity mode missing or invalid
+            end case
+
+         case keyword = KW$STOP.BITS
+            call !parser(parser$get.token, token.type, token, keyword)
+            begin case
+               case token = 1    ; stop.bits = 1
+               case token = 2    ; stop.bits = 2
+               case 1            ; stop sysmsg(3505) ;* Stop bits value missing or invalid
+            end case
+
+         case 1
+            if not(first) then stop sysmsg(2018, token) ;* Unexpected token (xx)
+
+            account = token
+      end case
+
+      first = @false
+   repeat
+
+   * Validate account name
+
+   openpath @qmsys:@ds:'ACCOUNTS' to acc.f else
+      stop sysmsg(2200)  ;* Cannot open accounts register
+   end
+
+   account = upcase(account)
+   read acc.rec from acc.f, account else
+      stop sysmsg(2201, account)  ;* Account name '%1' is not in register
+   end
+
+   * Now try to logon the port
+
+   if not(login.port(port.name:':':baud:',':parity:',':data.bits:',':stop.bits, account)) then
+      stop sysmsg(3516, os.error())  ;* Cannot start QM serial port process. Error %1
+   end
+
+   @system.return.code = 0
+   return
+
+   * Avoid compiler warnings
+
+   acc.rec = acc.rec
+   pos = pos
+end
+
+* END-CODE

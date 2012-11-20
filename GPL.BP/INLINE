@@ -1,0 +1,500 @@
+* INLINE
+* Inline prompt processor
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 11 Sep 06  2.4-13 Allow @(-n) and @(-n,m) controls.
+* 22 Jun 06  2.4-5 Added <<C3-5>>, <<C3+>> and <<C#>>. Added default value
+*                  handling to C, @var and $var processing.
+* 21 Feb 06  2.3-6 Added SYSTEM(n) control code.
+* 12 Jan 06  2.3-4 0446 Evaluation order was right to left, not left to right.
+* 10 Feb 05  2.1-6 Added U control option.
+* 13 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* Cursor controls
+*   @(x,y)             Cursor position or two argument control function
+*   @(x)               Cursor column position or one argument control function
+*   @(BELL)            Beep
+*   @(CLR)             Clear screen
+*   @(TOF)             Move to top of form
+*
+* Response controls
+*   @var               Fetch @-variable value
+*   $var               Fetch environment variable value
+*   A                  Always prompt
+*   Cn                 Substitute word n from @sentence
+*   Cm-n               Substitute words m to n from @sentence
+*   Cn+                Substitute words n onwards from @sentence
+*   C#                 Substitute number of words in @sentence
+*   F(file,id)         Substitute entire record from file
+*   F(file,id,f)       Substitute field f of record
+*   F(file,id,f,v)     Substitute field f of record
+*   F(file,id,f,v,s)   Substitute field f, value v, subvalue s of record
+*   In                 Substitute word n from @sentence, prompting if null
+*   L{n}               Substitute entry from select list n
+*   R                  Repeat prompt, separating items with space
+*   R(str)             Repeat prompt, separating items with str
+*   Sn                 Substitute word n from @command
+*   SUBR(name{,args})  Substitue function value
+*   SYSTEM(n)          Substitute SYSTEM(n) value
+*
+*   @var, $var, Cn, Cm-n, Cn+, I and S all allow <<C4:default>> style default
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+
+$internal
+subroutine inline(string)
+$catalog $inline
+
+$include syscom.h
+$include syscom keys.h
+$include int$keys.h
+
+$define USE.OLD     1
+$define DO.PROMPT   2
+$define NO.PROMPT   3
+
+
+   * There may be multiple inline prompts.  Evaluate left to right but
+   * allowing for nested prompts which are evaluated from the innermost
+   * outwards.
+
+   loop
+   while index(string, "<<", 1)
+      loop     ;* Expand nested inline prompts
+         start.col = index(string, "<<", 1)
+      while start.col
+         * Find matching >>
+         n = 1
+         loop
+            prompt.string = string[start.col + 2, 999999]
+            end.col = index(prompt.string, ">>", n)
+            if end.col = 0 then stop sysmsg(5000) ;* Unterminated inline prompt
+            prompt.string = prompt.string[1, end.col - 1]
+            end.col += start.col + 1  ;* As in original string
+            start.markers = count(prompt.string, '<<')
+            end.markers = count(prompt.string, '>>')
+         while start.markers # end.markers
+            n += 1
+         repeat
+      while start.markers
+         call $inline(prompt.string)
+         string = string[1, start.col + 1] : prompt.string : string[end.col, 999999]
+      repeat
+
+      display.control = ""
+      delimiter = ""
+      mode = USE.OLD
+      multiprompt = @false
+      force.uppercase = @false
+
+      * Parse the prompt
+      * Step 1  -  Process control options (if present)
+
+      * Build a display control string for any @ control options
+
+      loop
+      while prompt.string[1,2] = "@("
+         
+         begin case
+            case prompt.string[1,7] = "@(BELL)"
+               display.control := @sys.bell
+               prompt.string = prompt.string[8,99999]
+
+            case prompt.string[1,6] = "@(CLR)"
+               display.control := @(IT$CS)
+               prompt.string = prompt.string[7,99999]
+
+            case prompt.string[1,6] = "@(TOF)"
+               display.control := @(IT$CAH)
+               prompt.string = prompt.string[7,99999]
+
+            case prompt.string matches "'@('1N0N','1N0N')'0Xý'@(-'1N0N','1N0N')'0X"
+               display.control := @(matchfield(prompt.string, "'@('0X','0N')'0X", 2), matchfield(prompt.string, "'@('0N','0N')'0X", 4))
+               prompt.string = matchfield(prompt.string, "'@('0X','0N')'0X", 6)
+
+            case prompt.string matches "'@('1N0N')'0Xý'@(-'1N0N')'0X"
+               display.control := @(matchfield(prompt.string, "'@('0X')'0X", 2))
+               prompt.string = matchfield(prompt.string, "'@('0X')'0X", 4)
+
+            case 1
+               exit
+         end case
+
+         prompt.string = trimf(prompt.string)
+         if prompt.string[1,1] = ',' then
+            prompt.string = trimf(prompt.string[2,99999])
+         end
+      repeat
+
+      * Process response control options, if present.  More than one can
+      * be present in some combinations, e.g. "<<A,R,ITEM>>"
+
+      loop
+         token1 = field(prompt.string, ',', 1)
+         default = field(token1, ':', 2, 9999)
+         token1 = field(token1, ':', 1)
+         begin case
+            case prompt.string[1,1] = "@"
+               call !atvar(response, token1)
+               if response = '' then response = default
+               mode = NO.PROMPT
+               prompt.string = field(prompt.string, ',', 2)
+               
+            case prompt.string[1,1] = "$"
+               response = env(token1[2,999])
+               if response = '' then response = default
+               mode = NO.PROMPT
+               prompt.string = field(prompt.string, ',', 2)
+               
+            case prompt.string[1,2] = "A,"
+               mode = DO.PROMPT
+               prompt.string = prompt.string[3,99999]
+
+            case token1 matches "C1N0N"
+               lo = matchfield(prompt.string, "C0N0X", 2)
+               hi = lo
+               s = @sentence
+               gosub get.command.item
+               if response = '' then response = default
+               mode = NO.PROMPT
+               prompt.string = field(prompt.string, ',', 2)
+
+            case token1 matches "C1N0N'-'1N0N"
+               * C2-5   Range of tokens, space separated
+               lo = matchfield(prompt.string, "'C'0N'-'0N0X", 2)
+               hi = matchfield(prompt.string, "'C'0N'-'0N0X", 4)
+               s = @sentence
+               gosub get.command.item
+               if response = '' then response = default
+               mode = NO.PROMPT
+               prompt.string = field(prompt.string, ',', 2)
+
+            case token1 matches "C1N0N'+'"
+               * C2+   Given token to end, space separated
+               lo = matchfield(prompt.string, "'C'0N'+'0X", 2)
+               hi = 999999
+               s = @sentence
+               gosub get.command.item
+               if response = '' then response = default
+               mode = NO.PROMPT
+               prompt.string = field(prompt.string, ',', 2)
+
+            case token1 = "C#"
+               * C#   Number of tokens
+               lo = 1
+               hi = 999999
+               s = @sentence
+               gosub get.command.item
+               response = n
+               mode = NO.PROMPT
+               prompt.string = field(prompt.string, ',', 2)
+
+            case prompt.string[1,2] = "F("
+               s = field(prompt.string[3,9999], ')', 1)
+               if not(s matches "0X,0Xý0X,0X,1N0Ný0X,0X,1N0N,1N0Ný0X,0X,1N0N,1N0N,1N0N") then exit
+               prompt.string = field(prompt.string, ')', 2)
+
+               filename = field(s, ",", 1)
+               record.id = field(s, ",", 2)
+
+               response = ''
+               open filename to file then
+                  read rec from file, record.id then
+                     if dcount(s, ",") > 2 then
+                        f = field(s, ",", 3)
+                        v = field(s, ",", 4)
+                        sv = field(s, ",", 5)
+                        if f matches '1N0N' and v:sv matches '0N' then
+                           response = rec<f, v, sv>
+                        end
+                     end else
+                        response = rec
+                     end
+                  end
+                  close file
+               end
+               mode = NO.PROMPT
+
+            case token1 matches "I1N0N"
+               lo = matchfield(prompt.string, "I0N0X", 2)
+               hi = lo
+               s = @sentence
+               gosub get.command.item
+               if len(response) then mode = NO.PROMPT
+               prompt.string = field(prompt.string, ',', 2)
+
+            case token1 matches "LýL1N0N"
+               n = matchfield(prompt.string, "L0N0X", 2) + 0
+               response = ''
+               if n <= HIGH.USER.SELECT then
+                  readnext response from n else null
+               end
+               mode = NO.PROMPT
+               prompt.string = field(prompt.string, ',', 2)
+
+            case prompt.string[1,2] ="R,"
+               multiprompt = @true
+               delimiter = " "
+               prompt.string = prompt.string[3,99999]
+
+            case prompt.string matches "R(0X),0X"
+               multiprompt = @true
+               delimiter = matchfield(prompt.string, "'R('0X'),'0X", 2)
+               prompt.string = matchfield(prompt.string, "'R('0X'),'0X", 4)
+               if index(delimiter, @fm, 1) then
+                  stop "Illegal inline prompt control string : field mark not allowed in R()"
+               end
+
+            case token1 matches "S1N0N"
+               lo = matchfield(prompt.string, "S0N0X", 2)
+               hi = lo
+               s = @command
+               gosub get.command.item
+               mode = NO.PROMPT
+               prompt.string = field(prompt.string, ',', 2)
+ 
+            case prompt.string[1,5] = "SUBR("
+               prompt.string = prompt.string[6,99999]
+               * Extract all elements to a dynamic array, allowing for quotes.
+               * First element is subroutine name, the rest are the args.
+
+               s = ''
+               n = 0    ;* Number of items, including subroutine name
+               loop
+                  prompt.string = trimf(prompt.string)
+                  c = prompt.string[1,1]
+               while c # '' and c # ',' and c # ')'
+                  begin case
+                     case c = '"' or c = "'"     ;* Quoted item
+                        i = index(prompt.string, c, 2)
+                        if i = 0 then exit
+                        n += 1
+                        s<n> = prompt.string[2, i - 2]
+                        prompt.string = prompt.string[i+1,99999]
+
+                     case 1                      ;* Unquoted item
+                        i = index(prompt.string, ')', 1)
+                        if i = 0 then i = len(prompt.string)
+                        j = index(prompt.string, ',', 1)
+                        if j = 0 then j = len(prompt.string)
+                        i = min(i,j)
+                        n += 1
+                        s<n> = prompt.string[1, i - 1]
+                        prompt.string = prompt.string[i,99999]
+                  end case
+
+                  c = prompt.string[1,1]
+                  prompt.string = prompt.string[2,99999]
+               while c = ','
+               repeat
+
+               if c # ')' then exit   ;* Syntax error
+               if n = 0 then exit     ;* No subroutine name
+
+               subr.name = s<1>
+               if not(catalogued(subr.name)) then exit
+
+               if n > 1 then            ;* Function has input arguments
+                  dim subr.args(n)
+                  subr.args(1) = ''
+                  for i = 2 to n
+                      subr.args(i) = s<i>
+                  next i
+                  callv @subr.name, n, subr.args
+                  response = subr.args(1)
+               end else                 ;* No input arguments
+                  response = ''
+                  call @subr.name(response)
+               end
+
+               mode = NO.PROMPT
+
+            case prompt.string matches "'SYSTEM('1N0N')'0X"
+               n = matchfield(prompt.string, "'SYSTEM('0N')'0X", 2)
+               prompt.string = field(prompt.string, ',', 2, 999999)
+               response = system(n)
+               mode = NO.PROMPT
+
+            case prompt.string[1,2] = "U,"
+               force.uppercase = @true
+               prompt.string = prompt.string[3,99999]
+
+            case 1   ;* Unrecognised - treat as end of options
+               exit
+         end case
+      repeat
+
+      prompt.string = trimf(prompt.string)
+
+
+      * Step 2  -  Look for check code
+
+      conv.code = ""
+      pattern = ""
+      i = index(prompt.string, ",", 1)
+      if i then   ;* Check options present
+         check.code = trimf(prompt.string[i + 1, 99999])
+         prompt.string = prompt.string[1, i - 1]
+
+         if check.code matches "(0X)" then
+            conv.code = check.code[2, len(check.code) - 2]
+         end
+         else pattern = check.code
+      end
+
+
+      * Do the prompt
+
+      if mode = USE.OLD then
+         if prompt.string # '' then
+            locate prompt.string in inline.prompts<1> setting i then
+               response = inline.responses<i>
+            end
+            else mode = DO.PROMPT
+         end else mode = DO.PROMPT
+      end
+
+      if mode = DO.PROMPT then
+         if len(pattern) then
+            * Substitute OR constructs with value marks
+
+            i = 1
+            loop
+            while i <= len(pattern)
+               c = pattern[i, 1]
+               begin case
+                  case (c = "'") or (c = '"')
+                     i += index(pattern[i + 1,99999], c, 1)
+                  case pattern[i, 4] = " OR "
+                     pattern = pattern[1, i - 1] : @vm : pattern[i + 4, 99999]
+               end case
+               i += 1
+            repeat
+         end
+
+         response = ""
+         loop
+            loop
+               display display.control : prompt.string : "=" :
+               old.prompt = prompt()
+               prompt ''
+               keyboard.input s
+               prompt old.prompt
+
+               if upcase(trim(s)) = "QUIT" then quit
+
+               begin case
+                  case index(s, "<<", 1) or index(s, ">>", 1) or index(s, @fm, 1)
+                     null
+
+                  case multiprompt and s = ''
+                     exit
+
+                  case len(conv.code)               ;* Conversion code
+                     void iconv(s, conv.code)
+                     if status() = 0 then exit
+   
+                  case len(pattern)                 ;* Pattern template
+                     if force.uppercase then
+                        if upcase(s) matches pattern then exit
+                     end else
+                        if s matches pattern then exit
+                     end
+
+                  case 1
+                     exit
+               end case
+
+               display @sys.bell : sysmsg(5001)  ;* Invalid data
+            repeat
+         while len(s)
+            if len(response) then response := delimiter
+            response := s
+         while multiprompt
+         repeat
+      end
+
+      if (mode = DO.PROMPT) or (mode = NO.PROMPT) then
+         * Save prompt text and response
+
+         if prompt.string # '' then
+            locate prompt.string in inline.prompts<1> setting i else
+               inline.prompts<i> = prompt.string
+            end
+         end
+         inline.responses<i> = response
+      end
+
+      * Store the result of the prompt in the string
+
+      if force.uppercase then response = upcase(response)
+      string = string[1, start.col - 1] : response : string[end.col + 2, 99999]
+   repeat
+
+   return
+
+* ======================================================================
+* GET.COMMAND.ITEM
+* In: S = string to process
+*     LO, HI = range of tokens to extract
+* Out: RESPONSE = result
+*      N = last token number examined
+
+get.command.item:
+   response = ''
+   n = 0
+   loop
+      s = trimf(s)
+      c = s[1,1]
+      begin case
+         case s = ''
+            exit
+
+         case c = '"' or c = "'" or c = '\'
+            j = index(s, c, 2)
+            if j then
+               ss = s[1,j]
+               s = s[j + 1, 99999]
+            end else
+               ss = s
+               s = ''
+            end
+         case 1
+            ss = field(s, ' ', 1)
+            s = s[col2() + 1, 99999]
+      end case
+
+   while n < hi
+      n += 1
+      if n > lo then response := ' '
+      if n >= lo then
+         response := ss
+      end
+   repeat
+
+   return
+end

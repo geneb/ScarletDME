@@ -1,0 +1,4 @@
+The Title line
+Every menu has a title to appear on the top line of the screen.  This title
+will be centred in the display device width.  If the text is wider than the
+display, excess characters are discarded.

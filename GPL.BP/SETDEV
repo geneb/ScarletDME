@@ -1,0 +1,447 @@
+* SETDEV
+* SET.DEVICE  -  Set tape device
+* Copyright (c) 2005 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 18 May 06  2.4-4 TED - Initialize Type to NULL when new file
+* 10 Apr 06  2.4-1 TED - Added awareness of jBASE type tapes
+* 10 Apr 06  2.4-1 TED - Added support for Ultimate FILE-SAVE tapes
+* 02 Apr 06  2.3-9 TED - Added awareness of FILE-SAVE type tapes
+* 02 Apr 06  2.3-9 TED - Added multi-reel support
+* 30 Mar 06  2.3-9 TED - Removed Doug's old "res" variable
+* 29 Mar 06  2.3-9 TED - Added support for D3/NT's FSI (QS) types
+* 29 Mar 06  2.3-9 TED - Added support for mvBase tape images
+* 28 Dec 05  2.3-3 TED - Added handling for alternative block sizes.
+* 20 Jul 05  2.2-4 Do not use CREATE if device/file doesn't exist. Instead,
+*                  report that writing will create a file.
+* 27 Jun 05  2.2-1 New module.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* Copyright (c) 2005-2006 Tom deLombarde
+* This module was submitted by Tom deLombarde <tomd@blackflute.com>.
+*
+* SET.DEVICE system.file.name
+*   Where 'system.file.name' is the fully qualified name of a system file
+*   that will serve as a tape image. This file can be a named pipe.
+*
+*   The current user must have read permission for RESTORE, LOAD and
+*   read/write permissions for CREATE, SAVE and DUMP operations.
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program setdevice
+$catalogue $setdev
+
+$include syscom.h
+$include int$keys.h
+$include keys.h
+$include err.h
+$include parser.h
+$include tape.h
+
+   deffun errtext(n) calling "!errtext"
+
+   * try our defaults
+   tp$blksz = 500
+   tp$pad = 12
+   tp$type = ''
+   tmp.name = ''
+
+   @system.return.code = -ER$ARGS  ;* Preset for command format errors
+   prompt ''
+
+   call !parser(PARSER$RESET, 0, @sentence, 0)
+   call !parser(PARSER$GET.TOKEN, token.type, token, keyword)  ;* Verb
+
+
+   * Get source tape name and open it
+
+   call !parser(PARSER$GET.TOKEN, token.type, tape.name, keyword)
+   if token.type = PARSER$END then stop sysmsg(7504)  ;* Source tape name required
+
+
+   * If there is already a tape device open, ask if we should close it.
+
+   if tp$name then
+      loop
+         display 'Device: ':tp$name:' is already attached. Detach? (Y/N) ':
+         input yn
+         yn = upcase(yn)
+      until yn = 'Y' or yn = 'N'
+      repeat
+
+      if yn = 'N' then goto exit.setdev
+
+      gosub do.t.det
+   end
+
+   openseq tape.name to tp$fh locked
+      stop 'Device ':tape.name:' is locked by user ' : status()
+   end then
+      * Test block sizes
+
+      tp$name  = tape.name
+      tp$fname = tape.name
+      lbl.count = 0
+      gosub read.label
+      if tp$lasttype = 'L' then
+         lbl.count += 1
+         tp$blksz = xtd(lbl[2, 4])
+         if tp$blksz = 500 then
+            tp$pad = 12
+         end else
+            tp$pad = 0
+         end
+         acct = upcase(field(trim(lbl), ' ', 8, 1))
+      end
+
+      * try to read another label and see if it is a FILE-SAVE:
+      if not(tp$eot) then gosub tape.fwd
+      if tp$lasttype = 'L' then
+         lbl.count += 1
+      end else
+        begin case
+          case tp$lasttype = 'D'
+             tp$type = 'JBS'
+             * just use tp$eot to break out of further tests
+             tp$eot = @true
+             tp$lasttype = ''
+          case tp$lasttype = 'H'
+             tp$type = 'MV'
+             * just use tp$eot to break out of further tests
+             tp$eot = @true
+             tp$lasttype = ''
+        end case
+      end
+
+      if not(tp$eot) then gosub tape.fwd
+      if tp$lasttype = 'L' then
+         lbl.count += 1
+      end else
+        if tp$lasttype = 'D' then
+          tp$type = 'AS'
+          * just use tp$eot to break out of further tests
+          tp$eot = @true
+        end
+      end
+
+      if not(tp$eot) then gosub read.label
+         if tp$lasttype = 'L' then
+            lbl.count += 1
+         end
+      if not(tp$eot) then
+        if tp$lasttype = 'L' then
+           attt = upcase(field(trim(lbl), ' ', 8, 1))
+           acct = upcase(field(trim(lbl), ' ', 9, 1))
+           if acct = 'FILE-SAVE' or attt = 'FILE-SAVE' then
+              tp$type = 'FS'
+           end else
+              if not(tp$eot) then gosub tape.getblk
+              if tp$lasttype = 'D' and lbl.count = 2 then
+                tp$type = 'R83'
+              end
+           end
+        end else
+           if tp$lasttype = 'D' then
+             tp$type = 'ULTFS'
+          end
+        end
+      end
+
+      lbl.count = lbl.count
+
+      gosub do.t.rew
+      display sysmsg(7536, tape.name, tp$blksz)     ;* Attached %1, block size %2
+
+   end else
+      if status() then
+         stop sysmsg(7535, status(), errtext(status()))     ;* Error %1 opening device (%2)
+      end
+
+      display sysmsg(7537, tape.name)     ;* Device/file does not exist. Writing will create a new file.
+      tp$blksz = 500
+      tp$type = ''
+   end
+
+        ;* first reel name, this will be the only place this is set
+   tp$fname = tape.name
+   tp$name = tape.name
+   if tp$blksz = 500 then
+      tp$pad = 12
+   end else
+      tp$pad = 0
+   end
+   tp$ptr = 0
+   tp$tptr = 0
+   tp$lastblk = 0
+   tp$lasttype = ''
+   tp$eof = @false
+   tp$eot = @false
+
+exit.setdev:
+   @system.return.code = 0
+   return
+
+* ======================================================================
+
+tape.getblk:
+   blk = ''
+   tp$eot = @false
+   tp$eof = @false
+   tp$lasttype = ''
+
+   readblk tape.block from tp$fh, tp$blksz + tp$pad else
+      tmp.name = tp$name
+      gosub check.next
+      if tp$eof or tp$eot then
+         return
+      end
+      *
+      readblk tape.block from tp$fh, tp$blksz + tp$pad then
+         if tape.block[1, 3] = 'BOV' then
+            tp$lastblk = tp$ptr
+            tp$ptr += tp$blksz + tp$pad
+            tp$tptr += tp$blksz + tp$pad
+            readblk tape.block from tp$fh, tp$blksz + tp$pad else
+               tp$eot = @true
+               tp$eof = @true
+            end
+         end
+      end else
+         tp$eot = @true
+         tp$eof = @true
+      end
+   end
+
+   if not(tp$eof) and not(tp$eot) then
+      tp$lastblk = tp$ptr
+      tp$ptr += tp$blksz + tp$pad
+      tp$tptr += tp$blksz + tp$pad
+
+      blkbyte = tape.block[1, 1]
+
+      * mvBase uses four SPACE chars in beginning of pad
+      if (blkbyte = char(0) or blkbyte = char(32)) and tp$blksz = 500 then
+         blk = tape.block[tp$pad + 1, tp$blksz]
+         tape.block = blk
+      end else blk = tape.block
+
+      begin case
+         case index(tape.block, 'EOV', 1)#0
+            blk = tape.block[1, index(tape.block, '@EOV', 1)-1]
+         case index(tape.block, @im:'XC', 1)#0 or index(tape.block, @im:'XF', 1)#0
+            tp$eof = @true
+         case tape.block[1, 4] = 'EOF':@im
+            tp$eof = @true
+         case 1
+            blk = tape.block
+      end case
+
+      * for mvBASE (Peter S. says any "Enhanced R83")
+      if blk[1, 2] = @im : 'H' then tp$lasttype = 'H'
+      if blk[1, 2] = @im : 'D' then tp$lasttype = 'D'
+      if blk[1, 2] = @im : 'L' then tp$lasttype = 'L'
+   end
+
+   return
+
+* ======================================================================
+* check.next - Find next reel/file name or prompt for one
+
+check.next:
+   * read failed in tape.getblk; initialize to EOF and EOT
+   tp$eof = @true
+   tp$eot = @false
+
+   * first try the PICK style filename-n approach
+   nh = dcount(tp$name, '-')
+   * found at least one hyphen, see if it's an "-n" suffix
+   if nh > 1 then
+      nh -= 1
+      dx = index(tp$name, '-', nh)
+      tmp.name = tp$name[1, dx]
+      reel.no = tp$name[dx+1, len(tp$name)]
+      if num(reel.no) then
+         * suffix seems to be "-n", increment it
+         reel.no += 1
+         tmp.name = tmp.name:reel.no
+         gosub open.tape
+      end else
+         * must be a hyphen in file-name, try appending "-1"
+         tmp.name := reel.no:'-1'
+         gosub open.tape
+      end
+   end
+
+   * see if the above found a tape
+   nl = len(tp$name)
+   if (tp$eof or tp$eot) and not(tmp.name = '***Cancelled***') then
+      * check if the last x number of chars are numeric
+      for nm = 4 to 0 step -1
+         tst = tp$name[(nl - nm) + 1, nl]
+         if num(tst) and tst # '' then exit
+      next nm
+      * looks like a numeric suffix, increment
+      if nm > 0 then
+         frmt = "R%":nm
+         tmp.name = tp$name[1, (nl - nm)]:(tst +1) frmt
+         gosub open.tape
+      end else
+         * just try the next in a filenamennnn sequence
+         for rn = 4 to 1 step -1
+            reel.no = rn "R%":rn
+            tmp.name = tp$name:reel.no
+            gosub open.tape
+            if not(tp$eof) and not(tp$eot) then exit
+         next rn
+      end
+   end
+
+   return
+
+* ======================================================================
+
+read.label:
+   lbl = ''
+
+   * Read forwards to the next block, ignoring EOFs along the way as
+   * we may need to skip the second block of a double EOF.
+
+   loop
+      gosub tape.getblk
+      if tp$eot then return
+   while tp$eof
+   repeat
+
+   if blk[1, 2] = @im : 'L' then
+      lbl = blk[3, 78]
+      tp$lasttype = 'L'
+   end
+
+   return
+
+* ======================================================================
+
+* T.REW  -  Rewind tape
+
+do.t.rew:
+   if tp$fname # tp$name then
+     if tp$name # '' then
+       tmp.name = tp$fname
+     end else
+       tmp.name = tape.name
+     end
+
+     gosub open.tape
+     tp$fh = tmp.fh
+   end
+
+   if tp$fh then
+     seek tp$fh, 0 then
+        tp$ptr = 0
+        tp$tptr = 0
+        tp$lastblk = 0
+        tp$lasttype = ''
+        tp$eof = 0
+        tp$eot = 0
+        display 'BOT'
+     end else
+        if status() # ER$SQRD then
+           display 'Seek Error'
+           @system.return.code = -1
+        end
+     end
+   end else
+     sts = status()
+     display 'Error ':sts:' attaching ':tp$fname
+     @system.return.code = -1
+   end
+
+   return
+
+* ======================================================================
+* T.FWD  -  Move forward one file
+
+tape.fwd:
+   tp$eof = @false
+   tp$eot = @false
+
+   loop
+   until tp$eof or tp$eot
+      gosub tape.getblk
+      if tp$lasttype = 'L' or tp$lasttype = 'D' ~
+                           or tp$lasttype = 'H' then tp$eof = @true
+   repeat
+
+   return
+
+* ======================================================================
+* T.DET  -  Detach tape device
+
+do.t.det:
+   display sysmsg(7538, tp$name)  ;* Detached '%1'
+   tp$name  = ''
+   tp$fname = ''
+   closeseq tp$fh
+   tp$fh = @false
+
+   return
+
+* ======================================================================
+* Open the pseudo-tape file (this should probably become a cataloged sub)
+*
+open.tape:
+   openseq tmp.name to tmp.fh locked
+      stop 'Device ':tmp.name:' is locked by user ' : status()
+   end then
+      * should already have block sizes (reel 01 set this)
+      * Test block sizes
+      tp$fh = tmp.fh
+   end else
+      if status() then
+*        display sysmsg(7535, tmp.name) ;* Error %1 opening device (%2)
+         display sysmsg(7535, status(), errtext(status()))  ;* Error %1 opening device (%2)
+        tp$eot = @true
+        tp$eof = @true
+        tp$fh  = @false
+        tmp.fh = @false
+      end
+   end
+
+   if tmp.fh then
+      tp$name = tmp.name
+      tp$fh = tmp.fh
+      tp$lastblk = 0
+      tp$ptr = 0
+      tp$lasttype = ''
+      tp$eof = @false
+      tp$eot = @false
+   end
+
+   return
+
+end
+
+* END-CODE

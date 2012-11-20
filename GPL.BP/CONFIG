@@ -1,0 +1,200 @@
+* CONFIG
+* CONFIG verb
+* Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 05 Oct 07  2.6-5 Added PDUMP parameter.
+* 20 Aug 07  2.6-0 Added CMDSTACK parameter.
+* 03 Jan 07  2.4-19 Display QMCLIENT parameter.
+* 22 May 06  2.4-4 Added CODEPAGE parameter (ignored if not Windows).
+* 09 Mar 06  2.3-8 Added MAXCALL parameter.
+* 19 Jan 06  2.3-5 Added TEMPDIR parameter.
+* 21 Sep 05  2.2-12 Added SH and SH1 parameters.
+* 24 Aug 05  2.2-8 Added SPOOLER parameter (not Windows).
+* 01 Aug 05  2.2-7 Added EXCLREM configuration parameter.
+* 21 Jun 05  2.2-1 Added journalling data.
+* 08 Apr 05  2.1-12 Added DUMPDIR parameter.
+* 26 Oct 04  2.0-7 Added MAXIDLEN parameter.
+* 15 Oct 04  2.0-5 Added ERRLOG configuration parameter.
+* 13 Oct 04  2.0-5 Use message handler.
+* 04 Oct 04  2.0-4 Allow LICENCE in either upper or lowercase when doing GPL.
+* 03 Oct 04  2.0-4 Added FILERULE parameter.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    CONFIG                 Report settings
+*    CONFIG LPTR            Report settings on default printer
+*    CONFIG param value     Set param to value
+*    CONFIG GPL             Display GPL
+
+* Config data dynamic array:
+*   1  Licence number
+*   2  Max users
+*   3  Expiry date, zero if none
+*   4  Evaluation copy? (Boolean)
+*   5  Site text
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+program config
+$internal
+$catalog $config
+
+$include syscom.h
+$include int$keys.h
+$include err.h
+$include parser.h
+
+
+   @system.return.code = -ER$ARGS      ;* Preset for command format errors
+
+   is.windows = system(91)
+   lptr = @false
+
+   call @parser(parser$reset, 0, @sentence, 0)
+   call @parser(parser$get.token, token.type, token, keyword)  ;* Verb
+
+   call @parser(parser$get.token, token.type, param, keyword)
+
+   begin case
+      case upcase(param) = 'GPL' ; gosub show.gpl
+      case token.type = PARSER$END ; gosub report.params
+      case keyword = KW$LPTR       ; gosub print.params
+      case 1 ; gosub set.param
+   end case
+
+   @system.return.code = 0
+
+   return
+
+* ======================================================================
+
+print.params:
+   lptr = @true
+
+report.params:
+   if lptr then printer on
+
+   print sysmsg(3061, system(1012))        ;* Version number xx
+
+!!CONFIG!!
+   print 'CMDSTACK  ' : config('CMDSTACK')
+   n = config('CODEPAGE') ; if n then print 'CODEPAGE  ' : n
+   print 'DEADLOCK  ' : config('DEADLOCK')
+   n = config('DEBUG') ; if n then print 'DEBUG     ' : n
+   print 'DUMPDIR   ' : config('DUMPDIR')
+   print 'ERRLOG    ' : config('ERRLOG') : ' kb'
+   print 'EXCLREM   ' : config('EXCLREM')
+   n = config('FDS') ; if n < 32767 then print 'FDS       ' : n
+   print 'FILERULE  ' : config('FILERULE')
+   print 'FLTDIFF   ' : config('FLTDIFF')
+   print 'FSYNC     ' : config('FSYNC')
+   print 'GDI       ' : config('GDI')
+   print 'GRPSIZE   ' : config('GRPSIZE')
+   print 'INTPREC   ' : config('INTPREC')
+   print 'JNLMODE   ' : config('JNLMODE')
+   print 'JNLDIR    ' : config('JNLDIR')
+   print 'LPTRHIGH  ' : config('LPTRHIGH')
+   print 'LPTRWIDE  ' : config('LPTRWIDE')
+   print 'MAXCALL   ' : config('MAXCALL')
+   print 'MAXIDLEN  ' : config('MAXIDLEN')
+   print 'MUSTLOCK  ' : config('MUSTLOCK')
+   print 'NETFILES  ' : config('NETFILES')
+   print 'NUMFILES  ' : config('NUMFILES')
+   print 'NUMLOCKS  ' : config('NUMLOCKS')
+   print 'NUMUSERS  ' : config('NUMUSERS')
+   n = config('OBJECTS')
+   print 'OBJECTS   ' : if n then n else '0  [':sysmsg(3067):']'
+   n = config('OBJMEM')
+   print 'OBJMEM    ' : if n then n : ' kb' else '0  [':sysmsg(3067):']'
+   print 'PDUMP     ' : config('PDUMP')
+   s = config('PORTMAP') ; if s # '' then print 'PORTMAP   ' : s
+   print 'QMCLIENT  ' : config('QMCLIENT')
+   print 'RECCACHE  ' : config('RECCACHE')
+   print 'RINGWAIT  ' : config('RINGWAIT')
+   print 'SAFEDIR   ' : config('SAFEDIR')
+   if not(is.windows) then
+      print 'SH        ' : config('SH')
+      print 'SH1       ' : config('SH1')
+   end
+   print 'SORTMEM   ' : config('SORTMEM') : ' kb'
+   print 'SORTMRG   ' : config('SORTMRG')
+   print 'SORTWORK  ' : config('SORTWORK')
+   if not(is.windows) then print 'SPOOLER   ' : config('SPOOLER')
+   print 'STARTUP   ' : config('STARTUP')
+   print 'TEMPDIR   ' : config('TEMPDIR')
+   print 'TERMINFO  ' : config('TERMINFO')
+   print 'YEARBASE  ' : config('YEARBASE')
+   print
+
+   if lptr then printer off
+
+   return
+
+* ======================================================================
+
+show.gpl:
+   openseq @qmsys:@ds:'licence' to gpl.f else
+      openseq @qmsys:@ds:'LICENCE' to gpl.f else
+         @system.return.code = -status()
+         stop sysmsg(3060)        ;* Unable to open GPL licence
+      end
+   end
+
+   loop
+      readseq gpl.line from gpl.f else exit
+      display gpl.line
+   repeat
+
+   return
+
+* ======================================================================
+
+set.param:
+   param = upcase(param)
+
+   call @parser(parser$get.token, token.type, value, keyword)
+   if token.type = PARSER$END then
+      stop sysmsg(3068)    ;* New parameter value required
+   end
+
+   call @parser(parser$get.token, token.type, token, keyword)
+   if token.type # PARSER$END then
+      stop sysmsg(2018, token)    ;* Unexpected token (xx)
+   end
+
+   if not(pconfig(param, value)) then
+      begin case
+         case status() = 1
+            stop sysmsg(3069)    ;* Not a recognised private configuration parameter name
+
+         case status() = 2
+            stop sysmsg(3070)    ;* Invalid value for this parameter
+      end case
+   end
+
+   return
+end
+
+
+* END-CODE

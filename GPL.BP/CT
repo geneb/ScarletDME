@@ -1,0 +1,265 @@
+* CT
+* CT verb
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 24 Jan 06  2.3-5 Turn off mark mapping for BINARY mode.
+* 10 Jan 06  2.3-4 Added hex and binary modes. Aligned data on wrapped lines.
+* 10 Aug 05  2.2-7 Added use of NO.SEL.LIST.QUERY option.
+* 28 Mar 05  2.1-11 Use PARSER$MFILE.
+* 18 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* CT {DICT} file.name { record.name... | * } {options}
+* Options:
+*    NO.QUERY     Omit query when using select list
+*    HEX          Report data in hexadecimal
+*    BINARY       Binary data - full width report, not field based
+*    LPTR {n}     Direct output to printer n, 0 by default
+*
+* DUMP {DICT} file.name { record.name... | * } {options}
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program $ct
+$catalog $CT
+
+$include parser.h
+$include syscom err.h
+$include syscom keys.h
+$include int$keys.h
+
+equ F.DEFAULT to 0
+equ F.HEX to 1
+equ F.BINARY to 2
+
+
+   parser = "!PARSER"
+
+   @system.return.code = -ER$ARGS      ;* Preset for command format errors
+
+   is.dump = (@option = 2)
+   format = if is.dump then F.BINARY else F.DEFAULT
+
+   portion = ''
+   no.query = @false
+   id.list = ''
+   lptr = -1
+
+   is.phantom = kernel(K$IS.PHANTOM, 0) or kernel(K$IS.QMVBSRVR, 0)
+   capturing = system(1000)
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+
+   * Get file name
+
+   call @parser(PARSER$MFILE, token.type, file.name, keyword)
+   if keyword = KW$DICT then
+      portion = 'DICT'
+      call @parser(PARSER$MFILE, token.type, file.name, keyword)
+   end
+
+   if token.type = PARSER$END then stop sysmsg(2102) ;* File name required
+
+   * Open the file
+
+   open portion, file.name to file else
+      open portion, upcase(file.name) to file else
+         @system.return.code = -status()
+         stop sysmsg(2019) ;* File not found
+      end
+
+      file.name = upcase(file.name)
+   end
+
+   * Process ids and options
+
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+
+   loop
+   until token.type = PARSER$END
+      begin case
+         case keyword = KW$BINARY and not(is.dump)
+            format = F.BINARY
+
+         case keyword = KW$HEX and not(is.dump)
+            format = F.HEX
+
+         case keyword = KW$LPTR
+            call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+            if not(token matches '1N0N') or token > LPTR$HIGH.PRINT.UNIT then
+               lptr = 0
+               continue   ;* Reparse whatever followed LPTR, if anything
+            end
+
+            lptr = token + 0
+
+         case keyword = KW$NO.QUERY
+            no.query = @true
+
+         case 1
+            id.list<-1> = token
+      end case
+
+      call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   repeat
+
+   if format = F.BINARY then mark.mapping file, off
+
+   begin case
+      case id.list = '*'
+         sselect file to 11
+         readlist id.list from 11 else null
+
+      case id.list # ''
+         null
+
+      case selectinfo(0, sl$active)      ;* CT using SELECT list
+         readnext record.name then
+            if not(no.query) and not(option(OPT.NO.SEL.LIST.QUERY)) then
+               loop
+                  display sysmsg(2050, record.name) : ;* Use active select list (First item 'xx')?
+                  prompt ""
+                  input reply
+
+                  if upcase(reply[1,1]) = "N" then stop
+
+               until upcase(reply[1,1]) = "Y"
+               repeat
+            end
+
+            readlist id.list else null
+            ins record.name before id.list<1>
+         end
+
+      case 1
+         stop sysmsg(2106) ;* Record name(s) required
+   end case
+
+   begin case
+      case lptr >= 0
+         if lptr = 0 then printer on
+         width = getpu(PU$WIDTH, lptr)
+
+      case @(IT$SLT) # ''           ;* Device can do line truncation
+         width = @crtwide
+         if not(is.phantom) and not(capturing) then
+            void kernel(K$SUPPRESS.COMO, @true)
+            display @(IT$SLT) :
+            void kernel(K$SUPPRESS.COMO, @false)
+         end
+
+      case 1
+         width = @crtwide - 1
+   end case
+
+   loop
+      record.name = removef(id.list, 1)
+   until status()
+      gosub display.record
+   repeat
+
+   if lptr = 0 then printer close
+
+   if lptr < 0 and not(is.phantom) and not(capturing) then
+      display @(IT$RLT) :   ;* Ensure line truncation off
+   end
+
+   @system.return.code = 0
+
+   return
+
+* *****************************************************************************
+
+display.record:
+   if record.name = '' then
+      display sysmsg(2107) ;* Null record name ignored
+      return
+   end
+
+   read rec from file,record.name else
+      read rec from file, upcase(record.name) else
+         display sysmsg(2108, record.name) ;* Record 'xx' not found
+         return
+      end
+      record.name = upcase(record.name)
+   end
+
+   if len(portion) then display portion : ' ' :
+   print on lptr file.name : ' ' : record.name
+
+   if len(rec) then
+      begin case
+         case format = F.DEFAULT or format = F.HEX
+            line.cols = len(dcount(rec, @fm))
+            line.fmt = line.cols : "'0'R"
+            width = @crtwide - (line.cols + 2)
+
+            * For hex format, ensure that we have an even width so that we
+            * do not split a byte across two lines
+
+            if format = F.HEX then width = bitreset(width, 0)
+
+            line = 0
+            loop
+               s = removef(rec, 1)
+            until status()
+               if format = F.HEX then s = oconv(s, 'MX0C')
+
+               line += 1
+               print on lptr fmt(line, line.fmt) : ': ' :
+               loop
+                  print on lptr s[1,width]
+                  s = s[width+1,999999]
+               while s # ''
+                  print on lptr space(line.cols + 2) :
+               repeat
+            repeat
+
+         case format = F.BINARY      ;* Binary data - show hex and character
+            pos = 1
+            loop
+               s = rec[pos, 16]
+            until s = ''
+               line = space(76)
+               line[1,9] = dtx(pos-1,8):':'
+               for i = 1 to 16
+                  c = s[i,1]
+                  if c # '' then line[8 + i * 3,2] = dtx(seq(c), 2)
+               next i
+
+               convert @fm:@vm:@sm to '^]\' in s
+               line[59,18] = '| ' : oconv(s, 'MCP')
+               print on lptr line
+               pos += 16
+            repeat
+      end case
+   end
+
+   return
+end
+
+* END-CODE

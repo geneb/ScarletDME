@@ -1,0 +1,109 @@
+* CLEARFL
+* CLEAR.FILE verb
+* Copyright (c) 2005 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 28 Mar 05  2.1-11 Use PARSER$MFILE.
+* 13 Oct 04  2.0-5 Use message handler.
+* 01 Oct 04  2.0-3 Reworked to allow multifiles.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* CLEAR.FILE [DATA | DICT] file
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program $clear.file
+$catalog $clearfl
+
+$include parser.h
+$include syscom err.h
+$include syscom keys.h
+
+   prompt ""
+   parser = "!PARSER"
+
+   @system.return.code = -ER$ARGS      ;* Preset for command format errors
+
+   portion = ""
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   call @parser(PARSER$MFILE, token.type, token, keyword)
+
+   * Check for DATA or DICT keyword
+
+   if keyword = KW$DATA then
+      portion = ""
+      call @parser(PARSER$MFILE, token.type, token, keyword)
+   end else if keyword = KW$DICT then
+      portion = "DICT"
+      call @parser(PARSER$MFILE, token.type, token, keyword)
+   end
+
+   * Fetch file name
+
+   if token.type = PARSER$END then stop sysmsg(2102) ;* File name required
+
+   file.name = token
+   call @parser(PARSER$MFILE, token.type, token, keyword)
+
+   * Open the file
+
+   open portion, file.name to file else
+      file.name = upcase(file.name)
+      open portion, file.name to file else
+         stop sysmsg(2019) ;* File not found
+      end
+      loop
+         display sysmsg(2051, file.name) :  ;* Use file 'xx'?
+         input response
+         response = upcase(response)
+      until response = 'Y'
+         if response = 'N' then stop
+      repeat
+   end
+
+   if token.type # parser$end then
+      stop sysmsg(2018, token) ;* Unexpected token (xx)
+   end
+
+   if fileinfo(file, FL$READONLY) then
+      @system.return.code = -ER$RDONLY
+      stop sysmsg(1431) ;* File is read-only
+   end
+
+   filelock file
+   clearfile file on error
+      @system.return.code = -status()
+      stop sysmsg(3050, status()) ;* Error xx clearing file"
+   end
+   fileunlock file
+
+   @system.return.code = 0
+
+   return
+end
+
+* END-CODE

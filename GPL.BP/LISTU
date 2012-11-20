@@ -1,0 +1,150 @@
+* LISTU
+* LISTU command
+* Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 25 Apr 07  2.5-3 Added login time.
+* 12 Feb 07  2.4-20 Sort by user number.
+* 13 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* 0         1         2         3         4         5         6         7
+* 01234567890123456789012345678901234567890123456789012345678901234567890123456789
+*   User  Pid          Puid  Login time    Origin : Username
+* * 1234  12345678901  1234  24 Apr 17:52  Console : Administrator
+*   1234  12345678901  1234  24 Apr 17:52  123.123.123.123 : Guest
+*   1234  12345678901  1234  24 Apr 17:52  123.123.123.123 pts/1 : Guest
+*   1234  12345678901  1234  24 Apr 17:52  Phantom : Administrator (xxx)
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+
+$internal
+program listu
+$catalog $listu
+
+$include parser.h
+$include err.h
+$include int$keys.h
+$include keys.h
+
+   @system.return.code = -ER$ARGS      ;* Preset for command format errors
+   lptr = -1
+
+* ---------------  Step 1 -  Parse command
+
+   call !parser(parser$reset, 0, @sentence, 0)
+   call !parser(parser$get.token, token.type, token, keyword) ;* Verb
+
+   * Look for options
+
+   loop
+      call !parser(parser$get.token, token.type, token, keyword) ;* Verb
+   while token.type # PARSER$END
+      begin case
+         case keyword = KW$NO.PAGE
+            s = @(0,0)
+
+         case keyword = KW$LPTR
+            lptr = 0
+            call !parser(parser$get.token, token.type, token, keyword)
+            if not(token matches "1N0N") then continue
+            lptr = token + 0
+            if lptr > LPTR$HIGH.PRINT.UNIT then
+               stop sysmsg(2053) ;* Invalid print unit number
+            end
+
+         case 1
+            stop sysmsg(2018, token) ;* Unrecogised token (xx)
+      end case
+   repeat
+   
+   @system.return.code = 0
+
+* ---------------  Step 2  -  Get list of users
+
+   unsorted.list = kernel(K$USERS, 0)
+   * uid VM pid VM ip_addr VM flags VM puid VM username FM...
+
+   ulist = ''
+   sort.keys = ''
+   num.users = dcount(unsorted.list, @fm)
+   for i = 1 to num.users
+      uid = unsorted.list<i,1>
+      locate uid in sort.keys<1> by 'AR' setting pos else null
+      ins uid before sort.keys<pos>
+      ins unsorted.list<i> before ulist<pos>
+   next i
+
+* ---------------  Step 3  -  Report
+
+   if lptr = 0 then printer on
+
+   print '  User  Pid          Puid  Login time    Origin : Username'
+
+   for i = 1 to num.users
+      udata = raise(ulist<i>)
+
+      uid = udata<K$USERS.UID>
+      pid = udata<K$USERS.PID>
+      addr = udata<K$USERS.IP>
+      flg = udata<K$USERS.FLAGS> + 0
+      puid = udata<K$USERS.PUID>
+      username = udata<K$USERS.UNAME>
+      ttyname = udata<K$USERS.DEV>
+      login.time = udata<K$USERS.LOGIN>
+
+      begin case
+         case bitand(flg, USR$PHANTOM)   ; s = 'Phantom'
+         case bitand(flg, USR$QMNET)     ; s = 'QMNet ':addr
+         case bitand(flg, USR$QMVBSRVR)  ; s = 'QMVbSrvr ':addr
+         case addr # ''                  ; s = addr
+         case 1                          ; s = ''
+      end case
+
+      if ttyname # '' then s := ' ' : ttyname
+      if username # '' then s := ': ':username
+
+      begin case
+         case bitand(flg, USR$LOGOUT)   ; s := ' (logout pending)'
+      end case
+
+      if uid = @userno then print '* ' :
+      else print '  ' :
+      print fmt(uid, '4R') : '  ' :
+      print fmt(pid, '11L') : '  ' :
+      print if puid then (fmt(puid, '4R') : '  ') else '      ' :
+      print oconv(idiv(login.time, 86400), 'DDML[,A3]') : ' ' :
+      print oconv(rem(login.time, 86400), 'MT') : '  ' :
+      print trimf(s)
+   next i
+
+   if lptr = 0 then printer off
+
+   @system.return.code = 0
+
+   return
+end
+
+* END-CODE

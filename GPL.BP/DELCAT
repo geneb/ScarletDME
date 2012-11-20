@@ -1,0 +1,156 @@
+* DELCAT
+* DELETE.CATALOG verb
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 02 Nov 06  2.4-15 VOC record types now case inesnsitive.
+* 18 Jul 06  2.4-10 Allow multiple item names in command line.
+* 23 May 06  2.4-4 0490 Use with a select list was ignoring GLOBAL option.
+* 13 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    DELETE.CATALOG name... { GLOBAL | LOCAL }
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program $delcat
+$catalog $delcat
+
+$include err.h
+$include parser.h
+$include syscom.h
+
+   parser = "!PARSER"
+
+   @system.return.code = -ER$ARGS    ;* Preset for command format errors
+
+   global = @false
+   local = @false
+   prefix.chars = "*!_$"
+   using.select.list = @false
+
+   * Check for alternative private catalogue location
+
+   private.catalogue = 'cat'
+   read voc.rec from voc, "$PRIVATE.CATALOGUE" then
+      if upcase(voc.rec[1,1]) = 'X' then private.catalogue = voc.rec<2>
+   end
+
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+
+   readlist name.list then using.select.list = @true
+
+   loop
+      call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   until token.type = PARSER$END
+      begin case
+         case keyword = KW$LOCAL
+            local = @true
+
+         case keyword = KW$GLOBAL
+            global = @true
+
+         case not(using.select.list)
+            name.list<-1> = upcase(token)
+
+         case 1
+            stop sysmsg(2018, token) ;* Unexpected token (xx)
+      end case
+   repeat
+
+   if name.list = '' then stop sysmsg(3036) ;* Catalogue name required
+
+   if local and global then
+      stop sysmsg(3021) ;* Incompatible cataloguing modes specified
+   end
+
+
+   * Open global and private catalogues
+
+   openpath @qmsys:@ds:'gcat' to gcat.f else
+      stop sysmsg(3022) ;* Cannot open global catalogue directory
+   end
+
+   openpath private.catalogue to pcat.f else
+      stop sysmsg(3023) ;* Cannot open private catalogue directory
+   end
+
+
+   @system.return.code = 0
+   loop
+      cat.name = remove(name.list, delim)
+
+      if cat.name = '' then
+         display sysmsg(3037) ;* Null catalogue entry name ignored
+      end else
+         begin case
+            case global or index(prefix.chars, cat.name[1,1], 1)
+               readvu obj.rec from gcat.f, cat.name, 0 then
+                  delete gcat.f, cat.name
+                  unload.object
+                  display sysmsg(3038, cat.name) ;* xx deleted from the global catalogue
+               end else
+                  release gcat.f, cat.name
+                  display sysmsg(3039, cat.name) ;* xx is not in the global catalogue
+                  @system.return.code = -ER$NOT.CAT
+               end
+
+            case local
+               readu voc.rec from @voc, cat.name else null
+               if upcase(voc.rec[1,1]) = "V" and voc.rec<2> = "CS" then
+                  delete @voc, cat.name
+                  unload.object
+                  display sysmsg(3040, cat.name) ;* xx deleted from the local catalogue
+               end else
+                  release @voc, cat.name
+                  display sysmsg(3041, cat.name) ;* xx is not in the local catalogue
+                  @system.return.code = -ER$NOT.CAT
+               end
+
+            case 1       ;* private
+               readvu obj.rec from pcat.f, cat.name, 0 then
+                  delete pcat.f, cat.name
+                  unload.object
+                  display sysmsg(3042, cat.name) ;* xx deleted from the private catalogue
+               end else
+                  release pcat.f, cat.name
+                  display sysmsg(3043, cat.name) ;* xx is not in the private catalogue
+                  @system.return.code = -ER$NOT.CAT
+               end
+         end case
+      end
+   while delim
+   repeat
+
+   return
+
+   * Avoid compiler warnings
+   obj.rec = obj.rec
+end
+
+* END-CODE
+

@@ -1,0 +1,113 @@
+* ATVAR
+* Return value of @variable
+* Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 07 Aug 07  2.5-7 Added @GID and @UID.
+* 21 Feb 06  2.3-6 Added @USER.
+* 02 Jan 05  2.1-0 Added @HOSTNAME.
+* 17 Dec 04  2.1-0 Added PROC @variables and @ANS.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    x = !atvar(name)
+*
+*    name optionaly includes leading @ character
+*
+*    This function sets the STATUS() value to 0 if successful, 1 if the
+*    specified variable does not exist.
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+function atvar(arg)
+$catalog !atvar
+
+$include syscom.h
+
+   set.status 0
+   name = upcase(if arg[1,1] = '@' then arg[2,999] else arg)
+
+* !!ATVAR!!
+   begin case
+      case name = ''                   ; expansion = arg
+      case name = 'ABORT.CODE'         ; expansion = @ABORT.CODE
+      case name = 'ABORT.MESSAGE'      ; expansion = @ABORT.MESSAGE
+      case name = 'ANS'                ; expansion = @ANS
+      case name = 'COMMAND'            ; expansion = @COMMAND
+      case name = 'COMMAND.STACK'      ; expansion = @COMMAND.STACK
+      case name = 'CRTHIGH'            ; expansion = @CRTHIGH
+      case name = 'CRTWIDE'            ; expansion = @CRTWIDE
+      case name = 'DATA.PENDING'       ; expansion = @DATA.PENDING
+      case name = 'DATE'               ; expansion = @DATE
+      case name = 'DAY'                ; expansion = @DAY
+      case name = 'GID'                ; expansion = @GID
+      case name = 'HOSTNAME'           ; expansion = @HOSTNAME
+      case name = 'ID'                 ; expansion = @ID
+      case name = 'IP.ADDR'            ; expansion = @IP.ADDR
+      case name = 'LEVEL'              ; expansion = @LEVEL
+      case name = 'LOGNAME'            ; expansion = @LOGNAME
+      case name = 'LPTRHIGH'           ; expansion = @LPTRHIGH
+      case name = 'LPTRWIDE'           ; expansion = @LPTRWIDE
+      case name = 'MONTH'              ; expansion = @MONTH
+      case name = 'PARASENTENCE'       ; expansion = @PARASENTENCE
+      case name = 'PATH'               ; expansion = @PATH
+      case name = 'PIB'                ; expansion = @PIB
+      case name = 'POB'                ; expansion = @POB
+      case name = 'QMSYS'              ; expansion = @QMSYS
+      case name = 'RECORD'             ; expansion = @RECORD
+      case name = 'SELECTED'           ; expansion = @SELECTED
+      case name = 'SENTENCE'           ; expansion = @SENTENCE
+      case name = 'SIB'                ; expansion = @SIB
+      case name = 'SOB'                ; expansion = @SOB
+      case name = 'SYS.BELL'           ; expansion = @SYS.BELL
+      case name = 'SYSTEM.RETURN.CODE' ; expansion = @SYSTEM.RETURN.CODE
+      case name = 'TERM.TYPE'          ; expansion = @TERM.TYPE
+      case name = 'TIME'               ; expansion = @TIME
+      case name = 'TTY'                ; expansion = @TTY
+      case name = 'UID'                ; expansion = @UID
+      case name = 'USER'               ; expansion = @USER
+      case name = 'USER0'              ; expansion = @USER0
+      case name = 'USER1'              ; expansion = @USER1
+      case name = 'USER2'              ; expansion = @USER2
+      case name = 'USER3'              ; expansion = @USER3
+      case name = 'USER4'              ; expansion = @USER4
+      case name = 'USERNO'             ; expansion = @USERNO
+      case name = 'USER.NO'            ; expansion = @USER.NO
+      case name = 'USER.RETURN.CODE'   ; expansion = @USER.RETURN.CODE
+      case name = 'WHO'                ; expansion = @WHO
+      case name = 'YEAR'               ; expansion = @YEAR
+      case name = 'YEAR4'              ; expansion = @YEAR4
+      case 1
+         locate name in user.var.names<1> setting pos then
+            expansion = user.var.values<pos>
+         end else
+            expansion = ''
+            set.status 1
+         end
+   end case
+
+   return (expansion)
+end
+
+* END-CODE

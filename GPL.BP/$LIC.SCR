@@ -1,0 +1,10 @@
+* PDA.SCREENS $LIC.SCR
+* Generated at 19:58:59 on 17 JAN 2007
+
+equate SS.TITLE       to 1
+equate SS.SYSTEM.ID   to 3
+equate SS.LICENCE.NO  to 4
+equate SS.EXPIRY.DATE to 5
+equate SS.AUTH.CODE   to 6
+equate SS.SECURITY.NO to 7
+equate SS.SITE.TEXT   to 8

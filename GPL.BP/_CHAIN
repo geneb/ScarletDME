@@ -1,0 +1,72 @@
+* _CHAIN
+* Process complexities of CHAIN.
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 02 Nov 06  2.4-15 VOC record types now case insensitive.
+* 22 Sep 05  2.2-12 0413 New module.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* At first, CHAIN looks easy. Cast off all programs down to but not including
+* the highest level command processor and off we go. The command to be
+* executed has already been stored in the XEQ.COMMAND item in SYSCOM.
+*
+* However, PROCs add a layer of complication. When a PROC executes a command,
+* the command processor must run at the same command level as the PROC. To
+* achieve this, the PROC processor uses the CURRENT.LEVEL option of EXECUTE.
+* When this is present, op_execute() clears the HDR_IS_CPROC flag on the
+* new command processor so that it looks like a normal program. It also sets
+* the IS_CLEXEC flag on the new command processor.
+*
+* If the target of the CHAIN is a PROC, the rules say that this must cast off
+* everything down to the uppermost command processor (i.e. with HDR_IS_CPROC
+* set). Conversely, if the target is not a PROC, we must leave any stacked
+* PROCs intact by casting off down to the uppermost program with either
+* HDR_IS_CPROC or IS_CLEXEC set.
+*
+* The role of this recursive is to look at the target of the CHAIN and decide
+* how to handle it.
+*
+* On return from this program, the top stack item is a boolean indicating
+* whether the target of the CHAIN is a PROC.
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+$no.symbols
+$no.xref
+$recursive
+
+subroutine chain()
+$include syscom.h
+
+   cmd = field(xeq.command, ' ', 1)
+   read voc.rec from @voc, cmd else
+      read voc.rec from @voc, upcase(cmd) else null
+   end
+
+   return value (upcase(voc.rec[1,2]) = 'PQ')
+end
+
+* END-CODE

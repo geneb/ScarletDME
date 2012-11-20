@@ -1,0 +1,360 @@
+* COPYP
+* Pick style COPY verb.
+* Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 31 Aug 07  2.6-0 0559 Was not releasing locks on error paths. Also adapted to
+*                  use select list 11 for "*" mode.
+* 02 Aug 07  2.5-7 Added (B for binary mode transfer.
+* 08 Dec 06  2.4-17 Added "n records copied" message.
+* 20 May 05  2.2-0 0358 Retain file portion flag when defaulting target file.
+* 28 Mar 05  2.1-11 Use PARSER$MFILE.
+* 05 Jan 05  2.1-0 New module.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* This module is adapted from source supplied to Ladybridge Systems under the
+* terms of the modified BSD licence for software submittal to the OpemQM
+* project.
+*
+* The original source was copyright (c) 2004 by Tom Hoogenboom.
+*
+* The changes made were:
+*   1. Converted source code to lowercase to fit QM coding style.
+*   2. Renamed a few items.
+*   3. Use locking in the copy routine.
+*   4. Use the QM message handler.
+*   5. Use the QM command parser.
+*   6. Added D, I,S and T options.
+*   7. Modified behaviour of P option to match Pick Systems Reference Manual.
+*   8. Suppress mark mapping if both files are directory files.
+*
+* COPYP {DICT} filename id... {(options}
+*
+* Multiple record ids may be specified
+*
+* Options:
+*   D  Deletes source records
+*   I  Suppresses display of id
+*   N  No pagination
+*   O  Overwrite existing records
+*   P  Send output to printer. Does not prompt for destination
+*   S  Suppresses field numbers with P/T
+*   T  Send output to terminal. Does not prompt for destination
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program copyp
+$catalogue $copyp
+
+$include keys.h
+$include err.h
+$include parser.h
+
+   prompt ''
+
+   @system.return.code = -ER$ARGS      ;* Preset for command format errors
+
+   to.info = ''
+   from.file.dict.flag = ''  ;* Dictionary flag for source file
+   item.list = ''            ;* Source id list
+   binary = @false           ;* (B  Binary transfer
+   dflag = @false            ;* (D  Delete source records
+   iflag = @false            ;* (I  Suppress id with P/T
+   oflag = @false            ;* (O  Overwrite
+   sflag = @false            ;* (S  Suppress field numbers with P/T
+   dest = ''                 ;* Destination. Blank - copy, P = printer, T - terminal
+   to.file.dict.flag = ''    ;* Dictionary flag for target file
+   to.list = ''              ;* Target id list
+   records.copied = 0
+
+   gosub parse.command
+
+   if from.file = '-HELP' then
+      gosub disp.help
+      stop
+   end
+
+   open from.file.dict.flag, from.file to f.file else
+      display sysmsg(2021, trimf(from.file.dict.flag:' ':from.file)) ;* File %1 not found
+      gosub disp.help
+      stop
+   end
+
+   if dest = '' then
+      display sysmsg(3520) : ;* To:
+      input to.info
+   end
+
+   gosub parse.to.info
+
+   if to.file # '' then
+      open to.file.dict.flag, to.file to t.file else
+         display sysmsg(2021, trimf(to.file.dict.flag:' ':to.file)) ;* File %1 not found
+         gosub disp.help
+         stop
+      end
+   end else
+      t.file = f.file
+   end
+
+   * Suppress mark mapping if source and target are both directory files
+
+   if dest = '' then
+      if fileinfo(f.file, FL$TYPE) = FL$TYPE.DIR then
+         if fileinfo(t.file, FL$TYPE) = FL$TYPE.DIR then
+            binary = @true
+         end
+      end
+   end
+
+   if binary then
+      mark.mapping f.file, off
+      mark.mapping t.file, off
+   end
+
+   if dest = 'P' then printer on
+
+   if item.list = '*' or system(11) then
+      * Process all records or a select list
+
+      if item.list = '*' then
+         item.list = ''
+         select f.file to 11
+         src.list = 11
+      end else
+         src.list = 0
+      end
+
+      dlc = 1
+      loop
+         readnext id from src.list else exit
+
+         if dest then
+            gosub display.item
+         end else
+            to.id = to.list<dlc>
+            gosub copy.item
+         end
+
+         dlc += 1
+      repeat
+   end else
+      number.of.items = dcount(item.list, @fm)
+      for r = 1 to number.of.items
+         id = item.list<r>
+         to.id = to.list<r>
+         if dest then
+            gosub display.item
+         end else
+            gosub copy.item
+         end
+      next r
+   end
+
+   if dest = 'P' then printer off
+
+   @system.return.code = records.copied
+   if dflag then display sysmsg(6190, records.copied)   
+   else display sysmsg(6189, records.copied)   
+
+   return
+
+* ======================================================================
+* Parse the command line
+
+parse.command:
+   call !parser(PARSER$RESET, 0, @sentence, 0)
+   call !parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+
+   * Get source file name
+
+   call !parser(PARSER$MFILE, token.type, from.file, keyword)
+   if keyword = KW$DICT then
+      from.file.dict.flag = 'DICT'
+      call !parser(PARSER$MFILE, token.type, from.file, keyword)
+   end
+
+   if token.type = PARSER$END then
+      stop sysmsg(2102) ;* File name required
+   end
+
+   * Get record ids
+
+   call !parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   loop
+   until token.type = PARSER$END or token.type = PARSER$LBR
+      item.list<-1> = token
+      call !parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   repeat
+
+   * Get options
+
+   loop
+   while token.type = PARSER$LBR
+      call !parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   until token.type = PARSER$END
+      n = len(token)
+      for i = 1 to n
+         c = token[i, 1]
+         begin case
+            case c = 'B'  ;* Binary transfer
+               binary = @true
+            case c = 'D'  ;* Delete source records
+               dflag = @true
+            case c = 'I'  ;* Suppress display of id with P/T
+               iflag = @true
+            case c = 'N'  ;* No page when copying to screen
+               c = @(0,0)
+            case c = 'O'  ;* Overwrite destination item
+               oflag = @true
+            case c = 'P'  ;* Send output to printer
+               dest = 'P'
+            case c = 'S'  ;* Suppress field numbers with P/T
+               sflag = @true
+            case c = 'T'  ;* Send output to terminal
+               dest = 'T'
+            case 1
+               stop sysmsg(2029, c) ;* Unrecognised option (%1)
+         end case
+      next i
+
+      call !parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   while token.type = PARSER$LBR    ;* Allow (O (N as alternative ot (ON
+   repeat
+
+   if token.type # PARSER$END then
+      stop sysmsg(2018, token) ;* Unexpected token (%1)
+   end
+
+   return
+
+* ======================================================================
+*  Parse the 'to info'
+
+parse.to.info:
+   to.info = change(to.info, ' ', @fm)
+
+   if to.info[1, 1] = '(' then  ;* Going to ANOTHER file
+      to.file = to.info<1>[2,999999]
+      if to.file = 'DICT' then
+         to.file.dict.flag = 'DICT'
+         to.file = to.info<2>
+         to.list = field(to.info, @fm, 3, 999999)
+      end else
+         to.list = field(to.info, @fm, 2, 999999)
+      end
+      if to.file[1] = ')' then to.file = to.file[1,len(to.file)-1]
+   end else  ;* Copying to same file
+      to.file.dict.flag = from.file.dict.flag    ;* 0358
+      to.file = from.file
+      to.list = to.info
+   end
+
+   return
+
+* ======================================================================
+
+disp.help:
+   s = sysmsg(3526)
+   loop
+      display remove(s, more)
+   while more
+   repeat
+
+   return
+
+* ======================================================================
+* Print 1 item to screen or printer
+
+display.item:
+   read item from f.file, id then
+      print
+      if not(iflag) then print sysmsg(3522, id) ;* Item %1
+
+      attrs = dcount(item, @fm)
+      for a = 1 to attrs
+         if not(sflag) then print fmt(a, 'R%4') : ' ' :
+         print item<a>
+      next a
+
+      records.copied += 1
+   end else
+      print sysmsg(3521, id) ;* Record "%1" not found
+   end
+
+   return
+
+* ======================================================================*
+*  Copying to file
+*  Write to the file with (new?) item names
+
+copy.item:
+   if to.id = '' then to.id = id
+
+   if dflag then
+      readu item from f.file, id else
+         release f.file, id   ;* 0559
+         print sysmsg(3521, id) ;* Record "%1" not found
+         return
+      end
+   end else
+      read item from f.file, id else
+         print sysmsg(3521, id) ;* Record "%1" not found
+         return
+      end
+   end
+
+   readvu c from t.file, to.id, 0 then
+      if not(oflag) then
+         print sysmsg(3523, id) ;* Item %1 already exists in target file - Not copied
+         release f.file, id    ;* 0559
+         release t.file, to.id
+         return
+      end
+   end
+
+   write item on t.file, to.id
+   records.copied += 1
+
+   if dflag then
+      delete f.file, id
+      if not(iflag) then
+         print sysmsg(3525, id, trimf(from.file.dict.flag : ' ' : from.file), 
+               trimf(to.file.dict.flag : ' ' : to.file), to.id)
+           * Moved item %1 from %2 to %3 item %4
+      end
+   end else
+      if not(iflag) then
+         print sysmsg(3524, id, trimf(from.file.dict.flag : ' ' : from.file), 
+               trimf(to.file.dict.flag : ' ' : to.file), to.id)
+           * Copied item %1 from %2 to %3 item %4
+      end
+   end
+
+   return
+
+end
+
+* END-CODE

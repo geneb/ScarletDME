@@ -1,0 +1,2637 @@
+* UPDREC
+* UPDATE.RECORD command
+* Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 24 Jul 07  2.5-7 Added support for A/S type dictionary items.
+* 02 Nov 06  2.4-15 VOC/dictionary record types now case insensitive.
+* 31 Oct 06  2.4-15 Use @SYS.BELL to honour BELL ON/OFF setting.
+* 29 Sep 05  2.2-13 0416 Check that the field number in a D-type item really is
+*                   a number before adding it in add.visual.field.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* UPDATE.RECORD [DICT] file
+*               [USING [DICT] file]
+*               {FROM listno}
+*               {ALL}
+*               {id [id...]}
+*               {INQUIRING prompt}
+*
+* Batch mode:
+*               field, newvalue [CONV expr] [field, newvalue [CONV expr] ...]
+*               DELETING field
+*               [VERIFY.SUP]
+*               [COUNT.SUP]
+*               {NO.WAIT}
+*               {WAIT}
+*               [EXCLUSIVE]
+*               [CREATING]
+*               [REPORTING]
+*               [NO.PAGE]
+*               [LPTR [n]]
+*
+* field    =    number
+*               dictionary item
+*
+* newvalue =    literal (number or quoted string)
+*               field or I-type from dictionary
+*               EVAL "expression"
+*
+* All newvalue types may be followed by CONV "expr" to override dictionary
+* conversion specification.
+*
+* Visual mode:
+*               [ID.SUP]
+*               [COL.SUP]
+*               [CREATING]
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program update.record
+$catalog $updrec
+
+$include err.h
+$include keys.h
+$include parser.h
+$include dictdict.h
+
+   @system.return.code = -ER$ARGS
+
+   equate savedlist.file to "$SAVEDLISTS"
+   locked.record.list = "&LOCK." : @userno : "&"
+   missing.record.list = "&MISS." : @userno : "&"
+
+   equate PRODUCT to 'UPDATE.RECORD'
+
+   equ ITYPE.NAME        to "__UPDREC"
+
+   equ K$RETURN          to  1  ;* Insert newline at cursor
+   equ K$HOME            to  2  ;* Goto start of line
+   equ K$END             to  3  ;* Goto end of line
+   equ K$LEFT            to  4  ;* Cursor left
+   equ K$RIGHT           to  5  ;* Cursor right
+   equ K$UP              to  6  ;* Cursor up
+   equ K$DOWN            to  7  ;* Cursor down
+   equ K$TOP             to  8  ;* Goto top
+   equ K$BOTTOM          to  9  ;* Goto bottom
+   equ K$PAGE.UP         to 10  ;* Up by one page
+   equ K$PAGE.DOWN       to 11  ;* Down by one page
+   equ K$DELETE          to 12  ;* Delete character
+   equ K$BACKSPACE       to 13  ;* Backspace character
+   equ K$KILL            to 14  ;* Delete to end of line
+   equ K$SAVE            to 15  ;* Save record
+   equ K$QUIT            to 16  ;* Quit
+   equ K$OVERLAY         to 17  ;* Toggle overlay mode
+   equ K$REFRESH         to 18  ;* Refresh screen
+   equ K$EXPAND          to 19  ;* Expand character
+   equ K$COMMAND         to 20  ;* Command
+   equ K$CANCEL          to 21  ;* Cancel
+   equ K$INSERT          to 22  ;* Insert character
+   equ K$MARK            to 23  ;* Mark start of region
+   equ K$PASTE           to 24  ;* Paste
+   equ K$GOTO            to 25  ;* Goto field/value/subvalue
+* Entries below here are handled inside get.key
+   equ K$REPEAT          to 26  ;* Repeat last action
+   equ K$QUOTE           to 27  ;* Quote character
+* The following entries are handled in set.region
+   equ K$COPY            to 28  ;* Copy
+   equ K$CUT             to 29  ;* Cut
+
+*-----------------------------------------------------------------------------
+
+   * Open the VOC
+
+   open "VOC" to voc.f else
+      display "Cannot open VOC"
+      goto exit.update.record
+   end
+
+   tty.modes = ''
+
+   gosub split.tokens   ;* Do now so that EXECUTE in terminal setup does not
+                         * destroy @sentence.
+
+   * Delete any existing lists of locked and missing records
+
+   open savedlist.file to savedlists else
+      display "Cannot open " : savedlist.file
+      goto exit.update.record
+   end
+
+   recordlocku savedlists, locked.record.list
+   delete savedlists, locked.record.list
+   locked.records = ""
+
+   recordlocku savedlists, missing.record.list
+   delete savedlists, missing.record.list
+   missing.records = ""
+
+   * Get screen characteristics for visual mode
+
+   screen.lines = @crthigh
+   displayed.lines = screen.lines - 2
+   last.data.line = displayed.lines - 1
+   file.line = displayed.lines
+   field.line = displayed.lines + 1
+   srev = @(-13)
+   erev = @(-14)
+
+
+   screen.width = @crtwide
+   screen.width.minus.1 = screen.width - 1
+   swm1.fmt = screen.width.minus.1 : 'L'
+
+   banned = ''
+   for i = 0 to 31
+     banned := char(i)
+   next i
+   banned := char(127)
+   replacements = str("?", len(banned))
+
+   sw.space = space(screen.width)
+   swm1.space = space(screen.width - 1)
+
+   * Screen image buffer
+
+   dim image(screen.lines + 1) ; mat image = sw.space
+   dim refresh(screen.lines + 1)    ;* Refresh this line?
+   refresh.file = @true             ;* Refresh file line?
+
+   * Keyboard input 
+
+   prompt ""
+   gosub get.set.term.state
+   gosub set.bindings
+   pending.char = ''
+   overlay = @false
+   last.action = 0
+   command.stack = ''
+
+   ctrl.char.names = "NULSOHSTXETXEOTENQACKBELBS HT LF VT FF CR SO SI DLEDC1DC2DC3DC4NAKSYNETBCANEM SUBESCFS GS RS US "
+
+   quit.all = @false
+
+   * Parse the command line
+
+   verify.sup = @false
+   count.sup = @false
+   wait = @false
+   exclusive = @false
+   creating = @false
+   overwriting = @false
+   reporting = @false
+   no.page = @false
+   id.sup = @false
+   col.sup = @false
+   lptr = -1
+   from.list = -1
+   do.stars = @false
+
+   equate ID.MODE to 1        ;* Processing from id.list
+   equate ALL.MODE to 2       ;* Processing all records in file
+   equate INQUIRY.MODE to 3   ;* Prompting for record ids
+   mode = 0
+   record.prompt = "Record Id"
+   id.list = ""
+
+   * Details of each amendment (batch mode)
+
+   num.fields = 0             ;* Number of fields to amend
+   tgt.loc = ""               ;* Position of target field
+   tgt.names = ""             ;* Name of target field
+   tgt.convs = ""             ;* Conversion code for target field
+   tgt.mv = ""                ;* Multi-value flag for target field
+   src.types = ""             ;* Type of source item...
+   equate LITERAL.ITEM to 0   ;* Literal, src.loc holds actual value
+   equate FIELD.ITEM   to 1   ;* Field, src.loc holds field position
+   equate ITYPE.ITEM   to 2   ;* I-type, src.loc holds index to itypes()
+   equate DELETE.ITEM  to 3   ;* Delete field
+   src.loc = ""               ;* Source details as above
+   src.convs = ""             ;* Source field conversion
+   src.mv = ""                ;* Multi-value flag for source field
+   
+   max.itypes = 10            ;* Size of itypes matrix
+   dim itypes(max.itypes)     ;* Compiled object code
+   num.itypes = 0             ;* Number of itypes in matrix
+
+   * Field information (visual mode)
+
+   loc = ''                   ;* Location (field number) ...
+   field.ids = ''             ;* ...id of field...
+   display.names = ''         ;* ...display name, ...
+   formats = ''               ;* ...format, ...
+   convs = ''                 ;* ...conversion code...
+   sm = ''                    ;* ...single/multi-valued flag and...
+   assoc = ''                 ;* ...association
+
+   loc.len = 0                ;* Length of longest field number
+   id.len = 0                 ;* Length of longest id
+   name.len = 0               ;* Length of longest display name
+
+   renaming = @false           ;* Seen an update to the record id?
+
+   * Get file information
+
+   dict.flag = ""
+   gosub get.token
+   if keyword = KW$DICT then
+      dict.flag = "DICT"
+      gosub get.token
+   end
+
+   * Fetch file name
+
+   if end.tokens then
+      display "File name required"
+     goto exit.update.record
+   end
+
+   file.name = token
+
+   if len(dict.flag) then
+      dict.dict.flag = ""
+      dict.name = "DICT.DICT"
+   end else
+      dict.dict.flag = "DICT"
+      dict.name = file.name
+   end
+
+   gosub get.token
+   if keyword = KW$USING then
+      gosub get.token
+      if keyword = KW$DICT then     ;* DICT
+         dict.dict.flag = "DICT"
+         gosub get.token
+      end else
+         dict.dict.flag = ""
+      end
+
+      if end.tokens then 
+         display "Dictionary name required"
+         goto exit.update.record
+      end
+
+      dict.name = token
+      gosub get.token
+   end
+
+   * Open the file
+
+   open dict.flag, file.name to file else
+      file.name = upcase(file.name)
+      open dict.flag, file.name to file else
+         display "Cannot open file"
+         goto exit.update.record
+      end
+   end
+
+   if fileinfo(file, FL$READONLY) then
+      @system.return.code = -ER$RDONLY
+      display trimf(dict.flag : ' ' : file.name) : ' is a read-only file'
+      goto exit.update.record
+   end
+
+   * Open the dictionary
+
+   open dict.dict.flag, dict.name to dict else
+      dict.name = upcase(dict.name)
+      open dict.dict.flag, dict.name to dict else
+         display "Cannot open dictionary"
+         goto exit.update.record
+      end
+   end
+
+   * Process record id options and explicit record ids
+
+   begin case
+      case keyword = KW$FROM
+         gosub get.token
+         if not(token matches "1Ný'10'") then
+            display "Select list number required"
+            goto exit.update.record
+         end
+
+         from.list = token + 0
+         readlist id.list from from.list else
+            display "Select list " : from.list : " is not active"
+            goto exit.update.record
+         end
+
+         gosub get.token
+
+      case keyword = KW$ALL
+         mode = ALL.MODE
+         gosub get.token
+
+      case keyword = KW$INQUIRING
+         mode = INQUIRY.MODE
+         if tokens<token.index + 1> # "," then
+            gosub get.token
+            record.prompt = token
+         end
+         gosub get.token
+
+      case 1
+         readlist id.list then
+            mode = ID.MODE
+            from.list = 0
+         end else
+            id.list = ""
+            loop
+               id = token
+            until keyword = KW$DELETING
+            until keyword = KW$ID.SUP    ;* Force switch to visual mode
+            until keyword = KW$COL.SUP   ;* Force switch to visual mode
+            until end.tokens or tokens<token.index> = ","
+               if id = '' then
+                  display 'Null record id ignored'
+               end else
+                  locate id in id.list<1> setting i then
+                     display "Duplicate record id '" : id : "'"
+                     goto exit.update.record
+                  end
+
+                  mode = ID.MODE
+                  id.list<-1> = id
+               end
+               gosub get.token
+            repeat
+         end
+   end case
+
+   * Process field/value pairs
+
+   loop
+      id = token
+      if keyword = KW$DELETING then
+         deleting = @true
+         gosub get.token
+         id = token
+      end else
+         if tokens<token.index> # "," then exit ;* Look-ahead at next token
+         deleting = @false
+         gosub get.token               ;* Skip comma
+      end
+
+      if id matches "1N0N" then     ;* Literal field id
+         num.fields += 1
+         fld = id + 0
+         tgt.names<num.fields> = fld
+         tgt.loc<num.fields> = fld
+         tgt.convs<num.fields> = ""
+         tgt.mv<num.fields> = "S"
+      end else                      ;* Dictionary or VOC name
+         if len(id) = 0 then
+            display "Null field id name"
+            goto exit.update.record
+         end
+
+         read dict.rec from dict, id else
+            read dict.rec from voc.f, id else
+               display id : " is neither a field name nor a field number"
+               goto exit.update.record
+            end
+         end
+
+         type = upcase(dict.rec[1,1])
+         begin case
+            case (type = "A" or type = "S") and dict.rec<DICT.A.CORRELATIVE> = ''
+               num.fields += 1
+               fld = dict.rec<DICT.A.LOC>
+               tgt.names<num.fields> = id
+               tgt.loc<num.fields> = fld
+               tgt.convs<num.fields> = dict.rec<DICT.A.CONV>
+               tgt.mv<num.fields> = 'M'
+
+            case upcase(dict.rec[1,1]) = "D"
+               num.fields += 1
+               fld = dict.rec<DICT.LOC>
+               tgt.names<num.fields> = id
+               tgt.loc<num.fields> = fld
+               tgt.convs<num.fields> = dict.rec<DICT.CONV>
+               tgt.mv<num.fields> = upcase(dict.rec<DICT.S.M>)
+
+            case 1
+               display id : " is not a D type dictionary item"
+               goto exit.update.record
+         end case
+
+      end
+
+      if fld = 0 then
+         if renaming then
+            display 'Multiple update specifications not allowed for record id'
+            goto exit.update.record
+         end
+         renaming = @true
+      end
+
+      gosub get.token
+
+      if deleting then
+         src.types<num.fields> = DELETE.ITEM
+         src.loc<num.fields> = ""
+         src.convs<num.fields> = ""
+         src.mv<num.fields> = ""
+      end else
+         if end.tokens then
+            display "New field value not found where expected"
+            goto exit.update.record
+         end
+
+         if keyword = KW$EVAL then
+            gosub get.token
+            if end.tokens then
+               display "I-type expression not found where expected"
+               goto exit.update.record
+            end
+
+            num.itypes += 1
+            if num.itypes > max.itypes then
+               max.itypes += 10
+               dim itypes(max.itypes)
+            end
+            src.types<num.fields> = ITYPE.ITEM
+            src.loc<num.fields> = num.itypes
+            src.convs<num.fields> = ""
+            src.mv<num.fields> = ""
+
+            recordlocku dict, ITYPE.NAME
+            writeu "I" : @fm : token to dict, ITYPE.NAME
+            hush on
+            if dict.flag # '' then
+               execute "CD DICT.DICT " : ITYPE.NAME
+            end else
+               execute "CD " : file.name : " " : ITYPE.NAME
+            end
+            hush off
+
+            read itypes(num.itypes) from dict, ITYPE.NAME else
+               display "Cannot read compiled EVAL I-type"
+               goto exit.update.record
+            end
+            delete dict, ITYPE.NAME
+
+            if @system.return.code then
+               display "Compilation error in EVAL expression : " : token
+               goto exit.update.record
+            end
+         end else  ;* Not EVAL - must be dictionary item or literal value
+            begin case
+               case literal.string               ;* Literal string
+                  src.types<num.fields> = LITERAL.ITEM
+                  src.loc<num.fields> = token
+                  src.convs<num.fields> = ""
+                  src.mv<num.fields> = ""
+
+               case token matches "1N0Ný-1N0N"   ;* Number
+                  src.types<num.fields> = LITERAL.ITEM
+                  src.loc<num.fields> = token
+                  src.convs<num.fields> = ""
+                  src.mv<num.fields> = ""
+
+               case 1                            ;* Try dictionary and VOC
+                  read dict.rec from dict, token else
+                     read dict.rec from voc.f, token else
+                        display token : " is not a dictionary or VOC item"
+                        goto exit.update.record
+                     end
+                  end
+
+                  dict.rec.type = upcase(dict.rec[1,1])
+                  begin case
+                     case (dict.rec.type = "A" or dict.rec.type = "S") and dict.rec<DICT.A.CORRELATIVE> = ''
+                        src.types<num.fields> = FIELD.ITEM
+                        src.loc<num.fields> = dict.rec<DICT.A.LOC>
+                        src.convs<num.fields> = dict.rec<DICT.A.CONV>
+                        src.mv<num.fields> = 'M'
+
+                     case dict.rec.type= "D"
+                        src.types<num.fields> = FIELD.ITEM
+                        src.loc<num.fields> = dict.rec<DICT.LOC>
+                        src.convs<num.fields> = dict.rec<DICT.CONV>
+                        src.mv<num.fields> = upcase(dict.rec<DICT.S.M>)
+
+                     case dict.rec.type = "I"
+                        if dcount(dict.rec, @fm) < 16 then
+                           display dict.rec.type : "-type " : token : " must be compiled before use"
+                           goto exit.update.record
+                        end
+
+                        num.itypes += 1
+                        if num.itypes > max.itypes then
+                           max.itypes += 10
+                           dim itypes(max.itypes)
+                        end
+                        src.types<num.fields> = ITYPE.ITEM
+                        src.loc<num.fields> = num.itypes
+                        src.convs<num.fields> = dict.rec<DICT.CONV>
+                        src.mv<num.fields> = upcase(dict.rec<DICT.S.M>)
+                        itypes(num.itypes) = dict.rec
+
+                     case 1
+                        display token : " is not of suitable type"
+                        goto exit.update.record
+                  end case
+            end case
+         end
+
+         gosub get.token
+
+         if keyword = KW$CONV then
+            gosub get.token
+            if end.tokens then
+               display "Conversion code not found where expected"
+               goto exit.update.record
+            end
+
+            tgt.convs<num.fields> = token
+            gosub get.token
+         end
+      end
+   repeat
+
+
+   if num.fields = 0 then
+      if not(mode) then mode = INQUIRY.MODE
+      gosub visual.mode
+      goto exit.update.record
+   end
+
+   if not(mode) then
+      display 'No records to update'
+      goto exit.update.record
+   end
+
+   * Process options
+
+   loop
+   until end.tokens
+      begin case
+         case keyword = KW$VERIFY.SUP
+            verify.sup = @true
+
+         case keyword = KW$COUNT.SUP
+            count.sup = @true
+
+         case keyword = KW$NO.WAIT
+            wait = @false
+
+         case keyword = KW$WAIT
+            wait = @true
+
+         case keyword = KW$EXCLUSIVE
+            exclusive = @true
+
+         case keyword = KW$CREATING
+            creating = @true
+
+         case keyword = KW$OVERWRITING
+            overwriting = @true
+
+         case keyword = KW$REPORTING
+            reporting = @true
+
+         case keyword = KW$NO.PAGE
+            no.page = @true
+
+         case keyword = KW$LPTR
+            gosub get.token
+            if token matches "1N0N" then
+               token += 0
+               if token < 0 or token > 255 then
+                  display "Invalid print unit number"
+                  goto exit.update.record
+               end
+               lptr = token
+            end else
+               lptr = 0
+            end
+
+         case 1
+            display "Unrecognised option keyword : " : token
+            goto exit.update.record
+      end case
+
+      gosub get.token
+   repeat         
+
+   * Check for exclusive access
+
+   if exclusive then
+      filelock file locked
+         if not(wait) then
+            display "Cannot obtain exclusive file access lock"
+            goto exit.update.record
+         end
+         display "Waiting for exclusive access to file..." :
+         loop
+            sleep 5
+            display  "." :
+            filelock file locked continue
+            display
+            exit
+         repeat
+      end
+   end
+
+   * Do the update
+
+   if lptr = 0 then printer on
+   records.updated = 0
+   first = @true
+
+   begin case
+      case mode = ID.MODE
+         if from.list >= 0 and not(verify.sup) then
+            display "Using select list " : from.list : "." :
+            id = id.list<1>
+            gosub verify
+            if yn # "Y" then goto exit.update.record
+         end
+
+         loop
+            id = remove(id.list, id.delim)
+            gosub do.update
+         while id.delim
+         repeat
+
+      case mode = ALL.MODE
+         select file
+         readlist id.list then
+            if not(verify.sup) then
+               display "Processing all records." :
+               id = id.list<1>
+               gosub verify
+               if yn # "Y" then goto exit.update.record
+            end
+
+            loop
+               id = remove(id.list, id.delim)
+               gosub do.update
+            while id.delim
+            repeat
+         end
+
+      case mode = INQUIRY.MODE
+         prompt ""
+         id.list = ""
+         loop
+            display record.prompt : ": " :
+            input id
+         while len(id)
+            locate id in id.list<1> setting i then
+               display "Duplicate record id '" : id : "'"
+               loop
+                  prompt ""
+                  display "Do you wish to reprocess this record (Y or N, default N)? " :
+                  input yn
+                  yn = upcase(yn)
+               until yn = "Y" or yn = "N" or yn = ""
+               repeat
+               if yn # "Y" then continue
+            end
+            id.list<-1> = id
+            gosub do.update
+         repeat
+   end case
+
+   * End of update
+
+   if lptr = 0 then printer off
+
+   if exclusive then fileunlock file
+   
+   if do.stars then display  ;* Ensure we are at the start of a line
+
+   if not(count.sup) then
+      if records.updated = 1 then display "1 record updated"
+      else display records.updated : " records updated"
+   end
+
+   * Write select lists of locked or missing records
+
+   if len(locked.records) then
+      recordlocku savedlists, locked.record.list
+      write locked.records to savedlists, locked.record.list
+   end
+
+   if len(missing.records) then
+      recordlocku savedlists, missing.record.list
+      write missing.records to savedlists, missing.record.list
+   end
+
+   @system.return.code = records.updated
+
+exit.update.record:
+   if tty.modes # '' then ttyset tty.modes
+
+final.exit:
+   return to final.exit
+
+*****************************************************************************
+* Verify a select list
+
+verify:
+   display "  First record is '" : id : "'"
+   prompt ""
+   loop
+      display "Do you wish to continue (Y or N, default N)? " :
+      input yn
+      yn = upcase(yn)
+   until yn = "Y" or yn = "N" or yn = ""
+   repeat
+
+   return
+
+*****************************************************************************
+* DO.UPDATE
+
+do.update:
+   equate RECORD.LOCKED to 1
+   equate RECORD.FOUND  to 2
+   equate RECORD.MISSING to 3
+
+   if first then
+      if no.page then dummy = @(0,0)
+      do.stars = (lptr >= 0 or not(reporting)) and (mode # INQUIRY.MODE)
+
+      if do.stars then
+         display "One * represents 10 records."
+         report.level = 10
+      end
+      first = @false
+   end
+
+   readu rec from file, id locked read.status = RECORD.LOCKED
+   then read.status = RECORD.FOUND
+   else read.status = RECORD.MISSING
+
+   if read.status = RECORD.LOCKED then
+      if wait then
+         readu rec from file, id then read.status = RECORD.FOUND
+         else read.status = RECORD.MISSING
+      end else
+         if reporting or mode = INQUIRY.MODE then
+            print on lptr "Record " : id : " locked by user " : status()
+         end
+         locked.records<-1> = id
+         return
+      end
+   end
+
+   if read.status = RECORD.FOUND then
+      new.record = @false
+      if reporting then
+         print on lptr "Start update of record '" : id : "'"
+      end
+   end else
+      if creating then
+         new.record = @true
+         if reporting then
+            print on lptr "Creating record '" : id : "'"
+         end
+      end else
+         release file, id
+         if reporting or mode = INQUIRY.MODE then
+            print on lptr "Record " : id : " not found."
+         end
+         missing.records<-1> = id
+         return
+      end
+   end
+
+   new.id = id
+   for field.index = 1 to num.fields
+      tgt.fld = tgt.loc<field.index>
+
+      * Process source item
+
+      if reporting and tgt.fld then
+         print on lptr "  Field " : tgt.names<field.index> :
+      end
+
+      type = src.types<field.index>
+      loc = src.loc<field.index>
+      fld.conv = src.convs<field.index>
+      src.multi.valued = (src.mv<field.index> = "M")
+
+      begin case
+         case type = LITERAL.ITEM
+            new.value = loc
+
+         case type = FIELD.ITEM
+            new.value = if loc then rec<loc> else id
+            if len(fld.conv) then
+               if src.multi.valued then new.value = oconvs(new.value, fld.conv)
+               else new.value = oconv(new.value, fld.conv)
+            end
+
+         case type = ITYPE.ITEM
+            @record = rec
+            @id = new.id
+            new.value = itype(itypes(loc))
+            if len(fld.conv) then
+               if src.multi.valued then new.value = oconvs(new.value, fld.conv)
+               else new.value = oconv(new.value, fld.conv)
+            end
+
+         case type = DELETE.ITEM
+            fld = tgt.loc<field.index>
+            if reporting and not(new.record) then
+               print on lptr " deleted. Was '" : rec<fld> : "'"
+            end
+            del rec<fld>
+            continue
+      end case
+
+      * Process target
+
+      if tgt.fld = 0 then
+         readvu dummy from file, new.value, 0 locked check.status = RECORD.LOCKED
+         then check.status = RECORD.FOUND
+         else check.status = RECORD.MISSING
+
+         if check.status = RECORD.LOCKED then
+            if wait then
+               readvu dummy from file, new.value, 0 then check.status = RECORD.FOUND
+               else check.status = RECORD.MISSING
+            end else
+               if reporting or mode = INQUIRY.MODE then
+                  print on lptr "Target record '" : new.value : "' for rename of '" : id : "' locked by user " : status()
+               end
+               return
+            end
+         end
+
+         if check.status = RECORD.FOUND then
+            if not(overwriting) then
+               print on lptr "Target record '" : new.value : "' for rename of '" : id : "' already exists"
+               return
+            end
+         end
+
+         new.id = new.value
+      end else
+         conv = tgt.convs<field.index>
+         tgt.multi.valued = (tgt.mv<field.index> = "M")
+
+         if len(conv) then
+            if reporting and not(new.record) then
+               if src.multi.valued then
+                  print on lptr " was '" : oconvs(rec<tgt.fld>, conv) : "'," :
+               end else
+                  print on lptr " was '" : oconv(rec<tgt.fld>, conv) : "'," :
+               end
+            end
+
+            if len(new.value) then
+               if tgt.multi.valued then
+                  gosub iconvs
+               end else
+                  new.value = iconv(new.value, conv)
+                  conversion.status = status()
+               end
+            end else
+               conversion.status = 0
+            end
+
+            if reporting then
+               if src.multi.valued then
+                  print on lptr " now '" : oconvs(new.value, conv) : "'"
+               end else
+                  print on lptr " now '" : oconv(new.value, conv) : "'"
+               end
+            end
+
+            if conversion.status then
+               if reporting then print on lptr "  Warning: data conversion error."
+               else
+                  print on lptr
+                  print on lptr "Warning: data conversion error in field " : tgt.fld : " of record " : id
+               end
+            end
+         end else
+            if reporting then
+               if not(new.record) then
+                  print on lptr " was '" : rec<tgt.fld> : "'," :
+               end
+               print on lptr " now '" : new.value : "'"
+            end
+         end
+
+         rec<tgt.fld> = new.value
+      end
+   next field.index
+
+   if new.id:'x' # id:'x' then   ;* force string comparison
+      delete file, id    ;* Delete old record
+      write rec to file, new.id
+      if reporting then
+         print on lptr "  Completed update of record '" : id : "'. Renamed as '" : new.id : "'"
+      end
+   end else
+      write rec to file, id
+      if reporting then
+         print on lptr "  Completed update of record '" : id : "'"
+      end
+   end
+
+   records.updated += 1
+
+   if do.stars then
+      if rem(records.updated, report.level) = 0 then
+         display "*" :
+         if records.updated = 500 then
+            display
+            display "500 records updated so far.  One * now represents 100 records."
+            report.level = 100
+         end
+      end
+   end
+
+   return
+
+* *****************************************************************************
+*                          Visual mode processing
+* *****************************************************************************
+
+visual.mode:
+   * Process any remaining tokens
+
+   loop
+   until end.tokens
+      begin case
+         case keyword = KW$COL.SUP
+            col.sup = @true
+
+         case keyword = KW$ID.SUP
+            id.sup = @true
+
+         case 1
+            display "Unrecognised option keyword : " : token
+            goto exit.update.record
+      end case
+
+      gosub get.token
+   repeat         
+
+   * Get the @UPDATE.RECORD phrase, if it exists
+
+   field.list = ''
+   read dict.rec from dict, '@UPDATE.RECORD' then
+     if dict.rec[1,2] = 'PH' then
+        field.list = change(field(dict.rec, @fm, 2, 9999), '_':@fm, ' ')
+        field.list = convert(' ', @fm, trim(field.list))
+
+        if len(field.list) then
+           loop
+              remove dict.id from field.list setting delim
+
+              read dict.rec from dict, dict.id then
+                 dict.type.code = upcase(dict.rec[1,1])
+                 begin case
+                    case dict.type.code = 'A' and dict.rec<DICT.A.CORRELATIVE> = ''
+                       gosub add.visual.field
+                    case dict.type.code = 'D'
+                       gosub add.visual.field
+                    case dict.type.code = 'S' and dict.rec<DICT.A.CORRELATIVE> = ''
+                       gosub add.visual.field
+                    case 1
+                       display "Dictionary entry '" : dict.id : "' referenced in @UPDATE.RECORD phrase is not of suitable type"
+                       goto exit.update.record
+                 end case
+              end else
+                 read voc.rec from voc.f, dict.id else
+                    display "Entry '" : dict.id : "' in @UPDATE.RECORD phrase is not in dictionary or VOC"
+                    goto exit.update.record
+                 end
+
+                 if upcase(voc.rec[1,1]) # 'K' then
+                    display "VOC entry '" : dict.id : "' referenced in @UPDATE.RECORD phrase is not a keyword"
+                    goto exit.update.record
+                 end
+
+                 keyword = voc.rec<2>
+                 begin case
+                    case keyword = KW$COL.SUP
+                       col.sup = @true
+
+                    case keyword = KW$ID.SUP
+                       id.sup = @true
+
+                    case 1
+                       display "Unrecognised option keyword : '" : token : "' in @UPDATE.RECORD phrase"
+                       goto exit.update.record
+                 end case
+              end
+           while delim
+           repeat
+        end
+     end
+   end
+
+   * Process the dictionary if we have not fields from @UPDATE.RECORD phrase
+
+   if loc = '' then
+      select dict
+      loop
+         readnext dict.id else exit
+
+         read dict.rec from dict, dict.id else
+            display "Unable to read dictionary record " : dict.id
+            goto exit.update.record
+         end
+
+         dict.type.code = upcase(dict.rec[1,1])
+         begin case
+            case dict.type.code = 'A' and dict.rec<DICT.A.CORRELATIVE> = ''
+               gosub add.visual.field
+            case dict.type.code = 'D'
+               gosub add.visual.field
+            case dict.type.code = 'S' and dict.rec<DICT.A.CORRELATIVE> = ''
+               gosub add.visual.field
+         end case
+      repeat
+   end
+
+   * Impose a limit on the display name
+
+   if not(col.sup) then
+      if name.len > 20 then
+         name.len = 20
+         display.names = substrings(display.names, 1, name.len)
+      end
+   end
+
+   indent = loc.len + 2
+   if not(col.sup) then indent += name.len + 2
+   if not(id.sup) then
+      indent += id.len + 2
+      if indent > 40 then  ;* Impose a limit on the id length
+         id.len = indent - (loc.len + name.len + 6)
+         field.ids = substrings(field.ids, 1, id.len)
+         indent = loc.len + id.len + 4
+         if not(col.sup) then indent += name.len + 2
+      end
+   end
+
+   * Pre-format the id and display name
+
+   loc.fmt = loc.len:'R'
+   if not(id.sup) then field.ids = fmts(field.ids, id.len:'L')
+   if not(col.sup) then display.names = fmts(display.names, name.len:'L')
+
+   * Process the records
+
+   lines = dcount(loc, @fm)
+   if lines = 0 then
+      display "No fields to display / edit"
+      goto exit.update.record
+   end
+
+   width = @lptrwide - indent - 1
+   if width < 10 then
+      stop 'Page width too small'
+      goto exit.update.record
+   end
+   pan.increment = int(width / 2)
+
+   begin case
+      case mode = ID.MODE
+         loop
+            id = remove(id.list, id.delim)
+            gosub process.record
+         until quit.all
+         while id.delim
+         repeat
+
+      case mode = ALL.MODE
+         select file
+         readnext id then
+            display 'Processing all records.' :
+            gosub verify
+            if yn # 'Y' then
+               clearselect
+               goto exit.update.record
+            end
+
+            loop
+               gosub process.record
+            until quit.all
+               readnext id else exit
+            repeat
+            clearselect
+         end
+
+      case mode = INQUIRY.MODE
+         prompt ""
+         id.list = ''
+         loop
+            display "Record id: " :
+            input id
+         while len(id)
+            gosub process.record
+         until quit.all
+         repeat
+   end case
+
+   return
+
+* *****************************************************************************
+* ADD.VISUAL.FIELD  -  Add a field for visual mode display
+
+add.visual.field:
+   fno = dict.rec<DICT.LOC>
+   if fno # 0 and fno matches '1N0N' then    ;* 0416
+      if fno # 9998 and fno # 9999 then
+         locate fno in loc<1> by 'AR' setting pos else
+            ins fno before loc<pos>
+            if len(fno) > loc.len then loc.len = len(fno)
+
+            ins dict.id before field.ids<pos>
+            if len(dict.id) > id.len then id.len = len(dict.id)
+
+            begin case
+               case dict.type.code = 'A' or dict.type.code = 'S'
+                  name = convert('ýüû','   ', dict.rec<DICT.A.DISPLAY.NAME>)
+                  ins name before display.names<pos>
+                  if len(name) > name.len then name.len = len(name)
+
+                  ins dict.rec<DICT.A.WIDTH>:dict.rec<DICT.A.JUSTIFY> before formats<pos>
+
+                  ins dict.rec<DICT.A.CONV> before convs<pos>
+
+                  ins 'M' before sm<pos>
+
+                  ins dict.rec<DICT.A.ASSOC> before assoc<pos>
+
+               case dict.type.code = 'D'
+                  name = convert('ýüû','   ', dict.rec<DICT.DISPLAY.NAME>)
+                  ins name before display.names<pos>
+                  if len(name) > name.len then name.len = len(name)
+
+                  ins dict.rec<DICT.FORMAT> before formats<pos>
+
+                  ins dict.rec<DICT.CONV> before convs<pos>
+
+                  ins dict.rec<DICT.S.M>[1,1] before sm<pos>
+
+                  ins dict.rec<DICT.ASSOC> before assoc<pos>
+            end case
+         end
+      end
+   end
+
+   return
+
+* ****************************************************************************
+* PROCESS.RECORD
+
+process.record:
+   new.record = @false
+   found = @true
+
+   readu rec from file, id locked
+      display "Record '" : id : "' is locked by user " : status()
+      loop
+         display 'Wait for lock to be released? ' :
+         input yn
+         yn = upcase(yn)
+      until yn = 'Y' or yn = 'N'
+         display 'Y or N only'
+      repeat
+      if yn = 'N' then return
+      readu rec from file, id else found = @false
+   end else
+      found = @false
+   end
+
+   if not(found) then
+      loop
+         display "Record '" : id : "' not found.  Create it? " :
+         input yn
+         yn = upcase(yn)
+      until yn = 'Y' or yn = 'N'
+         display 'Y or N only'
+      repeat
+
+      if yn = 'N' then
+         release file, id
+         return
+      end
+
+      new.record = @true
+   end
+
+   field.changed = @false
+   record.updated = @false
+   clipboard = ''
+   mark.line = -1
+
+   if dict.flag then full.name = 'DICT ' : file.name : ' ' : id
+   else full.name = file.name : ' ' : id
+
+   gosub clear.screen
+   gosub refresh.all
+
+   col = 1 ; top.line = 1 ; pan = 1
+   line = 1 ; gosub get.current
+   quit = @false
+
+   if new.record then
+      message = 'New record'
+      gosub message.wait
+   end
+
+   loop
+      line.len = len(current.line)
+      gosub update.screen
+      gosub place.cursor
+
+      gosub get.key
+      last.action = action
+      last.n = n
+      last.c = c
+
+      on action gosub a.down,          ;* Return key
+                      a.home,          ;* Goto start of line
+                      a.end,           ;* Goto end of line
+                      a.left,          ;* Cursor left
+                      a.right,         ;* Cursor right
+                      a.up,            ;* Cursor up
+                      a.down,          ;* Cursor down
+                      a.top,           ;* Goto top
+                      a.bottom,        ;* Goto bottom
+                      a.page.up,       ;* Up by one page
+                      a.page.down,     ;* Down by one page
+                      a.delete,        ;* Delete character
+                      a.backspace,     ;* Backspace character
+                      a.kill,          ;* Delete to end of line
+                      a.save,          ;* Save record
+                      a.quit,          ;* Quit
+                      a.overlay,       ;* Toggle overlay mode
+                      a.refresh,       ;* Refresh screen
+                      a.expand,        ;* Expand character
+                      a.command,       ;* Command
+                      a.cancel,        ;* Cancel
+                      a.insert,        ;* Insert character
+                      a.mark,          ;* Mark start of region
+                      a.paste,         ;* Paste
+                      a.goto           ;* Goto field/value/subvalue
+   until quit or quit.all
+   repeat
+
+   display @(-1) :
+
+   release file, id
+
+   return
+
+* *****************************************************************************
+* a.home  -  Goto start of line
+
+a.home:
+   col = 1
+   return
+
+* *****************************************************************************
+* a.end  -  Goto end of line
+
+a.end:
+   col = line.len + 1
+   return
+
+* *****************************************************************************
+* a.left  -  Cursor left
+
+a.left:
+   if col > line.len then col = line.len + 1
+   if col > 1 then col -= 1
+   return
+
+* *****************************************************************************
+* a.right  -  Cursor right
+
+a.right:
+   if col > line.len then col = line.len + 1
+   if col <= line.len then col += 1
+   return
+
+* *****************************************************************************
+* a.up  -  Cursor up
+
+a.up:
+   gosub save.current
+   if invalid.data then return
+   if line > 1 then
+      line -= 1
+      gosub get.current
+   end
+   return
+
+* *****************************************************************************
+* a.down  -  Cursor down
+
+a.down:
+   gosub save.current
+   if invalid.data then return
+   if line < lines then
+      line += 1
+      gosub get.current
+   end
+   return
+
+* *****************************************************************************
+* a.top  -  Goto top
+
+a.top:
+   if line # 1 then
+      gosub save.current
+      if invalid.data then return
+      line = 1
+      col = 1
+      gosub get.current
+   end
+   return
+
+* *****************************************************************************
+* a.bottom  -  Goto bottom
+
+a.bottom:
+   if line # lines then
+      gosub save.current
+      if invalid.data then return
+      line = lines
+      col = 1
+      gosub get.current
+   end
+   return
+
+* *****************************************************************************
+* a.page.up  -  Up by one page
+
+a.page.up:
+   gosub save.current
+   if invalid.data then return
+   line -= displayed.lines
+   if line < 1 then line = 1
+   gosub get.current
+   return
+
+* *****************************************************************************
+* a.page.down  -  Down by one page
+
+a.page.down:
+   gosub save.current
+   if invalid.data then return
+   line += displayed.lines
+   if line > lines then line = lines
+   gosub get.current
+   return
+
+* *****************************************************************************
+* a.delete  -  Delete character
+
+a.delete:
+   if col > line.len then col = line.len + 1
+   current.line = current.line[1, col - 1] : current.line[col + 1, 99999999]
+   line.len -= 1
+   field.changed = @true
+   gosub refresh.line
+   return
+
+* *****************************************************************************
+* a.backspace  -  Backspace character
+
+a.backspace:
+   if col > line.len then col = line.len + 1
+   if col > 1 then
+      col -= 1
+      current.line = current.line[1, col - 1] : current.line[col + 1, 99999999]
+      line.len -= 1
+      field.changed = @true
+      gosub refresh.line
+   end
+   return
+
+* *****************************************************************************
+* a.kill  -  Delete to end of line
+
+a.kill:
+   if col > line.len then col = line.len + 1
+   current.line = current.line[1, col - 1]
+   line.len = col - 1
+   field.changed = @true
+   gosub refresh.line
+   return
+
+* *****************************************************************************
+* a.save  -  Save record
+
+a.save:
+   gosub save.current
+   if invalid.data then return
+   writeu rec to file, id
+   record.updated = @false
+   refresh.file = @true
+   return
+
+* *****************************************************************************
+* a.quit  -  Quit
+
+a.quit:
+   gosub check.quit
+   if not(aborted) then quit = @true
+   return
+
+* *****************************************************************************
+* a.overlay  -  Toggle overlay mode
+
+a.overlay:
+   overlay = not(overlay)
+   return
+
+* *****************************************************************************
+* a.refresh  -  Refresh screen
+
+a.refresh:
+   gosub clear.screen
+   gosub refresh.all
+   return
+
+* *****************************************************************************
+* a.expand  -  Expand character
+
+a.expand:
+   if col > line.len then s = 'End of line'
+   else
+      n = seq(current.line[col, 1])
+      s =  "Char(" : n : ") "
+      if n < 32 then s := trimb(ctrl.char.names[(n * 3) + 1, 3])
+      else if n >= 251 then s := ('TSVFI'[n-250,1]) : 'M'
+   end
+   display @(0, field.line) : srev : fmt(s, "13L") : erev :
+   gosub wait.input
+   gosub refresh.status
+   return
+
+* *****************************************************************************
+* a.command  -  Command
+
+a.command:
+   s = ""
+   prefix = "Command: "
+   gosub get.command
+   if aborted or s = '' then return
+
+   s = convert(' ', @fm, s)
+   u.command = upcase(s)
+   keyword = upcase(s<1>)
+
+   begin case
+      case keyword = "QUIT"
+         gosub check.quit
+         if not(aborted) then quit.all = @true
+
+      case u.command = 'SPOOL'
+         gosub save.current
+         if invalid.data then return
+
+         display srev : @(0,field.line) : ('Wait...' swm1.fmt) : erev :
+
+         printer on
+         ss = full.name
+         if record.updated then ss := ' (modified)'
+         heading ss : "   'T  G'Page 'PL'"  ;* G and S ignored by UV rev 7
+         width = @lptrwide - indent
+
+         for i = 1 to lines
+            pos = loc<i>
+            cnv = convs<i>
+            if len(cnv) then
+               if sm<i> = 'M' then line.data = oconvs(rec<pos>, cnv)
+               else line.data = oconv(rec<pos>, cnv)
+            end else
+               line.data = rec<pos>
+            end
+
+            ss = fmt(pos, loc.fmt) : ': '
+            if not(id.sup) then ss := field.ids<i> : ': '
+            if not(col.sup) then ss := display.names<i> : ': '
+            ss := convert(banned, replacements, line.data[1,width])
+            print ss
+
+            loop
+               line.data = line.data[width+1, 99999999]
+            while len(trim(line.data))
+               print space(indent) : line.data[1, width]
+            repeat
+         next i
+
+         printer off
+         hush on
+         printer close
+         hush off
+
+         display @(0,field.line) : srev : swm1.space : erev :
+
+      case 1
+         gosub clear.screen
+         s = convert(@fm, ' ', s)
+         execute trimf(trimb(s))
+         gosub press.return
+         gosub clear.screen
+         gosub refresh.all
+   end case
+
+   return
+
+* *****************************************************************************
+* a.cancel  -  Cancel
+
+a.cancel:
+   return
+
+* *****************************************************************************
+* a.insert  -  Insert character
+
+a.insert:
+   if col > line.len then col = line.len + 1
+   current.line = current.line[1, col - 1] : c : current.line[col + overlay, 99999999]
+   col += 1
+   field.changed = @true
+   gosub refresh.line
+   return
+
+* *****************************************************************************
+* a.mark  -  Mark start of region and perform copy/cut
+
+a.mark:
+   message = 'Move cursor to after last character in region then press CUT or COPY.'
+   gosub message
+
+   mark.col = col
+   mark.line = line
+   loop
+      gosub update.screen
+      gosub place.cursor
+      gosub get.key
+      begin case
+         case action = K$LEFT
+            if col > mark.col then
+               col -= 1
+               gosub refresh.col
+            end
+
+         case action = K$RIGHT
+            if col <= line.len then
+               gosub refresh.col
+               col += 1
+            end
+
+         case action = K$END
+            col = line.len + 1
+            gosub refresh.region
+
+         case action = K$COPY
+            clipboard = current.line[mark.col, col - mark.col]
+            exit
+
+         case action = K$CUT
+            clipboard = current.line[mark.col, col - mark.col]
+            current.line = current.line[1,mark.col-1] : current.line[col,9999999]
+            line.len = len(current.line)
+            col = mark.col
+            exit
+
+         case action = K$REFRESH
+            gosub clear.screen
+            gosub refresh.all
+
+         case action = K$CANCEL
+            exit
+
+         case 1
+            display @sys.bell :
+      end case
+   repeat
+
+   mark.line = -1
+   gosub refresh.region
+   refresh.file = @true
+
+   return
+
+* *****************************************************************************
+* a.paste  -  Paste text
+
+a.paste:
+   current.line = current.line[1,col-1] : clipboard : current.line[col,9999999]
+   line.len = len(current.line)
+   col += len(clipboard)
+   field.changed = @true
+   gosub refresh.line
+   return
+
+* *****************************************************************************
+* a.goto  -  Goto field/value/subvalue
+
+a.goto:
+   gosub save.current
+   if invalid.data then return
+
+   prefix = 'Field,Value,Subvalue: ' ; s = ''
+   gosub get.string
+   if s = '' or aborted then return
+
+   if index(s, ',', 3) then
+      message = 'Format error in position' ; gosub error
+      return
+   end
+
+   ss = current.line[1,col-1]
+   vpos = count(ss, @vm) + 1           ;* Current value position...
+   svpos = count(ss<1,vpos>, @sm) + 1  ;* ...and subvalue position
+   dflt.vpos = vpos
+
+   * Process field position
+
+   fn = field(s, ',', 1)
+   begin case
+     case fn = '' or fn = '*'
+        fn = line
+
+     case fn matches '1N0N'
+        locate fn in loc<1> setting fn else
+           message = 'Field not displayed' ; gosub error
+           return
+        end
+        dflt.vpos = 1
+
+     case 1
+        ss = convert(' ', '', field.ids)
+        locate fn in ss<1> setting fn else
+           message = 'Field not displayed' ; gosub error
+           return
+        end
+        dflt.vpos = 1
+   end case
+
+   * Process value position
+
+   vn = field(s, ',', 2)
+   begin case
+     case vn = ''        ;* Use default (1 if fn specified, else current)
+        vn = dflt.vpos
+
+     case vn = '*'
+        vn = vpos        ;* Keep value position unchanged
+
+     case vn matches '1N0N' and vn > 0
+        vn += 0
+
+     case 1
+        message = 'Invalid value position' ; gosub error
+        return
+   end case
+
+   * Process subvalue position
+
+   svn = field(s, ',', 3)
+   begin case
+     case svn = ''
+        svn = 1
+
+     case svn = '*'
+        svn = svpos
+
+     case svn matches '1N0N' and svn > 0
+        svn += 0
+
+     case 1
+        message = 'Invalid subvalue position' ; gosub error
+        return
+   end case
+
+   * fn holds line position of desired field
+   line = fn
+   gosub get.current
+   col = 1
+
+   * Find required value/subvalue
+
+   if vn = 1 then vx = 1
+   else
+      vx = index(current.line, @vm, vn - 1)
+      if vx then vx += 1
+   end
+
+   if svn = 1 then svx = 1
+   else
+      svx = index(current.line<1,vn>, @svm, svn - 1)
+      if svx then svx += 1
+   end
+
+   if vx = 0 or svx = 0 then
+      loop
+         prefix = 'Value/subvalue not present. Extend item?'
+         s = ''
+         gosub get.string
+         if aborted or s = '' then return
+         s = upcase(s)
+      until s = 'Y' or s = 'N'
+      repeat
+
+      if s = 'N' then return
+
+      current.line<1,vn,svn> = ''
+      field.changed = @true
+      gosub refresh.line
+
+      if vn = 1 then vx = 1
+      else
+         vx = index(current.line, @vm, vn - 1)
+         if vx then vx += 1
+      end
+
+      if svn = 1 then svx = 1
+      else
+         svx = index(current.line<1,vn>, @svm, svn - 1)
+         if svx then svx += 1
+      end
+   end
+
+   col = vx + svx - 1
+
+   return
+
+* ****************************************************************************
+check.quit:
+   aborted = @false
+   if record.updated then
+      loop
+         prefix = "Record changed.  Quit without saving? "
+         s = ""
+         gosub get.string
+         s = upcase(s)
+         begin case
+            case aborted or (s = "N") or (s = "NO")
+               aborted = @true
+               return
+            case (s = "Y") or (s = "YES")
+               exit
+            case 1
+               display @sys.bell :
+         end case
+      repeat
+   end
+   return
+
+*****************************************************************************
+* UPDATE.SCREEN  -  Update screen image
+
+update.screen:
+
+   * Horizontal panning checks
+
+   if col > line.len then pan.col = line.len + 1
+   else pan.col = col
+   if (pan.col < pan) or (pan.col >= (pan + screen.width - indent)) then
+      pan = (int((pan.col - 1) / pan.increment) * pan.increment) - 20
+      if pan <= 0 then pan = 1
+      gosub refresh.all
+   end
+
+   * Vertical scrolling checks
+
+   if (line < top.line) or (line >= (top.line + displayed.lines)) then
+      top.line = line - 10
+      if top.line < 1 then top.line = 1
+      gosub refresh.all
+   end
+
+   if not(record.updated) then   ;* Ensure update flag shown on first change
+      if field.changed then
+         refresh.file = @true
+         record.updated = @true
+      end
+   end
+
+
+   * Refresh lines that have changed
+
+   for ln = 0 to last.data.line
+      i = ln + 1
+
+      gosub check.keyready ; if keyready then goto exit.update.screen
+
+      if refresh(i) then
+         n = top.line + ln
+         if n > lines then                ;* Off bottom of items to display
+            if image(i) # sw.space then
+               display @(0, ln) : @(-4) :
+               image(i) = sw.space
+            end
+         end else                         ;* Display this item
+            pos = loc<n>
+            if n = line then line.data = current.line[pan, screen.width - indent]
+            else
+               cnv = convs<n>
+               if len(cnv) then
+                  if sm<n> = 'M' then line.data = oconvs(rec<pos>, cnv)
+                  else line.data = oconv(rec<pos>, cnv)
+               end else
+                  line.data = rec<pos>
+               end
+               line.data = line.data[pan, screen.width - indent]
+            end
+
+            ss = fmt(pos, loc.fmt) : ': '
+            if not(id.sup) then ss := field.ids<n> : ': '
+            if not(col.sup) then ss := display.names<n> : ': '
+            ss := convert(banned, replacements, line.data)
+
+            gosub zoned.update
+         end
+         refresh(i) = @false
+      end
+   next ln
+
+   * File line
+
+   if refresh.file then
+      gosub check.keyready  ; if keyready then goto exit.update.screen
+      ss = if record.updated then "*" else " "
+      ss := fmt(full.name[1,screen.width - 2], (screen.width - 2):'L')
+      ln = file.line
+      display srev :
+      n = 0 ; gosub zoned.update
+      display erev :
+      refresh.file = @false
+   end
+
+   * Field line
+*        0         1         2         3         4         5         6         7
+*        01234567890123456789012345678901234567890123456789012345678901234567890123456789
+*        <fno,vno,sno> | conversion        | fmt               | S | Assoc            |O
+
+   gosub check.keyready ; if keyready then goto exit.update.screen
+
+   s = current.line[1,col-1]
+   vpos = count(s, @vm) + 1
+   spos = count(s<1,vpos>, @sm) + 1
+
+   ss = '              |                   |                   |   |                  | '
+   ss[1,13] = '<' : loc<line> : ',' : vpos : ',' : spos : '>'
+   ss[17,16] = convs<line>
+   ss[37,16] = formats<line>
+   ss[57,1] = sm<line>
+   ss[60,16] = assoc<line>
+   if overlay then ss[79,1] = 'O'
+
+   ln = field.line
+   display srev :
+   n = 0 ; gosub zoned.update
+   display erev :
+
+exit.update.screen:
+   return
+
+
+******************************************************************************
+* Position cursor
+
+place.cursor:
+   if col > line.len then
+      cx = (line.len + 1) - pan
+      if cx < 0 then cx = 0
+   end else
+      cx = col - pan
+   end
+
+   display @(cx + indent, line - top.line) :
+
+   return
+
+* *****************************************************************************
+* zoned.update  -  Update mimimum area of screen
+* ln = line number
+* n = index into line related tables (cf line variable)
+* ss = data for line
+
+zoned.update:
+   left = 0
+   image.line = image(ln + 1)
+   text.line = ss : sw.space
+
+   if n = mark.line then
+      for cl = 1 to screen.width
+         if text.line[cl,1] # image.line[cl,1] then
+            left = cl ; right = cl
+            loop
+               cl += 1
+            while cl <= screen.width
+               if text.line[cl,1] # image.line[cl,1] then right = cl
+            repeat
+
+            w = (right - left) + 1
+            zone.string = text.line[left,w]
+
+            * The position of column x (from 1) of the data field in
+            * zone.string is:
+            * x + indent - left - pan + 2
+
+            mcz = mark.col + indent - left - pan + 2  ;* Start of region in zone
+            rw = col - mark.col                    ;* Region width
+            cz = mcz + rw           ;* First char after region
+
+            crt @(left-1, ln) :
+            if mcz > 1 then crt zone.string[1, mcz - 1] : ;* Bit to left of region
+
+            if mcz > 0 then  ;* Start is at or beyond start of zone
+               if mcz <= w then
+                  crt srev : zone.string[mcz, rw] : erev :    ;* Bit in region
+               end
+            end else
+               rw += mcz - 1  ;* Reduce width in zone
+               if rw > 0 then crt srev : zone.string[1, rw] : erev :
+            end
+
+            if cz > 0 and cz <= w then
+               crt zone.string[cz, 9999] : ;* Bit to right of region
+            end
+
+            image(ln+1)[left,w] = zone.string
+            exit
+         end
+      next cl
+   end else
+      for cl = 1 to screen.width
+         if text.line[cl,1] # image.line[cl,1] then
+            left = cl ; right = cl
+            loop
+               cl += 1
+            while cl <= screen.width
+               if text.line[cl,1] # image.line[cl,1] then right = cl
+            repeat
+
+            w = (right - left) + 1
+            zone.string = text.line[left,w]
+            crt @(left-1, ln) : zone.string :
+            image(ln+1)[left,w] = zone.string
+            exit
+         end
+      next cl
+   end
+   return
+
+*****************************************************************************
+* REFRESH.BELOW  -  Set refresh flags for current line and below
+
+refresh.below:
+   i = line - top.line
+   if i < 0 then i = 0
+   loop
+   while i <= last.data.line
+      i += 1
+      refresh(i) = @true
+   repeat
+   return
+
+*****************************************************************************
+refresh.line:
+   refresh.line = line - top.line
+   if refresh.line >= 0 and refresh.line <= last.data.line then
+      refresh(refresh.line + 1) = @true
+   end
+   return
+
+
+refresh.col:
+   refresh.line = line - top.line
+   if refresh.line >= 0 and refresh.line <= last.data.line then
+      refresh(refresh.line + 1) = @true
+      image(refresh.line + 1)[col - pan + indent + 1, 1] = char(255)
+   end
+   return
+
+refresh.region:
+   refresh.line = line - top.line
+   if refresh.line >= 0 and refresh.line <= last.data.line then
+      refresh(refresh.line + 1) = @true
+      image(refresh.line + 1)[mark.col - pan + indent + 1, col - mark.col] = str(char(255), col - mark.col)
+   end
+   return
+
+*****************************************************************************
+* REFRESH.ALL  -  Set all refresh flags
+
+clear.screen:
+   mat image = sw.space
+   display erev : @(-1) :
+   return
+
+refresh.all:
+   mat refresh = @true
+
+refresh.status:
+   ss = str(char(255), screen.width.minus.1) : ' '
+   image(file.line + 1) = ss   ; refresh.file = @true
+   image(field.line + 1) = ss
+   return
+
+* *****************************************************************************
+* get.key  - Get a key sequence
+* Returns action, c and n
+
+get.key:
+   loop
+      gosub getch
+
+parse.key:
+      n = seq(c)
+      action = seq(action.list[n,1])
+      if action then exit       ;* Single character action
+      key.string = c 
+
+      loop
+         locate key.string in key.bindings<1> by 'AL' setting i then
+            action = actions<i>
+            goto key.found
+         end
+
+      while key.bindings<i>[1,len(key.string)] = key.string
+         gosub getch
+         key.string := upcase(c)
+      repeat
+
+      display @sys.bell :
+   repeat
+
+key.found:
+   begin case
+      case action = K$REPEAT
+         if last.action then
+            action = last.action
+            n = last.n
+            c = last.c
+         end else
+           display @sys.bell :
+           goto get.key
+         end
+
+      case action = K$QUOTE
+         action = K$INSERT
+         display srev : @(0, file.line) : ("Quote char" swm1.fmt) : erev :
+         gosub place.cursor
+
+         gosub getch
+         n = seq(c)
+         u.c = upcase(c)
+         begin case
+            case n >= 48 and n <= 50   ;* Digit 0 - 2
+               n -= 48
+               for i = 1 to 2
+                  display srev : @(11, file.line) : fmt(n, "3'0'R") : erev :
+                  gosub place.cursor
+                  gosub getch
+               while index("0123456789", c, 1)
+                  n = (n * 10) + (seq(c) - 48)
+               next i
+
+               if n < 254 then  ;* Allow all except field mark and item mark
+                  c = char(n)
+               end else
+                  display @sys.bell :
+                  refresh.file = @true
+                  gosub update.screen
+                  goto get.key   ;* Start again
+               end
+
+            case u.c = 'V'
+               c = @vm ; n = 253
+
+            case u.c = 'S'
+               c = @sm ; n = 252
+
+            case u.c = 'T'
+               c = @tm ; n = 251
+
+            case n >= 254               ;* Field mark or item mark
+               display @sys.bell :
+               refresh.file = @true
+               gosub update.screen
+               goto get.key   ;* Start again
+         end case
+
+         display srev : @(0, file.line) : swm1.space : erev :
+         refresh.file = @true
+   end case
+
+   return
+
+* *****************************************************************************
+check.keyready:
+   input keyready, -1
+   return
+
+*****************************************************************************
+* getch  -  Get a single keystroke to c
+
+getch:
+   if len(pending.char) then
+      c = pending.char[1,1]
+      pending.char = pending.char[2,999999]
+   end else
+      c = keyin()
+   end
+
+   return
+
+*****************************************************************************
+* PRESS.RETURN - Display "Press return..." message and wait
+* WAIT.RETURN  - Wait until return key is pressed
+
+press.return:
+   display 'Press RETURN to return to MODIFY.'
+
+wait.return:
+   loop
+      gosub get.key
+   until action = K$RETURN or action = K$CANCEL
+   repeat
+
+   return
+
+*****************************************************************************
+get.command:
+   stack.ptr = 0
+   goto get.string.common
+
+get.string:
+   stack.ptr = -1
+
+get.string.common:
+* Save get.key return values
+   gs.action = action
+   gs.c = c
+   gs.n = n
+
+   gs.width = screen.width.minus.1 - len(prefix)
+   gs.pan = 1
+   gs = s
+
+   aborted = @false
+   gosub update.screen
+
+   ss = prefix : gs[1,gs.width]
+   ss = convert(banned, replacements, ss)
+   display srev :
+   ln = field.line
+   n = 0 ; gosub zoned.update
+   display erev :
+
+   display @(len(prefix), field.line) :
+
+   gosub get.key
+   if action = K$RETURN then goto exit.get.string   ;* Use last string
+
+   if action = K$INSERT then gs = ""   ;* Clear unless control character
+   x = 1
+
+   loop
+      begin case
+         case action = K$INSERT
+            if overlay then
+               if x <= len(gs) then gs[x, 1] = c
+               else gs := c
+            end else
+               gs = gs[1, x - 1] : c : gs[x, 999]
+            end
+            x += 1
+
+         case action = K$HOME
+            x = 1
+
+         case action = K$LEFT
+            if x > 1 then x -= 1
+
+         case action = K$DELETE
+            gs = gs[1, x - 1] : gs[x + 1, 999]
+
+         case action = K$END
+            x = len(gs) + 1
+
+         case action = K$RIGHT
+            if x <= len(gs) then x += 1
+
+         case action = K$CANCEL
+            aborted = @true
+            action = 0
+            exit
+
+         case action = K$BACKSPACE
+            if x > 1 then
+               x -= 1
+               gs = gs[1, x - 1] : gs[x + 1, 999]
+            end
+
+         case action = K$KILL
+            gs = gs[1, x - 1]
+
+         case action = K$RETURN
+            exit
+
+         case action = K$REFRESH
+            gosub clear.screen
+            gosub refresh.all
+            gosub update.screen
+
+         case action = K$DOWN and stack.ptr >= 0
+            if stack.ptr > 1 then
+               stack.ptr -= 1
+               gs = command.stack<stack.ptr>
+            end else
+               stack.ptr = 0
+               gs = ''
+            end
+            x = 1
+
+         case action = K$UP and stack.ptr >= 0
+            if stack.ptr < dcount(command.stack, @fm) then
+               stack.ptr += 1
+               gs = command.stack<stack.ptr>
+               x = 1
+            end
+
+         case 1
+            display @sys.bell :
+      end case
+
+      if (x < gs.pan) or (x >= (gs.pan + gs.width)) then
+         gs.pan = (int((x - 1) / pan.increment) * pan.increment) - 20
+         if gs.pan <= 0 then gs.pan = 1
+      end
+
+      ss = prefix : gs[gs.pan, gs.width]
+      ss = convert(banned, replacements, ss)
+      display srev :
+      ln = field.line
+      n = 0 ; gosub zoned.update
+      display erev :
+
+      display @(len(prefix) + x - gs.pan, field.line) :
+      gosub get.key
+   repeat
+
+   if not(aborted) then
+      s = gs
+      if stack.ptr >= 0 then
+         if len(s) and s # command.stack<1> then
+            ins s before command.stack<1>
+            del command.stack<100>
+         end
+      end
+   end
+
+exit.get.string:
+* Restore get.key return values
+   action = gs.action
+   c = gs.c
+   n = gs.n
+   return
+
+* *****************************************************************************
+* yes.no  -  Get yes/no response
+
+yes.no:
+   prefix := ' '
+   loop
+      s = ''
+      gosub get.string
+      c = upcase(s[1,1])
+   until c = "Y" or c = "N" or aborted
+      display @sys.bell :
+   repeat
+
+   yes = (c = "Y")
+
+   return
+
+* ****************************************************************************
+* WAIT.INPUT  -  Wait until a key is pressed
+
+wait.input:
+   if len(pending.char) = 0 then
+      gosub update.screen
+      gosub place.cursor
+      pending.char = keyin()
+   end
+
+   return
+
+* **********************************************************************
+error:
+   display @sys.bell :
+
+message.wait:
+   gosub message
+   gosub wait.input
+   refresh.file = @true
+   return
+
+message:
+   gosub update.screen
+   display srev :
+   ln = file.line
+   ss = (message swm1.fmt)
+   n = 0 ; gosub zoned.update
+   display erev :
+
+   return
+
+*****************************************************************************
+* Set default key bindings
+ 
+set.bindings:
+   action.list = str(char(0), 31) : str(char(K$INSERT), 224)
+   action.list[254,1] = char(0)  ;* Ban field mark
+   action.list[255,1] = char(0)  ;* Ban item mark
+   
+   actions = ''
+   key.bindings = ''
+
+   n = K$HOME      ; c = char(1)           ; gosub bind  ;* Ctrl-A
+   n = K$LEFT      ; c = char(2)           ; gosub bind  ;* Ctrl-B
+   n = K$REPEAT    ; c = char(3)           ; gosub bind  ;* Ctrl-C
+   n = K$DELETE    ; c = char(4)           ; gosub bind  ;* Ctrl-D
+   n = K$END       ; c = char(5)           ; gosub bind  ;* Ctrl-E
+   n = K$RIGHT     ; c = char(6)           ; gosub bind  ;* Ctrl-F
+   n = K$CANCEL    ; c = char(7)           ; gosub bind  ;* Ctrl-G
+   n = K$BACKSPACE ; c = char(8)           ; gosub bind  ;* Ctrl-H (Backspace)
+   n = K$RETURN    ; c = char(10)          ; gosub bind  ;* Ctrl-J (LF)
+   n = K$KILL      ; c = char(11)          ; gosub bind  ;* Ctrl-K
+   n = K$REFRESH   ; c = char(12)          ; gosub bind  ;* Ctrl-L
+   n = K$RETURN    ; c = char(13)          ; gosub bind  ;* Ctrl-M (CR)
+   n = K$DOWN      ; c = char(14)          ; gosub bind  ;* Ctrl-N
+   n = K$OVERLAY   ; c = char(15)          ; gosub bind  ;* Ctrl-O
+   n = K$UP        ; c = char(16)          ; gosub bind  ;* Ctrl-P
+   n = K$QUOTE     ; c = char(17)          ; gosub bind  ;* Ctrl-Q
+   n = K$REPEAT    ; c = char(21)          ; gosub bind  ;* Ctrl-U
+   n = K$PAGE.DOWN ; c = char(22)          ; gosub bind  ;* Ctrl-V
+   n = K$CUT       ; c = char(23)          ; gosub bind  ;* Ctrl-W
+   n = K$QUIT      ; c = char(24):'C'      ; gosub bind  ;* Ctrl-X C
+   n = K$QUIT      ; c = char(24):char(3)  ; gosub bind  ;* Ctrl-X Ctrl-C
+   n = K$OVERLAY   ; c = char(24):'O'      ; gosub bind  ;* Ctrl-X O
+   n = K$SAVE      ; c = char(24):'S'      ; gosub bind  ;* Ctrl-X S
+   n = K$SAVE      ; c = char(24):char(19) ; gosub bind  ;* Ctrl-X Ctrl-S
+   n = K$EXPAND    ; c = char(24):'='      ; gosub bind  ;* Ctrl-X =
+   n = K$PASTE     ; c = char(25)          ; gosub bind  ;* Ctrl-Y
+   n = K$UP        ; c = char(26)          ; gosub bind  ;* Ctrl-Z
+   n = K$DELETE    ; c = char(127)         ; gosub bind  ;* Del
+   n = K$MARK      ; c = char(27):'.'      ; gosub bind  ;* Esc-.
+   n = K$TOP       ; c = char(27):'<'      ; gosub bind  ;* Esc-<
+   n = K$BOTTOM    ; c = char(27):'>'      ; gosub bind  ;* Esc-<
+   n = K$GOTO      ; c = char(27):'G'      ; gosub bind  ;* Esc-G
+   n = K$QUOTE     ; c = char(27):'Q'      ; gosub bind  ;* Esc-Q
+   n = K$PAGE.UP   ; c = char(27):'V'      ; gosub bind  ;* Esc-V
+   n = K$COPY      ; c = char(27):'W'      ; gosub bind  ;* Esc-W
+   n = K$COMMAND   ; c = char(27):'X'      ; gosub bind  ;* Esc-X
+   n = K$PASTE     ; c = char(27):'Y'      ; gosub bind  ;* Esc-Y
+
+   n = K$HOME      ; c = char(209)                           ; gosub bind
+   n = K$END       ; c = char(210)                           ; gosub bind
+   n = K$LEFT      ; c = char(203)                           ; gosub bind
+   n = K$RIGHT     ; c = char(204)                           ; gosub bind
+   n = K$UP        ; c = char(205)                           ; gosub bind
+   n = K$DOWN      ; c = char(206)                           ; gosub bind
+   n = K$OVERLAY   ; c = char(211)                           ; gosub bind
+   n = K$DELETE    ; c = char(212)                           ; gosub bind
+   n = K$PAGE.UP   ; c = char(207)                           ; gosub bind
+   n = K$PAGE.DOWN ; c = char(208)                           ; gosub bind
+
+   return
+
+* *****************************************************************************
+
+bind:
+   if len(c) then
+      if len(c) = 1 then
+         z = action.list[seq(c),1]
+         if z = char(0) or z = char(K$INSERT) then
+            action.list[seq(c),1] = char(n)
+         end
+      end else
+         locate c in key.bindings<1> by 'AL' setting key.posn else
+            ins c before key.bindings<key.posn>
+            ins n before actions<key.posn>
+         end
+      end
+   end
+
+   return
+
+* ****************************************************************************
+* Get current terminal settings and set those we need
+
+get.set.term.state:
+   tty.modes = ttyget()
+   execute "PTERM BREAK OFF"
+
+   return
+
+* *****************************************************************************
+
+get.current:
+   pos = loc<line>
+   cnv = convs<line>
+   if len(cnv) then
+      if sm<line> = 'M' then current.line = oconvs(rec<pos>, cnv)
+      else current.line = oconv(rec<pos>, cnv)
+   end else
+      current.line = rec<pos>
+   end
+   line.len = len(current.line)
+   gosub refresh.line
+   return
+
+* *****************************************************************************
+save.current:
+   invalid.data = @false
+
+   if field.changed then
+      new.value = current.line
+      pos = loc<line>
+      conv = convs<line>
+      if len(conv) then
+         if sm<line> = 'M' then
+            gosub iconvs
+         end else
+            if len(new.value) then
+               new.value = iconv(new.value, conv)
+               conversion.status = status()
+            end else
+               conversion.status = 0
+            end
+         end
+
+         if conversion.status then
+            prefix = 'Data conversion error.  Accept data (Y/N)'
+            display @sys.bell :
+            gosub yes.no
+            if not(yes) then
+               invalid.data = @true
+               return
+            end
+         end
+      end
+
+      rec<pos> = new.value
+      field.changed = @false
+      gosub refresh.line
+   end
+   return
+
+* *****************************************************************************
+* Command line parser
+
+get.token:
+   if token.index > num.tokens then
+      token = ""
+      keyword = -1
+      literal.string = @false
+      end.tokens = @true
+   end else
+      token = tokens<token.index>
+      keyword = keywords<token.index>
+      literal.string = literal.tokens<token.index>
+      end.tokens = @false
+      token.index += 1
+   end
+
+   return
+
+
+split.tokens:
+   s = field(@sentence, " ", 2, 9999)
+   tokens = ""
+   keywords = ""
+   literal.tokens = ""
+   num.tokens = 0
+   token.index = 1
+   end.tokens = @false
+
+   loop
+   while len(s)
+      c = s[1, 1]
+      begin case
+         case c = " "
+            s = s[2, 999999]
+
+         case (c = '"') or (c = "'")      ;* Quoted string
+            i = index(s, c, 2)
+            if i = 0 then
+               stop "Unpaired string quote"
+               goto exit.update.record
+            end
+
+            num.tokens += 1
+            tokens<num.tokens> = s[2, i - 2]
+            keywords<num.tokens> = -1
+            literal.tokens<num.tokens> = @true
+            s = trimf(s[i + 1, 999999])
+
+         case c = ","
+            num.tokens += 1
+            tokens<num.tokens> = ","
+            keywords<num.tokens> = -1
+            literal.tokens<num.tokens> = @false
+            s = trimf(s[2,999999])
+
+         case 1                           ;* Simple token
+            i = index(s, " ", 1)
+            if i = 0 then i = 999999
+            j = index(s[1, i - 1], ",", 1)
+            if j then i = j
+
+            num.tokens += 1
+            token = s[1, i - 1]
+            tokens<num.tokens> = token
+            literal.tokens<num.tokens> = @false
+            keyword = -1
+            if len(token) then
+               read voc.rec from voc.f, upcase(token) then
+                  if upcase(voc.rec[1,1]) = "K" then keyword = voc.rec<2>
+               end
+            end
+            keywords<num.tokens> = keyword
+            s = trimf(s[i, 999999])
+      end case
+   repeat
+
+   return
+
+* *****************************************************************************
+* Check for VOC keyword entry, adding default if absent
+
+check.voc:
+   read voc.rec from voc.f, id else
+      voc.rec = "K" : @fm : keyword
+      recordlocku voc.f, id
+      write voc.rec to voc.f, id
+   end
+
+   return
+
+* *****************************************************************************
+
+iconvs:
+   conversion.status = 0
+   if len(new.value) then
+      ext = new.value
+      new.value = ''
+      loop
+         ext.new.value = remove(ext, delim)
+         if ext.new.value # '' then
+            part.value = iconv(ext.new.value, conv)
+            if status() then
+               new.value := ext.new.value
+               conversion.status = status()
+            end else
+               new.value := part.value
+            end
+         end
+      while delim
+         new.value := char(256 - delim)
+      repeat
+   end
+   return
+
+   * Avoid compiler warnings
+   dummy = dummy
+end
+
+* END-CODE

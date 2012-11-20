@@ -1,0 +1,367 @@
+* DELETEF
+* DELETE.FILE verb
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 02 Nov 06  2.4-15 VOC record types now case insensitive.
+* 28 Apr 06  2.4-2 0483 Do not delete dictionary when deleting specific part
+*                  of a multifile.
+* 11 Oct 05  2.2-14 Delete relocated indices.
+* 30 Aug 05  2.2-9 Check if file is open before deleting it.
+* 10 Aug 05  2.2-7 Added use of NO.SEL.LIST.QUERY option.
+* 28 Mar 05  2.1-11 User PARSER$MFILE.
+* 13 Oct 04  2.0-5 Use message handler.
+* 01 Oct 04  2.0-3 Added multifile support.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* DELETE.FILE { DICT | DATA } voc.name { FORCE } { NO.QUERY }
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program $DELETE.FILE
+$catalog $DELETEF
+
+$include int$keys.h
+$include parser.h
+$include syscom keys.h
+$include syscom err.h
+
+$define max.name.len 12
+
+   parser = "!PARSER"
+
+   @system.return.code = -ER$ARGS      ;* Preset for argument errors
+
+   banned.files = 'VOCý$ACC'
+   no.query = @false
+
+   * Open VOC here rather than using @VOC so that it will be closed on
+   * exit avoiding the need for explicit releases on locks in error paths.
+
+   open 'VOC' to voc.f else stop sysmsg(2026) ;* Cannot open VOC
+
+   prompt ''
+
+   delete.dict = @true
+   delete.data = @true
+   file.name = ''
+   component = ''
+   deleting.multifile.element = @false   ;* 0483
+   force = @false
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+
+   call @parser(PARSER$MFILE, token.type, token, keyword)
+   begin case
+      case keyword = KW$DATA
+         delete.dict = @false
+         call @parser(PARSER$MFILE, token.type, token, keyword)
+
+      case keyword = KW$DICT
+         delete.data = @false
+         call @parser(PARSER$MFILE, token.type, token, keyword)
+   end case
+
+   loop
+   while token.type # PARSER$END
+      begin case
+         case keyword = KW$NO.QUERY
+            no.query = @true
+
+         case keyword = KW$FORCE
+            force = @true
+
+         case 1
+            if len(file.name) then
+               stop sysmsg(2018, token) ;* Unexpected token (xx)
+            end
+
+            file.name = field(token, ',', 1)
+            component = field(token, ',', 2)
+      end case
+
+      call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   repeat   
+
+
+   if file.name = '' then       ;* Delete from select list?
+      if not(selectinfo(0, sl$active)) then
+         stop sysmsg(2102) ;* File name required
+      end
+
+      readnext file.name then
+         if not(no.query) and not(option(OPT.NO.SEL.LIST.QUERY)) then
+            loop
+               display sysmsg(2050, file.name) :  ;* Use active select list (First item 'xx')?
+               input yn
+               yn = upcase(yn[1,1])
+            until yn = 'Y' or yn = 'N'
+            repeat
+            if yn = "N" then
+               clearselect       ;* Remove list as we have taken one item
+               stop
+            end
+         end
+
+         @system.return.code = 0
+
+         loop
+            component = ''
+            deleting.multifile.element = @false
+            gosub delete.file
+            readnext file.name else exit
+         repeat
+      end
+   end else                                  ;* File name provided
+      @system.return.code = 0
+      gosub delete.file
+   end
+
+   if @system.return.code then stop
+
+   return
+
+
+*=============================================================================
+* DELETE.FILE  -  Do the actual delete
+
+delete.file:
+    * Check that VOC entry exists for this name
+
+    readu voc.rec from voc.f, file.name else
+      release voc.f, file.name
+      display sysmsg(6130, file.name) ;* No VOC record found for xx
+      file.name = upcase(file.name)
+      readu voc.rec from voc.f, file.name then
+         if upcase(voc.rec[1,1]) = "F" then
+            loop
+               display sysmsg(6131, file.name) :  ;* Use file 'xx'?
+               input yn
+               yn = upcase(yn[1,1])
+            until yn = 'Y' or yn = 'N'
+            repeat
+            if yn = "Y" then goto delete.upcased.file
+         end
+      end
+
+      @system.return.code = -ER$STOPPED
+      return
+   end
+
+   if upcase(voc.rec[1,1]) # "F" then
+      @system.return.code = -ER$VNF
+      stop sysmsg(2015, file.name) ;* VOC record xx is not a file
+   end
+
+delete.upcased.file:
+
+   locate file.name in banned.files<1,1> setting pos then
+      @system.return.code = -ER$VNF
+      stop sysmsg(6132, file.name) ;* Cannot delete system file xx
+   end
+
+   dummy = ospath("", os$flush.cache)
+
+   if delete.data then
+      if component = '' then
+         data.pathnames = voc.rec<2>
+         if dcount(data.pathnames, @vm) > 1 then
+            loop
+               display sysmsg(6133) :  ;* Delete all data components of multifile?
+               input yn
+               yn = upcase(yn)
+            until yn = 'Y'
+               if yn = 'N' then goto delete.dict
+            repeat
+         end
+         pos = 1
+      end else
+         locate component in voc.rec<4,1> setting pos else
+            u.voc.rec = upcase(voc.rec)
+            locate upcase(component) in u.voc.rec<4,1> setting pos else
+               stop sysmsg(6134) ;* Multifile component not found
+            end
+         end
+         data.pathnames = voc.rec<2,pos>
+         deleting.multifile.element = @true   ;* 0483
+       end
+
+      if len(data.pathnames) then  ;* Multivalued if deleting all of multifile
+         loop
+            remove data.path from data.pathnames setting more
+            if upcase(data.path[1,6]) = '@QMSYS' then
+               part = 'data'
+               gosub check.qmsys.file
+               if skip.part then
+                  del voc.rec<2,pos>
+                  del voc.rec<4,pos>
+                  continue
+               end
+               data.path = @qmsys:data.path[7,9999]
+            end
+
+            default.path = file.name
+            if system(91) then default.path = upcase(default.path)
+
+            if data.path # default.path then
+               if not(force) then
+                  loop
+                     display sysmsg(6135, data.path) :  ;* OK to delete DATA portion 'xx'?
+                     input yn
+                     yn = upcase(yn[1,1])
+                  until yn = 'Y' or yn = 'N'
+                  repeat
+                  if yn = "N" then continue
+               end  
+            end
+
+            * Check for relocated indices
+
+            openpath data.path to data.f then
+               akpath = fileinfo(data.f, FL$AKPATH)
+               close data.f
+            end else akpath = ''
+
+            if ospath(data.path, OS$OPEN) then
+               stop sysmsg(6198, data.path) ;* Cannot delete file - Data part %1 is open
+            end
+
+            if ospath(data.path, OS$DELETE) then
+               if akpath # '' then dummy = ospath(akpath, OS$DELETE)
+
+               display sysmsg(6136, data.path) ;* DATA portion 'xx' deleted
+
+               if voc.rec<4> # '' then  ;* It is a multifile
+                  parent.dir = field(data.path, @ds, 1, dcount(data.path, @ds)-1)
+                  if dir(parent.dir) = '' then
+                     * The directory is now empty. Delete it.
+
+                     if ospath(parent.dir, OS$DELETE) then
+                        display sysmsg(6137, parent.dir) ;* Multifile directory 'xx' deleted
+                     end
+                  end
+               end
+
+               del voc.rec<2,pos>
+               del voc.rec<4,pos>
+            end else
+               display sysmsg(6138, data.path) ;* Error deleting DATA portion 'xx'
+               @system.return.code = -status()
+            end
+         while more
+         repeat
+      end else
+         display sysmsg(6139) ;* DATA part of file does not exist
+      end
+   end
+
+delete.dict:
+
+   if delete.dict and not(deleting.multifile.element) then  ;* 0483
+      dict.path = voc.rec<3>
+
+      if len(dict.path) then
+         if upcase(dict.path[1,6]) = '@QMSYS' then
+            part = 'dictionary'
+            gosub check.qmsys.file
+            if skip.part then
+               voc.rec<3> = ""
+               goto write.voc
+            end
+           dict.path= @qmsys:dict.path[7,9999]
+         end
+
+         default.path = file.name : ".DIC"
+         if system(91) then default.path = upcase(default.path)
+
+         if dict.path # default.path then
+            if not(force) then
+               loop
+                  display sysmsg(6140, dict.path) : ;* OK to delete DICT portion 'xx'?
+                  input yn
+                  yn = upcase(yn[1,1])
+               until yn = 'Y' or yn = 'N'
+               repeat
+               if yn = "N" then goto write.voc
+            end  
+         end
+
+         * Check for relocated indices
+
+         openpath dict.path to dict.f then
+            akpath = fileinfo(dict.f, FL$AKPATH)
+            close dict.f
+         end else akpath = ''
+
+         if ospath(dict.path, OS$OPEN) then
+            stop sysmsg(6199, dict.path) ;* Cannot delete file - Dictionary part %1 is open
+         end
+
+         if ospath(dict.path, OS$DELETE) then
+            if akpath # '' then dummy = ospath(akpath, OS$DELETE)
+
+            voc.rec<3> = ""
+            display sysmsg(6141, dict.path) ;* DICT portion 'xx' deleted
+         end else
+            display sysmsg(6142, dict.path) ;* Error deleting DICT portion 'xx'
+            @system.return.code = -status()
+         end
+      end else
+         display sysmsg(6143) ;* DICT part of file does not exist
+      end
+   end
+
+write.voc:
+   * Write VOC entry
+
+   if (voc.rec<2> # "") or (voc.rec<3> # "") then
+      write voc.rec to voc.f,file.name
+   end else
+      delete voc.f, file.name
+      display sysmsg(6144, file.name) ;* VOC entry 'xx' deleted
+   end
+
+   return
+
+* ======================================================================
+
+check.qmsys.file:
+   display sysmsg(6145, part) ;* Warning re part in QMSYS account
+   loop
+      display sysmsg(6146) :  ;* Delete the file from the system account (Y/N)?
+      input yn
+      yn = upcase(yn[1,1])
+   until yn = 'Y' or yn = 'N'
+   repeat
+   
+   skip.part = (yn = 'N')
+   return
+
+   * Avoid compiler warnings
+   dummy = dummy
+end
+
+* END-CODE

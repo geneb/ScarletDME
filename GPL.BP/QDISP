@@ -1,0 +1,1055 @@
+* QDISP
+* Query processor display handler.
+* Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 13 Aug 07  2.5-7 Modified so as not to reset terminal modes on exit unless
+*                  using styles.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* This routine is designed to be used as a function by the query processor.
+* Although it could be used by other QM components, it is not intended for
+* direct use by users as the interface may change to meet new demands.
+*
+* For all modes except QD$LPTR, it returns an error code:
+*   0 = success.
+*   1 = cannot complete startup. An error will have been displayed.
+*   2 = Q option from user at page prompt.
+*   3 = A option from user at page prompt.
+*
+* The QD$LPTR mode returns the usable width of the output device.
+*
+* The error code is also available from @SYS0 on return so that calling code
+* can simply test for a non-zero value and then decode it without needing to
+* store it separately.
+
+* Initialisation:
+*
+*    qdisp(QD$INIT)                    Must be first
+*    qdisp(QD$BOX)                     Must be before QD$LPTR
+*    qdisp(QD$LPTR, destination)       Uses screen by default
+*    qdisp(QD$SETP, page.no)           Start starting page number
+*    qdisp(QD$PHDR, page.header)       Omit if none. Must be before QD$CHDR
+*    qdisp(QD$CHDR, column.header)     Omit if none
+*    qdisp(QD$PFTR, page.footer)       Omit if none
+*    qdisp(QD$SCRL)                    If doing scrolling
+*    qdisp(QD$PAN, pan.cols)           Set pan columns
+*    qdisp(QD$LBL, label.data)         Set label parameters
+*    qdisp(QD$STYL, style.rec)         Set style parameters (after headings)
+*    qdisp(QD$NOHF)                    Kill headings/footings
+*
+* Display:
+*
+*    qdisp(QD$EMIT, string, class)     Emit a line
+*    qdisp(QD$PAGE)                    Start a new page
+*    qdisp(QD$NLBL)                    Start a new label
+*    qdisp(QD$NEED, lines)             Start new page if less than "lines" left
+*
+* Termination:
+*
+*    qdisp(QD$GETP)                    Get final page number
+*    qdisp(QD$END)                     Display final page
+*    qdisp(QD$TERM)                    Terminate display handler
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+subroutine qdisp(err, mode, (text), class) var.args
+$catalogue $qdisp
+
+$include keyin.h
+$include keys.h
+$include int$keys.h
+$include qdisp.h
+$include pcl.h
+
+$define CLASSES 'OHCDSTFE'
+
+deffun colour(clr) local
+deffun weight(wgt) local
+
+common /$qdisp/ qd.header,
+                qd.footer,
+                qd.lptr,              ;* Destination print unit. -1 for display.
+                qd.lpp,               ;* Lines per page, including header/footer
+                                       * but excluding prompt line for display.
+                qd.width,             ;* Output device width
+                qd.linepos,           ;* Line between page and column headings
+                                       * in a boxed report.
+                qd.col.hdr.lno,       ;* Start line no of column headings
+                qd.data.lno,          ;* Start line no of data
+                qd.footer.lno,        ;* Start line no of footer
+                qd.fixed.width,       ;* No of columns in non-panned area...
+                qd.pan.width,         ;* ...and in the panned area
+                qd.pan.pos,           ;* Columns of pan start positions...
+                qd.pan.cols,          ;* ...and corresponding field widths
+                qd.paginate,          ;* Paginate report?
+                qd.no.page,           ;* NO.PAGE used? - suppress formatting
+                qd.scrolling,         ;* Scrolling?
+
+                qd.live,              ;* Output to a "live" terminal?
+
+                * Label data
+                qd.labels.per.row,    ;* Labels across page (zero if not label mode)
+                qd.labels.per.col,    ;* Labels per column
+                qd.label.width,       ;* Characters per label line
+                qd.label.height,      ;* Lines per label
+                qd.label.indent,      ;* Gap to left of first label
+                qd.label.hgap,        ;* Horizontal gap between labels
+                qd.label.vgap,        ;* Vertical gap between labels
+                qd.label.omit.blanks, ;* Omit blank lines in labels
+                qd.label.no,          ;* Current label number (from zero)
+                qd.label.line,        ;* Line in label (from zero)
+
+                * Image buffer management
+                qd.buffered,          ;* Report mode uses image buffer (0543)
+                qd.image,             ;* Page image
+                qd.page.no,           ;* Page number being generated
+                qd.lno,               ;* Current line number. Zero to start page.
+                qd.pan.index,         ;* Index into qd.pan.pos. Zero if not panning.
+                qd.pan.col,           ;* Extracted from qd.pan.pos at pan shift
+                qd.scrollpath,        ;* Pathname of scroll data file
+                qd.image.f,           ;* Image file
+                qd.scroll.map,        ;* Start position for each page
+                qd.disp.page.no,      ;* Page number being displayed
+
+                * Style data
+                qd.boxed,             ;* Boxed report
+                qd.style.fgc,         ;* Foreground colours (OHCDSTFE order)
+                qd.style.bgc,         ;* Background colours (OHCDSTFE order)
+                qd.prt.styles         ;* F1 = prefix per mode (OHCDSTFE order)
+
+   err = 0
+
+   on mode gosub initialise,         ;* QD$INIT
+                 set.boxed,          ;* QD$BOX
+                 set.destination,    ;* QD$LPTR
+                 set.page.heading,   ;* QD$PHDR
+                 set.col.headings,   ;* QD$CHDR
+                 set.page.footing,   ;* QD$PFTR
+                 set.scroll,         ;* QD$SCRL
+                 set.pan,            ;* QD$PAN
+                 set.label.modes,    ;* QD$LBL
+                 set.style,          ;* QD$STYL
+                 disable.pagination, ;* QD$NPAG
+                 kill.hf,            ;* QD$NOHF
+                 emit.line,          ;* QD$EMIT
+                 new.page,           ;* QD$PAGE
+                 next.label,         ;* QD$NLBL
+                 need.lines,         ;* QD$NEED
+                 end.report,         ;* QD$END
+                 terminate,          ;* QD$TERM
+                 set.page.no,        ;* QD$SETP
+                 get.page.no         ;* QD$GETP
+
+exit.qdisp:
+   @sys0 = err
+unwind.qdisp:
+   return to unwind.qdisp
+
+* ======================================================================
+* ===                         ENTRY FUNCTIONS                        ===
+* ======================================================================
+* QD$INIT - Initialisation
+
+initialise:
+   * OHCDSTFE
+   qd.style.fgc = ''
+   qd.style.bgc = ''
+   qd.prt.styles = ''
+
+   qd.header = ''
+   qd.footer = ''
+   qd.lptr = -1
+   gosub assess.live.output
+
+   qd.linepos = 0
+   qd.col.hdr.lno = 1
+   qd.data.lno = 1
+
+   qd.scrolling = @false
+   qd.pan.index = 0
+   qd.paginate = @true
+   qd.no.page = @false
+
+   qd.page.no = 1
+   qd.lno = 0
+   qd.buffered = @true
+
+   qd.labels.per.row = 0  ;* Ensure not left behind from old report
+   qd.boxed = @false
+
+   return
+
+
+* ======================================================================
+* QD$BOX  -  Set boxed mode
+
+set.boxed:
+   qd.boxed = @true
+   return
+
+* ======================================================================
+* QD$LPTR  -  Set report destination
+
+set.destination:
+   qd.lptr = text + 0
+   gosub assess.live.output
+   if qd.lptr < 0 then
+      void @(0,0)  ;* Do our own pagination
+   end else
+      qd.buffered = @false
+      qd.paginate = @false
+      if qd.lptr = 0 then printer on
+
+      is.pcl = bitand(getpu(PU$SPOOLFLAGS, qd.lptr), PU$FLG.PCL)
+      if is.pcl then
+         * Adopt default styles until we know better
+         x = weight('BOLD')
+         if x # '' then
+            qd.prt.styles<index(CLASSES, 'H', 1)> = x
+            qd.prt.styles<index(CLASSES, 'C', 1)> = x
+            qd.prt.styles<index(CLASSES, 'F', 1)> = x
+         end
+         
+      end
+   end
+
+   err = qd.width     ;* Return usable device width
+
+   return
+
+* ======================================================================
+* QD$PHDR  -  Set page heading
+
+set.page.heading:
+   qd.header = text
+
+   * Count the heading lines
+
+   if qd.header # '' then
+      if qd.boxed then qd.header = "'W":qd.width:"'":qd.header
+
+      s = qd.header
+      n = 1;
+      loop
+      while s # ''
+         n += count(field(s, "'", 2), 'L')
+      while col2()
+         s = s[col2()+1,999999]
+      repeat
+
+      qd.col.hdr.lno = n + 1
+      qd.data.lno = qd.col.hdr.lno
+   end
+
+   return
+
+* ======================================================================
+* QD$CHDR  -  Set column headings
+
+set.col.headings:
+   if qd.header # '' then    ;* Report has both page and column headings
+      if qd.boxed then
+         qd.linepos = qd.data.lno
+         qd.header := "'L'"
+      end
+      qd.header := "'L'"
+   end else                  ;* Column headings only
+      if qd.boxed then qd.header = "'W":qd.width:"'"
+   end
+
+   qd.header := text
+
+   * Count the composite header lines
+
+   if qd.header # '' then
+      s = qd.header
+      n = 1;
+      loop
+      while s # ''
+         n += count(field(s, "'", 2), 'L')
+      while col2()
+         s = s[col2()+1,999999]
+      repeat
+
+      qd.data.lno = n + 1
+   end
+
+   return
+
+* ======================================================================
+* QD$PFTR  -  Set page footing
+
+set.page.footing:
+   qd.footer = text
+
+   * Count the footing lines
+
+   if qd.footer # '' then
+      if qd.boxed then qd.footer = "'W":qd.width:"'":qd.footer
+
+      s = qd.footer
+      n = 1;
+      loop
+      while s # ''
+         n += count(field(s, "'", 2), 'L')
+      while col2()
+         s = s[col2()+1,999999]
+      repeat
+
+      if qd.lpp = 0 then qd.footer.lno = 0
+      else qd.footer.lno = qd.lpp + 1 - n
+   end
+
+   return
+
+* ======================================================================
+* QD$SCRL  -  Enable scroll mode
+
+set.scroll:
+   qd.scrolling = @true
+   qd.scroll.map = ''
+
+   if qd.scrolling then
+      qd.scrollpath = config('TEMPDIR'):@ds:'~QMSCRL.':@userno
+      openseq qd.scrollpath overwrite to qd.image.f else
+         if status() then
+            display sysmsg(1427, qd.scrollpath) ;* Cannot open %1
+            err = 1
+            goto exit.qdisp
+         end
+      end
+   end
+
+   return
+
+* ======================================================================
+* QD$PAN  -  Enable pan mode
+
+set.pan:
+   qd.pan.pos = raise(text<1>)
+   qd.pan.cols = raise(text<2>)
+   qd.pan.index = 1
+   qd.pan.col = qd.pan.pos<qd.pan.index> + 0
+   qd.fixed.width = qd.pan.col - 1
+   gosub evaluate.pan.width
+   return
+
+* ======================================================================
+* QD$LBL  -  Set label parameters
+
+set.label.modes:
+   * text is like a label template record
+
+   qd.labels.per.row = matchfield(text<2>, '0N0X', 1) + 0
+   qd.labels.per.col = matchfield(text<3>, '0N0X', 1) + 0
+   qd.label.width = matchfield(text<4>, '0N0X', 1) + 0
+   qd.label.height = matchfield(text<5>, '0N0X', 1) + 0
+   qd.label.indent = matchfield(text<6>, '0N0X', 1) + 0
+   qd.label.hgap = matchfield(text<7>, '0N0X', 1) + 0
+   qd.label.vgap = matchfield(text<8>, '0N0X', 1) + 0
+   qd.label.omit.blanks = matchfield(text<9>, '0N0X', 1) + 0
+
+   qd.label.no = 0     ;* Select top left label...
+   qd.label.line = 0   ;* ...and top line of this label
+
+   qd.buffered = @true
+
+   return
+
+* ======================================================================
+* QD$STYL  -  Set style parameters
+
+set.style:
+   * Set defaults for "Other" class
+
+   qd.style.fgc = '7'
+   qd.style.bgc = '0'
+   qd.prt.styles = char(27) : '(s0B'
+
+   n = dcount(text, @fm)
+   for i = 1 to n
+      s = text<i>
+      key = upcase(field(s, '=', 1)[1,1])
+      if key # '' then
+         s = s[col2()+1, 99999]
+         j = index(CLASSES, key, 1)
+         if j then
+            if qd.lptr < 0 then
+               x = colour(field(s, ',', 1))
+               if x # '' then qd.style.fgc<j> = x
+
+               x = colour(field(s, ',', 2))
+               if x # '' then qd.style.bgc<j> = x
+            end else
+               x = weight(field(s, ',', 3))
+               if x # '' then qd.prt.styles<j> = x
+            end
+         end
+      end
+   next i
+
+   if qd.header # '' then qd.header = "'Z'":qd.header
+   if qd.footer # '' then qd.footer = "'Z'":qd.footer
+
+   return
+
+* ======================================================================
+* QD$NPAG  -  Disable pagination
+
+disable.pagination:
+   qd.paginate = @false
+   qd.no.page = @true
+   return
+
+* ======================================================================
+* QD$NOHF  -  Kill headings/footings (at termination of null report)
+
+kill.hf:
+   qd.header = ''
+   qd.footer = ''
+   if qd.lpp then qd.lpp += (qd.data.lno - 1) + (qd.lpp - qd.footer.lno + 1)
+   qd.data.lno = 1
+   qd.col.hdr.lno = 1
+   qd.footer.lno = if qd.lpp then qd.lpp + 1 else 0
+   return
+
+* ======================================================================
+* QD$EMIT  -  Emit a line
+
+emit.line:
+   if qd.lpp and qd.lno = qd.footer.lno then     ;* Emit footer, if any
+      if not(qd.no.page) or mode = QD$END then
+         gosub emit.footer
+         qd.page.no += 1
+      end
+   end
+
+   if qd.lno <= 0 then  ;* Starting new page
+      if qd.page.no > 1 then
+         if not(qd.no.page) then
+            if qd.lptr < 0 then
+               if qd.live then display @(-1) :
+            end else
+               if qd.lno < 0 then page on qd.lptr
+            end
+         end
+      end
+
+      qd.image = ''
+      qd.lno = 1
+      qd.label.no = 0
+      qd.disp.page.no = qd.page.no    ;* Resynchronise pagination
+      if not(qd.no.page) or qd.page.no = 1 then gosub emit.header
+   end
+
+   text = trimb(text)
+
+   if qd.labels.per.row then          ;* Label mode
+      if text = '' and qd.label.omit.blanks then return
+      if qd.label.no = 0 and qd.label.line = 0 then  ;* First on this page
+         w = qd.label.indent + ((qd.label.width + qd.label.hgap) * qd.labels.per.row) - qd.label.hgap
+         n = ((qd.label.height + qd.label.vgap) * qd.labels.per.col) - qd.label.vgap
+         s = str('D':space(w):@fm, n)
+         qd.image<-1> = s[1,len(s)-1]
+      end
+
+      x = qd.label.indent + rem(qd.label.no, qd.labels.per.row) * (qd.label.width + qd.label.hgap) + 1
+      y = idiv(qd.label.no, qd.labels.per.row) * (qd.label.height + qd.label.vgap) + qd.label.line + qd.data.lno
+      qd.image<y>[x+1,qd.label.width] = text
+      qd.label.line += 1
+      if qd.label.line = qd.label.height then  ;* This label is full
+         gosub next.label
+      end      
+   end else                           ;* Not label mode
+      if qd.lno = qd.data.lno then
+         if text = '' then return   ;* Ignore blank line at top of page
+      end
+
+      line = class:text
+      if qd.buffered then qd.image<qd.lno> = line
+      gosub show.line      ;* Show each line as we go for "slow" reports
+      qd.lno += 1
+   end
+
+   return
+
+* ======================================================================
+* QD$PAGE  -  Start a new page
+
+new.page:
+   if qd.lno then
+      gosub emit.footer
+      qd.page.no += 1
+   end
+
+   return
+
+* ======================================================================
+* QD$NLBL  -  Start a new label
+
+next.label:
+   if qd.label.line # 0 then   ;* Ignore if at top of a new label
+      qd.label.no += 1
+      qd.label.line = 0
+      if qd.label.no = qd.labels.per.col * qd.labels.per.row then
+         * End of label page
+         gosub new.page
+      end
+   end
+
+   return
+
+* ======================================================================
+* QD$NEED  -  Start new page if less than "text" lines left
+
+need.lines:
+   if qd.labels.per.row then    ;* Label mode
+      if qd.label.height - qd.label.line < text then gosub new.page
+   end else
+      if qd.footer.lno - qd.lno < text then gosub new.page
+   end
+
+   return
+
+* ======================================================================
+* QD$END  -  End report
+
+end.report:
+   * Emit the footer if we are not at the top of the page.
+   * For a normal report this requires that we check qm.lno as non-zero.
+   * For label mode, either qd.label.no or qd.label.line must be non-zero
+   * to indicate that we are not at the top of the first label.
+
+   if qd.lno or qd.label.no # 0 or qd.label.line # 0 then
+      gosub emit.footer
+   end else if qd.pan.index or qd.scrolling then
+      gosub page.prompt
+   end
+
+   return
+
+
+* ======================================================================
+* QD$TERM  -  Terminate display handler
+
+terminate:
+   if qd.lptr < 0 then
+      dsp.class.index = index(CLASSES, 'E', 1)
+      dsp.fgc = qd.style.fgc<dsp.class.index>
+      dsp.bgc = qd.style.bgc<dsp.class.index>
+
+      if dsp.fgc # '' then display @(-37, dsp.fgc) :
+      if dsp.bgc # '' then display @(-38, dsp.bgc) :
+
+      if qd.live then
+         if dsp.fgc = '' and dsp.bgc = '' then
+            if qd.style.fgc # '' then display @(-14) :
+         end
+
+         void kernel(K$SUPPRESS.COMO, @true)
+         if @(IT$RLT) # '' then display @(IT$RLT) :
+         void kernel(K$SUPPRESS.COMO, @false)
+      end
+   end else
+      printer close on qd.lptr
+   end
+
+   gosub delete.scroll.data
+
+   * Clear common variables that might be large strings
+
+   qd.image = ''
+   qd.scroll.map = ''
+
+   return
+
+* ======================================================================
+* QD$SETP - Set page number (always before report starts)
+
+set.page.no:
+   qd.page.no = text
+   if qd.lptr >= 0 then
+      setpu PU$PAGENUMBER, qd.lptr, text
+   end
+
+   return
+
+* ======================================================================
+* QD$GETP - Get continuation page number at end of report
+
+get.page.no:
+   err = qd.page.no + 1
+   return
+
+* ======================================================================
+* ===                        SUPPORT FUNCTIONS                       ===
+* ======================================================================
+
+* ASSESS.LIVE.OUTPUT  -  Is output to a "live" display?
+
+assess.live.output:
+   if qd.lptr < 0 then
+      * Output is "live" if we are not capturing and the process is an
+      * interactive session.
+
+      qd.live = not(system(1000) or kernel(K$IS.PHANTOM, 0) or kernel(K$IS.QMVBSRVR, 0))
+
+      qd.lpp = @crthigh - 1
+
+      if @(IT$SLT) # '' and qd.live then       ;* Device can do line truncation
+         qd.width = @crtwide
+         void kernel(K$SUPPRESS.COMO, @true)
+         display @(IT$SLT) :
+         void kernel(K$SUPPRESS.COMO, @false)
+      end else
+         qd.width = @crtwide - 1
+      end
+   end else
+      qd.live = @false
+      qd.lpp = getpu(PU$DATALINES, qd.lptr)
+      qd.width = getpu(PU$WIDTH, qd.lptr)
+
+      if qd.boxed then
+         qd.width -= 2    ;* Allow of margins to either side of data...
+         qd.lpp -= 1      ;* ...and gap in heading
+      end  
+   end
+
+   if qd.lpp > 0 then qd.footer.lno = qd.lpp + 1
+
+   return
+
+* ======================================================================
+* SHOW.LINE - Send current line to output device
+
+show.line:
+   dsp.class = line[1,1]
+   if dsp.class = '' then dsp.class = 'D'
+
+   begin case
+      case qd.lptr >= 0
+         dsp.line = line[2, 9999999]
+      case index('HFO', dsp.class, 1) or qd.pan.index = 0
+         dsp.line = line[2, qd.width] ;* Non-panning line
+      case 1
+         dsp.line = line[2, qd.fixed.width] : line[qd.pan.col + 1, qd.pan.width]
+   end case
+
+   dsp.class.index = index(CLASSES, dsp.class, 1)
+   preamble = ''
+   postamble = ''
+
+   if qd.lptr < 0 then    ;* Display data
+      dsp.fgc = qd.style.fgc<dsp.class.index>      ;* This colour
+      dsp.xfgc = qd.style.fgc<1>                   ;* "Other" colour
+      if dsp.fgc # '' and dsp.fgc # dsp.xfgc then
+         preamble := @(-37,dsp.fgc)
+         postamble := @(-37,dsp.xfgc)
+      end
+
+      dsp.bgc = qd.style.bgc<dsp.class.index>
+      dsp.xbgc = qd.style.bgc<1>
+      if dsp.bgc # '' and dsp.bgc # dsp.xbgc then
+         preamble := @(-38,dsp.bgc)
+         postamble := @(-38,dsp.xbgc)
+      end
+
+      display preamble : dsp.line : postamble
+   end else                ;* Print data
+      if qd.boxed then print on qd.lptr ' ' :
+      preamble = qd.prt.styles<dsp.class.index>
+      postamble = if preamble # '' then qd.prt.styles<1> else ''
+      if preamble # postamble then print on qd.lptr preamble:dsp.line:postamble
+      else print on qd.lptr dsp.line
+   end
+
+   return
+
+* ======================================================================
+* EMIT.HEADER  -  Emit page.column headings
+
+emit.header:
+   * For a boxed report, emit the page box
+
+   if qd.boxed then gosub draw.page.box
+
+   if qd.header # '' then
+      hf = expand.hf(qd.lptr, qd.page.no, qd.header)
+      if bitand(@sys0, 0x0001) then qd.paginate = @false
+
+      loop
+         hf.line = removef(hf, 1)
+      until status()
+         dsp.class = if qd.lno < qd.col.hdr.lno then 'H' else 'C'
+         line = dsp.class:hf.line
+         if qd.buffered then qd.image<qd.lno> = line
+         if not(qd.labels.per.row) then gosub show.line
+         qd.lno += 1
+      repeat
+   end
+
+   return
+
+* ======================================================================
+* EMIT.FOOTER  -  Emit page footing
+
+emit.footer:
+   * If this is a forced page, we may need to emit some blank lines
+
+   if qd.footer # '' then
+      if qd.labels.per.row = 0 then
+         loop
+         while qd.lno < qd.footer.lno
+            line = 'D'
+            if qd.buffered then qd.image<qd.lno> = line
+            if not(qd.labels.per.row) then gosub show.line
+            qd.lno += 1
+         repeat
+      end else
+         qd.lno = qd.footer.lno
+      end
+
+      hf = expand.hf(qd.lptr, qd.page.no, qd.footer)
+      if bitand(@sys0, 0x0001) then qd.paginate = @false
+
+      loop
+         hf.line = removef(hf, 1)
+      until status()
+         line = 'F':hf.line
+         if qd.buffered then qd.image<qd.lno> = line
+         if not(qd.labels.per.row) then gosub show.line
+         qd.lno += 1
+      repeat
+
+      qd.lno = 0
+   end else
+      qd.lno = if qd.lno < qd.footer.lno then -1 else 0
+   end
+
+   * If this is label mode, we need to display the buffered page
+
+   if qd.labels.per.row then
+      gosub display.page.image
+      qd.lno = 0
+      qd.label.no = 0
+   end
+
+   * Handle the page end prompt
+
+   if qd.scrolling then  ;* Buffer the current page
+      seek qd.image.f, 0, 2 else null
+      qd.scroll.map<-1> = fileinfo(qd.image.f, FL$SEQPOS)
+      for i = 1 to qd.lpp
+         writeseq qd.image<i> to qd.image.f else null
+      next i
+   end
+
+   if qd.paginate then
+      if qd.scrolling or qd.pan.index or mode # QD$END then gosub page.prompt
+   end
+
+   return
+
+* ======================================================================
+* PAGE.PROMPT  -  Emit user prompt at page end on report to terminal
+
+page.prompt:
+   if not(qd.live) then return
+
+   saved.key.bindings = bindkey('', -3)
+   void bindkey('', -5)
+   void bindkey(char(27):'v', K$PAGE.UP)
+   void bindkey(char(27):'V', K$PAGE.UP)
+
+   RET.KEY = pterm(PT$INEWLINE,'')
+
+   num.pan.pos = dcount(qd.pan.pos, @fm)
+
+   loop
+      final.page = mode = QD$END and qd.disp.page.no = qd.page.no
+
+      s = 'Action ('
+      if not(option(OPT.NO.USER.ABORTS)) then s := 'Abort/'
+      s := 'Quit'
+      if not(final.page) then s := '/Next'
+      if qd.disp.page.no > 1 and qd.scrolling then s := '/Previous'
+      if qd.scrolling then s := '/page number'
+      if not(final.page) then s := '/Suppress pagination'
+      if qd.pan.index then
+         if qd.pan.index > 1 then s := '/Left'
+         if qd.pan.index < num.pan.pos then s := '/Right'
+      end
+      display @(0, @crthigh-1) : @(-4) : s : '): ' :
+
+      action = upcase(keycode())
+      gosub map.keys
+
+      begin case
+         case (action = RET.KEY or action = ' ') and not(final.page)
+            qd.disp.page.no += 1
+            if qd.disp.page.no > qd.page.no then exit
+            gosub restore.page
+
+         case action = 'A' and not(option(OPT.NO.USER.ABORTS))
+            err = 3
+            exit
+
+         case action = 'L' and qd.pan.index > 1
+            qd.pan.index -= 1
+            qd.pan.col = qd.pan.pos<qd.pan.index> + 0
+            gosub evaluate.pan.width
+            gosub display.page.image
+
+         case action = 'N' and not(final.page)
+            qd.disp.page.no += 1
+            if qd.disp.page.no > qd.page.no then exit
+            gosub restore.page
+
+         case action = 'P' and qd.disp.page.no > 1 and qd.scrolling
+            qd.disp.page.no -= 1
+            gosub restore.page
+
+         case action = 'Q'
+            if not(qd.scrolling) then
+               err = 2
+               exit
+            end
+            display @(0, @crthigh-1) : @(-4) : 'Press RETURN to quit, any other key to continue' :
+                  
+            if keycode() = RET.KEY then
+               err = 2
+               exit
+            end
+
+         case action = 'R' and qd.pan.index and qd.pan.index < num.pan.pos ;* 0482
+            qd.pan.index += 1
+            qd.pan.col = qd.pan.pos<qd.pan.index> + 0
+            gosub evaluate.pan.width
+            gosub display.page.image
+
+         case action = 'S' and not(final.page)
+            qd.paginate = @false
+            exit
+
+         case action matches '1N' and qd.scrolling
+            gosub get.page.number
+            if action # '' then
+               qd.disp.page.no = action
+               gosub restore.page
+            end
+      end case
+   repeat
+
+   void bindkey(saved.key.bindings, -4)
+
+   if err then
+      gosub delete.scroll.data
+      goto exit.qdisp
+   end
+
+   return
+
+* ======================================================================
+* EVALUATE.PAN.WIDTH  -  Work out what will fit at this pan position
+
+evaluate.pan.width:
+   qd.pan.width = 0
+   n = dcount(qd.pan.pos, @fm)
+   for i = qd.pan.index to n
+      w = qd.pan.pos<i> - qd.pan.pos<qd.pan.index> + qd.pan.cols<i>
+   until qd.fixed.width + w > qd.width
+      qd.pan.width = w
+   next i
+
+   return
+
+* ======================================================================
+* GET.PAGE.NUMBER  -  Enter a page number a the pagination prompt
+
+get.page.number:
+   display action :
+
+   loop
+   c = keyin()
+   begin case
+      case c matches '1N'
+         action := c
+         display c :
+
+         case c = char(8)
+            if len(action) then
+               action = action[1, len(action) - 1]
+               if action = '' then exit
+               display @(-9) : ' ' : @(-9) :
+            end
+
+         case c = RET.KEY
+            if action < 1 or action > qd.page.no then
+               display @(0, @crthigh - 1) : @(-4): @sys.bell :
+               display sysmsg(7277, 1, qd.page.no) : ;* Available pages are xx to xx
+               c = keyin()
+               action = ''
+            end
+            exit
+
+         case 1
+            display @sys.bell :
+      end case
+   repeat
+
+   return
+
+* ======================================================================
+* RESTORE.PAGE  -  Restore a page from the scroll data
+
+restore.page:
+   seek qd.image.f, qd.scroll.map<qd.disp.page.no> else
+      stop 'Internal error - Invalid position in scroll page map'
+   end
+
+   qd.image = ''
+   for i = 1 to qd.lpp
+      readseq s from qd.image.f else
+         stop 'Internal error - Scroll data overrun'
+      end
+      qd.image<i> = s
+   next i
+
+   gosub display.page.image
+
+   return
+
+* ======================================================================
+* DISPLAY.PAGE.IMAGE  -  Display page from image data
+* For label mode, this may be directed to a printer
+
+display.page.image:
+   if not(qd.no.page) then
+      if qd.lptr < 0 then
+         display @(-1) :
+      end else page on qd.lptr
+   end
+
+   saved.qd.lno = qd.lno
+
+   for qd.lno = 1 to qd.lpp
+      line = qd.image<qd.lno>
+      gosub show.line
+   next qd.lno
+
+   qd.lno = saved.qd.lno
+
+   return
+
+* ======================================================================
+* MAP.KEYS  -  Make special keys look like action codes
+
+map.keys:
+   n = seq(action)
+   begin case
+      case n = K$UP or n = K$PAGE.UP      ; action = 'P'
+      case n = K$DOWN or n = K$PAGE.DOWN  ; action = 'N'
+      case n = K$LEFT                     ; action = 'L'
+      case n = K$RIGHT                    ; action = 'R'
+      case n = CTRL.B                     ; action = 'L'
+      case n = CTRL.F                     ; action = 'R'
+      case n = CTRL.N                     ; action = 'N'
+      case n = CTRL.P                     ; action = 'P'
+      case n = CTRL.V                     ; action = 'N'
+      case n = CTRL.Z                     ; action = 'P'
+   end case
+
+   return
+
+* ======================================================================
+* DELETE.SCROLL.DATA  -  Delete scroll file (if any)
+
+delete.scroll.data:
+   if fileinfo(qd.image.f, FL$OPEN) then
+      closeseq qd.image.f
+      void ospath(qd.scrollpath, OS$DELETE)
+   end
+
+   return
+
+* ======================================================================
+
+draw.page.box:
+   pg.lmgn = getpu(PU$LEFTMARGIN, qd.lptr)
+   pg.tmgn = getpu(PU$TOPMARGIN, qd.lptr)
+!  pg.bmgn = getpu(PU$BOTMARGIN, qd.lptr)
+   pg.lpi = getpu(PU$LPI, qd.lptr)
+   pg.cpi = getpu(PU$CPI, qd.lptr)
+
+   pg.l = idiv(max(pg.lmgn, 0) * 300, pg.cpi)
+   pg.w = idiv((qd.width + 2) * 300, pg.cpi)
+   pg.h = idiv((qd.lpp + 1) * 300, pg.lpi)
+   pg.top = idiv(pg.tmgn * 300, pg.lpi)
+
+   print on qd.lptr pcl.save.csr() :
+   print on qd.lptr pcl.box(pg.l,pg.top,pg.w,pg.h,2,10) :
+
+   if qd.linepos then  ;* Need horizontal line above column headings
+      y = idiv((qd.linepos + pg.tmgn - 0.5) * 300, pg.lpi)
+      print on qd.lptr pcl.hline(pg.l,y,pg.w,2) :
+   end
+
+   print on qd.lptr pcl.restore.csr() :
+
+   return
+
+* ======================================================================
+
+local function colour(clr)
+   colours = 'BLACK,BLUE,GREEN,CYAN,RED,MAGENTA,BROWN,WHITE,GREY,BRIGHTBLUE,BRIGHTGREEN,BRIGHTCYAN,BRIGHTRED,BRIGHTMAGENTA,YELLOW,BRIGHTWHITE'
+
+   if clr matches '0N' and clr < 16 then return (clr)      
+
+   clr = upcase(oconv(clr, 'MCA'))
+   if clr = 'GRAY' then clr = 'GREY'
+   
+   pos = listindex(colours, ',', clr)
+   if pos then return (pos - 1)
+
+   return ('')
+end
+
+* ======================================================================
+
+local function weight(wgt)
+   if wgt matches '1Ný-1N' and wgt >= -7 and wgt <= 7 then
+      return (char(27) : '(s' : wgt : 'B')
+   end
+
+   wgt = upcase(trim(wgt))
+   if wgt = '' then return ('')
+
+   return (pcl.font.weight(wgt))
+end
+
+end
+
+* END-CODE

@@ -1,0 +1,95 @@
+* LISTVARS
+* LIST.VARS command
+* Copyright (c) 2004 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 13 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+
+$internal
+program listvars
+$catalog $listvar
+
+$include parser.h
+$include err.h
+$include int$keys.h
+$include syscom.h
+
+   parser = "!PARSER"
+
+   @system.return.code = -ER$ARGS      ;* Preset for command format errors
+   show.all = @false
+
+* ---------------  Step 1 -  Parse command
+
+   call @parser(parser$reset, 0, @sentence, 0)
+   call @parser(parser$get.token, token.type, token, keyword) ;* Verb
+
+   loop
+      call @parser(parser$get.token, token.type, token, keyword)
+   until token.type = PARSER$END
+      begin case
+         case keyword = KW$ALL
+            show.all = @true
+
+         case 1
+            stop sysmsg(2018, token) ;* Unexpected token (xx)
+      end case
+   repeat
+
+
+* ---------------  Step 2  -  Report the variables
+
+   num.vars = dcount(user.var.names, @fm)
+
+   if num.vars = 0 and not(show.all) then
+      display sysmsg(6440) ;* No user variables defined
+   end else
+      w = if num.vars then maximum(lens(user.var.names)) else 0
+      if show.all then if w < 17 then w = 17
+      name.fmt = w : 'L'
+
+      if show.all then
+         crt fmt('@USER.RETURN.CODE', name.fmt) : ': ' : @USER.RETURN.CODE
+         crt fmt('@USER0', name.fmt) : ': ' : @USER0
+         crt fmt('@USER1', name.fmt) : ': ' : @USER1
+         crt fmt('@USER2', name.fmt) : ': ' : @USER2
+         crt fmt('@USER3', name.fmt) : ': ' : @USER3
+         crt fmt('@USER4', name.fmt) : ': ' : @USER4
+      end
+
+      for i = 1 to num.vars
+         crt fmt(user.var.names<i>, name.fmt) : ': ' : user.var.values<i>
+      next i
+   end
+
+   @system.return.code = 0
+
+   return
+end
+
+* END-CODE

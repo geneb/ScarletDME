@@ -1,0 +1,109 @@
+20Jun12 - gwb
+-------------
+Fixed a compiler warning in k_error() - caused by an sprintf() call missing a format specifier.
+Added link flags to the Makefile in order to support proper linking under Ubuntu 12.04 LTS
+Added install and datafiles targets to the Makefile.
+The install target will copy the results of the build action to $(INSTROOT)/bin which is currently
+/usr/qmsys/bin.
+The datafiles target will copy the system data files to $(INSTROOT) and set permissions on the required
+files.  THIS WILL WIPE OUT AN EXISTING INSTALLATION!	
+
+07Aug09 - dat
+-------------
+Rewrote messages.c : sysmesg() to utilise a directory file version of MESSAGES instead of
+a Dynamic file version. Fairly substantial changes in code, but the logic was
+duplicated.
+Also, obviously, changed MESSAGES into a directory file.
+
+06Aug09 - dat
+-------------
+Changes MESSAGES 1407 from:
+  Error %d (o/s %d) writing record
+to
+  Error %d (o/s %d) writing record (Possible full disk?)
+To provide a useful hint in the event the disk fills up.
+
+23Apr09 - gcb
+-------------
+Rewrote the DICT.TOOLS.CLS to cache dictionary and item data for efficiency.
+Added a non-sort dictionary list get method and renamed the sorted list method.
+Renamed the filename method to set.file.name and itemid to set.item.id.
+
+22Apr09 - gcb
+-------------
+Added GPL.BP DICT.TOOLS.CLS QMOO class for reading data from a file using dictionaries. There are also methods for getting the dict list, dict count, item-sselect, and item-sselect count. This is preliminary code and needs more work to be more stable and fully featured.
+
+14Apr09 - gcb
+-------------
+Added missing @FILENAME synonym for @FILE.NAME to ICOMP and BCOMP.
+
+Added code to _SUM and _SUMALL to summarize only numeric values in the array being passed to the function.
+
+===============================================================================
+
+13Apr09 - gwb
+Added TEST account to the workdevbranch1 tree.  This account should be the
+home of any test programs or procs that excercise new features.
+
+You can add the TEST account by logging to QMSYS and creating a new entry
+in the ACCOUNTS file called "TEST".  Line #1 should look like this:
+
+/<your pathname>/openqm/branches/workdevbranch1/TEST
+
+File it and then run UPDATE.ACCOUNT.  You should then be able to log to the
+TEST account without any problems.
+
+===============================================================================
+
+10Apr09 - gcb
+-------------
+Added SKT$INFO.FAMILY option for SOCKET.INFO to retrieve address family for INET type sockets. 
+Return values are SKT$INFO.FAMILY.IPV4 or SKT$INFO.FAMILY.IPV6. 
+
+Added socket option to op_srvrskt() in op_skt.c to enable SO_REUSEADDR. This will allow 
+rebinding to address/ports in TIME_WAIT state.
+
+================================================================================
+
+10Apr09 - gwb
+-------------
+A segfault generating bug was triggered when calling OPEN.SOCKET or
+CREATE.SERVER.SOCKET with a malformed ip address.  The routine was correctly
+handling the error, but the error check didn't encapsulate to the freeaddrinfo()
+call which was attempting to free a null pointer.  (getaddrinfo() failed
+properly and never filled out the struct that freeaddrinfo() was trying to
+free.
+
+As a result of this, the bug was quashed (thanks for finding it Glen!) and I
+greatly increased the ability of the code to detect malformed ip address of
+either IPv4 or IPv6.
+
+A new error constant was added (ER_BADADDR), so you should re-run ERRGEN to
+update the QMBasic error codes file.
+
+================================================================================
+09Apr09 - gwb
+-------------
+In op_skt.c the routines op_openskt(), op_acceptskt(), op_srvrsck()
+and op_srvraddr() have been re-written to incorporate newer network
+access methodologies.  This includes the ability to transparently
+access both IPv4 and IPv6 network features.
+
+In order to keep error constants that live in SYSCOM up to date, 
+you'll need to run "ERRGEN" from GPL.BP to pick up the changes
+made to err.h in the C source tree.
+
+ERRGEN has also been updated to incorporate changes that actually
+allow it to do it's job.  The original GPL source drop included a 
+version of ERRGEN that wasn't updated to work with the new GPL.BP
+source tree.  This has been fixed.
+
+You'll need to create a pointer called "CSRC" in order to allow
+ERRGEN to access the err.h file that's included in the gplsrc directory.
+The VOC entry looks like this:
+
+F
+/path/to/your/source/tree
+
+=============================================================================
+

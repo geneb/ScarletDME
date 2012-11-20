@@ -1,0 +1,1089 @@
+* ACCSVE
+* ACCSVE  -  ACCOUNT.SAVE and T.DUMP
+* Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 03 Oct 07  2.6-5 Use parse.pathname.tokens() against ACCOUNTS record.
+* 18 May 06  2.4-4 TED - Truncate tape image if ptr set to 0 in first reel
+* 02 May 06  2.4-4 TED - create openQM named index instead of _RST_xxxx
+* 10 Apr 06  2.4-1 TED - fixed object items in which first byte = 'D' or 'd'
+* 10 Apr 06  2.4-1 TED - removed T-REW in ACCOUNT-SAVE
+* 09 Apr 06  2.4-1 TED - Added FILE.SAVE option
+* 05 Dec 05  2.2-18 Added BINARY option.
+* 07 Sep 05  2.2-10 Use explicit date conversion when setting up tape label.
+* 31 Aug 05  2.2-9 Added option for record ids on T.DUMP command line and use
+*                  of an alternative select list using FROM.
+* 04 Aug 05  2.2-7 Disable mark mapping.
+* 04 Aug 05  2.2-7 Modified behaviour if no account name on command line to
+*                  prompt with null response implying current account.
+* 04 Aug 05  2.2-7 TED - Modifications to support binary items.
+* 01 Aug 05  2.2-6 Added remote file inclusion processing.
+* 26 Jul 05  2.2-6 Do not save object code from compiled dictionary item.
+* 25 Jul 05  2.2-6 Moved call to T.REW so that parser data isn't lost before
+*                  processing options.
+* 25 Jul 05  2.2-6 Save current account by default.
+* 25 Jul 05  2.2-6 Enable DET.SUP for ACCOUNT.SAVE too.
+* 20 Jul 05  2.2-4 Added COUNT.SUP and DET.SUP options for T.DUMP.
+* 12 Jun 05  2.2-1 TED - Fix missing 'DICT' in T-DUMP label.
+* 04 Jun 05  2.2-1 TED - Convert 'D' dict types to 'A' for tape storage.
+* 02 Jun 05  2.2-1 TED - Put 'DQ' in FDI if DIRECTORY file.
+* 02 Jun 05  2.2-1 TED - Modified to get file's modulus and write to tape.
+* 27 May 05  2.2-0 New module.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* Copyright (c) 2005-2006 Tom deLombarde
+* This module was submitted by Tom deLombarde <tomd@blackflute.com>.
+*
+*
+* ACCOUNT-SAVE {account} {options}
+*   Options:
+*      DET.SUP          Suppress record details
+*      EXCLUDE.REMOTE   Exclude remote files
+*      INCLUDE.REMOTE   Include remote filesb
+*      BINARY           Use binary mode for directory files
+*
+* FILE-SAVE {account list} {options}
+*   Options:
+*      NO.QUERY         Do not query to use select list
+*      DET.SUP          Suppress record details
+*      EXCLUDE.REMOTE   Exclude remote files
+*      INCLUDE.REMOTE   Include remote filesb
+*      BINARY           Use binary mode for directory files
+*
+* T-DUMP {DICT} filename id... {options}
+*   Options:
+*      COUNT.SUP        Suppress record count
+*      DET.SUP          Suppress record details
+*      FROM listno      Specify non-default select list
+*      BINARY           Use binary mode for directory files
+*
+*   If a valid SET.DEVICE command was not issued before using these, the
+*   user will be prompted for a device name and SET.DEVICE will be invoked.
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program accsve
+$catalog $accsve
+
+$include int$keys.h
+$include keys.h
+$include err.h
+$include parser.h
+$include dictdict.h
+$include tape.h
+
+
+   deffun abspath(d, r) calling '!abspath'
+
+   equ ACCSVE to 1
+   equ TDUMP  to 2
+   equ FSVE   to 3
+   equ NULL   to char(0)            ;* \0
+
+   dic.str = ''
+   ftype = ''
+   modulo = 101
+   binary = @false
+
+   @system.return.code = -ER$ARGS   ;* Preset for command format errors
+   prompt ''
+
+   * Examine the VOC option flags to work out what we are doing
+
+   begin case
+      case @option = 1  ;* ACCOUNT.SAVE
+         mode = ACCSVE
+      case @option = 2  ;* T.DUMP
+         mode = TDUMP
+      case @option = 3  ;* FILE.SAVE
+         mode = FSVE
+      case 1
+         stop 'Invalid option in VOC record'
+   end case
+
+   debugging = @false
+   count.sup = @false
+   det.sup = @false
+   exclude.remote = @false
+   include.remote = @false
+   no.query = @false
+   id.list = ''
+   acc.list = ''
+   listno = -1            ;* Not set
+
+   open 'QM.ACCOUNTS' to acc.f else
+      stop sysmsg(2200)  ;* Cannot open accounts register
+   end
+
+   call !parser(PARSER$RESET, 0, @sentence, 0)
+   call !parser(PARSER$GET.TOKEN, token.type, token, keyword)  ;* Verb
+
+   if mode = TDUMP then           ;* T.DUMP
+                                   * Get source file name
+
+      call !parser(PARSER$MFILE, token.type, src.name, keyword)
+
+      if keyword = KW$DICT then
+         dic.str = 'DICT'
+         call !parser(PARSER$MFILE, token.type, src.name, keyword)
+         if token.type = PARSER$END then
+            stop sysmsg(7515)  ;* Source file or account name required
+         end
+      end
+   end else                       ;* ACCOUNT.SAVE
+      * Get account name
+
+      src.name = ''
+      call !parser(PARSER$LOOK.AHEAD, token.type, token, keyword)
+      if token.type # PARSER$END then
+         token = upcase(token)
+         read acc.rec from acc.f, token then
+            * Looks like a valid account name
+
+            call !parser(PARSER$GET.TOKEN, token.type, src.name, keyword)
+            src.name = upcase(src.name)
+         end
+      end
+   end
+
+
+   * Process options
+
+   loop
+      call !parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   until token.type = PARSER$END
+      begin case
+         case keyword = KW$BINARY
+            binary = @true
+
+         case keyword = KW$COUNT.SUP and mode = TDUMP
+            count.sup = @true
+
+         case keyword = KW$DEBUGGING
+            debugging = @true
+
+         case keyword = KW$DET.SUP
+            det.sup = @true
+
+         case keyword = KW$NO.QUERY
+            no.query = @true
+
+         case keyword = KW$EXCLUDE.REMOTE and (mode = ACCSVE or mode = FSVE)
+            exclude.remote = @true
+
+         case keyword = KW$FROM and mode = TDUMP
+            call !parser(PARSER$GET.TOKEN, token.type, listno, keyword)
+            if not(listno matches '1-2N') or listno > 10 then
+               stop sysmsg(3255)  ;* Illegal select list number
+            end
+
+            if not(selectinfo(listno, SL$ACTIVE)) then
+               stop sysmsg(3260, listno)  ;* Select list %1 is not active
+            end
+
+            if id.list # '' then
+               stop sysmsg(7540)  ;* Cannot use both a select list and command line record ids
+            end
+
+         case keyword = KW$INCLUDE.REMOTE and (mode = ACCSVE or mode = FSVE)
+            include.remote = @true
+
+         case 1
+            if mode = TDUMP then
+               if listno >= 0 then
+                  stop sysmsg(7540)  ;* Cannot use both a select list and command line record ids
+               end
+               id.list<-1> = token
+            end else
+              if mode = FSVE then
+                id.list<-1> = token
+              end else
+                stop sysmsg(2018, token)  ;* Unexpected token
+              end
+            end
+      end case
+   repeat
+
+   if listno < 0 then listno = 0   ;* Use list 0 by default
+
+   if include.remote and exclude.remote then
+      stop sysmsg(6113)  ;* Inconsistent command options
+   end
+
+   * Do we already have a tape attached?
+
+   if not(tp$name) then
+      device.name = ''
+      loop
+         display sysmsg(7521) :
+         * No tape attached. Please enter a device name (blank to quit):
+         input device.name
+         if device.name = '' then stop
+
+         execute 'SET.DEVICE ' : device.name
+      while @system.return.code
+      repeat
+*   end else
+      * Tape is already attached - Rewind it unless doing T.DUMP
+
+*      if mode # TDUMP then execute 'T.REW'
+   end
+
+
+   dummy = @(0, 0)   ;* Kill pagination
+
+
+   res = ''
+   data.list = ''
+   dic.list = ''
+   tp$eot = @false
+
+   reel.no = 1
+   tape.rec = ''
+
+
+   block.size = '01F4'           ;* 'Standard' PICK 500 byte data blocks
+
+   begin case
+      case mode = ACCSVE
+         gosub do.account.save
+
+      case mode = FSVE
+         begin case
+            case id.list # ''
+               null
+
+            case selectinfo(0, sl$active)      ;* using SELECT list
+               readnext record.name then
+                  if not(no.query) and not(option(OPT.NO.SEL.LIST.QUERY)) then
+                     loop
+                        ;* Use active select list (First item 'xx')?
+                        display sysmsg(2050, record.name) :
+                        prompt ""
+                        input reply
+
+                        if upcase(reply[1,1]) = "N" then stop
+
+                     until upcase(reply[1,1]) = "Y"
+                     repeat
+                  end
+
+                  readlist id.list else null
+                  ins record.name before id.list<1>
+               end
+            case 1
+               id.list = ''
+         end case
+
+         if id.list = '' then
+           select acc.f
+           if @selected > 0 then
+             loop
+               readnext acc.id else exit
+               * put QMSYS at the beginning of the tape
+               if acc.id = 'QMSYS' then
+                 ins acc.id before acc.list<1>
+               end else
+                 acc.list<-1> = acc.id
+               end
+             repeat
+           end
+         end else
+            fsx = dcount(id.list, @am)
+            for fx = 1 to fsx
+               if id.list<fx> = 'QMSYS' then
+                  ins acc.id before acc.list<1>
+               end else
+                  acc.list<-1> = id.list<fx>
+               end
+            next fx
+         end
+
+         if acc.list # '' then
+           fsx = dcount(acc.list, @am)
+           for fx = 1 to fsx
+             src.name = acc.list<fx>
+             display '  ':src.name
+             gosub do.account.save
+           next fx
+         end else
+           display sysmsg(7551) ;* No accounts to save
+         end
+
+      case mode = TDUMP
+         gosub do.t.dump
+   end case
+
+   @system.return.code = 0
+
+   stop
+
+* ======================================================================
+
+do.account.save:
+   voc.list = ''
+   file.num = 173
+   voc.data = ''
+   tp$type = ''
+
+   if src.name = '' then
+      loop
+         display sysmsg(7539):  ;* Account name (blank for current account, Q to quit):
+         input src.name
+      until src.name = ''   ;* Use current account
+         src.name = upcase(src.name)
+         if src.name = 'Q' then stop
+
+         read acc.rec from acc.f, src.name then
+            * Looks like a valid account name
+            exit
+         end
+         display sysmsg(2201, src.name)  ;* Account name '%1' is not in register
+      repeat
+   end
+
+   if src.name = '' then
+      src.name = @who
+      acc.path = @path
+      voc.f = @voc
+   end else
+      read acc.rec from acc.f, src.name then
+         acc.path = parse.pathname.tokens(acc.rec<ACC$PATH>)
+         if acc.path = '@QMSYS' then acc.path = @QMSYS
+         voc.path = acc.path:@ds:'VOC'
+         openpath voc.path to voc.f else
+            stop sysmsg(7518, src.name)  ;* Cannot open VOC for account %1
+         end
+      end else
+         stop sysmsg(2201, src.name)  ;* Account name '%1' is not in register
+      end
+   end
+
+   src.txt = 'DATA ':src.name
+
+   * New 2.4-4 Truncate existing tape image if pointer set to 0 in first reel
+   if tp$ptr = 0 and tp$tptr = 0 then WEOFSEQ tp$fh
+
+   gosub write.label
+   gosub write.eof
+
+   gosub write.label
+   tape.block = str(NULL, tp$pad):@im:'M65':@im:'XC'
+   tape.block := space(tp$blksz + tp$pad - len(tape.block))
+   gosub tape.putblk
+
+   src.txt = 'DATA ':src.name:' ':src.name
+   gosub write.label
+
+   * Build the Account's MD item:
+
+   md.itm = 'D'
+   md.itm<02> = '1'
+   md.itm<03> = oconv(file.num, "MCDX")
+   md.itm<04> = '0000':src.name
+   md.itm<04> = oconv(len(md.itm), "MCDX") "R%4":src.name
+   md.itm<05> = 'D'
+   md.itm<06> = oconv(file.num+12, "MCDX")    ;* Dummy BASE
+   md.itm<07> = 101                           ;* Dummy MODULUS
+   md.itm<12> = 'SYS2'                        ;* Dummy PRIV for now
+   md.itm<13> = 'L'
+   md.itm<14> = '12'
+
+   md.file.num = file.num
+   file.num += 1
+
+   tape.rec = @im:md.itm:@fm
+
+   selectv voc.f to voc.lst
+
+   loop
+      readnext vid from voc.lst else exit
+
+      * Force VOC item to be the last on the tape
+      if vid = 'VOC' then continue
+      if vid[1, 1] = '$' then continue
+
+      voc.list<-1> = vid
+   repeat
+   voc.list<-1> = 'VOC'
+
+   no.voc = dcount(voc.list, @fm)
+   for z = 1 to no.voc
+      idx.names = ''
+      dic.open = @false
+      vid = voc.list<z>
+      modulo = ''
+      read voc.itm from voc.f, vid then
+         if voc.itm<1>[1, 1] = 'F' then
+            begin case
+               case voc.itm<5> = 'I'         ;* Include file
+                  save.dict = @true
+                  save.data = @true
+               case voc.itm<5> = 'E'         ;* Exclude file
+                  save.dict = @false
+                  save.data = @false
+               case voc.itm<5> = 'D'         ;* Save dictionary only
+                  save.dict = @true
+                  save.data = @false
+               case index(voc.itm<2>, @ds, 1) = 0  ;* It's a local file
+                  save.dict = @true
+                  save.data = @true
+               case include.remote           ;* Include remote file
+                  save.dict = @true
+                  save.data = @true
+               case exclude.remote           ;* Exclude remote file
+                  save.dict = @false
+                  save.data = @false
+               case 1                        ;* Check EXCLREM config param
+                  save.dict = not(config("EXCLREM"))
+                  save.data = save.dict
+            end case
+
+            * Process the dictionary def first
+
+            acorr = ''
+            acorrs = ''
+            adicts = ''
+            anames = ''
+            f.name = voc.itm<3>
+            level = '2'
+
+            if not(save.dict) then goto skip.dict
+
+            dic.path = abspath(acc.path, f.name)
+            if voc.itm<2>[1, 6] # '@QMSYS' then
+               if f.name # '' and f.name[1, 6] # '@QMSYS' then
+                  openpath dic.path to dic.f else
+                     display sysmsg(7519, dic.path)  ;* Cannot open %1 - Dictionary skipped
+                     goto skip.dict
+                  end
+                  if binary then mark.mapping dic.f, off
+                  dic.open = @true
+               end else
+                  f.name = voc.itm<2, 1>
+                  dic.open = @false
+               end
+
+               * checking about fudging the local catalog into the mix
+               if f.name # 'cat' then f.name = upcase(f.name)
+               if index(f.name, '.DIC', 1) then
+                  f.name = f.name[1, len(f.name) - 4]
+               end
+
+               if dic.open then
+                  modulo = fileinfo(dic.f, FL$MODULUS)
+                  ftype = fileinfo(dic.f, FL$TYPE)
+               end else modulo = 11
+
+               gosub build.fdi
+               dict.file.num = file.num
+               tape.rec := @im:ditm:@fm
+            end else
+               dic.open = @false
+               dict.file.num = ''
+            end
+skip.dict:
+
+            * Process the data portion(s)
+
+            if not(save.data) then goto skip.data
+
+            no.files = dcount(voc.itm<2>, @vm)
+            if no.files > 1 then
+               for i = 1 to no.files
+                  f.name = voc.itm<4, i>
+                  level = '3'
+                  path = abspath(acc.path, voc.itm<2, i>)
+
+                  openpath path to data.f else
+                     display sysmsg(7520, path)  ;* Cannot open %1 - File skipped
+                     continue
+                  end
+                  if binary then mark.mapping data.f, off
+
+                  type = fileinfo(data.f, FL$TYPE)
+                  if type = FL$TYPE.DH then
+                     ak = fileinfo(data.f, FL$AK)
+                     if ak # 0 then
+                        idx.names = indices(data.f)
+                        no.idx = dcount(idx.names, @fm)
+                        for j = 1 to no.idx
+                          acorr = 'AN(':idx.names<j>:')'
+                          acorrs<1, -1> = 'I':j"R%4":acorr
+                          info.idx = indices(data.f, idx.names<j>)
+                          idx.type = info.idx<1, 1>
+                          info.idx<1> = idx.type
+                          del info.idx<15>
+                          del info.idx<14>
+                          del info.idx<13>
+                          del info.idx<12>
+                          del info.idx<11>
+                          ins idx.names<j> before info.idx<1>
+                          info.idx = lower(info.idx)
+                          adicts<j> = info.idx
+                          anames<1, -1> = 'QMI':idx.names<j>
+                        next j
+                     end
+                  end
+
+                  modulo = fileinfo(data.f, FL$MODULUS)
+                  ftype = fileinfo(data.f, FL$TYPE)
+
+                  gosub build.fdi
+                  tape.rec := @im:ditm:@fm
+
+                  * The FDI is built, now read the data items
+
+                  selectv data.f to data.list
+                  loop
+                     readnext did from data.list else exit
+
+                     read itm from data.f, did else
+                        display sysmsg(2810, voc.itm<2, i>:' ':did)  ;* Cannot read source record '%1'
+                        continue
+                     end
+
+                     f.num = file.num
+                     if index(itm, @im, 1) then  ;* 2.2-7 binary item support
+                        gosub build.bdata.item
+                        tape.rec := @im:drec
+                     end else
+                        gosub build.data.item
+                        tape.rec := @im:drec:@fm
+                     end
+
+                     if dcount(tape.rec, @im) > 4 and len(tape.rec) > TP$BLKSZ then
+                        gosub tape.putrec
+                     end
+                  repeat
+
+                  close data.f
+               next i
+            end else                   ;* Simple file
+               if voc.itm<2>[1, 6] # '@QMSYS' then
+                  f.name = voc.itm<2>
+                  level = '3'
+                  path = abspath(acc.path, voc.itm<2>)
+
+                  openpath path to data.f else
+                     display sysmsg(7520, path)  ;* Cannot open %1 - File skipped
+                     continue
+                  end
+                  if binary then mark.mapping data.f, off
+
+                  type = fileinfo(data.f, FL$TYPE)
+                  if type = FL$TYPE.DH then
+                     ak = fileinfo(data.f, FL$AK)
+                     if ak # 0 then
+                        idx.names = indices(data.f)
+                        no.idx = dcount(idx.names, @fm)
+                        for j = 1 to no.idx
+                          acorr = 'AN(':idx.names<j>:')'
+                          acorrs<1, -1> = 'I':j"R%4":acorr
+                          info.idx = indices(data.f, idx.names<j>)
+                          idx.type = info.idx<1, 1>
+                          info.idx<1> = idx.type
+                          del info.idx<15>
+                          del info.idx<14>
+                          del info.idx<13>
+                          del info.idx<12>
+                          del info.idx<11>
+                          ins idx.names<j> before info.idx<1>
+                          info.idx = lower(info.idx)
+                          adicts<j> = info.idx
+                          anames<1, -1> = 'QMI':idx.names<j>
+                        next j
+                     end
+                  end
+
+                  modulo = fileinfo(data.f, FL$MODULUS)
+                  ftype = fileinfo(data.f, FL$TYPE)
+
+                  gosub build.fdi
+                  tape.rec := @im:ditm:@fm
+
+                  * The FDI is built, now read the data items
+
+                  selectv data.f to data.list
+                  loop
+                     readnext did from data.list else exit
+
+                     read itm from data.f, did else
+                        display sysmsg(2810, f.name:' ':did)
+                                    * Cannot read source record '%1'
+                        continue
+                     end
+
+                     f.num = file.num
+                     if index(itm, @im, 1) then  ;* 2.2-7 binary item support
+                        gosub build.bdata.item
+                        tape.rec := @im:drec
+                     end else
+                        gosub build.data.item
+                        tape.rec := @im:drec:@fm
+                     end
+
+                     if dcount(tape.rec, @im) > 4 and len(tape.rec) > TP$BLKSZ then
+                        gosub tape.putrec
+                     end
+                  repeat
+
+                  close data.f
+               end
+            end
+
+            if dic.open then
+               * The data items have been written, now save the dict items
+               selectv dic.f to dic.list
+               loop
+                  readnext did from dic.list else exit
+
+                  read itm from dic.f, did else
+                     display sysmsg(2810, voc.itm<2, i>:' ':did)
+                            * Cannot read source record '%1'
+                     continue
+                  end
+
+                  * added to save QM indices
+                  * if the DICT item exists, assume it is the correct one
+                  * and delete from list - when the DICT is finished, any
+                  * items left in idx.names and adicts will be added
+                  locate did in idx.names<1> setting pos then
+                     del idx.names<pos>
+                     del adicts<pos>
+                  end
+
+                  itm = field(itm, @fm, 1, DICT.SYS.INFO - 1)
+
+                  f.num = dict.file.num
+                  if index(itm, @im, 1) then   ;* 2.2-7 binary support
+                     gosub build.bdata.item
+                     tape.rec := @im:drec
+                  end else
+                     gosub build.data.item
+                     tape.rec := @im:drec:@fm
+                  end
+
+                  if dcount(tape.rec, @im) > 4 and len(tape.rec) > TP$BLKSZ then
+                     gosub tape.putrec
+                  end
+               repeat
+
+               * for QM indices
+               * anything left in idx.names at this point will be assumed
+               * to be indices whos dictionary items have been deleted so
+               * we will place them on the tape now so they will be restored
+               if idx.names # '' then
+                  mzz = dcount(adicts, @am)
+                  for zx = 1 to mzz
+                     itm = raise(adicts<zx>)
+                     did = itm<1>
+                     del itm<1>
+                     itm = field(itm, @fm, 1, DICT.SYS.INFO - 1)
+                     gosub build.data.item
+                     tape.rec := @im:drec:@fm
+
+                     if dcount(tape.rec,@im) > 4 and len(tape.rec) > TP$BLKSZ then
+                         gosub tape.putrec
+                     end
+                  next zx
+               end
+
+               close dic.f
+               dic.open = @false
+            end
+skip.data:
+         end else       ;* Not a file item, must be VOC def, save for end
+            did = vid
+            itm = voc.itm
+            f.num = md.file.num
+            gosub build.data.item
+
+            convert @sm to @tm in drec
+            convert @vm to @sm in drec
+            convert @fm to @vm in drec
+            voc.data<-1> = drec
+         end
+      end
+   next z
+
+   if voc.data # '' then
+      no.voc = dcount(voc.data, @fm)
+      for i = 1 to no.voc
+         voc.rec = voc.data<i>
+         convert @vm to @fm in voc.rec
+         convert @sm to @vm in voc.rec
+         convert @tm to @sm in voc.rec
+
+         tape.rec := @im:voc.rec:@fm
+         if dcount(tape.rec, @im) > 4 and len(tape.rec) > tp$blksz then
+            gosub tape.putrec
+         end
+      next i
+   end
+
+   gosub tape.putfini
+
+   return
+
+* ======================================================================
+
+do.t.dump:
+   rec.ct = 0
+   src.txt = trim(dic.str:' ':src.name)
+
+   * New 2.4-4 Truncate existing tape image if pointer set to 0 in first reel
+   if tp$ptr = 0 and tp$tptr = 0 then WEOFSEQ tp$fh
+
+   gosub write.label
+
+   open dic.str, src.name to data.f else
+      open dic.str, upcase(src.name) to data.f else
+         stop sysmsg(1427, src.name)  ;* Cannot open %1
+      end
+      src.name = upcase(src.name)
+   end
+   if binary then mark.mapping data.f, off
+
+   tape.rec = ''
+
+   begin case
+      case id.list # ''                      ;* Ids on command line
+         listno = 11
+         formlist id.list to 11
+
+      case selectinfo(listno, SL$ACTIVE)     ;* Specified list active
+         null
+
+      case 1                                 ;* Select all records
+         listno = 11
+         select data.f to 11
+   end case
+
+   loop
+      readnext id from listno else exit
+
+      read itm from data.f, id then
+         if dic.str and listindex('A,C,F,I', ',', itm[1, 1]) then
+            * Strip off object code
+            itm = field(itm, @fm, 1, DICT.SYS.INFO - 1)
+         end
+
+         tape.rec := id:@fm:itm:@fm:@tm
+         rec.ct += 1
+         if not(det.sup) then display rec.ct "R%5":' ':id:' - ':len(itm)
+         if len(tape.rec) > 2048 then
+            gosub tape.putrec
+         end
+      end
+   repeat
+
+   tape.rec := @im:'X'
+   loop
+   while len(tape.rec) > tp$blksz - 1
+      gosub tape.putrec
+   repeat
+
+   tape.rec = str(NULL, tp$pad):tape.rec
+   tape.rec := str(@tm, (tp$blksz + tp$pad) - len(tape.rec))
+   tape.block = tape.rec
+   gosub tape.putblk
+   gosub write.eof
+   gosub write.eof
+
+   if not(count.sup) then
+      display sysmsg(7517, rec.ct)  ;* %1 items dumped
+   end
+
+   return
+
+* ======================================================================
+
+write.label:
+   now.t = oconv(time(), "MTS")
+   now.d = oconv(date(), "D4DMYL[,A3]")
+
+   tape.block = str(NULL, tp$pad)
+   tape.block := @im : 'L '
+   tape.block := block.size:' '
+   tape.block := now.t:'  ':now.d:' '
+   tape.block := src.txt
+   tape.block := str(' ', (89 - len(tape.block))):@fm:reel.no "R%2"
+   tape.block := str(NULL, tp$blksz + tp$pad - len(tape.block))
+
+   res = ''
+   gosub tape.putblk
+   if res # '' or tp$eot then return
+
+   if debugging then display 'LBL = ' : tape.block
+
+   return
+
+* ======================================================================
+
+write.eof:
+   tape.block = 'EOF':@im:str(NULL, tp$blksz + tp$pad - 4)
+   gosub tape.putblk
+
+   return
+
+* ======================================================================
+
+tape.putrec:
+   ln = len(tape.rec)
+   loop
+   while ln > tp$blksz - 1
+      tape.block = str(NULL, 12):tape.rec[1, tp$blksz]
+      res = ''
+      gosub tape.putblk
+      if res # '' then return     ;* Do something else actually
+      tape.rec = tape.rec[tp$blksz + 1, len(tape.rec)]
+      ln = len(tape.rec)
+   repeat
+
+   return
+
+* ======================================================================
+
+tape.putfini:
+   ln = len(tape.rec)
+   if ln < tp$blksz then
+      tape.rec = str(NULL, tp$pad):tape.rec
+   end else
+      loop
+      while ln > tp$blksz - 1
+         tape.block = str(NULL, tp$pad):tape.rec[1, tp$blksz]
+         res = ''
+         gosub tape.putblk
+         if res # '' then return    ;* Do something else actually
+         tape.rec = tape.rec[tp$blksz + 1, len(tape.rec)]
+         ln = len(tape.rec)
+      repeat
+   end
+
+   if tape.rec # '' then
+      tape.block = tape.rec
+      tape.block = tape.block:@fm:@im:'XX'
+      tape.block := space(tp$blksz +tp$pad - len(tape.block))
+      res = ''
+      gosub tape.putblk
+      if res # '' then return     ;* Do something else actually
+   end
+
+   gosub write.eof
+
+   return
+
+* ======================================================================
+
+tape.putblk:
+   if tp$capacity < 1 or (tp$ptr + len(tape.block) < tp$capacity) then
+      writeblk tape.block to tp$fh on error stop 'Write Error: ':status()
+      then
+         tp$ptr += len(tape.block)
+      end else
+         res = status()
+         return
+      end
+   end else
+      if tp$capacity > 0 and (tp$ptr + len(tape.block) > tp$capacity - 1) then
+         res = 'INR'               ;* Insert Next Reel
+         return
+      end
+   end
+
+   return
+
+* ======================================================================
+
+build.fdi:
+   file.num += 1
+   hfile.num = oconv(file.num, "MCDX")
+
+   dapp = if ftype = 4 then 'DQ' else 'D'
+
+   if modulo = '' or modulo = 0 or not(modulo matches '1N0N') then
+      modulo = 101
+   end else
+      gosub find.next.prime
+   end
+
+   ditm = ''
+   ditm<4> = '0000':f.name
+   ditm<5> = dapp
+   ditm<6> = '101'                    ;* Phoney Base
+   ditm<7> = modulo
+   ditm<12> = acorrs
+   ditm<13> = 'L'
+   ditm<14> = '10'
+   if anames # '' then ditm<21> = anames
+
+   tlen = oconv(len(ditm) - 13, "MCDX") "R%4"
+   ditm<4> = tlen:f.name
+
+   ditm<1> = 'D'
+   ditm<2> = level
+   ditm<3> = hfile.num
+
+   if not(det.sup) then display space(level * 2) : f.name
+
+   return
+
+* ======================================================================
+* Emit binary data item
+
+build.bdata.item:
+   * Arbitrarily (for now at least) assign disk block size of 1K
+   dblk.size = 1000
+   item.blocks = 0
+   loop
+      item.blocks += (dblk.size)
+   while item.blocks < len(itm)
+   repeat
+
+   titm = itm
+   titm := str(char(0), item.blocks - len(itm))
+
+   titm := @im:@im:@im:'X':@im:char(130):oconv(len(itm), "MCDX")
+
+   drec = "I":oconv(f.num, "MCDX")
+   drec<2> = oconv(file.num+2, "MCDX")
+   drec<3> = 'O':oconv(item.blocks/dblk.size, "MCDX")
+   drec<4> = did
+   drec := @fm:titm
+
+   return
+
+* ======================================================================
+* Emit non-binary data item
+
+build.data.item:
+   if upcase(itm<1>[1, 1]) = 'D' and itm<5> matches "1N0N1A0A" then
+      gosub convert.d.item
+   end
+
+   drec = 'I':oconv(f.num, "MCDX")
+   drec<2> = oconv(file.num+2, "MCDX")
+   drec<3> = '0000':did
+   drec := @fm:itm
+   tlen = (len(drec) - len(drec<1>)) -1
+   drec<3> = oconv(tlen, "MCDX") "R%4":did
+
+   return
+
+* ======================================================================
+
+convert.d.item:
+   * This routine will convert a QM 'D' type dictionary item into a D3
+   * 'A' type item for compatibility. Additional information that does
+   * not translate to D3 is stored in attribute<17> for use by QM's
+   * ACCOUNT-RESTORE process to facilitate the reconstruction of the
+   * 'D' type dictionary item.
+
+   * In this loop I am discarding anything beyond the first non-numeric
+   * character. This is being done in view of the documentation's statement:
+   * 'Although all FMT() codes may be used in the dictionary, normally only
+   *  the width and justification are used in this way.'
+
+   * I feel that by discarding any additional information that we are sort
+   * of codifying this, which will make the system's ability to parse this
+   * information a moot point. Since I hate throwing anything away, should
+   * I write a parser that allows for all of these possibilities? The
+   * remainder of the information could be stored as value 5 of att<17>?
+
+   * Afterthought: Since the system _IS_ able to parse these, is there a way
+   * for me to access this parser from BASIC to help deconstruct these?
+
+   wid = 0
+   jus = ''
+   for icntr = 1 to len(itm<5>)
+      if not(itm<5>[1, icntr] matches '1N0N') then
+         wid = itm<5>[1, icntr-1]
+         jus = itm<5>[icntr, 1]
+         exit
+      end
+   next icntr
+
+   * Will these translate OK to PICK?
+   * Seems that all but maybe 'C' and it seems to fall back to 'L'
+   * and not crash a D3 listing so I will leave it for restore to QM
+
+   if jus # 'C' and jus # 'L' and jus # 'R' and jus # 'T' and jus # 'U' then
+      jus = ''
+   end
+
+   if wid < 1 then wid = 10     ;* Arbitrarily assign width of 10 if none
+   if jus = '' then jus = 'L'   ;* Arbitrarily assign left justification
+
+   tmp.itm = 'A'                ;* Make it PICK 'Attribute' type
+   tmp.itm<02> = itm<2>         ;* amc (field number)
+   tmp.itm<03> = itm<4>         ;* Description, column heading
+   tmp.itm<08> = itm<3>         ;* Correlative
+   tmp.itm<09> = jus            ;* Field justification
+   tmp.itm<10> = wid            ;* Display width
+
+   * Use D3's extended description to store information that will not translate
+   * to the PICK 'A' type. These will be parsed out by ACCOUNT-RESTORE and
+   * discarded when the QM 'D' dictionary item is created.
+   * This information will simply become odd but harmless stuff if restored to
+   * a D3 system since this is a description attribute the format:
+   *   item<17, 1> 'QM-D'   flag for restore
+   *   item<17, 2> 'S/M'    single/multi valued
+   *   item<17, 3>          value from Association
+   *   item<17, 4>          value from user field
+
+   tmp.itm<17> = 'QM-D':@vm:itm<6>:@vm:itm<7>:@vm:itm<8>
+
+   itm = tmp.itm
+
+   return
+
+* ======================================================================
+
+find.next.prime:
+   if mod(modulo, 2) = 0 and modulo > 2 then modulo +=1
+
+   for ix = modulo to 3 * modulo step 2
+      prime = @true
+      sq = sqrt(ix)
+      for jx = 2 to sq
+         if mod(ix, jx) = 0 then
+            prime = @false
+            exit
+         end
+      next jx
+   until prime
+   next ix
+
+   modulo = ix
+
+   return
+
+   * Avoid compiler warnings
+   dummy = dummy
+
+end
+
+* END-CODE

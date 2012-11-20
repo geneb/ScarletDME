@@ -1,0 +1,303 @@
+* CNAME
+* CNAME command
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 02 Nov 06  2.4-15 VOC record types now case insensitive.
+* 06 Feb 06  2.3-6 0459 Get exclusive access to file when renaming it.
+* 06 Feb 06  2.3-6 When renaming a file, modify the display name field of the
+*                  @ID dictionary entry if it was defaulted to the old name.
+* 28 Mar 05  2.1-11 Use PARSER$MFILE.
+* 13 Oct 04  2.0-5 Use message handler.
+* 01 Oct 04  2.0-3 Ban rename of multifile (temporary).
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* To rename a file
+*    CNAME old.file.name TO new.file.name
+*    CNAME old.file.name, new.file.name
+*
+* To rename a record
+*    CNAME [DICT] file.name old.record.name TO new.record.name
+*    CNAME [DICT] file.name old.record.name, new.record.name
+*
+* @SYSTEM.RETURN.CODE
+*     0  Successful
+*    -1  Command arguments incorrect or missing
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+
+$internal
+program $cname
+$catalog $CNAME
+
+$include err.h
+$include keys.h
+$include int$keys.h
+$include parser.h
+$include dictdict.h
+
+
+   parser = "!PARSER"
+
+   @system.return.code = -ER$ARGS      ;* Preset for command format errors
+
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword)  ;* Verb
+
+   * Get file name and possible DICT flag
+
+   call @parser(PARSER$MFILE, token.type, old.file.name, keyword)
+   if keyword = KW$DICT then
+      dict.token = old.file.name  ;* Allow for words other than DICT
+      dict.flag = 'DICT'
+      call @parser(PARSER$MFILE, token.type, old.file.name, keyword)
+      full.name = 'DICT ' : old.file.name
+   end else
+      dict.flag = ''
+      full.name = old.file.name
+   end
+
+   if token.type = PARSER$END then stop sysmsg(2102) ;* File name required
+
+   call @parser(parser$get.token, token.type, old.name, keyword)
+   if token.type = PARSER$COMMA or keyword = KW$TO then  ;* Renaming file
+      gosub rename.file
+   end else
+      gosub rename.records
+   end
+
+   @system.return.code = 0
+
+   return
+
+* ======================================================================
+
+rename.file:
+   * Open VOC here rather than using @VOC so that it will be closed on
+   * exit avoiding the need for explicit releases on locks in error paths.
+
+   open 'VOC' to voc.f else stop sysmsg(2026) ;* Cannot open VOC
+
+   if dict.flag # '' then
+      stop sysmsg(6147, dict.token) ;* xx not valid when renaming a file
+   end
+
+   if index(old.file.name, ',', 1) then
+      stop sysmsg(6148) ;* Renaming of multifiles is not supported at this release
+   end
+
+   call @parser(parser$get.token, token.type, new.file.name, keyword)
+   if token.type = PARSER$END then stop sysmsg(6149) ;* New file name required
+
+   call @parser(parser$get.token, token.type, token, keyword)
+   if token.type # PARSER$END then stop sysmsg(2018, token) ;* Unexpected token (xx)
+
+   if old.file.name = '' or new.file.name = '' then
+      stop sysmsg(2027) ;* Null file name not allowed
+   end
+
+   readu rec from voc.f, old.file.name else
+      @system.return.code = -status()
+      if status() = ER$RNF then
+         stop sysmsg(2014, old.file.name) ;* xx is not defined in your VOC
+      end else
+
+      end
+   end
+
+   type = upcase(rec[1, 1])
+   if type # 'F' and type # 'Q' then
+      @system.return.code = -ER$VNF
+      stop sysmsg(6150, old.file.name) ;* VOC entry for 'xx' is not a file description
+   end
+
+   readvu s from voc.f, new.file.name, 0 then
+      stop sysmsg(6151, new.file.name) ;* xx is already defined in your VOC
+   end
+
+   if type = 'Q' then
+      display sysmsg(6152) ;* This is a Q-pointer. The operating system files will not be renamed.
+   end else
+      * 0459 We need to be certain that this file is not open to any process
+      * (including ourself). As a close approximation to this test, set
+      * exclusive access on both file parts and then close them. There is
+      * a small window of opportunity for another user to open the file
+      * before the rename it but we must live with this.
+
+      open old.file.name to data.f then
+         if not(fileinfo(data.f, FL$EXCLUSIVE)) then
+            stop sysmsg(2602) ;* Cannot gain exclusive access to file
+         end
+         close data.f
+      end
+
+      open 'DICT', old.file.name to dict.f then
+         if not(fileinfo(dict.f, FL$EXCLUSIVE)) then
+            stop sysmsg(2602) ;* Cannot gain exclusive access to file
+         end
+         close dict.f
+      end
+
+      * Try to rename at operating system level if paths are default names
+      * and the new name is an acceptable operating system name.
+
+      if system(91) then
+         default.file.name = upcase(old.file.name)
+         old.file.path = upcase(rec<2>)
+      end else
+         default.file.name = old.file.name
+         old.file.path = rec<2>
+      end
+
+      if old.file.path = default.file.name and ospath(new.file.name, OS$FILENAME) then
+         if osrename(old.file.path, new.file.name) then
+            display sysmsg(6153) ;* Renamed data file at operating system level
+            rec<2> = new.file.name
+         end else
+            display sysmsg(6154, status()) ;* Unable to rename data file at operating system level. Error xx
+         end
+      end
+
+      if system(91) then
+         default.file.name = upcase(old.file.name):'.DIC'
+         old.file.path = upcase(rec<3>)
+         s = upcase(new.file.name):'.DIC'
+      end else
+         default.file.name = old.file.name:'.DIC'
+         old.file.path = rec<3>
+         s = new.file.name:'.DIC'
+      end
+
+      if upcase(old.file.path) = default.file.name and ospath(s, OS$FILENAME) then
+         if osrename(old.file.path, s) then
+            display sysmsg(6155) ;* Renamed dictionary at operating system level
+            rec<3> = s
+         end else
+            display sysmsg(6156, status()) ;* Unable to rename dictionary at operating system level. Error xx
+         end
+      end
+   end
+
+   * Write new VOC entry
+
+   write rec to voc.f, new.file.name on error
+      @system.return.code = -status()
+      stop sysmsg(6157, status(), new.file.name)  ;* Error xx writing VOC record 'xx'
+   end
+
+   delete voc.f, old.file.name
+
+   * Modify the @ID dictionary entry display name if it was defaulted to the
+   * old file name.
+
+   open 'DICT', new.file.name to dict.f then
+      readu dict.rec from dict.f, '@ID' then
+         if dict.rec<DICT.DISPLAY.NAME> = old.file.name then
+            dict.rec<DICT.DISPLAY.NAME> = new.file.name
+            write dict.rec to dict.f, '@ID'
+         end
+      end
+      close dict.f
+   end
+
+   display sysmsg(6158, old.file.name, new.file.name) ;* 'xx' renamed to 'xx'
+
+   return
+
+* ======================================================================
+
+rename.records:
+   open dict.flag, old.file.name to file else
+      open dict.flag, upcase(old.file.name) to file else
+         @system.return.code = -ER$FNF
+         stop sysmsg(2019) ;* File not found
+      end
+      old.file.name = upcase(old.file.name)
+      full.name = upcase(full.name)
+   end
+
+   if fileinfo(file, FL$READONLY) then
+      @system.return.code = -ER$RDONLY
+      stop sysmsg(1431) ;* File is read-only
+   end
+
+   if token.type = PARSER$END then stop sysmsg(2109) ;* Record name required
+
+   mark.mapping file, off
+   loop
+      call @parser(parser$get.token, token.type, token, keyword)
+      if token.type # PARSER$COMMA and keyword # KW$TO then
+         stop sysmsg(6159) ;* Expected comma or TO
+      end
+
+      call @parser(parser$get.token, token.type, new.name, keyword)
+      if token.type = PARSER$END then stop sysmsg(6160) ;* New record name required
+
+      if old.name = '' or new.name = '' then
+         stop sysmsg(2111) ;* Null new record name not allowed
+      end
+
+      readu rec from file, old.name else
+         release file, old.name
+         @system.return.code = -status()
+         stop sysmsg(6161, old.name) ;* Cannot read 'xx'
+      end
+
+      readvu s from file, new.name, 0 locked
+         stop sysmsg(1433, new.name, status()) ;* 'xx' is locked by user xx
+      end then
+         release file, new.name
+         stop sysmsg(6163, new.name) ;* Record 'xx' already exists
+      end
+
+      write rec to file, new.name on error
+         crt sysmsg(6164, status(), new.name) ;* Error xx writing record 'xx'
+         if status() = ER$TRIGGER then
+            crt sysmsg(3007, @trigger.return.code) ;* Data validation error: xx
+         end
+         @system.return.code = -status()
+         stop
+      end
+
+      delete file, old.name on error
+         crt sysmsg(6165, status(), old.name) ;* Error xx deleting record 'xx'
+         if status() = ER$TRIGGER then
+            crt sysmsg(3007, @trigger.return.code) ;* Data validation error: xx
+         end
+         @system.return.code = -status()
+         stop
+      end
+
+      display sysmsg(6158, old.name, new.name) ;* 'xx' renamed to 'xx'
+
+      call @parser(parser$get.token, token.type, old.name, keyword)
+   until token.type = PARSER$END
+   repeat
+
+   return
+end
+
+* END-CODE

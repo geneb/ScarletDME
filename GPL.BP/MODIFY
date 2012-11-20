@@ -1,0 +1,1300 @@
+* MODIFY
+* MODIFY verb
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 02 Nov 06  2.4-15 VOC/dictionary record types now case insensitive.
+* 31 Oct 06  2.4-15 Use @SYS.BELL to honour BELL ON/OFF setting.
+* 21 Mar 06  2.3-9 0467 Conversion and format items not shown when editing a
+*                  D-type dictionary item.
+* 25 May 05  2.2-0 Use active select list.
+* 28 Mar 05  2.1-11 Use PARSER$MFILE.
+* 29 Jan 05  2.1-5 0310 Compilation of dictionary item wsa checking wrong
+*                  record for success.
+* 28 Jan 05  2.1-4 0308 Pick list processing has stopped entry of field names.
+* 18 Jan 05  2.1-3 0305 Processing of item tables did not allow for a file
+*                  where all items are multi-valued.
+* 18 Jan 05  2.1-2 Added automatic selection of fields for dictionaries based
+*                  on record type.
+* 17 Jan 05  2.1-2 Reworked dict.dict to get the A/S changes to work properly
+*                  with dictionaries.
+* 30 Dec 04  2.1-0 Added support for A and S types.
+* 15 Dec 04  2.1-0 Added support for C-types.
+* 18 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    MODIFY [DICT] file [field...]
+*
+* END-DESCRIPTION
+*
+* START-CODE
+$internal
+
+program modify
+$catalog $MODIFY
+
+$include parser.h
+$include dictdict.h
+$include keyin.h
+$include keys.h
+$include err.h
+$include bcomp.h
+
+   equ MAX.PROMPT.WIDTH to 16
+
+
+   @system.return.code = -ER$ARGS
+
+   parser = "!PARSER"
+
+   equ PAN.INCREMENT to 20
+
+
+   * Display parameters
+
+   screen.width = @crtwide
+   prompt.line = @crthigh - 2
+   error.line = @crthigh - 1
+   top.data.line = 3
+   pick.items.per.page = prompt.line - 4
+   values.per.page = prompt.line - 5
+   image.fmt = @crtwide : 'L'
+   sw.space = space(@crtwide)
+
+   * Set up list of non-printable characters and their replacements
+
+   banned = ''
+   for i = 0 to 31
+     banned := char(i)
+   next i
+   banned := char(127)
+   replacements = str("?", len(banned))
+
+   a.fields = 'F1 LOC A.NAME A.ASSOC F5 F6 A.CONV CORREL A.JUST A.WIDTH'
+   d.fields = 'F1 LOC CNV D.NAME FORMAT SM ASSOC'   ;* 0467
+   x.fields = 'F1 F2 F3 F4 F5 F6 F7 F8 F9 F10'
+
+   * Input modes
+
+   overlay = @false
+
+   gosub clear.field.lists
+
+   default.dictionary.items = ''
+
+   id.prompt = ''
+   id.list = ''
+   field.list = ''
+
+   prompt ''
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+
+   * Get file name
+
+   call @parser(PARSER$MFILE, token.type, token, keyword)
+
+   if keyword = KW$DICT then
+      dict.flag = 'DICT'
+      call @parser(PARSER$MFILE, token.type, token, keyword)
+   end else
+      dict.flag = ''
+   end
+
+   if token.type = PARSER$END then stop sysmsg(2102) ;* File name required
+
+   file.name = token
+
+   * Open file and dictionary
+
+   open dict.flag, file.name to data.f else
+      open dict.flag, upcase(file.name) to data.f else
+         @system.return.code = -status()
+         stop sysmsg(1427, trimf(dict.flag : ' ' : file.name)) ;* Cannot open %1 
+      end
+      file.name = upcase(file.name)
+   end
+
+   if len(dict.flag) then
+      open 'DICT.DICT' to dict.f else
+         @system.return.code = -status()
+         stop sysmsg(2022) ;* DICT.DICT not found
+      end
+   end else
+      open 'DICT', file.name to df then
+         dict.f = df
+      end else
+         display sysmsg(2012) ;* Cannot open dictionary
+      end
+   end
+
+   if fileinfo(data.f, FL$READONLY) then
+      @system.return.code = -ER$RDONLY
+      stop sysmsg(1431) ;* File is read-only
+   end
+
+   title.line = 'MODIFY ' : trim(dict.flag : ' ' : file.name)
+
+   * Determine fields to process
+
+   from.command.line = @true
+   gosub process.field.list          ;* Use remaining command line tokens
+   from.command.line = @false
+
+   if num.associations = 0 then      ;* Derive field list via dictionary
+      gosub build.list.from.phrase
+      gosub process.field.list
+   end
+
+   if num.associations = 0 then      ;* Build list of all D-type items
+      gosub build.list.of.all.fields
+      gosub process.field.list
+   end
+
+   if num.associations = 0 then stop sysmsg(6945) ;* No fields to modify
+
+
+   * Process records
+
+   if id.prompt = '' then id.prompt = 'Id'
+   from.id.list = (id.list # '')
+
+   if id.list = '' and selectinfo(0, SL$ACTIVE) then
+      readlist id.list then from.id.list = @true
+   end
+
+   loop
+      display @(-1) : title.line :
+
+      if from.id.list then
+         if id.list = '' then exit
+         id = id.list<1>
+         del id.list<1>
+         display @(0,2) : id.prompt : ': ' : id :
+      end else
+         loop
+            display @(0,2) : id.prompt : ' (? for list)' : ': ' :
+            input id :
+         while id = '?'                  ;* 0308
+            sselect data.f to 11
+            readlist item.list from 11 else null
+            call !pick(id,
+                       2,         ;* Top line
+                       item.list, ;* Items to display
+                       trimf(dict.flag : ' ' : file.name), ;* Title
+                       0)
+            if id # '' then
+               display @(0,2) : id.prompt : ': ' : id :
+               exit
+            end
+         repeat
+      end
+
+   until id = ''
+
+      readu rec from data.f, id then
+         type = upcase(rec[1,1])
+         if len(dict.flag) and listindex('A,C,I,S', ',', type) then
+            rec = trim(field(rec, @fm, 1, DICT.ITYPE.OBJECT - 1), @fm, 'T')
+         end
+         gosub process.record
+      end else
+         gosub new.record
+         gosub process.record
+      end
+   repeat
+
+   display @(-1) :
+
+   @system.return.code = 0
+
+   return
+
+* ======================================================================
+* Construct list of fields to process by examination of dictionary
+
+build.list.from.phrase:
+   field.list = ''
+   field.loc = ''
+
+   read dict.rec from dict.f, "@MODIFY" then
+      if upcase(dict.rec[1,2]) # 'PH' then dict.rec = ''
+   end
+
+   if dict.rec = '' then
+      if dict.flag # '' then
+         dict.rec = 'PH' : @fm : d.fields
+         default.dictionary.items = 'D'
+      end
+   end
+
+   if dict.rec = '' then  ;* No @MODIFY or not a phrase record
+      read dict.rec from dict.f, "@" then
+         if upcase(dict.rec[1,2]) # 'PH' then dict.rec = ''
+      end
+   end
+
+   if dict.rec # '' then   ;* Found a phrase to use
+      field.list = convert(' ', @fm, trim(dict.rec<2>))
+      i = 3
+      loop
+      while field.list[1] = '_'
+         field.list = field.list[1, len(field.list)-1] : ' ' : dict.rec<i>
+         i += 1
+      repeat
+
+      field.list = convert(' ', @fm, trim(field.list))
+   end
+
+   call @parser(PARSER$RESET, 0, convert(@fm, ' ', field.list), 0)
+
+   return
+
+* ======================================================================
+* Construct list of all fields in dictionary
+
+build.list.of.all.fields:
+   field.list = ''
+   field.loc = ''
+
+   select dict.f
+   loop
+      readnext dict.id else exit
+      read dict.rec from dict.f, dict.id then
+         if upcase(dict.rec[1,1]) = 'D' then
+            n = trim(dict.rec<DICT.LOC>)
+            if n matches '1N0N' then
+               * Construct the list in ascending location order
+               n += 0
+               locate n in field.loc<1> setting i else
+                  ins n before field.loc<i>
+                  ins dict.id before field.list<i>
+               end
+            end
+         end
+      end
+   repeat
+
+   call @parser(PARSER$RESET, 0, convert(@fm, ' ', field.list), 0)
+
+   return
+
+* ======================================================================
+
+process.field.list:
+   * Resolve phrases and reject inappropriate items
+
+   apos = 0    ;* No items added yet - used to check VERIFY usage
+
+   loop
+      call @parser(PARSER$GET.TOKEN, token.type, dict.id, keyword)
+   until token.type = PARSER$END
+
+      if token.type = PARSER$STRING then
+         if from.command.line then id.list<-1> = dict.id
+         continue
+      end
+
+      read dict.rec from dict.f, dict.id else
+         read dict.rec from @voc, dict.id else
+            read dict.rec from dict.f, upcase(dict.id) else
+               read dict.rec from @voc, upcase(dict.id) else
+                  if from.command.line then id.list<-1> = dict.id
+                  continue
+               end
+            end
+            dict.id = upcase(dict.id)
+         end
+      end
+
+      type = upcase(dict.rec[1,1])
+      if type = 'P' then type = upcase(dict.rec[1,2])
+
+      begin case
+         case type = 'D'
+            loc = dict.rec<DICT.LOC>
+            if num(loc) and loc >= 0 then gosub add.item
+
+         case type = 'PH'
+            s = dict.rec<2>
+            loop
+            while s[1] = '_'
+               s = s[1, len(s)-1] : ' ' : dict.rec<3>
+               del dict.rec<3>
+            repeat
+            s = convert(' ', @fm, trim(s))
+            if field.list = '' then field.list = s
+            else ins s before field.list<1>
+
+         case keyword = KW$VERIFY
+            if apos = 0 then
+               stop sysmsg(6946, dict.id) ;* Incorrect use of %1
+            end
+
+            call @parser(PARSER$GET.TOKEN, token.type, verify.file, keyword)
+            if token.type = PARSER$END then
+               stop sysmsg(6947, dict.id) ;* File name required after %1
+            end
+
+            open verify.file to verify.f else
+               stop sysmsg(6948, verify.file, dict.id) ;* File %1 not found for %2
+            end
+
+            item.verify<apos,pos> = verify.file
+            apos = 0   ;* Prevent second VERIFY for same field
+
+         case 1
+            if from.command.line then id.list<-1> = dict.id
+      end case
+   repeat
+
+   num.associations = dcount(item.assoc, @fm)  ;* Includes non-associations
+
+   if num.associations then
+
+      * Build pick list
+
+      pick.list = ''
+      pick.index = ''
+      pick.list.width = 0
+
+      * Single valued items
+
+      if item.multi.valued<1,1> # 'M' then   ;* 0305
+         * There are some single valued items
+         n = dcount(item.name<1>, @vm)
+         for i = 1 to n
+            s = item.heading<1,i>
+            pick.list<-1> = s
+            if len(s) > pick.list.width then pick.list.width = len(s)
+            pick.index<-1> = '1.' : i
+         next i
+         n = 2
+      end else n = 1
+
+      * Multi-value items and associations
+
+      for apos = n to num.associations
+         hdgs = change(item.heading<apos>, @vm, ', ')
+         if len(hdgs) > 70 then hdgs = hdgs[1,67] : '...'
+         pick.list<-1> = hdgs
+         pick.index<-1> = apos
+
+         * Work out required display width, truncating fields if necessary
+
+         n = dcount(item.name<apos>, @vm)
+         j = @crtwide - 5     ;* Allow space for "nnn: " line prefix
+         if n = 1 then        ;* Single item - allow full width
+            item.width<apos> = j
+         end else             ;* Multiple items in association
+            j -= n - 1        ;* Remove inter-column spaces. J now data columns.
+            k = sum(item.width<apos>)
+            loop
+            while k > j
+               * Find longest item and lop off one character
+               locate maximum(item.width<apos>) in item.width<apos,1> setting i then
+                  item.width<apos,i> = item.width<apos,i> - 1
+               end
+               k -= 1
+            repeat
+         end
+      next apos
+
+      num.pick.list.items = dcount(pick.list, @fm)
+      pick.data.width = @crtwide - (5 + pick.list.width + 1)
+   end
+
+   return
+
+* ======================================================================
+* Add an item to the item lists, rejecting duplicates
+*
+* dict.id  = dictionary record id
+* dict.rec = dictionary record
+* Returns apos, pos
+
+add.item:
+   loc = dict.rec<DICT.LOC> + 0
+   conv = dict.rec<DICT.CONV,1>
+   hdg = convert(@vm, ' ', dict.rec<DICT.DISPLAY.NAME>)[1,MAX.PROMPT.WIDTH]
+   if hdg = '' then hdg = dict.id[1,MAX.PROMPT.WIDTH]
+   format = dict.rec<DICT.FORMAT>
+   sm = dict.rec<DICT.S.M>
+   assoc = dict.rec<DICT.ASSOC>
+
+   if loc = 0 then
+      if dict.id # '@ID' or id.prompt = '' then
+         if hdg # '' then id.prompt = hdg
+      end
+   end else
+      if sm = 'M' then
+         if assoc = '' then
+            assoc = assoc.index
+            assoc.index += 1
+         end else
+            if assoc matches '1N0N' then assoc := ' '
+         end
+      end else
+         assoc = '0'
+      end
+
+      find loc in item.loc setting z,z,z then return   ;* Duplicate
+
+      locate assoc in item.assoc<1> by 'AL' setting apos then
+         locate loc in item.loc<apos,1> by 'AR' setting pos else
+            ins dict.id before item.name<apos, pos>
+            ins loc before item.loc<apos, pos>
+            ins hdg before item.heading<apos, pos>
+            ins conv before item.conv<apos, pos>
+            ins format before item.fmt<apos, pos>
+            ins sm before item.multi.valued<apos, pos>
+            n = len(fmt(1, format))
+            if n < len(hdg) then n = len(hdg)
+            ins n before item.width<apos, pos>
+            ins '' before item.verify<apos,pos>
+         end
+      end else
+         ins assoc before item.assoc<apos>
+         ins dict.id before item.name<apos>
+         ins loc before item.loc<apos>
+         ins hdg before item.heading<apos>
+         ins conv before item.conv<apos>
+         ins format before item.fmt<apos>
+         ins sm before item.multi.valued<apos>
+         n = len(fmt(1, format))
+         if n < len(hdg) then n = len(hdg)
+         ins n before item.width<apos>
+         ins '' before item.verify<apos>
+         pos = 0
+      end
+   end
+
+   return
+
+* ======================================================================
+* Enter data for a new record
+
+new.record:
+   if dict.flag # '' and default.dictionary.items # '' then
+      type = ''
+      gosub load.default.dictionary.items
+   end
+
+   error.displayed = @false
+   pick.offset = -1
+
+   apos = 1
+   if item.assoc<1> = 0 then   ;* Single valued items present
+      num.associated.items = dcount(item.name<apos>, @vm)
+
+      for pos = 1 to num.associated.items
+         i = idiv(pos - 1, pick.items.per.page) * pick.items.per.page
+         if i # pick.offset then
+            pick.offset = i
+            gosub show.pick.list.page
+         end
+
+         hdg = item.heading<apos,pos>
+         loc = item.loc<apos,pos>
+         sm = item.multi.valued<apos,pos>
+         conv = item.conv<apos,pos>
+         format = item.fmt<apos,pos>
+
+         loop
+            prefix = hdg : ': '
+            s = rec<loc>
+            if conv # '' then s = oconv(s, conv)
+            gosub modify.field
+
+            if exit.code then
+               goto exit.new.record
+            end
+
+            if conv # '' then
+               s = iconv(s, conv)
+               if status() then
+                  display @(0, error.line) : sysmsg(6949) :  ;* Conversion error
+                  error.displayed = @true
+               end
+            end
+
+            fn = item.verify<apos,pos>
+            if fn # '' then gosub verify.data
+         while error.displayed
+         repeat
+
+         rec<loc> = s
+
+         if conv # '' then s = oconv(s, conv)
+         s = trimb(trimf(s))
+         ln = top.data.line - 1 + pos - pick.offset
+         display @(6 + pick.list.width,ln) : @(-4) : s[1,pick.data.width]
+
+         if loc = 1 then
+            if dict.flag # '' and default.dictionary.items # '' then
+               type = rec[1,1]
+               gosub load.default.dictionary.items
+               num.associated.items = dcount(item.name<apos>, @vm)
+            end
+         end
+      next pos
+
+      apos += 1
+   end
+
+   * Multi-valued items
+
+   loop
+   while apos <= num.associations
+      gosub enter.association
+      gosub modify.association
+   until exit.code
+      apos += 1
+   repeat
+
+exit.new.record:
+   return
+
+* ======================================================================
+* Process existing record or modify new record after initial entry
+
+process.record:
+   error.displayed = @false
+   pick.offset = 0
+
+   if dict.flag # '' and default.dictionary.items # '' then
+      type = rec[1,1]
+      gosub load.default.dictionary.items
+   end
+
+   loop
+      gosub show.pick.list
+      begin case
+         case apos > 0     ;* Modify field
+            if pos then   ;* Single valued item
+               loc = item.loc<apos,pos>
+               hdg = item.heading<apos,pos>
+               conv = item.conv<apos,pos>
+
+               loop
+                  prefix = hdg : ': '
+                  s = rec<loc>
+                  if conv # '' then s = oconv(s, conv)
+                  gosub modify.field
+
+                  if conv # '' then
+                     s = iconv(s, conv)
+                     if status() then
+                        display @(0, error.line) : sysmsg(6949) : ;* Conversion error
+                        error.displayed = @true
+                     end
+                  end
+
+                  fn = item.verify<apos,pos>
+                  if fn # '' then gosub verify.data
+               while error.displayed
+               repeat
+
+               rec<loc> = s
+
+               if loc = 1 then
+                  if dict.flag # '' and default.dictionary.items # '' then
+                     type = rec[1,1]
+                     if type # default.dictionary.items then
+                        gosub load.default.dictionary.items
+                     end
+                  end
+               end
+            end else      ;* Multi-valued item
+               gosub modify.association
+            end
+
+         case apos = 0     ;* File changes and exit
+            type = upcase(rec[1,1])
+            begin case
+               case dict.flag = ''
+                  compiled.item = @false
+               case type = 'C' or type = 'I'
+                  compiled.item = @true
+               case type = 'A' or type = 'S'
+                  compiled.item = rec<DICT.A.CORRELATIVE> # ''
+               case 1
+                  compiled.item = @false
+            end case
+
+            if compiled.item then
+               display @(0,top.data.line) : @(-3) : sysmsg(6950, id) ;* Compiling %1...'
+
+               call $dcomp(data.f,            ;* Dictionary file var
+                           id,                ;* Record id
+                           rec,               ;* Dictionary record
+                           z,                 ;* I-type format
+                           z,                 ;* I-type conversion
+                           z,                 ;* I-type S/A flag
+                           z,                 ;* I-type association
+                           z,                 ;* I-type constant
+                           1)                 ;* Recursion depth
+
+               if rec<DICT.ITYPE.OBJECT> = '' then   ;* 0310
+                  display sysmsg(6951) ;* Compilation failed. Record not written to dictionary.
+                  display sysmsg(5061) :  ;* Press return to continue
+                  input z
+                  gosub repaint
+                  continue
+               end
+            end else
+               rec = crop(rec)
+            end
+
+            write rec to data.f, id on error
+               display @(0,top.data.line) : @(-3) :
+               display sysmsg(6652, status()) ;* Error %1 writing record
+               if status() = ER$TRIGGER then
+                  display sysmsg(3007, @trigger.return.code) ;* Data validation error: %1
+               end
+               display sysmsg(5061) :  ;* Press return to continue
+               input z
+               gosub repaint
+               continue
+            end
+            exit
+
+         case apos = -1    ;* Quit
+            release data.f, id
+            exit
+      end case
+   repeat
+
+   return
+
+* ======================================================================
+* Show pick list of fields/associations
+
+show.pick.list:
+   gosub show.pick.list.page
+
+   loop
+      prefix = 'Action(n/FI/Q'
+      if pick.offset + pick.items.per.page <= num.pick.list.items then
+         prefix := '/N'
+      end
+      if pick.offset > 0 then
+         prefix := '/P'
+      end
+      prefix := '/?): '
+
+      s = ''
+      gosub modify.field
+      action = upcase(s)
+
+      begin case
+         case action matches '1-3N'
+            if action >= 1 and action <= num.pick.list.items then
+               if action <= pick.offset or action > pick.offset + pick.items.per.page then
+                  pick.offset = idiv(action - 1, pick.items.per.page) * pick.items.per.page
+                  gosub show.pick.list.page
+               end
+
+               apos = field(pick.index<action>, '.', 1)
+               pos = field(pick.index<action>, '.', 2)
+               return
+            end
+
+         case action = 'FI'
+            apos = 0
+            return
+
+         case action = 'N'     ;* Next page
+            if pick.offset + pick.items.per.page <= num.pick.list.items then
+               pick.offset += pick.items.per.page
+               goto show.pick.list
+            end
+
+         case action = 'P'     ;* Previous page
+            if pick.offset > 0 then
+               pick.offset -= pick.items.per.page
+               goto show.pick.list
+            end
+
+         case action = 'Q'     ;* Quit
+            apos= -1
+            return
+
+         case action = '?'
+            display @(0, error.line) : sysmsg(6952) :
+            * Item number/File/Quit/Next page/Previous page
+            error.displayed = @true
+
+         case 1
+            display @sys.bell :
+      end case
+
+   repeat
+
+   return
+
+* ======================================================================
+
+show.pick.list.page:
+   for j = 1 to pick.items.per.page
+      i = j + pick.offset
+      display @(0,j + top.data.line - 1) : @(-4) :
+      if i <= num.pick.list.items then
+         pi = pick.index<i>
+         if index(pi, '.', 1) then    ;* Single valued item
+            display fmt(i, '3R') : ': ' : fmt(pick.list<i>, pick.list.width:'L') : '=' :
+            ppos = field(pi, '.', 2) + 0
+            loc = item.loc<1,ppos>
+            conv = item.conv<1,ppos>
+            format = item.fmt<1,ppos>
+            s = rec<loc>
+            if conv # '' then s = oconv(s, conv)
+            s = trimb(trimf(s))
+            display s[1,pick.data.width]
+         end else                     ;* Multi-valued item
+            display fmt(i, '3R') : '> ' : pick.list<i>
+         end
+      end
+   next j
+
+   return
+
+* ======================================================================
+* Enter data for association on new record
+* apos = index into item lists
+
+enter.association:
+   num.associated.items = dcount(item.name<apos>, @vm)
+   num.values = 0
+   value.offset = 0
+   gosub show.value.page    ;* Display column headings
+
+   entry.pos = 1
+   loop
+      vpos = entry.pos
+      if vpos > value.offset + values.per.page then
+         value.offset = idiv(vpos - 1, values.per.page) * values.per.page
+         gosub show.value.page
+         vpos = entry.pos
+      end
+      gosub process.associated.values
+   until exit.code
+      entry.pos += 1
+   repeat
+
+   return
+
+* ======================================================================
+* Process an association (or non-associated multi-valued item)
+* apos = index into item lists
+
+modify.association:
+   exit.code = 0
+
+   num.associated.items = dcount(item.name<apos>, @vm)
+
+   * Find current number of values by examining each associated field
+
+   num.values = 0
+   for pos = 1 to num.associated.items
+      n = dcount(rec<item.loc<apos,pos>>, @vm)
+      if n > num.values then num.values = n
+   next pos
+
+   value.offset = 0
+   gosub show.value.page
+
+   loop
+      prefix = sysmsg(6953) ;* Modify item
+      prefix := '(n/In/Dn/E'
+      if value.offset + values.per.page <= num.values then
+         prefix := '/N'
+      end
+      if value.offset > 0 then
+         prefix := '/P'
+      end
+      prefix := '/?): '
+
+      s = ''
+      gosub modify.field
+      action = upcase(s)
+
+      begin case
+         case action matches '1-3N'
+            action += 0
+            if action >= 1 and action <= num.values + 1 then
+               if action <= value.offset or action > value.offset + values.per.page then
+                  value.offset = idiv(action - 1, values.per.page) * values.per.page
+                  gosub show.value.page
+               end
+
+               vpos = action
+               gosub process.associated.values
+            end
+
+         case action matches 'D1N0N'
+            vpos = action[2,999] + 0
+            if vpos > 0 and vpos <= num.values then
+               for pos = 1 to num.associated.items
+                  i = item.loc<apos,pos>
+                  del rec<i, vpos>
+               next pos
+               num.values -= 1
+               if vpos > num.values then vpos = num.values
+               if vpos = 0 then value.offset = 0
+               else
+                  value.offset = idiv(vpos - 1, values.per.page) * values.per.page
+               end
+               gosub show.value.page
+            end else
+               display @sys.bell :
+            end
+
+         case action = 'E'     ;* Extend
+            loop
+               num.values += 1
+               if num.values <= value.offset or num.values > value.offset + values.per.page then
+                  value.offset = idiv(num.values - 1, values.per.page) * values.per.page
+                  gosub show.value.page
+               end
+               vpos = num.values
+               gosub process.associated.values
+            until exit.code
+            repeat
+
+         case action matches 'I1N0N'
+            vpos = action[2,999] + 0
+            if vpos > 0 and vpos <= num.values then
+               for pos = 1 to num.associated.items
+                  i = item.loc<apos,pos>
+                  ins '' before rec<i, vpos>
+               next pos
+               num.values += 1
+               saved.vpos = vpos
+               gosub show.value.page
+               vpos = saved.vpos
+               gosub process.associated.values
+            end else
+               display @sys.bell :
+            end
+
+         case action = 'N'     ;* Next page
+            if value.offset + values.per.page <= num.values then
+               value.offset += values.per.page
+               gosub show.value.page
+            end
+
+         case action = 'P'     ;* Previous page
+            if value.offset > 0 then
+               value.offset -= values.per.page
+               gosub show.value.page
+            end
+
+         case action = ''
+            return
+
+         case action = '?'
+            display @(0, error.line) : sysmsg(6954) : 
+            * Item number/Insert/Delete/Extend/Next page/Previous page
+            error.displayed = @true
+
+         case 1
+            display @sys.bell :
+      end case
+   repeat
+
+   return
+
+* ======================================================================
+* Process a line from an association
+* apos = item index
+* vpos = value index
+
+process.associated.values:
+   for pos = 1 to num.associated.items
+      loc = item.loc<apos,pos>
+      sm = item.multi.valued<apos,pos>
+      conv = item.conv<apos,pos>
+
+      loop
+         prefix = item.heading<apos,pos> : ': '
+         s = rec<loc,vpos>
+         if conv # '' then s = oconv(s, conv)
+         gosub modify.field
+
+         if exit.code then
+            goto exit.values
+         end
+
+         if s = '' then
+            if pos = 1 then
+               exit.code = @true
+               goto exit.values
+            end
+         end
+
+         if conv # '' then
+            s = iconv(s, conv)
+            if status() then
+               display @(0, error.line) : sysmsg(6949) : ;* Conversion error
+               error.displayed = @true
+            end
+         end
+
+         fn = item.verify<apos,pos>
+         if fn # '' then gosub verify.data
+      while error.displayed
+      repeat
+
+      rec<loc,vpos> = s
+
+      * Update display
+
+      if vpos > value.offset + values.per.page then
+         saved.vpos = vpos
+         value.offset = idiv(vpos - 1, values.per.page) * values.per.page
+         gosub show.value.page
+         vpos = saved.vpos
+      end
+
+      display @(0,vpos - value.offset + top.data.line) : @(-4) :
+      gosub show.value.line
+      if vpos > num.values then num.values = vpos
+   next pos
+
+exit.values:
+   return
+
+* ======================================================================
+
+show.value.page:
+   display @(0,top.data.line) : @(-4) : '     ' :
+   k = 1
+   loop
+      hdg = item.heading<apos,k>
+      width = item.width<apos,k>
+      display fmt(hdg[1,width], width:'.L') :
+
+      k += 1
+   while k <= num.associated.items
+      display ' ' :
+   repeat
+
+   for j = 1 to values.per.page
+      vpos = j + value.offset
+      display @(0,j + top.data.line) : @(-4) :
+      if vpos <= num.values then
+         gosub show.value.line
+      end
+   next j
+
+   return
+
+* ======================================================================
+* Show a line of the associated values page
+* vpos = value position
+
+show.value.line:
+   display fmt(vpos, '3R') : ': ' :
+   k = 1
+   loop
+      loc = item.loc<apos,k>
+      conv = item.conv<apos,k>
+      format = item.fmt<apos,k>
+      width = item.width<apos,k>
+
+      s = rec<loc, vpos>
+      if conv # '' then s = oconv(s, conv)
+      s = fmt(s, width:'L')
+      display s[1,width] :
+
+      k += 1
+   while k <= num.associated.items
+      display ' ' :
+   repeat
+
+   return
+
+* ======================================================================
+
+verify.data:
+   if s = '' then return   ;* Null value always acceptable
+
+   if fn # verify.file then
+      verify.file = fn
+      open verify.file to verify.f else
+         display @(0, error.line) : sysmsg(6955, verify.file) :  ;* Cannot open %1 for VERIFY
+         verify.file = ''
+         error.displayed = @true
+         return
+      end
+   end
+
+   read z from verify.f, s else
+      display @(0, error.line) : sysmsg(6956, verify.file) :
+      * Verification error: Record not in %1
+      error.displayed = @true
+   end
+
+   return
+
+* ======================================================================
+* Modify a data field value
+
+modify.field:
+   exit.code = 0
+   gs.width = @crtwide - (1 + len(prefix))
+   gs.pan = 1
+   gs = s
+
+   image = fmt(prefix : gs[1,gs.width], image.fmt)
+
+   image = convert(banned, replacements, image)
+   display @(0, prompt.line) : @(-4) : image :
+
+   display @(len(prefix), prompt.line) :
+   x = 1
+   first = @true
+   loop
+      c = keycode()
+      n = seq(c)
+      begin case
+         case n >= 32 and n < 127    ;* 0213
+            gosub insert.char
+
+         case n = K$HOME or n = CTRL.A
+            x = 1
+
+         case n = K$LEFT or n = CTRL.B
+            if x > 1 then x -= 1
+
+         case n = K$DELETE or n = CTRL.D
+            gs = gs[1, x - 1] : gs[x + 1, 999]
+
+         case n = K$END or n = CTRL.E
+            x = len(gs) + 1
+
+         case n = K$RIGHT or n = CTRL.F
+            if x <= len(gs) then x += 1
+
+         case n = K$BACKSPACE
+            if x > 1 then
+               x -= 1
+               gs = gs[1, x - 1] : gs[x + 1, 999]
+            end
+
+         case n = CTRL.K
+            gs = gs[1, x - 1]
+
+         case n = K$RETURN
+            if first then goto exit.modify.field  ;* Use old value
+            exit
+
+         case n = K$INSERT or n = CTRL.O
+            overlay = not(overlay)
+
+         case n = CTRL.Q           ;* Quote next character
+            display @(0,error.line):'Quote char':@(-4):
+            c = keyin()
+            display @(0,error.line):@(-4):
+            begin case
+               case c = 'V' or c = 'v' ; c = @vm
+               case c = 'S' or c = 's' ; c = @sm
+               case c = 't' or c = 't' ; c = @tm
+               case n = 254            ; goto duff.char
+            end case
+            gosub insert.char
+
+         case n = CTRL.X
+            exit.code = @true
+            goto exit.modify.field
+
+         case n = K$F1
+            gosub display.help
+
+         case 1
+duff.char:
+            display @sys.bell :
+      end case
+
+      if (x < gs.pan) or (x >= (gs.pan + gs.width)) then
+         gs.pan = (int((x - 1) / PAN.INCREMENT) * PAN.INCREMENT) - 20
+         if gs.pan <= 0 then gs.pan = 1
+      end
+
+      ss = prefix : gs[gs.pan, gs.width]
+      ss = convert(banned, replacements, ss)
+      gosub zoned.update
+
+      display @(len(prefix) + x - gs.pan, prompt.line) :
+      first = @false
+   repeat
+
+   s = gs
+
+exit.modify.field:
+   * Replace ^nnn sequences in data
+
+   esc.count = count(s, "^")
+
+   loop
+   while esc.count
+      i = index(s, "^", esc.count)
+      c = upcase(s[i + 1, 1])
+      begin case
+         case c = "^"           ;* Literal up arrow
+            s = s[1, i] : s[i + 2, 99999]
+            esc.count -= 1
+
+         case s[i + 1, 3] matches '3N'
+            qchar = s[i + 1, 3] + 0
+            if qchar < 254 then
+               s = s[1, i - 1] : char(qchar) : s[i + 4, 99999]
+            end
+      end case
+
+      esc.count -= 1
+   repeat
+
+   if error.displayed then
+      display @(0, error.line) : @(-4) :
+      error.displayed = @false
+   end
+
+   return
+
+* ======================================================================
+
+insert.char:
+   if first then gs = ""   ;* Clear if data character first
+   if overlay then
+      if x <= len(gs) then gs[x, 1] = c
+      else gs := c
+   end else
+      gs = gs[1, x - 1] : c : gs[x, 999]
+   end
+   x += 1
+   return
+
+* ======================================================================
+* zoned.update  -  Update prompt line
+* ss = data
+
+zoned.update:
+   left = 0
+   text.line = ss : sw.space
+
+   for cl = 1 to screen.width
+      if text.line[cl,1] # image[cl,1] then
+         left = cl ; right = cl
+         loop
+            cl += 1
+         while cl <= screen.width
+            if text.line[cl,1] # image[cl,1] then right = cl
+         repeat
+
+         w = (right - left) + 1
+         zone.string = text.line[left,w]
+         crt @(left-1, prompt.line) : zone.string :
+         image[left,w] = zone.string
+         exit
+      end
+   next cl
+
+   return
+
+* ======================================================================
+
+display.help:
+   crt @(-1) : sysmsg(6957)
+   c = keyin()
+   display @(-1) : title.line :
+   display @(0,2) : id.prompt : ': ' : id :
+   gosub show.pick.list.page
+   display @(0,prompt.line) : @(-4) :
+   image = space(@crtwide)
+
+   return
+
+* ======================================================================
+
+repaint:
+   display @(-1) : title.line :
+   display @(0,2) : id.prompt : ': ' : id :
+   gosub show.pick.list.page        ;* 0221
+   return
+
+* ======================================================================
+
+clear.field.lists:
+   * All items below have one field per association, multi-valued per member
+   * of the association.  Non-associated items use a pseudo association name of
+   * an index value.  This is zero for single valued items and an incrementing
+   * counter for multi-valued items. In the unlikely event of a real
+   * association having a numeric name it will have a space suffix added.
+
+   item.name = ''          ;* Items from dictionary...
+   item.loc = ''           ;* ...
+   item.heading = ''       ;* ...
+   item.conv = ''          ;* ...
+   item.fmt = ''           ;* ...
+   item.multi.valued = ''  ;* ...
+   item.assoc = ''         ;* ...
+   item.width = ''         ;* Derived display width
+   item.verify = ''        ;* File name for VERIFY
+
+   assoc.index = 1         ;* Index value for next association
+
+   return
+
+* ======================================================================
+
+load.default.dictionary.items:
+   begin case
+      case type = ''                ; type = 'D' ; field.list = d.fields
+      case type = 'A' or type = 'S' ; type = 'A' ; field.list = a.fields
+      case type = 'D' or type = 'I' ; type = 'D' ; field.list = d.fields
+      case 1                        ; type = 'X' ; field.list = x.fields
+   end case
+
+   if type # default.dictionary.items then
+      default.dictionary.items = type
+
+      saved.pos = pos
+      saved.apos = apos
+
+      gosub clear.field.lists
+      call @parser(PARSER$RESET, 0, convert(@fm, ' ', field.list), 0)
+      gosub process.field.list
+
+      gosub repaint
+
+      pos = saved.pos
+      apos = saved.apos
+   end
+
+   return
+end
+
+* END-CODE
+

@@ -1,0 +1,173 @@
+* MRGLIST
+* MERGE.LIST command
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 30 Jan 06  2.3-5 Treat a non-active list as empty rather than an error.
+* 13 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    MERGE.LIST list.no rel.op list.no [TO list.no] [COUNT.SUP]
+*
+* TO specifies target list. Default is list 0
+*
+* COUNT.SUP suppresses display of merged record count
+*
+* @SYSTEM.RETURN.CODE
+*    +ve Successful - number of items in merged list
+*    -1  Command arguments incorrect or missing
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+
+$internal
+program $merge.list
+$catalog $mrglist
+
+$include err.h
+$include keys.h
+
+$include syscom.h
+$include parser.h
+
+
+   parser = "!PARSER"
+
+   @system.return.code = -1      ;* Preset for command format errors
+   suppress.count = @false
+   tgt = 0
+
+* ---------------  Step 1 -  Parse the command
+
+   call @parser(parser$reset, 0, @sentence, 0)
+   call @parser(parser$get.token, token.type, token, keyword) ;* Verb
+
+   * Get first source list number
+
+   call @parser(parser$get.token, token.type, src.1, keyword)
+   if (token.type = PARSER$END) or (len(src.1) = 0) or not(num(src.1)) then
+      stop sysmsg(3254) ;* First list number missing or invalid
+   end
+   src.1 += 0
+   if src.1 > HIGH.USER.SELECT then stop sysmsg(3255) ;* Illegal select list number
+
+   * Get relational operator
+
+   call @parser(parser$get.token, token.type, token, rel.op)
+   begin case
+      case rel.op = KW$UNION
+      case rel.op = KW$INTERSECTION
+      case rel.op = KW$DIFFERENCE
+      case 1
+         stop sysmsg(3270) ;* Select list operator missing or invalid
+   end case
+
+   * Get second source list number
+
+   call @parser(parser$get.token, token.type, src.2, keyword)
+   if (token.type = PARSER$END) or (len(src.2) = 0) or not(num(src.2)) then
+      stop sysmsg(3256) ;* Second list number missing or invalid
+   end
+   src.2 += 0
+   if src.2 > HIGH.USER.SELECT then stop sysmsg(3255) ;* Illegal select list number
+
+   if src.1 = src.2 then stop sysmsg(3257) ;* Cannot merge a list with itself
+
+   * Get options if any
+
+   loop
+      call @parser(parser$get.token, token.type, token, keyword)
+   until token.type = PARSER$END
+      begin case
+         case keyword = KW$COUNT.SUP
+            suppress.count = @true
+
+         case keyword = KW$TO
+            call @parser(parser$get.token, token.type, tgt, keyword)
+            if (token.type = PARSER$END) or (len(tgt) = 0) or not(num(tgt)) then
+               stop sysmsg(3258) ;* Target list number not found where expected
+            end
+            tgt += 0
+            if tgt > HIGH.USER.SELECT then stop sysmsg(3255) ;* Illegal select list number
+
+         case 1
+            stop sysmsg(2018, token) ;* Unexpected token (xx)
+      end case
+   repeat
+
+
+* ---------------  Step 2 -  Read the lists
+
+   readlist list1 from src.1 else null
+
+   readlist list2 from src.2 else null
+
+
+* ---------------  Step 3 -  Form the merged list
+
+   begin case
+      case rel.op = KW$UNION
+         if len(list2) then
+            loop
+               key = removef(list2)
+            until status()
+               locate key in list1<1> setting i else list1<-1> = key
+            repeat
+         end
+
+      case rel.op = KW$INTERSECTION
+         if len(list1) and len(list2) then
+            new.list = ""
+            loop
+               key = removef(list2)
+            until status()
+               locate key in list1<1> setting i then new.list<-1> = key
+            repeat
+            list1 = new.list
+         end
+
+      case rel.op = KW$DIFFERENCE
+         if len(list2) then
+            loop
+               key = removef(list2)
+            until status()
+               locate key in list1<1> setting i then del list1<i>
+            repeat
+         end
+   end case
+   
+
+* ---------------  Step 4 -  Save the merged list
+
+   formlist list1 to tgt
+   @system.return.code = dcount(list1, @fm)
+
+   if not(suppress.count) then
+      display sysmsg(3261, @system.return.code, tgt) ;* xx records selected to select list xx
+   end
+
+   return
+end
+
+* END-CODE

@@ -1,0 +1,485 @@
+* CONFIGF
+* CONFIGURE.FILE verb
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 30 Aug 06  2.4-12 Added IMMEDIATE option.
+* 11 Oct 05  2.2-14 CREATE.AK now takes two pathnames.
+* 09 May 05  2.1-13 Added support for large files.
+* 28 Mar 05  2.1-11 Use PARSER$MFILE.
+* 13 Oct 04  2.0-5 Use message handler.
+* 23 Sep 04  2.0-2 Added support for case insensitive record ids.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* CONFIGURE.FILE [{ DICT }] voc.name {parameters}
+*                                    [ DEFAULT ]
+*
+* Dynamic file parameters:
+*    DYNAMIC                (Required if changing file type)
+*    GROUP.SIZE n           (Requires full restructure if changed)
+*    MINIMUM.MODULUS n
+*    LARGE.RECORD n
+*    SPLIT.LOAD n
+*    MERGE.LOAD n
+*    VERSION n              (Requires full restructure if changed)
+*    NO.CASE / CASE
+*    RESIZE / NO.RESIZE
+*    IMMEDIATE
+*
+* Directory file parameters:
+*    DIRECTORY              (To change file type)
+*    BINARY                 (Turns on mark mapping)
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program $configure.file
+$catalog $CONFIGF
+
+$include keys.h
+$include int$keys.h
+$include ak_info.h
+$include parser.h
+$include err.h
+
+
+   parser = "!PARSER"
+
+   @system.return.code = -ER$ARGS    ;* Preset for argument errors
+
+   dict.flag = ''
+
+   * Mark all parameters as unchanged
+
+   group.size.value = -1
+   large.rec.size = -1
+   min.modulus.value = -1
+   split.load.value = -1
+   merge.load.value = -1
+   file.version = -1
+   new.type = 0
+   dh.parameters = @false
+   set.default = @false
+   immediate = @false
+   no.resize = -1
+   binary = @false
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+   call @parser(PARSER$MFILE, token.type, token, keyword) ;* First argument
+
+
+   * Check for DICT keyword
+
+   if keyword = KW$DICT then      ;* DICT
+      dict.flag = 'DICT'
+      call @parser(PARSER$MFILE, token.type, token, keyword)
+   end
+
+   * Fetch file name
+
+   if token.type = PARSER$END then
+      @system.return.code = -ER$ARGS
+      stop sysmsg(2102) ;* File name required
+   end
+
+   file.name = token
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+
+   open dict.flag, file.name to old.fu else
+      open dict.flag, upcase(file.name) to old.fu else
+         @system.return.code = -status()
+         stop sysmsg(1427, trimf(dict.flag : ' ' : file.name)) ;* Cannot open xx
+      end
+      file.name = upcase(file.name)
+   end
+
+   if fileinfo(old.fu, FL$READONLY) then
+      @system.return.code = -ER$RDONLY
+      stop sysmsg(1431) ;* File is read-only
+   end
+
+   old.case.insensitive = bitand(fileinfo(old.fu, FL$FLAGS), FL$FLAGS.NOCASE) # 0
+   case.insensitive = old.case.insensitive
+
+   * Process file parameters
+
+   if (token.type = PARSER$END) then
+      stop sysmsg(6166) ;* File parameters required
+   end
+
+   loop
+   while token.type # PARSER$END
+      begin case
+         case keyword = KW$DIRECTORY
+            if new.type then stop sysmsg(6167) ;* Multiple file type keywords found
+            new.type = FL$TYPE.DIR
+
+         case keyword = KW$DYNAMIC
+            if new.type then stop sysmsg(6167) ;* Multiple file type keywords found
+            new.type = FL$TYPE.DH
+
+         case keyword = KW$CASE
+            case.insensitive = @false
+
+         case keyword = KW$DEFAULT
+            set.default = @true
+
+         case keyword = KW$GROUP.SIZE
+            dh.parameters = @true
+            call @parser(parser$get.token, token.type, value, keyword)
+            if not(value matches '1N') or value < 1 or value > 8 then
+               stop sysmsg(6105) ;* Group size is invalid
+            end
+            group.size.value = value + 0
+   
+         case keyword = KW$IMMEDIATE
+            immediate = @true
+
+         case keyword = KW$LARGE.RECORD
+            dh.parameters = @true
+            call @parser(parser$get.token, token.type, value, keyword)
+            if not(value matches '1N0N') then
+               stop sysmsg(6106) ;* Large record size is invalid
+            end
+            large.rec.size = value + 0
+   
+         case keyword = KW$MINIMUM.MODULUS
+            dh.parameters = @true
+            call @parser(parser$get.token, token.type, value, keyword)
+            if not(value matches '1N0N') or value < 1 then
+               stop sysmsg(6108) ;* Minimum modulus is invalid
+            end
+            min.modulus.value = value + 0
+   
+         case keyword = KW$NO.CASE
+            case.insensitive = @true
+
+         case keyword = KW$NO.RESIZE
+            no.resize = @true
+
+         case keyword = KW$SPLIT.LOAD
+            dh.parameters = @true
+            call @parser(parser$get.token, token.type, value, keyword)
+            if not(value matches '1N0N') or value < 20 or value > 10000 then
+               stop sysmsg(6111) ;* Split load is invalid
+            end
+            split.load.value = value + 0
+   
+         case keyword = KW$RESIZE
+            no.resize = @false
+
+         case keyword = KW$MERGE.LOAD
+            dh.parameters = @true
+            call @parser(parser$get.token, token.type, value, keyword)
+            if not(value matches '1N0N') or value < 10 or value > 10000 then
+               stop sysmsg(6107) ;* Merge load is invalid
+            end
+            merge.load.value = value + 0
+   
+         case keyword = KW$VERSION
+            dh.parameters = @true
+            call @parser(parser$get.token, token.type, value, keyword)
+            if not(value matches '1N0N') or value < 0 or value > DH.VERSION then
+               stop sysmsg(6117) ;* Invalid file version
+            end
+            file.version = value + 0
+
+         case keyword = KW$BINARY
+            binary = @true
+   
+         case 1
+            stop sysmsg(2018, token) ;* Unexpected token (xx)
+      end case
+
+      call @parser(parser$get.token, token.type, token, keyword)
+   repeat
+
+
+   if set.default and (dh.parameters or new.type = FL$TYPE.DIR) then
+      stop sysmsg(6113)  ;* Inconsistent command options
+   end
+
+
+   * Are we changing the file type?
+
+   old.type = fileinfo(old.fu, FL$TYPE)
+   begin case
+      case new.type and new.type # old.type
+         * Changing file type
+         if new.type = FL$TYPE.DIR and dh.parameters then
+            stop sysmsg(6113)  ;* Inconsistent command options
+         end
+         gosub convert.file
+
+      case old.type = FL$TYPE.DH
+         gosub set.dh.params
+
+      case old.type # FL$TYPE.DH
+         null
+   end case
+
+   if immediate then
+      open dict.flag, file.name to old.fu else
+         stop sysmsg(1427, trimf(dict.flag : ' ' : file.name)) ;* Cannot open %1
+      end
+   end
+
+   * Handle RESIZE / NO.RESIZE / IMMEDIATE
+
+   if immediate or (no.resize >= 0) then
+      open dict.flag, file.name to old.fu else
+         stop sysmsg(1427, trimf(dict.flag : ' ' : file.name)) ;* Cannot open %1
+      end
+
+      * There is no need to test the file type as fcontrol() will ignore
+      * invalid actions
+
+      if no.resize >= 0 then
+         void fcontrol(old.fu, FC$NO.RESIZE, no.resize)
+      end
+
+      if immediate then  ;* Perform rehashing for IMMEDIATE option
+         if fcontrol(old.fu, FC$SPLIT.MERGE, 0) then
+            display sysmsg(6203, trimf(dict.flag : ' ' : file.name)) ;* Resizing %1
+            loop
+            while fcontrol(old.fu, FC$SPLIT.MERGE, 0)
+            repeat
+         end
+      end
+   end
+
+   @system.return.code = 0
+
+   return
+
+* =============================================================================
+* Convert file type
+
+convert.file:
+   * Set exclusive access to file
+
+   if not(fileinfo(old.fu, FL$EXCLUSIVE)) then
+      stop sysmsg(2602) ;* Cannot gain exclusive access to file
+   end
+
+   * Get pathname of file to convert
+
+   old.path = fileinfo(old.fu, FL$PATH)
+   new.path = field(old.path, @ds, 1, dcount(old.path, @ds) - 1) : @ds :'~QMTEMP.':@userno
+
+   * Ensure any existing temporary file is removed. This is simpler than
+   * checking the file type is correct etc.
+
+   openpath new.path to new.fu then
+      close new.fu
+      if not(ospath(new.path, os$delete)) then
+         display sysmsg(6168) ;* Unable to remove old temporary file
+         display sysmsg(6169) ;* Original file is still in place
+         stop
+      end
+   end
+
+   file.flags = 0
+   if case.insensitive then file.flags = bitor(file.flags, FL$FLAGS.NOCASE)
+
+   begin case
+      case new.type = FL$TYPE.DIR
+         create.file new.path directory
+      case new.type = FL$TYPE.DH
+         create.file new.path dynamic group.size group.size.value big.rec.size large.rec.size min.modulus min.modulus.value split.load split.load.value merge.load merge.load.value flags file.flags version file.version
+   end case
+
+   openpath new.path to new.fu else stop sysmsg(6170) ;* Cannot create temporary file
+   
+   if binary then
+      mark.mapping new.fu, @false
+      mark.mapping old.fu, @false
+   end
+
+
+   filelock new.fu         ;* Saves getting individual record locks
+
+
+   * Copy the data
+
+   select old.fu
+   loop
+      readnext id else exit
+      read rec from old.fu, id then
+         write rec to new.fu, id
+      end else
+          display sysmsg(6171) ;* Error reading record from old file
+
+          * Delete temporary file
+
+          if fileinfo(new.fu, FL$OPEN) then close new.fu
+          if not(ospath(new.path, os$delete)) then
+             display sysmsg(6172) ;* Failed to delete temporary file
+          end
+
+          display sysmsg(6169) ;* Original file is still in place
+          stop
+      end
+   repeat
+
+   ak.list = ''
+   if old.type = FL$TYPE.DH and new.type = FL$TYPE.DH then
+      * Transfer trigger subroutine
+
+      trigger = fileinfo(old.fu,FL$TRIGGER)
+      if trigger # '' then
+         display sysmsg(6173) ;* Copying trigger function to new file...
+         set.trigger new.fu, trigger, fileinfo(old.fu, FL$TRG.MODES)
+         if status() then
+            display sysmsg(6174, status()) ;* Error xx setting trigger function on new file
+            display sysmsg(6175) ;* Trigger must be reactivated later
+         end
+      end
+
+
+      close new.fu
+      void ospath("", OS$FLUSH.CACHE)
+
+      * Transfer alternate key indices
+
+      if fileinfo(old.fu, FL$AK) then
+         display sysmsg(6176) ;* Recreating alternate key indices...
+
+         ak.list = indices(old.fu)
+         num.aks = dcount(ak.list, @fm)
+         for ak = 1 to num.aks
+            ak.name = ak.list<ak>
+            display '   ' : ak.name : '...'
+            ak.data = indices(old.fu, ak.name)
+            flags = 0
+            if ak.data<5> = 'R' then flags = bitor(flags, AK$RIGHT)
+            if ak.data<6> = 'M' then flags = bitor(flags, AK$MV)
+            if not(ak.data<1,3>) then flags = bitor(flags, AK$NULLS)
+            if ak.data<1,1> = 'D' then
+               ak.fno = ak.data<2>
+            end else
+               ak.fno = -1
+            end
+            ak.data<1> = ak.data<1,1>
+            collation.map.name = ''
+            collation.map = ''
+            create.ak new.path, '', ak.name, flags, ak.fno, ak.data,
+                      collation.map.name, collation.map
+            else
+               display '      ' : sysmsg(6177) ;* Unable to create index
+            end
+         next ak
+      end
+   end else
+      close new.fu
+   end
+
+   close old.fu
+
+   * Ensure that the new file does not go into the DH cache so that we find
+   * any trigger on next open.
+
+   void ospath("", OS$FLUSH.CACHE)
+
+   * Delete old file
+
+   if not(ospath(old.path, os$delete)) then
+      display sysmsg(6178, status(), os.error()) ;* Failed to delete old file
+      display sysmsg(6169) ;* Original file is still in place
+      stop
+   end
+
+   * Rename new file as old      
+
+   if not(osrename(new.path, old.path)) then
+      display sysmsg(6179,status(),os.error()) ;* Unable to rename temporary file (%1 %2)
+      display sysmsg(6180, new.path) ;* Data can be found in xx
+      stop
+   end
+
+   * Build AKs if necessary
+
+   if ak.list # '' then
+      display sysmsg(6181) ;* Building alternate key indices...
+      execute 'BUILD.INDEX ' : dict.flag : ' ' : file.name : ' ALL'
+   end
+
+   return
+
+* =============================================================================
+* Set parameters for existing DH file
+
+set.dh.params:
+   old.group.size = fileinfo(old.fu, FL$GRPSIZE)
+   old.file.version = fileinfo(old.fu, FL$VERSION)
+
+   if set.default then
+      group.size.value = config("GRPSIZE")
+      large.rec.size = int(group.size.value * 1024 * 0.8)
+      min.modulus.value = 1
+      split.load.value = 80
+      merge.load.value = 50
+      case.insensitive = @false
+   end else
+      if group.size.value < 0 then group.size.value = old.group.size
+      if file.version < 0 then file.version = old.file.version
+
+      if file.version < 2 then 
+         * Validate file size
+
+         if min.modulus.value > 1 then
+            filesize = if file.version then (group.size.value * 1024) else 1024
+            filesize += min.modulus.value * group.size.value * 1024
+            if filesize > 2147483648 then stop sysmsg(6120) ;* File size is too large
+         end
+      end
+
+      if large.rec.size < 0 then large.rec.size = fileinfo(old.fu, FL$LARGEREC)
+      if large.rec.size > (group.size.value * 1024 - 8) then
+         stop sysmsg(6118) ;* Large record size must be at least 8 bytes less than group size
+      end
+
+      if split.load.value < 0 then split.load.value = fileinfo(old.fu, FL$SPLIT)
+      if merge.load.value < 0 then merge.load.value = fileinfo(old.fu, FL$MERGE)
+      if split.load.value <= merge.load.value then stop sysmsg(6119) ;* Split load must be greater than merge load
+   end
+
+   * Do the job
+
+   if group.size.value # old.group.size ~
+      or file.version # old.file.version ~
+      or case.insensitive # old.case.insensitive then
+      * Must rebuild file to change group size or file version
+      new.type = FL$TYPE.DH
+      gosub convert.file
+   end else
+      configure.file old.fu big.rec.size large.rec.size min.modulus min.modulus.value split.load split.load.value merge.load merge.load.value
+      close old.fu
+   end
+
+   return
+end
+
+* END-CODE

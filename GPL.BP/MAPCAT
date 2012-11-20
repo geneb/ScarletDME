@@ -1,0 +1,250 @@
+* MAPCAT
+* MAPCAT
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 02 Nov 06  2.4-15 VOC record types now case insensitive.
+* 13 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    MAP [ALL] [LPTR [n]] [FILE [name]]
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+
+program $map.catalog
+$catalog $MAPCAT
+
+$include syscom.h
+$include map.h
+$include parser.h
+$include header.h
+$include int$keys.h
+
+$include keys.h
+$include err.h
+
+
+   parser = "!PARSER"
+
+   @system.return.code = -ER$ARGS     ;* Preset for command format errors
+   prompt ''
+
+   show.all = @false
+   lptr = -1
+   file.name = ''
+
+   * Check for alternative private catalogue location
+
+   private.catalogue = 'cat'
+   read voc.rec from voc, "$PRIVATE.CATALOGUE" then
+      if upcase(voc.rec[1,1]) = 'X' then private.catalogue = voc.rec<2>
+   end
+
+   call @parser(parser$reset, 0, @sentence, 0)
+   call @parser(parser$get.token, token.type, token, keyword)     ;* Verb
+
+   call @parser(parser$get.token, token.type, token, keyword)
+
+   loop
+   until token.type = PARSER$END
+      begin case
+         case keyword = KW$ALL
+            show.all = @true
+
+         case keyword = KW$LPTR
+            call @parser(parser$get.token, token.type, token, keyword)
+            if token matches "1N0N" then
+               lptr = token + 0
+               if lptr > LPTR$HIGH.PRINT.UNIT then
+                  stop sysmsg(2053) ;* Invalid print unit number
+               end
+            end else
+               lptr = 0
+               continue
+            end
+
+         case keyword = KW$FILE
+            call @parser(parser$get.token, token.type, file.name, keyword)
+            if token.type = parser$end then file.name = '$MAP'
+
+         case 1
+            stop sysmsg(2018, token) ;* Unexpected token (xx)
+      end case
+      call @parser(parser$get.token, token.type, token, keyword)
+   repeat
+
+   if lptr >= 0 and file.name # '' then
+      stop sysmsg(2054)  ;* Illegal combination of options
+   end
+
+
+   dim cat.f(2)
+
+   openpath @qmsys:@ds:'gcat' to cat.f(1) else
+      stop sysmsg(3022) ;* Cannot open global catalogue directory
+   end
+   mark.mapping cat.f(1), off
+
+   openpath private.catalogue to cat.f(2) else
+      stop sysmsg(3023) ;* Cannot open private catalogue directory
+   end
+   mark.mapping cat.f(2), off
+
+
+   if file.name # '' then
+      open file.name to map.f else stop 'Cannot open ' : file.name
+
+      if file.name # '$MAP' then
+         display sysmsg(3044, file.name) :  ;* File xx will be cleared and overwritten. Continue (Y/N)?
+         input yn
+         if upcase(yn) # 'Y' then stop sysmsg(3045) ;* Mapping aborted
+      end
+
+      filelock map.f
+      clearfile map.f
+   end
+
+
+   * Build sorted list of catalog entries
+
+   cat.names = ''
+   cat.modes = ''
+
+   for i = 1 to 2    ;* Global then private
+      select cat.f(i)
+      loop
+         readnext name else exit
+
+         prefix = name[1,1]
+         if index("$_!", prefix, 1) = 0 or show.all then
+            locate name in cat.names<1> by 'AL' setting pos then
+               cat.modes<pos> = i
+            end else
+               ins name before cat.names<pos>
+               ins i before cat.modes<pos>
+            end
+         end
+      repeat
+   next i
+
+   if (len(cat.names)) then
+      if file.name = '' then
+         if lptr = 0 then printer on
+         hdr = sysmsg(3046, oconv(time(), "MTS"), oconv(date(), "D4DMYL[,A3]"))  ;* Heading
+         heading on lptr hdr
+
+         total.size= 0
+      end
+
+      loop
+         remove name from cat.names setting name.delim
+         remove mode from cat.modes setting dummy
+
+*          1         2         3         4         5         6         7         8
+* 12345678901234567890123456789012345678901234567890123456789012345678901234567890
+*   Catalogue name..................  Compiled.  Time....  ...Obj  ..Xref  ..Size
+
+         read object from cat.f(mode), name then
+            dtm = oconv(object[hdr.compile.time,4], 'IL')
+            compile.date = int(dtm / 86400)
+            compile.time = rem(dtm, 86400)
+
+            object.size = oconv(object[hdr.object.size,4], 'IL')
+
+            xref.start = oconv(object[hdr.lin.tab.offset,4], 'IL')
+            if xref.start = 0 then
+               xref.start = oconv(object[hdr.sym.tab.offset,4], 'IL')
+            end
+            if xref.start then
+               xref.size = object.size - xref.start
+               object.size = xref.start
+            end else
+               xref.size = 0
+            end
+
+            if file.name = '' then
+               line = space(79)
+               if mode = 1 then line[1,1] = '*'
+               line[3,32] = name
+
+               line[37,9] = oconv(compile.date, 'D2DMYL[,A3]')
+               line[48,8] = oconv(compile.time, 'MTS')
+
+               tot = xref.size + object.size
+               total.size += tot
+
+               line[58,6] = fmt(object.size, '6R')
+               line[66,6] = fmt(xref.size, '6R')
+               line[74,6] = fmt(tot, '6R')
+
+               print on lptr line
+
+               * Wrap long name onto next line
+
+               loop
+               while len(name) > 32
+                  name = name[33,9999]
+                  print '  ' : name[1,32]
+               repeat
+            end else
+               map.rec = ''
+               map.rec<MAP.GLBL> = (mode = 1)
+               map.rec<MAP.DATE> = compile.date
+               map.rec<MAP.TIME> = compile.time
+               map.rec<MAP.OBJ> = object.size
+               map.rec<MAP.XREF> = xref.size
+
+               write map.rec to map.f, name
+            end
+         end
+      while name.delim
+      repeat
+
+      if file.name = '' then
+         line = space(79)
+         line[65,6] = 'Total:'
+         line[72,8] = fmt(total.size, '8R')
+         print on lptr line
+
+         if lptr = 0 then
+            page on lptr
+            printer close on lptr
+         end
+      end
+   end else
+      display sysmsg(3047) ;* Catalogue is empty
+   end
+
+
+   @system.return.code = 0
+
+   return
+
+   * Avoid compiler warnings
+   dummy = dummy
+end
+
+* END-CODE

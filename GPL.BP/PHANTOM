@@ -1,0 +1,163 @@
+* PHANTOM
+* PHANTOM verb
+* Copyright (c) 2005 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 15 Jun 05  2.2-1 Amended to return user number in @SYSTEM.RETURN.CODE.
+* 18 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    PHANTOM command
+*
+* How a phantom starts....
+* 1. This command takes the file lock on the $IPC file.
+* 2. The phantom() function creates a new process and returns the QM user no.
+* 3. This user number is entered in the phantom register together with the
+*    command to be executed.
+* 4. The command is also written to the Xn record for access by the phantom as
+*    this process may have terminated by the time it gets off the ground.
+* 5. We release the $IPC file lock.
+* 6. The phantom gets the file lock on the $IPC file, possibly waiting for the
+*    parent to write the Xn record.
+* 7. The phantom process reads the phantom register entry for its parent and
+*    locates the entry for its own process, setting the timestamp.  This record
+*    will not exist if the parent has terminated while the phantom was
+*    starting.
+* 8. The phantom retrieves the command from the Xn record, deleting the record.
+* 9. The phantom process executes the command.
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program $phantom
+$catalog $PHANTOM
+
+$include syscom.h
+$include syscom err.h
+$include syscom keys.h
+$include int$keys.h
+
+$define default.como.dir "$COMO"
+$define como.dir.voc.name "$COMO"
+
+   @system.return.code = -ER$ARGS
+
+   if @transaction.id then
+      @system.return.code = -ER$TXN
+      stop sysmsg(6480) ;* Phantom processes cannot be started within a transaction
+   end
+
+   * Get phantom command string
+ 
+   ph.command = trimb(field(@sentence, ' ', 2, 999999))
+
+   if len(ph.command) then
+      gosub check.como.dir
+
+      * We hold the file lock on the $IPC file across process creation so
+      * that we can enter the uid of the new process into the parent process
+      * register entry and write a copy of the command in the Xn record.
+
+      filelock ipc.f
+
+      uid = phantom()
+
+      if (uid = 0) then   ;* Could not create process
+        fileunlock ipc.f
+        @system.return.code = -ER$PROCESS
+        stop sysmsg(6481) ;* Failed to create phantom process
+      end
+
+      * Update parent process Pn phantom register record
+
+      id = 'P':@userno
+      readu ipc.rec from ipc.f, id else null
+
+      * Do a locate so that...
+      * 1. If there is a dead entry with our process id, we overwrite it
+      * 2. If there is no dead entry, we append a new entry.
+
+      locate uid in ipc.rec<1,1> setting pos else null
+      ipc.rec<1,pos> = uid                 ;* Phantom process uid
+      ipc.rec<2,pos> = ''                  ;* Timestamp (set by phantom)
+      ipc.rec<3,pos> = ph.command          ;* Command to execute
+      write ipc.rec to ipc.f, id
+
+      * Write phantom command to Xn record
+
+      s = if option(OPT.INHERIT) then kernel(K$GET.OPTIONS,0) else ''
+      write s:@fm:ph.command to ipc.f, 'X':uid
+
+      fileunlock ipc.f
+
+      crt sysmsg(6482, uid) ;* Started phantom user xx
+      @system.return.code = uid
+   end else
+      stop sysmsg(6483) ;* Phantom command missing
+   end
+
+   return
+
+*****************************************************************************
+* CHECK.COMO.DIR  -  Check $COMO exists
+
+check.como.dir:
+   read como.rec from @voc,como.dir.voc.name then
+      como.dir = como.rec<2>
+
+      * Check if COMO directory exists
+      
+      open como.dir to como.dir.file then
+         * Check file type
+         if fileinfo(como.dir.file, fl$type) # fl$type.dir then
+            @system.return.code = -ER$NDIR
+            stop sysmsg(6484) ;* $COMO is not a directory file
+         end
+         close como.dir.file
+      end else
+         if status() # ER$NVR then
+            @system.return.code = -status()
+            stop sysmsg(1430, status(), como.dir) ;* Error %1 opening %2
+         end
+      end
+   end else
+      como.dir = default.como.dir
+
+      * Create new COMO directory
+
+      create.file como.dir directory on error
+         @system.return.code = -ER$NOT.CREATED
+         stop sysmsg(1432, status(), os.error(), como.dir) ;* Error xx creating xx
+      end
+
+      como.rec = "File for COMO output" : @fm : como.dir
+
+      recordlocku @voc, como.dir.voc.name
+      write como.rec to @voc, como.dir.voc.name
+   end
+
+   return
+end
+
+* END-CODE

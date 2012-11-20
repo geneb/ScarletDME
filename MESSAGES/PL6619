@@ -1,0 +1,4 @@
+Menu Option Help Text
+The Help text for a menu option is displayed if the user enters the option
+number followed by a question mark.  This text will be truncated if it is too
+long to display on a single line.

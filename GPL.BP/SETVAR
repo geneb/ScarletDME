@@ -1,0 +1,93 @@
+* SETVAR
+* Set value of a user defined @variable
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 03 Feb 06  2.3-6 New module.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    call !setvar(name, value)
+*
+*    name optionaly includes leading @ character
+*
+*    This function sets the STATUS() value to 0 if successful. Errors are:
+*       ER$BAD.NAME      Name is incorrectly formed
+*       ER$LENGTH        Name length is invalid
+*       ER$RDONLY.VAR    Variable is read-only
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+subroutine setvar((name), (value))
+$catalog !setvar
+
+$include syscom.h
+$include int$keys.h
+$include err.h
+
+   set.status 0
+
+   name = upcase(name)
+   if name[1,1] = '@' then name = name[2,999]
+
+   if name = '' or len(name) > 32 then
+      set.status ER$LENGTH
+      return
+   end
+
+   if convert('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.', '', name) # '' then
+      set.status ER$BAD.NAME
+      return
+   end
+
+   if listindex(READ.ONLY.AT.VARS, ',', name) then
+      set.status ER$RDONLY.VAR
+      return
+   end
+
+   * Ban marks except TM in stored value
+
+   value = convert(@IM:@FM:@VM:@SM, '', value)
+
+   begin case
+      case name = 'SYSTEM.RETURN.CODE' ; @SYSTEM.RETURN.CODE = value
+      case name = 'USER0'              ; @USER0 = value
+      case name = 'USER1'              ; @USER1 = value
+      case name = 'USER2'              ; @USER2 = value
+      case name = 'USER3'              ; @USER3 = value
+      case name = 'USER4'              ; @USER4 = value
+      case name = 'USER.RETURN.CODE'   ; @USER.RETURN.CODE = value
+      case 1
+         locate name in user.var.names<1> by 'AL' setting pos then
+            user.var.values<pos> = value
+         end else
+            ins name before user.var.names<pos>
+            ins value before user.var.values<pos>
+         end
+   end case
+
+   return
+end
+
+* END-CODE

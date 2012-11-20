@@ -1,0 +1,212 @@
+* PICK
+* Pick list display.
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 24 May 06  2.4-5 Rely on key binding restore to reset lone Esc handling
+*                  correctly. Previous method always enabled it.
+* 23 May 06  2.4-4 Disable KEYCODE() lone Esc handling.
+* 19 Jan 05  2.1-3 New module, mostly extracted from SPVIEW.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    CALL PICK(item, top.line, item.list, title, pick.pos)
+*
+* item      = returned selected item. Null if no item selected.
+* top.line  = uppermost line to use.
+* item.list = field mark delimited selection list
+* title     = annotation on bottom line re source of data
+* pick.pos  = display position
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+subroutine pick(item, top.line, item.list, title, pick.pos)
+$catalog !PICK
+
+$include keyin.h
+
+   saved.key.bindings = bindkey('', -3)
+   void bindkey('', -5)
+   i = bindkey(char(27):'V', K$PAGE.UP)
+   i = bindkey(char(27):'v', K$PAGE.UP)
+   i = bindkey(char(27):'<', K$HOME)
+   i = bindkey(char(27):'>', K$END)
+
+   id.prompt.line = @crthigh - 1
+   info.line = @crthigh - 2
+   info.fmt = (@crtwide - 1) : 'L'
+   pick.list.items.per.page = @crthigh - top.line - 3
+   width = @crtwide - 4
+
+   display @(0,2) : @(-3) :
+
+   no.items = dcount(item.list, @fm)
+   if no.items then
+      if pick.pos then
+         pick.list.offset = field(pick.pos, '.', 1)
+         selected.item = field(pick.pos, '.', 2)
+      end else
+         pick.list.offset = 0
+         selected.item = 1
+      end
+      gosub show.pick.list.page
+   end else
+      pick.list.offset = 0
+      selected.item = 1
+      display @(0,top.line) : sysmsg(7134) :   ;* <No items>
+   end
+
+   if title # '' then
+      info.text = sysmsg(7135, title, no.items) ;* %1  %2 items
+   end else
+      info.text = sysmsg(7152, no.items) ;* %1 items
+   end
+
+   loop
+      prompt.text = ''
+      if selected.item < no.items then prompt.text := 'Down/'
+      if selected.item > 1 then prompt.text := 'Up/'
+      if pick.list.offset + pick.list.items.per.page < no.items then prompt.text := 'Next/'
+      if pick.list.offset > 0 then prompt.text := 'Previous/Top/'
+      if pick.list.offset + pick.list.items.per.page < no.items then prompt.text := 'Bottom/'
+      prompt.text := 'Quit: '
+
+      display @(0, info.line) : @(-13) : fmt(info.text, info.fmt) :
+      display @(0, id.prompt.line) : fmt(prompt.text, info.fmt) : @(-14) :
+      display @(len(prompt.text), id.prompt.line) :
+
+      c = upcase(keycode())
+      gosub map.keys
+
+      begin case
+         case c = 'Q'
+            prompt.text = sysmsg(7136) ;* Press return to quit, any other key to continue
+            display @(0,id.prompt.line) : @(-13) : fmt(prompt.text, info.fmt) : @(-14) :
+            display @(len(prompt.text), id.prompt.line) :
+            if seq(keycode()) = K$RETURN then
+               item = ''
+               display @(0,top.line) : @(-3) :
+               exit
+            end
+
+         case c = 'U'
+            if selected.item > 1 then
+               selected.item -= 1
+               if selected.item <= pick.list.offset then
+                  pick.list.offset -= pick.list.items.per.page
+                  gosub show.pick.list.page
+               end else
+                  display @(0,top.line + selected.item - pick.list.offset) : '  ' :
+                  display @(0,top.line + selected.item - pick.list.offset - 1) : '=>' :
+               end
+            end
+
+         case c = 'D'
+            if selected.item < no.items then
+               selected.item += 1
+               if selected.item > pick.list.offset + pick.list.items.per.page then
+                  pick.list.offset += pick.list.items.per.page
+                  gosub show.pick.list.page
+               end else
+                  display @(0,top.line + selected.item - pick.list.offset - 2) : '  ' :
+                  display @(0,top.line + selected.item - pick.list.offset - 1) : '=>' :
+               end
+            end
+
+         case c = 'P'
+            if pick.list.offset > 0 then
+               pick.list.offset -= pick.list.items.per.page
+               selected.item = pick.list.offset + 1
+               gosub show.pick.list.page
+            end
+
+         case c = 'N'
+            if pick.list.offset + pick.list.items.per.page < no.items then
+               pick.list.offset += pick.list.items.per.page
+               selected.item = pick.list.offset + 1
+               gosub show.pick.list.page
+            end
+
+         case c = 'T'
+            pick.list.offset = 0
+            selected.item = 1
+            gosub show.pick.list.page
+
+         case c = 'B'
+            pick.list.offset = no.items - 1 - rem(no.items - 1, pick.list.items.per.page)
+            selected.item = no.items
+            gosub show.pick.list.page
+
+         case n = K$RETURN
+            display @(0,top.line) : @(-3) :
+            item = item.list<selected.item>
+            exit
+
+         case 1
+            display @sys.bell :
+      end case
+   repeat
+
+   pick.pos = pick.list.offset : '.' : selected.item
+
+   i = bindkey(saved.key.bindings, -4)
+
+   return
+
+* ======================================================================
+* show.pick.list.page  -  Show a page of pick list entries
+
+show.pick.list.page:
+   for i = 1 to pick.list.items.per.page
+      display @(0,top.line + i - 1) : @(-4) :
+      j = i + pick.list.offset
+      if j <= no.items then
+         display (if j = selected.item then '=> ' else '   ') :
+         display item.list<j>[1,width] :
+      end
+   next i
+
+   return
+
+* ======================================================================
+
+map.keys:
+   n = seq(c)
+   begin case
+      case n = K$UP         ; c = 'U'
+      case n = K$DOWN       ; c = 'D'
+      case n = K$PAGE.UP    ; c = 'P'
+      case n = K$PAGE.DOWN  ; c = 'N'
+      case n = K$HOME       ; c = 'T'
+      case n = K$END        ; c = 'B'
+      case n = CTRL.N       ; c = 'D'
+      case n = CTRL.P       ; c = 'U'
+      case n = CTRL.V       ; c = 'N'
+      case n = CTRL.Z       ; c = 'U'
+   end case
+
+   return
+
+end
+
+* END-CODE

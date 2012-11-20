@@ -1,0 +1,330 @@
+* ANALYSE
+* ANALYSE.FILE verb
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 30 Aug 06  2.4-12 Added handling of resize suppression.
+* 28 Mar 05  2.1-11 Use PARSER$MFILE.
+* 27 Sep 04  2.0-3 Removed page heading to make space for additional data re
+*                  case insensitive files. Also, old format didn't fit on a 24
+*                  line screen.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    ANALYSE.FILE [ DICT ] file [ STATISTICS ]  [ LPTR ]
+*
+* Brief report:
+*
+*00 Account           : D:\QM
+*01 File name         : $MESSAGES
+*02 Path name         : C:\QMSYS\MESSAGES
+*03
+*04 Type              : Dynamic, version 1, case insensitive, resize disabled
+*05                     File has AK and trigger
+*06 Group size        : 1 (1024 bytes)
+*07 Large record size : 819
+*08 Minimum modulus   : 1
+*09 Current modulus   : 81
+*10 Load factors      : 80 (split), 50 (merge), 80 (current)
+*11 File size (bytes) : 146432 (106496 + 39936)
+*12
+*
+*
+* Dynamic file, statistics mode:
+*
+*00 Account           : D:\QM
+*01 File name         : MESSAGES
+*02 Path name         : C:\QMSYS\MESSAGES
+*03
+*04 Type              : Dynamic, case insensitive, resize disabled
+*05                     File has AK and trigger
+*06 Group size        : 1 (1024 bytes)
+*07 Large record size : 819
+*08 Minimum modulus   : 1
+*09 Current modulus   : 81 (0 empty, 18 overflowed, 7 badly)
+*10 Load factors      : 80 (split), 50 (merge), 80 (current)
+*11 File size (bytes) : 146432 (106496 + 39936), 89905 used
+*12 Total records     : 305 (130 normal, 175 large)
+*13
+*14          Per group: Minimum    Maximum    Average
+*15 Group buffers     :       1          4       1.46
+*16 Total records     :       0         10       3.77
+*17 Used bytes        :       8        996    4458.88
+*18
+*19   Bytes per record: Minimum    Maximum    Average
+*20 All records       :      64       7850    1184.16
+*21 Normal records    :      64        804     491.38
+*22 Large records     :     822       7850    1698.79
+*23
+*
+*
+*
+* Directory file, statistics mode:
+*
+*00 Account           : D:\QM
+*01 File name         : BP
+*02 Path name         : D:\QM\BP
+*03
+*04 Type              : Directory
+*05 File size (bytes) : 361169
+*06 Total records     : 305
+*07
+*08                   : Minimum    Maximum    Average
+*09 Bytes per record  :      64       7850    1184.16
+*10
+*11
+*
+*
+* DH data dynamic array:
+*    1  Modulus
+*    2  Empty groups
+*    3  Single overflow groups
+*    4  Badly overflowed groups
+*    5  Minimum used bytes per group
+*    6  Maximum used bytes per group
+*    7  Minimum blocks per group
+*    8  Maximum blocks per group
+*    9  Total used blocks (excl large recs)
+*   10  Minimum records per group
+*   11  Maximum records per group
+*   12  Number of non-large records
+*   13  Number of large records
+*   14  Minimum bytes per non-large record
+*   15  Maximum bytes per non-large record
+*   16  Total non-large record space
+*   17  Minimum bytes per large record
+*   18  Maximum bytes per large record
+*   19  Total large record space
+*   20  Records up to 16 bytes
+*   21  Records up to 32 bytes
+*   22  Records up to 64 bytes
+*   23  Records up to 128 bytes
+*   24  Records up to 256 bytes
+*   25  Records up to 512 bytes
+*   26  Records up to 1k bytes
+*   27  Records up to 2k bytes
+*   28  Records up to 4k bytes
+*   29  Records up to 8k bytes
+*   30  Records over 8k bytes
+*   31  Number of records with non-numeric ids
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program $analyse.file
+$catalog $analyse
+
+$include parser.h
+$include syscom err.h
+$include syscom keys.h
+$include int$keys.h
+
+   parser = "!PARSER"
+
+   @system.return.code = -ER$ARGS   ;* Preset for command format errors
+
+   dict.flag = ""
+   lptr = @false
+   stats = @false
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+   call @parser(PARSER$MFILE, token.type, token, keyword) ;* First argument
+
+   * Get file information
+
+   if keyword = KW$DICT then     ;* DICT
+      dict.flag = "DICT"
+      call @parser(PARSER$MFILE, token.type, token, keyword)
+   end
+
+   if token.type = PARSER$END then stop sysmsg(2102)  ;* File name required
+
+   file.name = token
+
+   * Open the file
+
+   open dict.flag, file.name to file else
+      open dict.flag, upcase(file.name) to file else
+         @system.return.code = -status()
+         call !errtext(msg, status())
+         stop msg
+      end
+      file.name = upcase(file.name)
+   end
+
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+
+* ----------------------------------------------------------------------
+* Process keywords
+
+   loop
+   while token.type # PARSER$END
+      begin case
+         case keyword = KW$STATISTICS
+            stats = @true
+         case keyword = KW$LPTR
+            lptr = @true
+         case 1
+            stop "Unrecognised keyword '" : token : "'"
+      end case
+      call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   repeat
+
+* ----------------------------------------------------------------------
+* Analyse the file structure
+
+   @system.return.code = 0
+   if lptr then printer on
+
+   live = not(lptr) and not(kernel(K$IS.PHANTOM, 0))
+
+   print @(IT$CS) :
+
+   print "Account           : " : @path
+   if len(dict.flag) then print "File name         : DICT " : file.name
+   else print "File name         : " : dict.flag : file.name
+   print "Path name         : " : fileinfo(file, FL$PATH)
+   print
+
+   type = fileinfo(file, FL$TYPE)
+   begin case
+      case type = FL$TYPE.DH
+         type.name = 'Dynamic'
+
+         if stats then
+            if live then display "Please wait while the file is processed..." :
+            info = convert(',', @fm, analyse(file))
+            if live then display char(13) : @(-4) :     ;* 0236
+            if info = '' then stop
+         end
+
+         group.size = fileinfo(file, FL$GRPSIZE)
+         physbytes = fileinfo(file, FL$PHYSBYTES)
+         pri.bytes = fileinfo(file, FL$PRI.BYTES)
+         ovf.bytes = fileinfo(file, FL$OVF.BYTES)
+         flags = fileinfo(file, FL$FLAGS)
+
+         print "Type              : " : type.name:
+         print ", version " : fileinfo(file, FL$VERSION) :
+         if bitand(flags, FL$FLAGS.NOCASE) then print ', case insensitive' :
+         if bitand(flags, FL$NO.RESIZE) then print ', resize disabled' :
+         print
+
+         i = fileinfo(file, FL$AK)
+         if fileinfo(file, FL$TRIGGER) then i += 2
+         if i then print space(20) :
+         begin case
+            case i = 1 ; print 'File has AK'
+            case i = 2 ; print 'File has trigger function'
+            case i = 3 ; print 'File has AK and trigger function'
+         end case
+
+         print "Group size        : " : group.size : " (" : group.size * 1024 : " bytes)"
+         print "Large record size : " : fileinfo(file, FL$LARGEREC)
+         print "Minimum modulus   : " : fileinfo(file, FL$MINMOD)
+         if stats then
+            print "Current modulus   : " : info<1> :
+            print " (" : info<2> : " empty, " : info<3> : " overflowed, " : info<4> : " badly)"
+         end else
+            print "Current modulus   : " : fileinfo(file, FL$MODULUS)
+         end
+
+         print "Load factors      : " : fileinfo(file, FL$SPLIT) : " (split), " : fileinfo(file, FL$MERGE) : " (merge), " :fileinfo(file, FL$LOAD) : " (current)"
+
+         if not(stats) then
+            print "File size (bytes) : " : physbytes : " (" : pri.bytes : " + " : ovf.bytes :")"
+         end else
+            total.records = info<12> + info<13>
+            total.bytes = info<16> + info<19>
+            print "File size (bytes) : " : physbytes : " (" : pri.bytes : " + " : ovf.bytes :"), " : total.bytes :  " used"
+            print "Total records     : " : total.records : " (" : info<12> : " normal, " : info<13> : " large)"
+            print
+            print "         Per group: Minimum    Maximum    Average"
+            print "Group buffers     : " : fmt(info<7>, '7R') : fmt(info<8>, '11R') : fmt(info<9>/info<1>, '11R2')
+            print "Total records     : " : fmt(info<10>, '7R') : fmt(info<11>, '11R') : fmt(total.records/info<1>, '11R2')
+            print "Used bytes        : " : fmt(info<5>, '7R') : fmt(info<6>, '11R') : fmt(info<16>/info<1>, '11R2')
+            print
+            print "  Bytes per record: Minimum    Maximum    Average"
+            lo = info<14>
+            if info<17> and info<17> < lo then lo = info<17>
+            hi = info<15> ; if info<18> > hi then hi = info<18>
+
+            print "All records       : " : fmt(lo, '7RZ') : fmt(hi, '11RZ') :
+            if total.records then print fmt(total.bytes/total.records, '11R2Z')
+            else print
+
+            print "Normal records    : " : fmt(info<14>, '7RZ') : fmt(info<15>, '11RZ') :
+            if info<12> then print fmt(info<16>/info<12>, '11R2Z')
+            else print
+
+            print "Large records     : " : fmt(info<17>, '7RZ') : fmt(info<18>, '11RZ') :
+            if info<13> then print fmt(info<19>/info<13>, '11R2Z')
+            else print
+
+* Do histogram of record lengths
+
+            page
+
+            print 'Histogram of record lengths'
+            print
+            h.data = field(info, @fm, 20, 11)
+            h.max = maximum(h.data)
+            if h.max = 0 then h.max = 1  ;* Avoid divide by zero below
+            h.bar = 'up to 16ýup to 32ýup to 64ýup to 128ýup to 256ýup to 512ýup to 1Kýup to 2Kýup to 4Kýup to 8Kýover 8K'
+            h.limit = if total.records then h.max * 100 / total.records else 100
+            print fmt(h.limit, '78R1') : '%'
+            print '    Bytes ---------------------------------------------------------------------'
+            h.cols = 68
+
+            for i = 1 to 11
+               print fmt(h.bar<1,i>, '9L') : '| ' :
+               print str('>', idiv(h.data<i> * h.cols + h.max - 1, h.max))
+            next i
+         end
+
+      case type = FL$TYPE.DIR
+         print "Type              : Directory"
+         if stats then
+            info = convert(',', @fm, analyse(file))
+            if info = '' then stop
+
+            print "File size (bytes) : " : info<2>
+            print "Total records     : " : info<1>
+            print
+            print "                  : Minimum    Maximum    Average"
+            print "Bytes per record  : " : fmt(info<3>, '7R') : fmt(info<4>, '11R') :
+            if info<1> then print fmt(info<2>/info<1>, '11R2')
+            else print
+         end
+
+      case 1
+         print "Type              : Unknown (" : type : ")"
+   end case
+
+   if lptr then printer off
+
+   return
+end
+
+* END-CODE

@@ -1,0 +1,321 @@
+* PICKLST
+* Picklist processor
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 31 Oct 06  2.4-15 Use @SYS.BELL to honour BELL ON/OFF setting.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*   CALL !PICKLIST(VALUE, LIST, RETURN.COL, INDEX.COL)
+*
+*   VALUE        Returned item, null string if none selected
+*
+*   LIST         Field mark delimited list to process. If multi column,
+*                each field is divided into values.  The first field must
+*                correctly reflect the number of columns in the data.
+*
+*   RETURN.COL   Column number (from 1) of data to return
+*
+*   INDEX.COL    Column number (from 1) of index field for shortcut entry.
+*                For this to work, the list must be sorted on this column.
+*                Specifying INDEX.COL as zero inhibits shortcut searches.
+*
+* If used in a QMTerm session (QMConsole or QMTerm), the screen region
+* used for the picklist display will be saved and restored.  Other telnet
+* connections must provide their own display restore mechanism.
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+subroutine pick.list(value,
+                     list,          ;* Field mark delimited items to list
+                     return.col,    ;* Value pos of returned item
+                     index.col)     ;* Value pos of key item
+$catalog !picklist
+
+$include tty.h
+$include keys.h
+$include keyin.h
+
+equ KEY.WIDTH to 10
+equ KEY.FMT   to "10L"
+
+   imaging = terminfo('sreg') # ''
+
+   value = ''
+
+   if index.col then
+      index.list = upcase(vslice(list, index.col))  ;* For partial key matching
+   end
+
+   num.items = dcount(list, @fm)
+   num.columns = dcount(list<1>, @vm)
+
+   dim width(num.columns)
+
+   if num.items = 0 then   ;* Nothing to display
+      left = int(@crtwide/2) - 10; box.top = 11 ; box.height = 3
+
+      if imaging then image = save.screen(left, box.top, 23, 3)
+
+      display @(left, box.top)     : '=======================' :
+      display @(left, box.top + 1) : '| No items to display |' :
+      display @(left, box.top + 2) : '=======================' :
+      gosub get.key
+
+      goto abort.picklist
+   end
+
+   * Calculate width of each column
+
+   for col = 1 to num.columns
+      w = 0
+      for i = 1 to num.items
+         n = len(list<i,col>)
+         if n > w then w = n
+      next i
+      width(col) = w
+   next col
+
+   data.width = -2
+   for i = 1 to num.columns
+      data.width += width(i) + 2
+   next i
+
+   if data.width > @crtwide - 4 then goto abort.picklist
+
+   left = idiv(@crtwide - data.width, 2)
+
+   * Set box.top, box.height as position of first data line and number of lines
+
+   if num.items <= 13 then
+      box.top = 12 - int(num.items / 2)
+      box.height = num.items
+      box.scroll = @false        ;* Showing all data
+   end else
+      box.top = 6
+      box.height = 13
+      box.scroll = @true         ;* Showing top of data
+   end
+
+   * Draw outline of box
+
+   ln = box.top - 1
+
+   if imaging then
+      image = save.screen(left, ln, data.width + 4, box.height + 2);
+   end
+
+   display @(left, ln) : str('=', data.width + 4) :
+   for i = 1 to box.height
+      ln += 1
+      display @(left, ln) : '| ' : space(data.width) : ' |' :
+   next i
+   display @(left,ln + 1) : str('=', data.width + 4) : 
+
+   * Paint data page
+
+   selected.item = 1
+   offset = 1 ; gosub show.page
+
+* Process input
+
+   key = ''
+   loop
+      display @(left, box.top - 1) :
+
+      gosub get.key
+      begin case
+         case n = K$RETURN
+            value = list<selected.item, return.col>
+            exit
+
+         case n = CTRL.X
+            exit
+
+         case n = K$UP
+            gosub clear.key
+            if selected.item > 1 then
+               idx = selected.item
+               selected.item -= 1
+               gosub show.item
+               idx = selected.item
+               if idx < offset then
+                  offset -= box.height
+                  if offset < 1 then offset = 1
+                  gosub show.page
+               end
+               gosub show.item
+            end
+
+         case n = K$DOWN
+            gosub clear.key
+            if selected.item < num.items then
+               idx = selected.item
+               selected.item += 1
+               gosub show.item
+               idx = selected.item
+               if idx >= offset + box.height then
+                  offset += box.height
+                  gosub show.page
+               end
+               gosub show.item
+            end
+
+         case n = K$HOME
+            gosub clear.key
+            offset = 1
+            selected.item = 1
+            gosub show.page
+
+         case n = K$END
+            gosub clear.key
+            selected.item = num.items
+            offset = int((selected.item - 1) / box.height) * box.height + 1
+            gosub show.page
+
+         case n = K$PAGE.UP
+            gosub clear.key
+            if offset > 1 then
+               offset -= box.height
+               if offset < 1 then offset = 1
+               selected.item -= box.height
+               if selected.item < 1 then selected.item = 1
+               gosub show.page
+            end
+
+         case n = K$PAGE.DOWN
+            gosub clear.key
+            if offset + box.height <= num.items then
+               offset += box.height
+               selected.item += box.height
+               if selected.item > num.items then selected.item = num.items
+               gosub show.page
+            end
+
+         case n = K$BACKSPACE
+            n = len(key)
+            if n then
+               key = key[1, n - 1]
+               gosub key.search
+            end
+
+         case n >= 32 and n < 127 and len(key) < KEY.WIDTH
+            if index.col then
+               key := upcase(c)
+               gosub key.search
+            end else
+               display @sys.bell :
+            end
+      end case
+   repeat
+
+abort.picklist:
+   display @(-14) :
+
+   if imaging and not(unassigned(image)) then
+      restore.screen image, @true
+   end
+
+   return
+
+
+* -----------------------------------------------------------------------------
+
+key.search:
+   if len(key) = 0 then
+      display @(left + 1, box.top + box.height) : str('=', KEY.WIDTH + 2) :
+   end else
+      display @(left + 1, box.top + box.height) : '[' : (key KEY.FMT) : ']' :
+   end
+
+   locate key in index.list<1> by 'AL' setting selected.item else null
+   if selected.item > num.items then selected.item = num.items
+   offset = selected.item  ;* Position as first on page
+   gosub show.page
+   return
+
+clear.key:
+   if len(key) then
+      display @(left + 1, box.top + box.height) : str('=', KEY.WIDTH + 2) :
+      key = ''
+   end
+   return
+
+* -----------------------------------------------------------------------------
+* Display current page of data
+
+show.page:
+   for i = 1 to box.height
+      idx = offset + i - 1
+      gosub show.item
+   next i
+
+   if box.scroll then
+      begin case
+         case offset = 1                              ;* Showing top of data
+            crt @(left, box.top) : '|' :
+            crt @(left, box.top + box.height - 1) : 'v' :
+         case offset + box.height <= num.items     ;* Showing middle of data
+            crt @(left, box.top) : '^' :
+            crt @(left, box.top + box.height - 1) : 'v' :
+         case 1                                       ;* Showing bottom of data
+            crt @(left, box.top) : '^' :
+            crt @(left, box.top + box.height - 1) : '|' :
+      end case
+   end
+
+   return
+
+* -----------------------------------------------------------------------------
+* Display a single data item, reverse video if selected item
+
+show.item:
+   display @(left + 2, box.top + idx - offset) :
+   if idx <= num.items then
+      if idx = selected.item then display @(-13) :
+      j = 1
+      loop
+         display fmt(list<idx,j>, width(j):'L') :
+      while j < num.columns
+         display '  ' :
+         j += 1
+      repeat
+      if idx = selected.item then display @(-14) :
+   end else
+      display space(data.width) :
+   end
+
+   return
+
+* ----------------------------------------------------------------------
+
+get.key:
+   c = keycode()
+   n = seq(c)
+   return
+
+end
+
+
+* END-CODE

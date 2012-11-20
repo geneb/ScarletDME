@@ -1,0 +1,210 @@
+* SETSRVR
+* SETSRVR - SET.SERVER command.
+* Copyright (c) 2004 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 27 Oct 04  2.0-7 0273 Was not inserting QMNet section header in config file.
+* 13 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    SET.SERVER name ip.address{:port} username password
+*
+*    Prompts appear for absent items
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program setsrvr
+$catalogue $SETSRVR
+
+$include parser.h
+$include err.h
+$include int$keys.h
+
+$define MAX.SERVER.NAME.LEN 16
+
+   server.name.chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-'
+   user.name.chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.-'
+
+   parser = "!PARSER"
+   prompt ''
+
+   @system.return.code = -ER$ARGS     ;* Preset for argument errors
+
+   if not(kernel(K$ADMINISTRATOR,-1)) then
+      stop sysmsg(2001) ;* Command requires administrator privileges
+   end
+
+   call @parser(parser$reset, 0, @sentence, 0)
+   call @parser(parser$get.token, token.type, token, keyword) ;* Verb
+
+   * Get server name
+
+   call @parser(parser$get.token, token.type, server.name, keyword)
+   loop
+      if token.type = PARSER$END then
+         display sysmsg(3300) :  ;* Server name: 
+         input server.name
+         server.name = trim(server.name)
+         if server.name = '' then goto exit.set.server
+      end
+      server.name = upcase(server.name)
+   until convert(server.name.chars, '', server.name) = '' and len(server.name) <= MAX.SERVER.NAME.LEN
+      display sysmsg(3301) ;* Invalid server name
+      if token.type # PARSER$END then stop
+   repeat
+
+   * Get server address
+
+   call @parser(parser$get.token, token.type, ip.address, keyword)
+   loop
+      if token.type = PARSER$END then
+         display sysmsg(3302) :  ;* IP address or name:
+         input ip.address
+         ip.address = trim(ip.address)
+         if ip.address = '' then goto exit.set.server
+      end
+
+      if index(ip.address, ':', 1) then
+         port = field(ip.address, ':', 2)
+         ip.address = field(ip.address, ':', 1)
+      end else
+         port = 4243
+      end
+
+   until port matches '1N0N' and port < 65536
+      display sysmsg(3303) ;* Invalid IP address/port
+      if token.type # PARSER$END then stop
+   repeat
+
+   * Get user name
+
+   call @parser(parser$get.token, token.type, user.name, keyword)
+   loop
+      if token.type = PARSER$END then
+         display sysmsg(3304) :  ;* Remote user name:
+         input user.name
+         user.name = trim(user.name)
+         if user.name = '' then goto exit.set.server
+      end
+
+   until convert(user.name.chars, '', user.name) = ''
+      display sysmsg(3305) ;* Invalid remote user name'
+      if token.type # PARSER$END then stop
+   repeat
+
+   * Get password
+
+   call @parser(parser$get.token, token.type, password, keyword)
+   loop
+      if token.type = PARSER$END then
+         display sysmsg(3306) :  ;* Password:
+         input password hidden
+         password = trim(password)
+      end
+
+   until password # ''
+      * Do not allow the user to be an idiot and open up a QMNet connection
+      * that has no password.
+
+      display sysmsg(3307) ;* Password required
+      if token.type # PARSER$END then stop
+   repeat
+
+   * Apply simple encryption to the password. Other security precautions
+   * should keep unauthorised users away from the configuration file.
+
+   mapped.chars = 'PWbfTYR.BZKwm6qX4tH-avjUd0GI18Lx37ehiFSJEn52lMocy9OQDNszAVprkuCg'
+   roll = 10
+   for i = 1 to len(password)
+      c = password[i,1]
+      j = index(mapped.chars, c, 1)
+      if j then
+         j = mod(j - 1 + roll, len(mapped.chars)) + 1
+         password[i,1] = mapped.chars[j,1]
+         roll = seq(c)
+      end
+   next i
+
+   * All looks ok - Update the config file
+
+   new.ini.entry = server.name:'=':ip.address
+   if port # 4243 then new.ini.entry := ':':port
+   new.ini.entry := ',' : user.name: ',' : password
+
+   openseq kernel(K$INIPATH,0) to ini.f else
+      @system.return.code = -status()
+      stop sysmsg(3308) ;* Unable to open configuration file
+   end
+
+   ini.data = ''
+   section = ''
+   loop
+      readseq line from ini.f else exit
+
+      if trim(line) = '' then continue   ;* Skip blanks, reinserting correctly
+
+      if line[1,1] = '[' then
+         if section = 'QMNET' then  ;* End of QMNET section, add new entry
+            ini.data<-1> = new.ini.entry
+            new.ini.entry = ''
+         end
+
+         if ini.data # '' then ini.data<-1> = ''
+
+         section = upcase(field(line[2,999], ']', 1))
+      end else if section = 'QMNET' then
+         if line[1,len(server.name)+1] = server.name:'=' then continue
+      end
+      ini.data<-1> = line
+   repeat
+
+   if new.ini.entry # '' then     ;* Not already inserted
+      if section = 'QMNET' then   ;* Ended in QMNET section
+         ini.data<-1> = new.ini.entry
+      end else                    ;* There is no QMNET section
+         ini.data<-1> = ''
+         ini.data<-1> = '[QMNet]'      ;* 0273
+         ini.data<-1> = new.ini.entry
+      end
+   end
+
+   seek ini.f else stop sysmsg(3309) ;* Error rewinding configuration file
+
+   weofseq ini.f on error stop sysmsg(3310) ;* Error truncating configuration file
+
+   loop
+      writeseq remove(ini.data, more) to ini.f else
+         stop sysmsg(3311) ;* Error writing configuration file
+      end
+   while more
+   repeat
+
+   display sysmsg(3312) ;* Server configuration updated
+
+exit.set.server:
+   @system.return.code = 0
+end
+
+* END-CODE

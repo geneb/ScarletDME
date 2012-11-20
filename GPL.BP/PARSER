@@ -1,0 +1,316 @@
+* PARSER
+* !PARSER subroutine (Command parser)
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 02 Nov 06  2.4-15 VOC record types now case insensitive.
+* 30 Oct 06  2.4-15 Allow caller to see delimiter in quoted string.
+* 28 Mar 05  2.1-11 Added PARSER$MFILE to avoid problems in parsing commands
+*                   such as COPY with a record name that matches a file name.
+* 19 Feb 05  2.1-7 0318 Do not treat backslash as a string quote if it appears
+*                  in the middle of a token on Windows as it might be part of a
+*                  pathname.
+* 23 Dec 04  2.1-0 Added handling of xxx:yyy,zzz to decide if this is a
+*                   multifile reference or two items in a comma separated list.
+* 20 Dec 04  2.1-0 Terminate a "normal" token at a string quote.
+* 18 Oct 04  2.0-5 Use message handler.
+* 11 Oct 04  2.0-5 Added support for Q-pointers to multifiles.
+* 01 Oct 04  2.0-3 Added support for multifiles.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* This function parses the @SENTENCE variable into /$SYSCOM/PARSER.SENTENCE
+* and returns individual tokens from it.
+*
+*     CALL !PARSER(KEY, TYPE, STRING, KEYWORD, VOC.REC, QUOTE.CHAR)
+*
+* The VOC.REC and QUOTE.CHAR arguments are optional
+*
+* Keys:
+*    0   PARSER$RESET      Set STRING as string to parse (usually @SENTENCE)
+*    1   PARSER$GET.TOKEN  Fetch next token
+*    2   PARSER$GET.REST   Fetch remainder of string
+*    3   PARSER$EXPAND     Insert STRING before remaining tokens
+*    4   PARSER$LOOK.AHEAD Preview next token
+*    5   PARSER$MFILE      Like GET.TOKEN but allows multifile syntax
+*
+* Keyword returned as:
+*    n   Is keyword n
+*   -1   Token is not in VOC
+*   -2   Token is in VOC but not as a keyword
+*
+* Error conditions cause a STOP.
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+subroutine parser(key, type, string, keyword, voc.rec, quote.char) var.args
+$catalog !PARSER
+
+$include syscom.h
+$include parser.h
+$include keys.h
+$include err.h
+
+   is.windows = system(91)
+   voc.rec = ''
+   quote.char = ''
+
+   begin case
+      case key = PARSER$GET.TOKEN or key = PARSER$MFILE ;* Return next token
+         string = ''
+rescan:
+         if len(parser.sentence) = 0 then
+            type = PARSER$END
+            keyword = -1
+            return
+         end
+
+         c = parser.sentence[1, 1]
+
+         begin case
+            case (c = '"') or (c = "'") or (c = "\")      ;* Quoted string
+               j = index(parser.sentence, c, 2)
+               if j = 0 then stop sysmsg(2055)  ;* Unpaired string quote
+               type = PARSER$STRING
+               string = parser.sentence[2, j - 2]
+               keyword = -1
+               parser.sentence = trimf(parser.sentence[j + 1, 999999])
+               quote.char = c
+
+            case c = ','      ;* Comma
+               type = PARSER$COMMA
+               string = ","
+               keyword = -1
+               parser.sentence = trimf(parser.sentence[2, 999999])
+
+            case c = '('      ;* Left bracket
+               type = PARSER$LBR
+               string = "("
+               keyword = -1
+               parser.sentence = trimf(parser.sentence[2, 999999])
+
+            case c = ')'      ;* Right bracket
+               type = PARSER$RBR
+               string = ")"
+               keyword = -1
+               parser.sentence = trimf(parser.sentence[2, 999999])
+
+            case 1            ;* Simple token
+               j = index(parser.sentence, ' ', 1)
+               if j = 0 then j = 999999
+
+               * If there is a comma, a right bracket or a string quote before
+               * the next space, split the token at this character.
+
+               k = index(parser.sentence, ',', 1) ; if k and k < j then j = k
+               k = index(parser.sentence, ')', 1) ; if k and k < j then j = k
+               k = index(parser.sentence, '"', 1) ; if k and k < j then j = k
+               k = index(parser.sentence, "'", 1) ; if k and k < j then j = k
+               if not(is.windows) then   ;* 0318
+                  k = index(parser.sentence, '\', 1) ; if k and k < j then j = k
+               end
+
+               type = PARSER$TOKEN
+               string = parser.sentence[1, j - 1]
+               parser.sentence = trimf(parser.sentence[j, 999999])
+
+               * Is it a keyword?
+
+               keyword = -1
+
+               if len(string) <= MAX.ID.LEN then
+                  if count(string, ':') = 1 and parser.sentence[1, 1] = ',' then
+                     * Looks like an account:file,subfile type reference
+                     * The simplest way to validate this is to try to find
+                     * the VOC entry
+
+                     open string to temp.f then
+                        gosub merge.multifile.component
+                        close temp.f
+                     end else
+                        if status() = ER$CNF or status() = ER$MFC then
+                           gosub merge.multifile.component
+                        end else  ;* Try again with uppercase names
+                           open upcase(string) to temp.f then
+                              gosub merge.multifile.component
+                              close temp.f
+                           end else
+                              if status() = ER$CNF or status() = ER$MFC then
+                                 gosub merge.multifile.component
+                              end
+                           end
+                        end
+                     end
+                  end else
+                     read voc.rec from @voc, string else
+                        read voc.rec from @voc, upcase(string) else goto exit.parser
+                     end
+
+                     keyword = -2
+
+                     voc.type = upcase(voc.rec[1, 1])
+                     begin case
+                        case voc.type = "K"
+                           keyword = voc.rec<2>
+* 0198                     if keyword = KW$FILLER then goto rescan
+
+                        case voc.type= 'F'
+                           if parser.sentence[1, 1] = ',' then
+                              if key = PARSER$MFILE then
+                                 if voc.rec<4> # '' then gosub merge.multifile.component
+                              end
+                           end
+
+                        case voc.type= 'Q'
+                           * This one is much more complex. To be thoroughly
+                           * correct, we must follow the Q-pointer to decide if
+                           * this is a multifile. This is not easy.
+                           * Take the easy way out and assume that it is a
+                           * multifile if the next token is a comma. In theory,
+                           * literal values that clash with VOC entries should
+                           * be quoted, so this is a safe assumption.
+
+                           if parser.sentence[1, 1] = ',' then
+                              if key = PARSER$MFILE then
+                                 gosub merge.multifile.component
+                              end
+                           end
+                     end case
+                  end
+               end
+         end case
+
+      case key = PARSER$GET.REST        ;* Return remainder of string
+         if len(parser.sentence) then
+            type = PARSER$STRING
+            string = " " : parser.sentence
+            parser.sentence = ""
+         end
+         else
+            type = PARSER$END
+            string = ""
+         end
+         keyword = -1
+
+      case key = PARSER$RESET           ;* Parse new sentence
+         parser.sentence = string
+
+      case key = PARSER$EXPAND          ;* Expand last token by inserting
+                                         * string before remaining tokens
+         parser.sentence = string : " " : parser.sentence
+
+      case key = PARSER$LOOK.AHEAD     ;* Preview next token
+         if len(parser.sentence) = 0 then
+            type = PARSER$END
+            string = ""
+            keyword = -1
+            return
+         end
+
+         c = parser.sentence[1, 1]
+
+         begin case
+            case (c = '"') or (c = "'") or (c = "\")      ;* Quoted string
+               j = index(parser.sentence, c, 2)
+               if j = 0 then stop sysmsg(2055)  ;* Unpaired string quote
+
+               type = PARSER$STRING
+               string = parser.sentence[2, j - 2]
+               keyword = -1
+               quote.char = c
+
+            case c = ','      ;* Comma
+               type = PARSER$COMMA
+               string = ","
+               keyword = -1
+
+            case 1            ;* Simple token
+               j = index(parser.sentence, ' ', 1)
+               if j = 0 then j = 999999
+
+               * If there is a comma before the next space, split the token
+               * at the comma
+
+               i = index(parser.sentence, ',', 1)
+               if i and (i < j) then j = i
+
+               type = PARSER$TOKEN
+               string = parser.sentence[1, j - 1]
+
+               * Is it a keyword?
+
+               keyword = -1
+
+               if len(string) <= 63 then
+                  read voc.rec from @voc, upcase(string) then
+                     if upcase(voc.rec[1, 1]) = "K" THEN
+                        keyword = voc.rec<2>
+!0198                   if keyword = KW$FILLER then goto rescan
+                     end
+                        else keyword = -2
+                  end
+               end
+         end case
+
+      case 1
+         stop sysmsg(2056)  ;* Invalid key to !PARSER
+   end case
+
+exit.parser:
+   return
+
+* ======================================================================
+
+merge.multifile.component:
+   * Merge with comma and next token
+   string := ','
+   parser.sentence = trimf(parser.sentence[2, 99999])
+
+   j = index(parser.sentence, ' ', 1)
+   if j = 0 then j = 999999
+
+   * If there is a comma or a right bracket before the next space, split
+   * the token at this character.
+
+   i = index(parser.sentence, ',', 1)
+   k = index(parser.sentence, ')', 1)
+   if k then
+      if i then
+         if k < i then i = k
+      end else i = k
+   end
+
+   if i and (i < j) then j = i
+   else
+      i = index(parser.sentence, ',', 1)
+      if i and (i < j) then j = i
+   end
+
+   string := parser.sentence[1, j - 1]
+   parser.sentence = trimf(parser.sentence[j, 999999])
+
+   return
+end
+
+* END-CODE

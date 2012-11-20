@@ -1,0 +1,950 @@
+* SETPTR
+* SETPTR verb
+* Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 29 Aug 07  2.6-0 0558 "AS NEXT, xxx" failed because it did not handle comma.
+* 02 Nov 06  2.4-15 Added mode to display settings in a form that allows build
+*                   of a SETPTR command to reset the modes later.
+* 15 Oct 06  2.4-15 Added support for print mode 6 (Print and hold).
+* 13 Oct 06  2.4-15 Separated AS and AT names.
+* 28 Apr 06  2.4-2 Added NEWLINE option
+* 11 Apr 06  2.4-1 Allow page length of zero as infinite.
+* 04 Apr 06  2.4-1 0472 Do PRINTER ON with SETPTR DISPLAY to printer 0.
+* 09 Feb 06  2.3-6 Added STYLE option.
+* 19 Oct 05  2.2-15 Added CPI, LPI and PAPER.SIZE options.
+* 18 Oct 05  2.2-15 Added OVERLAY option.
+* 08 Aug 05  2.2-7 Raised max width to 32767.
+* 19 Jul 05  2.2-4 Added PREFIX keyword.
+* 04 Jul 05  2.2-3 Ignore throw away words in option list.
+* 01 Jul 05  2.2-3 Added FORM option.
+* 14 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*   SETPTR unit, width, depth, top.margin, bottom.margin, mode, options...
+*   SETPTR DEFAULT, width, depth, top.margin, bottom.margin, mode, options...
+*   SETPTR DISPLAY
+*   SETPTR unit,DISPLAY
+*
+* Options:               Win  Win  Lnx  Action
+*                        Raw  GDI
+*   AS {NEXT} name       Y    Y    Y   Set name for mode 3 file
+*   AS PATHNAME path     Y    Y    Y   Set pathname for mode 3 file
+*   AT printer.name      Y    Y    Y   Set printer name
+*   BANNER name                    Y   Set banner heading for mode 1 print
+*   BRIEF                Y    Y    Y   Suppress confirmation prompt
+*   COPIES n             Y         Y   Number of copies
+*   CPI n                Y         Y   Characters per inch (float, max 2 dp)
+*   DUPLEX               Y         Y   Duplex print, long edge binding
+*   DUPLEX SHORT         Y         Y   Duplex print, short edge binding
+*   FORM x               Y    Y    Y   Form type
+*   GDI                                Use Windows GDI mode API calls
+*   KEEP.OPEN            Y    Y    Y   Keep print unit open
+*   LANDSCAPE            Y         Y   Set landscape orientation
+*   LEFT.MARGIN n        Y    Y    Y   Set left margin
+*   CPI n                Y         Y   Characters per inch (float, max 2 dp)
+*   NEWLINE CR/LF/CRLF   Y    Y    Y   Newline sequence
+*   NFMT                 Y    Y    Y   Do not apply any formatting to the data
+*   NODEFAULT            Y    Y    Y   Preserve old values of unspecified params
+*   OPTIONS                        Y   Options to be passed to spooler
+*   OVERLAY              Y         Y   Overlay subroutine name
+*   PAPER.SIZE xx        Y         Y   Paper size
+*   PCL                  Y         Y   PCL printer    
+*   PORTRAIT             Y             Set portrait orientation
+*   POSTSCRIPT     
+*   PREFIX               Y         Y   Set prefix string
+*   RAW                                Use Windows non-GDI mode API calls
+*   SPOOLER                        Y   Set spooler name
+*   STYLE                Y    Y    Y   Set report style
+*   SYMBOL.SET x         Y         Y   PCL symbol set
+*   WEIGHT x             Y         Y   PCL font weight
+*
+* Still need to do default handling for
+*   AS
+*   AT
+*   BANNER
+*   COPIES      All four are mode dependent
+*
+* @SYSTEM.RETURN.CODE
+*     0  Successful
+*    -1  Command arguments incorrect or missing
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program SETPTR
+$catalog $SETPTR
+
+$include int$keys.h
+$include parser.h
+$include syscom keys.h
+$include pcl.h
+
+common /pcldata/ pcldata
+
+$define MAX.MARGIN 50
+$define MAX.LEFT.MARGIN 50    ;* Known in pio.c
+$define TEMPLATE.PRINT.UNIT -3
+   $define SUPPORTED.MODES '0,1,3,4,5,6'
+
+   parser = "!PARSER"
+   is.windows = system(91)
+   lptr = -1
+
+   * Set defaults
+
+   unit = 0
+   width = config('LPTRWIDE')
+   depth = config('LPTRHIGH')
+   top.margin = 0
+   bottom.margin = 0
+   left.margin = 0
+   mode = 1
+   flags = 0
+   if not(config("GDI")) then flags = bitor(flags, PU$FLG.RAW)
+   copies = 1
+   file.name = ''
+   printer.name = ''
+   banner = ''
+   form = ''
+   options = ''
+   prefix = ''
+   overlay = ''
+   spooler = ''
+   style = ''
+   cpi = 10
+   lpi = 6
+   weight = 0             ;* Medium
+   symbol.set = "8U"      ;* Roman-8
+   paper.size = 26        ;* A4
+   newline = ''
+   brief = @false
+   nodefault = @false
+
+   overlay.warning = @false
+
+   if not(pcldata) then
+      open 'SYSCOM' to syscom.f then
+         read pcldata from syscom.f, '$PCLDATA' else null
+         close syscom.f
+      end
+   end
+
+   @system.return.code = -1                 ;* Preset for argument errors
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Print unit
+   begin case
+      case keyword = KW$DEFAULT
+         unit = TEMPLATE.PRINT.UNIT
+         call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+
+      case keyword = KW$DISPLAY
+         * The only other keyword allowed with DISPLAY is LPTR
+
+         call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+         if token.type # PARSER$END then
+            if keyword # KW$LPTR then stop sysmsg(2018, token) ;* Unexpected token (xx)
+            lptr = 0
+            call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+            if token.type # PARSER$END then
+               if not(token matches '1N0N') or (token < 0) or (token > LPTR$HIGH.PRINT.UNIT) then
+                  stop sysmsg(2053) ;* Invalid print unit number
+               end
+               lptr = token + 0
+            end
+         end
+
+         if lptr = 0 then printer on     ;* 0472
+         gosub show.all.print.units
+         if lptr = 0 then printer off    ;* 0472
+         @system.return.code = 0
+         return
+
+      case token matches '1-3N'
+         if (token < -1) or (token > LPTR$HIGH.PRINT.UNIT) then
+            stop sysmsg(2053) ;* Invalid print unit number
+         end
+         unit = token + 0
+         call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   end case
+
+   old.flags = getpu(PU$SPOOLFLAGS, unit)
+   old.width = getpu(PU$WIDTH, unit)
+   old.depth = getpu(PU$LENGTH, unit)
+   old.top.margin = getpu(PU$TOPMARGIN, unit)
+   old.bottom.margin = getpu(PU$BOTMARGIN, unit)
+   old.left.margin = getpu(PU$LEFTMARGIN, unit)
+
+   if token.type = PARSER$END then   ;* Report unit configuration
+      width = old.width
+      depth = old.depth
+      top.margin = old.top.margin
+      bottom.margin = old.bottom.margin
+      left.margin = old.left.margin
+      banner = getpu(PU$BANNER, unit)
+      copies = getpu(PU$COPIES, unit)
+      printer.name = getpu(PU$PRINTER.NAME, unit)
+      file.name = getpu(PU$FILE.NAME, unit)
+      mode = getpu(PU$MODE, unit)
+      form = getpu(PU$FORM, unit)
+      options = getpu(PU$OPTIONS, unit)
+      prefix = getpu(PU$PREFIX, unit)
+      overlay = getpu(PU$OVERLAY, unit)
+      spooler = getpu(PU$SPOOLER, unit)
+      cpi = getpu(PU$CPI, unit)
+      lpi = getpu(PU$LPI, unit)
+      weight = getpu(PU$WEIGHT, unit)
+      symbol.set = getpu(PU$SYMBOL.SET, unit)
+      paper.size = getpu(PU$PAPER.SIZE, unit)
+      style = getpu(PU$STYLE, unit)
+      newline = getpu(PU$NEWLINE, unit) ; if newline = char(10) then newline = ''
+      flags = old.flags
+      gosub report.settings
+      @system.return.code = 0     ;* 1.4-10
+   end else                          ;* Set unit configuration
+
+      * ---------- Width ----------
+
+      if token.type = PARSER$COMMA then
+         call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+         if token matches '1N0N' then
+            if (token < 1) or (token > MAX.WIDTH) then
+               stop sysmsg(7100) ;* Width parameter is out of range
+            end
+            width = token + 0
+            old.width = width
+            call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+         end else if keyword = KW$DISPLAY then
+            tabular = @false
+            gosub report.unit
+            @system.return.code = 0
+            stop
+         end
+      end
+
+      * ---------- Depth ----------
+
+      if token.type = PARSER$COMMA then
+         call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+         if token matches '1N0N' then
+            if token > MAX.DEPTH then
+               stop sysmsg(7101) ;* Depth parameter is out of range
+            end
+            depth = token + 0
+            old.depth = depth
+            call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+         end
+      end
+
+      * ---------- Top Margin ----------
+
+      if token.type = PARSER$COMMA then
+         call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+         if token matches '1N0N' then
+            if (token < 0) or (token > MAX.MARGIN) then
+               stop sysmsg(7102) ;* Top margin parameter is out of range
+            end
+            top.margin = token + 0
+            old.top.margin = top.margin
+            call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+         end
+      end
+
+      * ---------- Bottom Margin ----------
+
+      if token.type = PARSER$COMMA then
+         call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+         if token matches '1N0N' then
+            if (token < 0) or (token > MAX.MARGIN) then
+               stop sysmsg(7103) ;* Bottom margin parameter is out of range
+            end
+            bottom.margin = token + 0
+            old.bottom.margin = bottom.margin
+            call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+         end
+      end
+
+      * ---------- Mode ----------
+
+      if token.type = PARSER$COMMA then
+         call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+         if token matches '1N0N' then
+            if listindex(SUPPORTED.MODES, ',', token) = 0 then
+               stop sysmsg(7104) ;* Mode parameter is out of range
+            end
+            mode = token + 0
+            call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+         end
+      end
+
+      * ---------- Options ----------
+
+      loop
+      while token.type = PARSER$COMMA
+         call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+reparse:
+      until token.type = PARSER$END
+         begin case
+            case keyword = 0
+               null
+
+            case keyword = KW$AS and (mode = 3 or mode = 6)
+               call @parser(PARSER$GET.TOKEN, token.type, file.name, keyword)
+               if token.type = PARSER$END or token.type = PARSER$COMMA then
+                  stop sysmsg(7105, token) ;* Invalid or missing qualifier in xx
+               end
+
+               if keyword = KW$PATHNAME then
+                  call @parser(PARSER$GET.TOKEN, token.type, file.name, keyword)
+                  if token.type = PARSER$END then
+                     stop sysmsg(7106) ;* Pathname required
+                  end
+
+                  if not(ospath(file.name, OS$PATHNAME)) then
+                     stop sysmsg(7107) ;* Invalid pathname
+                  end
+               end else
+                  if keyword = KW$NEXT then
+                     old.flags = bitor(old.flags, PU$FLG.NEXT)
+                     flags = bitor(flags, PU$FLG.NEXT)
+                     call @parser(PARSER$GET.TOKEN, token.type, file.name, keyword)
+                     if token.type = PARSER$COMMA then
+                        file.name = '' ;* No name, use default
+                        continue  ;* 0558
+                     end
+                     if token.type = PARSER$END then
+                        file.name = '' ;* No name, use default
+                        goto reparse
+                     end
+                  end
+
+                  file.name = '$HOLD ' : file.name
+               end
+
+            case keyword = KW$AT and (mode = 1 or mode = 6)
+               call @parser(PARSER$GET.TOKEN, token.type, printer.name, keyword)
+               if token.type = PARSER$END or token.type = PARSER$COMMA then
+                  stop sysmsg(7123, token) ;* Printer name required
+               end
+
+            case keyword = KW$BANNER and (mode = 1 or mode = 6)
+               call @parser(PARSER$GET.TOKEN, token.type, banner, keyword)
+               if token.type = PARSER$END or token.type = PARSER$COMMA then
+                  stop sysmsg(7105, token) ;* Invalid or missing qualifier in xx
+               end
+
+            case keyword = KW$BRIEF
+               brief = @true
+
+            case keyword = KW$CPI
+               call @parser(PARSER$GET.TOKEN, token.type, cpi, keyword)
+               if token.type = PARSER$END or token.type = PARSER$COMMA then
+                  stop sysmsg(7105, token) ;* Invalid or missing qualifier in xx
+               end
+
+               if not(cpi matches '1-2Ný1-2N.1-2N') then
+                  stop sysmsg(7155) ;* Invalid character pitch value
+               end
+
+            case keyword = KW$DUPLEX
+               call @parser(PARSER$LOOK.AHEAD, token.type, token, keyword)
+               if keyword = KW$SHORT then
+                  call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+                  old.flags = bitor(old.flags, PU$FLG.DUPLEX.SHORT)
+                  old.flags = bitand(old.flags, bitnot(PU$FLG.DUPLEX.LONG))
+                  flags = bitor(flags, PU$FLG.DUPLEX.SHORT)
+                  flags = bitand(flags, bitnot(PU$FLG.DUPLEX.LONG))
+               end else
+                  old.flags = bitor(old.flags, PU$FLG.DUPLEX.LONG)
+                  old.flags = bitand(old.flags, bitnot(PU$FLG.DUPLEX.SHORT))
+                  flags = bitor(flags, PU$FLG.DUPLEX.LONG)
+                  flags = bitand(flags, bitnot(PU$FLG.DUPLEX.SHORT))
+               end
+               
+
+            case keyword = KW$COPIES
+               call @parser(PARSER$GET.TOKEN, token.type, copies, keyword)
+               if token.type = PARSER$END or not(copies matches '1N0N') or copies < 1 then
+                  stop sysmsg(7105, token) ;* Invalid or missing qualifier in xx
+               end
+
+            case keyword = KW$FORM and (mode = 1 or mode = 6)
+               call @parser(PARSER$GET.TOKEN, token.type, form, keyword)
+               if token.type = PARSER$END or token.type = PARSER$COMMA then
+                  stop sysmsg(7105, token) ;* Invalid or missing qualifier in xx
+               end
+
+            case keyword = KW$GDI and is.windows
+               old.flags = bitand(old.flags, bitnot(PU$FLG.RAW))
+               flags = bitand(flags, bitnot(PU$FLG.RAW))
+
+            case keyword = KW$KEEP.OPEN
+               old.flags = bitor(old.flags, PU$FLG.KEEP.OPEN)
+               flags = bitor(flags, PU$FLG.KEEP.OPEN)
+
+            case keyword = KW$LANDSCAPE
+               old.flags = bitor(old.flags, PU$FLG.LAND)
+               flags = bitor(flags, PU$FLG.LAND)
+
+            case keyword = KW$LEFT.MARGIN
+               call @parser(PARSER$GET.TOKEN, token.type, lmgn, keyword)
+               if token.type = PARSER$END or not(lmgn matches '1N0N') then
+                  stop sysmsg(7105, token) ;* Invalid or missing qualifier in xx
+               end
+               if lmgn > MAX.LEFT.MARGIN then
+                  stop sysmsg(7108) ;* Left margin parameter is out of range
+               end
+               left.margin = lmgn + 0
+               old.left.margin = left.margin
+* 0151         call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+
+            case keyword = KW$LPI
+               call @parser(PARSER$GET.TOKEN, token.type, lpi, keyword)
+               if token.type = PARSER$END or token.type = PARSER$COMMA then
+                  stop sysmsg(7105, token) ;* Invalid or missing qualifier in xx
+               end
+
+               locate lpi in pcldata<PCL.VALID.LPI,1> setting pos else
+                  stop sysmsg(7157) ;* Invalid line spacing (lines per inch) value
+               end
+
+            case keyword = KW$NEWLINE
+               call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+               token = upcase(token)
+               begin case
+                  case token = 'CR'
+                     newline = char(13)
+                  case token = 'LF'
+                     newline = char(10)
+                  case token = 'CRLF'
+                     newline = char(13):char(10)
+                  case 1
+                     stop sysmsg(6843) ;* Newline mode required
+               end case
+
+            case keyword = KW$NFMT
+               old.flags = bitor(old.flags, PU$FLG.NFMT)
+               flags = bitor(flags, PU$FLG.NFMT)
+
+            case keyword = KW$NODEFAULT
+               nodefault = @true
+
+            case keyword = KW$OPTIONS and (mode = 1 or mode = 6)
+               call @parser(PARSER$GET.TOKEN, token.type, options, keyword)
+               if token.type = PARSER$END or token.type = PARSER$COMMA then
+                  stop sysmsg(7105, token) ;* Invalid or missing qualifier in xx
+               end
+
+            case keyword = KW$OVERLAY
+               call @parser(PARSER$GET.TOKEN, token.type, overlay, keyword)
+               if token.type = PARSER$END or token.type = PARSER$COMMA then
+                  stop sysmsg(7105, token) ;* Invalid or missing qualifier in xx
+               end
+               overlay = upcase(overlay)
+
+            case keyword = KW$PAPER.SIZE
+               call @parser(PARSER$GET.TOKEN, token.type, s, keyword)
+               if token.type = PARSER$END or token.type = PARSER$COMMA then
+                  stop sysmsg(7105, token) ;* Invalid or missing qualifier in xx
+               end
+
+               s = upcase(s)
+               locate s in pcldata<PCL.PAPER.NAME,1> setting pos else
+                  stop sysmsg(7156) ;* Unrecognised paper size
+               end
+               paper.size = pcldata<PCL.PAPER.NO,pos>
+
+            case keyword = KW$PCL
+               old.flags = bitor(old.flags, PU$FLG.PCL)
+               flags = bitor(flags, PU$FLG.PCL)
+               flags = bitand(flags, bitnot(PU$FLG.PS))
+
+            case keyword = KW$POSTSCRIPT
+               old.flags = bitor(old.flags, PU$FLG.PS)
+               flags = bitor(flags, PU$FLG.PS)
+               flags = bitand(flags, bitnot(PU$FLG.PCL))
+
+            case keyword = KW$PORTRAIT and is.windows
+               old.flags = bitand(old.flags, bitnot(PU$FLG.LAND))
+               flags = bitand(flags, bitnot(PU$FLG.LAND))
+
+            case keyword = KW$PREFIX
+               call @parser(PARSER$GET.TOKEN, token.type, prefix, keyword)
+               if token.type = PARSER$END or token.type = PARSER$COMMA then
+                  stop sysmsg(7105, token) ;* Invalid or missing qualifier in xx
+               end
+
+            case keyword = KW$RAW and is.windows
+               old.flags = bitor(old.flags, PU$FLG.RAW)
+               flags = bitor(flags, PU$FLG.RAW)
+
+            case keyword = KW$SPOOLER
+               call @parser(PARSER$GET.TOKEN, token.type, spooler, keyword)
+               if token.type = PARSER$END or token.type = PARSER$COMMA then
+                  stop sysmsg(7105, token) ;* Invalid or missing qualifier in xx
+               end
+
+            case keyword = KW$STYLE
+               call @parser(PARSER$GET.TOKEN, token.type, style, keyword)
+               if token.type = PARSER$END or token.type = PARSER$COMMA then
+                  stop sysmsg(7105, token) ;* Invalid or missing qualifier in xx
+               end
+
+            case keyword = KW$SYMBOL.SET
+               call @parser(PARSER$GET.TOKEN, token.type, s, keyword)
+               if token.type = PARSER$END or token.type = PARSER$COMMA then
+                  stop sysmsg(7105, token) ;* Invalid or missing qualifier in xx
+               end
+
+               s = upcase(s)
+               locate s in pcldata<PCL.SYMBOL.SET,1> setting pos else
+                  stop sysmsg(7158)  ;* Unrecognised symbol set name
+               end
+               symbol.set = pcldata<PCL.SYMBOL.SET.CODES,pos>
+
+            case keyword = KW$WEIGHT
+               call @parser(PARSER$GET.TOKEN, token.type, s, keyword)
+               if token.type = PARSER$END or token.type = PARSER$COMMA then
+                  stop sysmsg(7105, token) ;* Invalid or missing qualifier in xx
+               end
+
+               s = upcase(s)
+               locate s in pcldata<PCL.WEIGHT,1> setting pos else
+                  stop sysmsg(7159)  ;* Unrecognised font weight name
+               end
+               weight = pcldata<PCL.WEIGHT.NO,pos>
+
+            case 1
+               stop sysmsg(2018, token) ;* Unexpected token (xx)
+         end case
+
+         call @parser(PARSER$GET.token, token.type, token, keyword)
+      repeat
+
+      if token.type # PARSER$END then
+         stop sysmsg(2018, token) ;* Unexpected token (xx)
+      end
+
+      if nodefault then
+         flags = old.flags
+         width = old.width
+         depth = old.depth
+         top.margin = old.top.margin
+         bottom.margin = old.bottom.margin
+      end
+
+      @system.return.code = 0
+
+      if overlay # '' then overlay.warning = not(catalogued(overlay))
+
+      * Display potential new parameters for confirmation
+
+      if not(brief) then
+         gosub report.settings
+         crt
+
+         if overlay.warning then
+            display sysmsg(7154) ;* Warning: Overlay subroutine is not catalogued
+            display
+         end
+
+         loop
+            crt sysmsg(7109) :  ;* OK to set new parameters (Y/N)?
+            prompt ''
+            input yn
+            yn = upcase(yn)
+            if yn = 'N' then stop
+         until yn = 'Y'
+         repeat
+      end else
+         if overlay.warning then
+            display sysmsg(7154) ;* Warning: Overlay subroutine is not catalogued
+            display
+         end
+      end
+
+      * Set parameters
+
+      gosub set.params(unit)
+
+! Unit 0 is preloaded with default values. Therefore setting the template
+! prior to first use of printer 0 does not use the template values. On the
+! other hand, overwriting unit 0 here is a different behaviour from all
+! other units as the template is only used when the unit is created.
+!
+! if unit = TEMPLATE.PRINT.UNIT then gosub set.params(0)
+
+   end
+
+   return
+
+* ======================================================================
+
+report.settings:
+   if unit = TEMPLATE.PRINT.UNIT then
+      crt sysmsg(7160) ;* DEFAULT PRINT UNIT SETTINGS
+   end else
+      crt sysmsg(7111, unit) ;* PRINT UNIT xx
+   end
+   crt '   ' : sysmsg(7112, width)            ;* Page width     : xx
+   crt '   ' : sysmsg(7113, depth)            ;* Lines per page : xx
+   crt '   ' : sysmsg(7114, top.margin)       ;* Top margin     : xx
+   crt '   ' : sysmsg(7115, bottom.margin)    ;* Bottom margin  : xx
+
+   begin case
+      case mode = 0
+         crt '   ':sysmsg(7116)               ;* Mode           : 0 (Display)
+
+      case mode = 1
+         if printer.name = '' then
+            crt '   ':sysmsg(7117)            ;* Mode           : 1 (Default printer)
+         end else
+            crt '   ':sysmsg(7118, printer.name) ;* Mode           : 1 (Printer %1)
+         end
+             
+      case mode = 3
+         begin case
+            case file.name = '' and unit = TEMPLATE.PRINT.UNIT
+               crt '   ':sysmsg(7119, 'n')  ;* Mode : 3 (Hold file: $HOLD P%1)
+            case file.name = ''
+               crt '   ':sysmsg(7119, unit)  ;* Mode : 3 (Hold file: $HOLD P%1)
+            case file.name[1,6] = '$HOLD '
+               crt '   ':sysmsg(7120, file.name)  ;* Mode : 3 (Hold file: %1)
+            case 1
+               crt '   ':sysmsg(7121, file.name)   ;* Mode : 3 (File pathname %1)
+         end case
+
+         if bitand(flags, PU$FLG.NEXT) then
+             crt space(22):sysmsg(7122)  ;* Using next suffix number
+         end
+
+      case mode = 4
+         crt '   ':sysmsg(7161)              ;* Mode           : 4 (Stderr)
+
+      case mode = 5
+         crt '   ':sysmsg(7162)              ;* Mode           : 5 (Aux port)
+
+      case mode = 6
+         if printer.name = '' then
+            crt '   ':sysmsg(7168)            ;* Mode           : 6 (Default printer)
+         end else
+            crt '   ':sysmsg(7169, printer.name) ;* Mode           : 6 (Printer %1)
+         end
+         begin case
+            case file.name = '' and unit = TEMPLATE.PRINT.UNIT
+               crt space(22):sysmsg(7170, 'n')  ;* (Hold file: $HOLD P%1)
+            case file.name = ''
+               crt space(22):sysmsg(7170, unit)  ;* (Hold file: $HOLD P%1)
+            case file.name[1,6] = '$HOLD '
+               crt space(22):sysmsg(7171, file.name)  ;* (Hold file: %1)
+            case 1
+               crt space(22):sysmsg(7172, file.name)   ;* (File pathname %1)
+         end case
+
+         if bitand(flags, PU$FLG.NEXT) then
+             crt space(22):sysmsg(7122)  ;* Using next suffix number
+         end
+
+   end case
+
+   gosub decode.options
+   if s # '' then crt '   ' : change(s, @fm, ', ')
+
+   if bitand(flags, PU$FLG.PCL) then
+      gosub get.pcl.options
+
+      s = '   PCL: '
+      s := 'CPI = ' : cpi
+      s := ', LPI = ' : lpi
+      s := ', Weight = ' : wgt
+      s := ', Symbol set = ' : sym
+      crt s
+
+      s = '        '
+      s := 'Paper size = ' : paper
+      crt s
+   end
+
+   return
+
+* ======================================================================
+* Decode options.
+* Needs: BANNER, MODE, COPIES, FLAGS, FORM, LEFT.MARGIN, OPTIONS,
+*        OVERLAY, PREFIX, SPOOLER
+
+decode.options:
+   s = ''
+
+   * Options in alphabetical order
+   
+   if banner # '' then s<-1> = 'BANNER "' : banner : '"'
+
+   if (mode = 1 or mode = 6) then
+      if copies > 1 then s<-1> = 'COPIES ' : copies
+      if is.windows and not(bitand(flags, PU$FLG.RAW)) then s<-1> = 'GDI'
+   end
+
+   if bitand(flags, PU$FLG.DUPLEX.LONG) then s<-1> = 'DUPLEX'
+   if bitand(flags, PU$FLG.DUPLEX.SHORT) then s<-1> = 'DUPLEX SHORT'
+
+   if form # '' then s<-1> = 'FORM "' : form : '"'
+
+   if bitand(flags, PU$FLG.KEEP.OPEN)   then s<-1> = 'KEEP.OPEN'
+
+   if bitand(flags, PU$FLG.LAND)   then s<-1> = 'LANDSCAPE'
+
+   if left.margin then s<-1> = 'LEFT.MARGIN ' : left.margin
+
+   begin case
+      case newline = char(10)          ; s<-1> = 'NEWLINE LF'
+      case newline = char(13)          ; s<-1> = 'NEWLINE CR'
+      case newline = char(13):char(10) ; s<-1> = 'NEWLINE CRLF'
+   end case
+
+   if bitand(flags, PU$FLG.NFMT) then s<-1> = 'NFMT'
+
+   if options # '' then s<-1> = 'OPTIONS "' : options : '"'
+
+   if overlay # '' then s<-1> = 'OVERLAY "' : overlay : '"'
+
+   if bitand(flags, PU$FLG.PS)   then s<-1> = 'PostScript emulation'
+
+   if prefix # '' then s<-1> = 'PREFIX "' : prefix : '"'
+
+   if spooler # '' then s<-1> = 'SPOOLER "' : spooler : '"'
+
+   if style # '' then s<-1> = 'STYLE "' : style : '"'
+
+   return
+
+* ======================================================================
+
+get.pcl.options:
+   locate weight in pcldata<PCL.WEIGHT.NO,1> setting pos then
+      wgt = pcldata<PCL.WEIGHT,pos>
+   end else
+      wgt = '?'
+   end
+
+   locate symbol.set in pcldata<PCL.SYMBOL.SET.CODES,1> setting pos then
+      sym = pcldata<PCL.SYMBOL.SET,pos>
+   end else
+      sym = '?'
+   end
+
+   locate paper.size in pcldata<PCL.PAPER.NO,1> setting pos then
+      paper = pcldata<PCL.PAPER.NAME,pos>
+   end else
+      paper = '?'
+   end
+
+   return
+
+* ======================================================================
+*           1         2         3         4         5         6         7
+* 0123456789012345678901234567890123456789012345678901234567890123456789012345678
+* Unit Width Depth Tmgn Bmgn Mode Options
+*  123   132    66    3    3    1 AT LASER
+$define OPT.COL 32    
+
+show.all.print.units:
+   print on lptr 'Unit Width Depth Tmgn Bmgn Mode Options'
+
+   tabular = @true
+   for unit = 0 to LPTR$HIGH.PRINT.UNIT
+      gosub report.unit
+   next unit
+
+   return
+
+* ======================================================================
+
+report.unit:
+   if getpu(PU$DEFINED, unit) then
+      mode = getpu(PU$MODE, unit)
+
+      banner = getpu(PU$BANNER, unit)
+      copies = getpu(PU$COPIES, unit)
+      flags = getpu(PU$SPOOLFLAGS, unit)
+      printer.name = getpu(PU$PRINTER.NAME, unit)
+      file.name = getpu(PU$FILE.NAME, unit)
+      mode = getpu(PU$MODE, unit)
+      form = getpu(PU$FORM, unit)
+      left.margin = getpu(PU$LEFTMARGIN, unit)
+      options = getpu(PU$OPTIONS, unit)
+      prefix = getpu(PU$PREFIX, unit)
+      overlay = getpu(PU$OVERLAY, unit)
+      spooler = getpu(PU$SPOOLER, unit)
+      cpi = getpu(PU$CPI, unit)
+      lpi = getpu(PU$LPI, unit)
+      weight = getpu(PU$WEIGHT, unit)
+      symbol.set = getpu(PU$SYMBOL.set, unit)
+      paper.size = getpu(PU$PAPER.SIZE, unit)
+      style = getpu(PU$STYLE, unit)
+      newline = getpu(PU$NEWLINE, unit) ; if newline = char(10) then newline = ''
+
+      if tabular then
+         print on lptr fmt(unit, '4R') :  ' ' :
+         print on lptr fmt(getpu(PU$WIDTH, unit), '5R') :  ' ' :
+         print on lptr fmt(getpu(PU$LENGTH, unit), '5R') :  ' ' :
+         print on lptr fmt(getpu(PU$TOPMARGIN, unit), '4R') :  ' ' :
+         print on lptr fmt(getpu(PU$BOTMARGIN, unit), '4R') :  ' ' :
+         print on lptr fmt(mode, '4R') :  ' ' :
+      end else
+         display unit : ',' :
+         display getpu(PU$WIDTH, unit) : ',' :
+         display getpu(PU$LENGTH, unit) : ',' :
+         display getpu(PU$TOPMARGIN, unit) : ',' :
+         display getpu(PU$BOTMARGIN, unit) : ',' :
+         display mode :
+      end
+
+      args = ''
+      if mode = 1 or mode = 6 then
+         if printer.name # '' then
+            if index(printer.name, ' ', 1) then printer.name = dquote(printer.name)
+            args<-1> = 'AT ' : printer.name
+         end
+      end
+
+      if mode = 3 or mode = 6 then
+         if file.name[1,6] = '$HOLD ' then
+            file.name = file.name[7,9999]
+            if index(file.name, ' ', 1) then file.name = dquote(file.name)
+            if bitand(flags, PU$FLG.NEXT) then args = 'AS NEXT ' : file.name
+            else args<-1> = 'AS ' : file.name
+         end else
+            if file.name # '' then
+               if index(file.name, ' ', 1) then file.name = dquote(file.name)
+               args<-1> = 'AS PATHNAME ' : file.name
+            end
+         end
+      end
+
+      gosub decode.options
+      if s # '' then args<-1> = s
+
+      if bitand(flags, PU$FLG.PCL) then
+         gosub get.pcl.options
+
+         args<-1> = 'PCL'
+         args<-1> = 'CPI ' : cpi
+         args<-1> = 'LPI ' : lpi
+         args<-1> = 'WEIGHT ' : wgt
+         args<-1> = 'SYMBOL.SET ' : sym
+         args<-1> = 'PAPER.SIZE ' : paper
+      end
+
+      if tabular then
+         opt.width = @crtwide - OPT.COL - 1   ;* Available width
+         w = opt.width
+         loop
+         while args # ''
+            s = args<1>
+            if len(s) > opt.width then        ;* Item cannot fit a single line
+               if w # opt.width then       ;* Line is not blank
+                  print on lptr
+                  w = opt.width
+                  print on lptr space(OPT.COL) :
+               end
+               print on lptr s[1,opt.width]
+               print on lptr space(OPT.COL) :
+               args = args[opt.width + 1, 99999]
+            end else
+               if len(s) > w then
+                  print on lptr
+                  w = opt.width
+                  print on lptr space(OPT.COL) :
+               end
+
+               print on lptr s :
+               w -= len(s)
+               del args<1>
+               if args # '' then
+                  print on lptr ',' :
+                  w -= 1
+                  if w then
+                     print on lptr ' ' :
+                     w -= 1
+                  end
+               end
+            end
+         repeat
+
+         print on lptr
+      end else
+         if args then display ',' : change(args, @fm, ',')
+         else display
+      end
+   end
+
+   return
+
+* ======================================================================
+
+local subroutine set.params(pu)
+   setpu PU$MODE, pu, mode
+
+   begin case
+      case mode = 1
+         setpu PU$LOCATION, pu, printer.name
+         if status() then stop sysmsg(7110, printer.name) ;* Printer "%1" name is not recognised
+
+      case mode = 3
+         setpu PU$LOCATION, pu, file.name
+
+      case mode = 6
+         setpu PU$PRINTER.NAME, pu, printer.name
+         setpu PU$FILE.NAME, pu, file.name
+   end case
+ 
+   setpu PU$WIDTH, pu, width
+   setpu PU$LENGTH, pu, depth
+   setpu PU$TOPMARGIN, pu, top.margin
+   setpu PU$BOTMARGIN, pu, bottom.margin
+   setpu PU$LEFTMARGIN, pu, left.margin
+   setpu PU$COPIES, pu, copies
+   setpu PU$SPOOLFLAGS, pu, flags
+   setpu PU$BANNER, pu, banner
+   setpu PU$FORM, pu, form
+   setpu PU$OPTIONS, pu, options
+   setpu PU$PREFIX, pu, prefix
+   setpu PU$OVERLAY, pu, overlay
+   setpu PU$SPOOLER, pu, spooler
+   setpu PU$CPI, pu, cpi
+   setpu PU$LPI, pu, lpi
+   setpu PU$SYMBOL.SET, pu, symbol.set
+   setpu PU$WEIGHT, pu, weight
+   setpu PU$PAPER.SIZE, pu, paper.size
+   setpu PU$STYLE, pu, style
+   setpu PU$NEWLINE, pu, newline
+
+   return
+end
+end
+
+* END-CODE

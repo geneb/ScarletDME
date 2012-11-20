@@ -1,0 +1,10 @@
+* $SCREENS $ADMUSER.SCR
+* Generated at 12:58:31 on 03 APR 2002
+
+equate SS.OWNER           to 1
+equate SS.MIN.PASSWORD    to 2
+equate SS.FORCE.ACCOUNT   to 3
+equate SS.ADMIN           to 4
+equate SS.LAST.LOGIN      to 5
+equate SS.LAST.LOGIN.TIME to 6
+equate SS.ACTION          to 7

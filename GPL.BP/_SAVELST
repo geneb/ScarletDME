@@ -1,0 +1,57 @@
+* _SAVELST
+* SAVELIST recursive code.
+* Copyright (c) 2003 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+$no.symbols
+$no.xref
+$recursive
+
+subroutine savelst(name, list.no)
+$include syscom.h
+$include keys.h
+
+   i = selectinfo(list.no, SL$COUNT)   ;* Also ensures partial list completed
+
+   if i > 0 then            ;* List active
+      list = select.list(list.no)[getrem(select.list(list.no))+1, 99999999]
+      select.count(list.no) = 0
+      select.list(list.no) = ''
+      if len(list) > 0 then
+         open '$SAVEDLISTS' to sl.f then
+            write list to sl.f, name
+            return value 1    ;* Take THEN clause
+         end
+      end
+   end
+
+   return value 0             ;* Take ELSE clause
+end
+
+* END-CODE

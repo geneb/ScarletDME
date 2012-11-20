@@ -1,0 +1,95 @@
+* DELLIST
+* DELETE.LIST command
+* Copyright (c) 2002 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 13 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    DELETE.LIST list.name
+*
+*    list.name   = name to delete.
+*
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+
+$internal
+program $delete.list
+$catalog $dellist
+
+$include err.h
+$include parser.h
+
+
+   parser = "!PARSER"
+
+   @system.return.code = -ER$ARGS      ;* Preset for command format errors
+
+* ---------------  Step 1 -  Parse the command
+
+   call @parser(parser$reset, 0, @sentence, 0)
+   call @parser(parser$get.token, token.type, token, keyword) ;* Verb
+
+   * Get list name
+
+   call @parser(parser$get.token, token.type, list.name, keyword)
+   if token.type = PARSER$END then stop 'List name required'
+   if list.name = '' then stop sysmsg(3267) ;* Illegal null list name
+
+   * Check no further information in command
+
+   call @parser(parser$get.token, token.type, token, keyword)
+   if token.type # PARSER$END then
+      stop sysmsg(2018, token) ;* Unexpected token (xx)
+   end
+
+
+* ---------------  Step 2 -  Open the save list file
+
+   open "$SAVEDLISTS" to saved.lists.file else
+      @system.return.code = -status()
+      stop sysmsg(3248, status()) ;* Error xx opening $SAVEDLISTS
+   end
+
+* ---------------  Step 3 -  Delete the select list
+
+   readvu list.rec from saved.lists.file, list.name, 0 else
+      release saved.lists.file, list.name
+      @system.return.code = -status()
+      stop sysmsg(3268, list.name) ;* Saved select list 'xx' not found
+   end
+
+   delete saved.lists.file, list.name
+
+   @system.return.code = 0
+   display sysmsg(3269, list.name) ;* Deleted saved list 'xx'
+
+   return
+
+   * Avoid compiler warnings
+   list.rec = list.rec
+end
+
+* END-CODE

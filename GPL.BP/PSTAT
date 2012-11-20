@@ -1,0 +1,243 @@
+* PSTAT
+* PSTAT command
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 23 May 06  2.4-4 Show account name.
+* 14 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    PSTAT {USER n} {LEVEL n}
+*
+*    Levels (Additive):
+*    Level   Detail
+*     All    Last command and current location only
+*      1     Call stack (default is current program only)
+*      2     Internal subroutine stack
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program pstat
+$catalog $PSTAT
+
+$include syscom.h
+$include parser.h
+$include err.h
+$include keys.h
+$include int$keys.h
+
+
+   parser = "!PARSER"
+
+   @system.return.code = -ER$ARGS      ;* Preset for command format errors
+   lptr = -1
+   user = 0
+   level = 0
+
+   internal = kernel(K$INTERNAL, -1)
+
+* ---------------  Step 1 -  Parse command
+
+   call @parser(parser$reset, 0, @sentence, 0)
+   call @parser(parser$get.token, token.type, token, keyword) ;* Verb
+
+   * Look for options
+
+   loop
+      call @parser(parser$get.token, token.type, token, keyword) ;* Verb
+   while token.type # PARSER$END
+      begin case
+         case keyword = KW$NO.PAGE
+            i = @(0,0)
+
+         case keyword = KW$LEVEL
+            call @parser(parser$get.token, token.type, token, keyword)
+            if not(token matches "1N0N") then
+               stop sysmsg(6800) ;* Level number required
+            end
+            level = token + 0
+
+         case keyword = KW$LPTR
+            lptr = 0
+            call @parser(parser$get.token, token.type, token, keyword)
+            if not(token matches "1N0N") then continue
+            lptr = token + 0
+            if lptr > LPTR$HIGH.PRINT.UNIT then
+               stop sysmsg(2053) ;* Invalid print unit number
+            end
+
+         case keyword = KW$USER
+            call @parser(parser$get.token, token.type, token, keyword)
+            if not(token matches "1N0N") then
+               stop sysmsg(2110) ;* User number required
+            end
+            user = token + 0
+
+         case 1
+            stop sysmsg(2018, token) ;* Unexpected token (xx)
+      end case
+   repeat
+
+   
+   print sysmsg(6801) ;* User Detail
+
+   if user then
+      gosub report
+   end else
+      users = vslice(kernel(K$USERS, 0), K$USERS.UID)
+      loop
+         user = remove(users, user.delim)
+         gosub report
+      while user.delim
+         crt
+      repeat
+   end
+
+
+   if lptr = 0 then printer off
+   @system.return.code = 0
+
+   return
+
+* ======================================================================
+* 0         1         2         3         4         5         6         7
+* 01234567890123456789012345678901234567890123456789012345678901234567890123456789
+* User Detail
+* 1234 Command: RUN A1
+*      Account: name
+*      A2 73 (1234)    <= current location
+*         57 (1126)    <= gosub return if level 2
+*         32 (0342)
+*      A1 17 (1234)    <= call return if level 1
+
+report:
+   print fmt(user,'4R') : ' ' :
+   id = 'S':user
+
+   recordlocku ipc.f, id
+   deleteu ipc.f, id
+
+   i = events(user, EVT$STATUS)
+   if status() then
+      release ipc.f, id
+      print sysmsg(6802) ;* Not logged in
+      return
+   end
+
+   for i = 1 to 20
+      read rec from ipc.f, 'S':user then exit
+      nap 200
+   next i
+
+   if rec = '' then
+      release ipc.f, id
+      i = events(user, -EVT$STATUS) ;* Clear event flag of unresponsive process
+      print sysmsg(6803) ;* (Not responding)
+      return
+   end
+
+   * Print account name
+
+   print sysmsg(7151, rec<5>) : ;* Account: %1
+
+   * Print last command
+
+   print '     ' :
+   flags = rec<1,3>
+   begin case
+      case bitand(flags, USR$QMVBSRVR)
+         print sysmsg(6804) ;* (QMVbSrvr process)
+      case bitand(flags, USR$PHANTOM)
+         print sysmsg(6805) ;* (Phantom process)
+         print '     ' : sysmsg(6806, rec<2>)  ;* Command: %1
+      case 1
+         print
+         print '     ' : sysmsg(6806, rec<2>)  ;* Command: %1
+   end case
+
+   prog.list = raise(rec<3>)
+
+   if bitand(level, 1) then prog.depth = dcount(prog.list, @fm)
+   else prog.depth = 1        ;* Limit to current program
+
+   for prg = 1 to prog.depth
+      if not(internal) then
+         prog.name = prog.list<prg,1>
+
+         begin case
+            case prog.name[1,1] = '_'       ;* Recursive
+               continue
+
+            case prog.name= '$CPROC'
+               print space(5) : sysmsg(6807) ;* Command processor
+               continue
+
+            case prog.name= '$VBSRVR'
+               print space(5) : sysmsg(6808) ;* QMVbSrvr processor
+               continue
+         end case
+      end
+
+      print space(5) :
+      if bitand(level, 2) then sub.depth = dcount(prog.list<prg>, @vm) - 1
+      else sub.depth = 1          ;* Limit to innermost subroutine
+      for sub = 1 to sub.depth
+         gosub show.prog
+      next sub
+   next prg
+
+   * =============== Field 4  -  Lock wait data
+
+   if rec<4> # '' then
+      if rec<4,3> = '' then    ;* File lock
+         print '     ' : sysmsg(6809, rec<4,1>) ;* Waiting for file lock held by user xx
+         print '        ' : sysmsg(6810, rec<4,2>) ;* File xx
+      end else                 ;* Record lock
+         print '     ' : sysmsg(6811, rec<4,1>) ;* Waiting for record lock held by user xx
+         print '        ' : sysmsg(6810, rec<4,2>) ;* File xx
+         print '        ' : sysmsg(6812, rec<4,3>) ;* Record xx
+      end
+   end
+
+   delete ipc.f, 'S':user
+
+   return
+
+* ======================================================================
+
+show.prog:
+   if sub = 1 then print prog.list<prg,1> :                 ;* Program name
+   else print space(len(prog.list<prg,1>) + 5) :
+
+   ln = prog.list<prg,sub+1,2>                              ;* Line
+   if ln >= 0 then print ' ' : prog.list<prg,sub+1,2> :
+
+   print ' (' : oconv(prog.list<prg,sub+1,1>, 'MX') : ')'   ;* Address
+
+   return
+
+end
+
+* END-CODE

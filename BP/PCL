@@ -1,0 +1,315 @@
+* PCL
+* Emit PCL control sequence
+* Copyright (c) 2005 Ladybridge Systems, All Rights Reserved
+*
+* START-HISTORY:
+* 14 Oct 05  2.2-15 New program.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* This subroutine supports all of the functions defined in the SYSCOM PCL.H
+* include record.
+*
+* The source is issued so that users may add new options appropriate to their
+* own PCL printers but note that this record will be overwritten by an upgrade
+* installation. Ladybridge Systems would be interested to know of addiitonal
+* features that users would find useful in this subroutine.
+*
+* NOTE: The quality of implementation of PCL varies widely between printers.
+* Even some fairly simple operations may not function correctly for all
+* possible values of the parameters. It is up to the developer to ensure that
+* the actual printer in use behaves correctly.
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+function pcl(key, arg1, arg2, arg3, arg4, arg5, arg6) var.args
+$catalogue !pcl
+
+$include pcl.h
+
+common /pcldata/ pcldata
+
+   if not(pcldata) then
+      open 'SYSCOM' to syscom.f then
+         read pcldata from syscom.f, '$PCLDATA' else null
+         close syscom.f
+      end
+   end
+
+   esc = char(27)
+
+   on key+1 gosub error,
+                  pcl.reset,       ;*  1  Reset printer
+                  pcl.cursor,      ;*  2  Position cursor
+                  pcl.hline,       ;*  3  Horizontal line
+                  pcl.vline,       ;*  4  Vertical line
+                  pcl.box,         ;*  5  Box
+                  pcl.font,        ;*  6  Set font
+                  pcl.copies,      ;*  7  Set copies
+                  pcl.paper,       ;*  8  Set paper size
+                  pcl.orientation, ;*  9  Paper orientation
+                  pcl.save.csr,    ;* 10  Save cursor position
+                  pcl.restore.csr, ;* 11  Restore saved cursor position
+                  pcl.left.margin, ;* 12  Set left margin
+                  pcl.duplex,      ;* 13  Duplex mode select
+                  pcl.font.weight, ;* 14  Font weight only
+                  error
+   return (str)
+                
+* ======================================================================
+* Faulty key value - Return null string
+
+error:
+   str = ''
+   return
+
+* ======================================================================
+* PCL.RESET()  -  Reset printer
+
+pcl.reset:
+   str = esc:'E':esc:'%-12345X':esc:'&k2G'
+   return
+
+* ======================================================================
+* PCL.CURSOR(x, y)  -  Position cursor
+
+pcl.cursor:
+   str = esc:'*p':arg1:'x':arg2:'Y'
+   return
+
+* ======================================================================
+* PCL.HLINE(x, y, length, line.width)  -  Draw a horizontal line
+
+pcl.hline:
+   str = esc:'*p':arg1:'x':arg2:'Y':esc:'*c':arg3:'a':arg4:'b0P'
+   return
+
+* ======================================================================
+* PCL.VLINE(x, y, length, line.width)  -  Draw a vertical line
+
+pcl.vline:
+   str = esc:'*p':arg1:'x':arg2:'Y':esc:'*c':arg4:'a':arg3:'b0P'
+   return
+
+* ======================================================================
+* PCL.BOX(left, top, width, height, line.width, radius)  -  Draw a box
+
+pcl.box:
+   * Top line
+   str = esc:'*p':(arg1+arg6):'x':arg2:'Y'       ;* Top left, indented by radius
+   str := esc:'*c':(arg3-arg6*2):'a':arg5:'b0P'  ;* Line to top right
+
+   * Bottom line
+   str := esc:'*p':(arg1+arg6):'x':(arg2+arg4):'Y' ;* Bottom left, indented by radius
+   str := esc:'*c':(arg3-arg6*2):'a':arg5:'b0P'  ;* Line to bottom right
+
+   * Left line
+   str := esc:'*p':arg1:'x':(arg2+arg6):'Y'   ;* Top left, down by radius
+   str := esc:'*c':arg5:'a':(arg4-arg6*2):'b0P'  ;* Line to bottom left
+
+   * Right line
+   str := esc:'*p':(arg1+arg3):'x':(arg2+arg6):'Y'  ;* Top right, down by radius
+   str := esc:'*c':arg5:'a':(arg4-arg6*2):'b0P'  ;* Line to bottom right
+
+   if arg6 # 0 then  ;* Radius corners
+      * Top left
+      xr = arg1 + arg6 ; yr = arg2 + arg6 ; a1 = 270 ; a2 = 180 ; gosub radius
+      * Top right
+      xr = arg1 + arg3 - arg6 ; yr = arg2 + arg6 ; a1 = 360 ; a2 = 270 ; gosub radius
+      * Bottom left
+      xr = arg1 + arg6 ; yr = arg2 + arg4 - arg6 ; a1 = 180 ; a2 = 90 ; gosub radius
+      * Bottom right
+      xr = arg1 + arg3 - arg6 ; yr = arg2 + arg4 - arg6 ; a1 = 90 ; a2 = 0 ; gosub radius
+   end else       ;* Rectangular corners
+      * We need to fill in the bottom right with a square p x p
+      str := esc:'*p':(arg1+arg3):'x':(arg2+arg4):'Y'  ;* Top right, down by height
+      str := esc:'*c':arg5:'a':arg5:'b0P'  ;* Black filled square
+   end
+
+   return
+
+radius:
+   for a = a1 to a2 step -1
+      cx = int(arg6 * cos(a)) + xr
+      cy = int(arg6 * sin(a)) + yr
+      str := esc:'*p':cx:'x':cy:'Y':esc:'*c':arg5:'a':arg5:'b0P'
+   next a
+
+   return
+
+* ======================================================================
+* PCL.FONT(font)  -  Set font
+
+pcl.font:
+   font = change(upcase(arg1), ',', @fm)
+
+   font.no = -1
+   lpi = -1
+   pitch = -1
+   size = -1
+   spacing = -1
+   style = -1
+   weight = -1
+   symbol.set = ''
+
+   num.items = dcount(font, @fm)
+   for item = 1 to num.items
+      s = trim(font<item>)
+
+      * Is it a font name?
+      locate s in pcldata<PCL.FONT.NAME,1> setting pos then
+         font.no = pcldata<PCL.FONT.NO,pos>
+         spacing = pcldata<PCL.FONT.SPACING,pos>
+         continue
+      end
+
+      * Is it a symbol set?
+      locate s in pcldata<PCL.SYMBOL.SET,1> setting pos then
+         symbol.set = pcldata<PCL.SYMBOL.SET.CODES,pos>
+         continue
+      end
+
+      * Is it a type style?
+      locate s in pcldata<PCL.STYLE,1> setting pos then
+         style = pcldata<PCL.STYLE.NO,pos>
+         continue
+      end
+
+      * Is it a stroke weight?
+      locate s in pcldata<PCL.WEIGHT,1> setting pos then
+         weight = pcldata<PCL.WEIGHT.NO,pos>
+         continue
+      end
+
+      * Is it a font spacing?
+      locate s in pcldata<PCL.SPACING,1> setting pos then
+         spacing = pcldata<PCL.SPACING.NO,pos>
+         continue
+      end
+
+      * Other codes
+      if s = 'REGULAR' then
+         style = 0
+         weight = 0
+         continue
+      end
+
+      if s matches '1-2N"LPI"ý1-2N"."1-2N"LPI"' then
+         lpi = matchfield(s, '0X"LPI"', 1)
+         continue
+      end
+
+      if s matches '"PITCH "1-2Ný"PITCH "1-2N"."1-2N' then
+         pitch = field(s, ' ', 2)
+         continue
+      end
+
+      if s matches '1-2N"PT"ý1-2N"."1-2N"PT"' then
+         size = matchfield(s, '0X"PT"', 1)
+         continue
+      end
+
+      * Ignore unrecognised items
+   next item
+
+   str = ''
+   if font.no >=0 then str := font.no:'t'      ;* Font "name"
+   if pitch >= 0 then str := pitch:'h0p'       ;* Actual pitch (chars per inch)
+   if spacing >= 0 then str := spacing:'p'     ;* Porportional/fixed pitch
+   if size >= 0 then str := size:'v'           ;* Size (point)
+   if style >= 0 then str := style:'s'         ;* Regular/italic/outline/etc
+   if weight >= 0 then str := weight:'b'       ;* Font weight
+   if len(str) then
+      str = char(27):'(s' : str
+      str[len(str),1] = upcase(str[1])
+   end
+
+   if symbol.set # '' then str := char(27):'(':symbol.set
+   if lpi > 0 then str := char(27):'&l':lpi:'D'
+
+   return
+
+* ======================================================================
+* PCL.COPIES(n)  -  Set copies
+
+pcl.copies:
+   str = esc:'&l':arg1:'X'
+   return
+
+* ======================================================================
+* PCL.PAPER(size)  -  Set paper size
+
+pcl.paper:
+   s = upcase(arg1)
+   locate s in pcldata<PCL.PAPER.NAME,1> setting pos then
+      str = esc:'&l':pcldata<PCL.PAPER.NO,pos>:'A'
+   end else
+      str = ''
+   end
+
+   return
+
+* ======================================================================
+* PCL.ORIENTATION(layout)  -  Paper orientation
+
+pcl.orientation:
+   s = upcase(arg1)
+   locate s in pcldata<PCL.ORIENTATION.NAME,1> setting pos then
+      str = esc:'&l':pcldata<PCL.ORIENTATION.NO,pos>:'O'
+   end else
+      str = ''
+   end
+
+   return
+
+* ======================================================================
+* PCL.SAVE.CSR()  -  Save cursor position
+
+pcl.save.csr:
+   str = esc:'&f0S'
+   return
+
+* ======================================================================
+* PCL.RESTORE.CSR()  -  Restore saved cursor position
+
+pcl.restore.csr:
+   str = esc:'&f1S'
+   return
+
+* ======================================================================
+* PCL.LEFT.MARGIN()  -  Set left margin
+
+pcl.left.margin:
+   str = esc:'&a':arg1:'L'
+   return
+
+* ======================================================================
+* PCL.DUPLEX()  -  Select duplexer mode
+
+pcl.duplex:
+   begin case
+     case arg1 = 0 ; str = esc:'&l0S'               ;* Duplex off
+     case arg1 = 1 ; str = esc:'&l1S':esc:'a1G'     ;* Duplex long, front
+     case arg1 = 2 ; str = esc:'&l2S':esc:'a1G'     ;* Duplex short, front
+   end case
+
+* ======================================================================
+* PCL.FONT.WEIGHT(wgt)  -  Set font weight
+
+pcl.font.weight:
+   font = trim(upcase(arg1))
+
+   s = upcase(oconvs(raise(pcldata<PCL.WEIGHT>), 'MCA'))
+   locate font in s<1> setting pos then
+      str = char(27) : '(s' : pcldata<PCL.WEIGHT.NO,pos> : 'B'
+   end else
+      str = ''
+   end
+
+   return
+end
+
+* END-CODE

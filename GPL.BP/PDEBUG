@@ -1,0 +1,122 @@
+* PDEBUG
+* Phantom debugger - Debug user side
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 19 Apr 06  2.4-1 New program.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program pdebug
+$catalogue $pdebug
+
+$include syscom.h
+$include debug.h
+$include int$keys.h
+
+   if @tty = 'phantom' or @tty = 'vbsrvr' then
+      stop sysmsg(1306) ;* Phantom debugger can only be executed from an interactive session
+   end
+
+   break off
+
+   screen.image = save.screen(0, 0, @crtwide, @crthigh)
+
+   start.id = 'DR.':@who:'!':@logname
+   recordlocku ipc.f, start.id
+   out.msg = 'START'
+   out.msg<2> = @userno
+   write out.msg to ipc.f, start.id
+
+   in.id = 'D.':@userno
+   out.id = 'DR.':@userno
+
+   * If the user has supplied anything more than just the verb, treat this
+   * as a PHANTOM command.
+
+   if index(trim(@sentence), ' ', 1) then
+      execute 'PHANTOM ' : trimf(field(@sentence, ' ', 2, 99999))
+      if @system.return.code < 0 then goto abort.pdebug.startup
+   end
+
+   display sysmsg(1303) ;* Waiting for phantom process to activate debugger (Q to quit)
+   loop
+      read in.msg from ipc.f, in.id then exit
+      pause 1
+      if keyready() then
+         if upcase(keyin()) = 'Q' then
+            msg = sysmsg(1304) ;* Phantom debugger terminated
+            goto abort.pdebug.startup
+         end
+      end
+   repeat
+
+   display @(-1) :
+
+   debugger.uid = 0
+   loop
+      * Read incoming message from process being debugged
+
+      loop
+         readu in.msg from ipc.f, in.id then exit
+         release ipc.f, in.id
+         pause 2
+         if debugger.uid then
+            if kernel(K$USERS, debugger.uid) = '' then
+               msg = sysmsg(1305) ;* Debugged process has terminated
+               goto exit.pdebug
+            end
+         end
+      repeat
+      delete ipc.f, in.id
+
+      prog.id = in.msg<2>
+      dtm = in.msg<3>
+      line = in.msg<4>
+      sub.ref = in.msg<5>
+      event = bitor(in.msg<6>, 0x80000000)
+      debugger.uid = in.msg<7>
+      call $debug(prog.id, dtm, line, sub.ref, event)
+
+      * Send response back to debugged process
+
+      recordlocku ipc.f, out.id
+      write 'DBG' to ipc.f, out.id
+      wake debugger.uid
+   repeat
+
+
+abort.pdebug.startup:
+   recordlocku ipc.f, start.id
+   delete ipc.f, start.id
+
+exit.pdebug:
+   restore.screen screen.image, @true
+   break on
+   stop msg
+end
+
+* END-CODE

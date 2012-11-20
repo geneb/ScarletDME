@@ -1,0 +1,21 @@
+* U0032
+* 0032 user exit - Log user off
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* START-HISTORY:
+* 01 Sep 06  2.4-13 New module.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+subroutine u0032(result, source, status, oconv)
+$catalogue "0032" global
+
+   chain "QUIT"
+end
+
+* END-CODE

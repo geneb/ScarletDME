@@ -1,0 +1,318 @@
+* TERM
+* TERM verb
+* Copyright (c) 2005 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 28 Nov 05  2.2-18 Added COLOUR option.
+* 08 Aug 05  2.2-7 Allow width/depth up to 32767 but do not set QMTerm screen
+*                  shape if over 255.
+* 19 Jan 05  2.1-3 Added report of sreg, rreg and dreg.
+* 05 Jan 05  2.1-0 u0 and u1 now available for user use.
+* 18 Oct 04  2.0-5 Use message handler
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    TERM                            Display settings
+*    TERM {width} {, lines} { type}  Set to given values
+*    TERM COLOUR {bgc}{,fgc}         Set display colour
+*    TERM DEFAULT                    Set to defaults
+*    TERM DISPLAY                    Display terminfo bindings
+*
+* @SYSTEM.RETURN.CODE
+*     0  Successful
+*    -1  Command arguments incorrect or missing
+*
+* The COLOUR processing is based on a concept submitted by Ed Jahn.
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program TERM
+$catalog $TERM
+
+$include int$keys.h
+$include parser.h
+$include syscom keys.h
+$include syscom terminfo.h
+
+   parser = "!PARSER"
+
+   width = @crtwide
+   depth = @crthigh
+   term.type = ''
+
+   @system.return.code = -1                 ;* Preset for argument errors
+
+   call @parser(parser$reset, 0, @sentence, 0)
+   call @parser(parser$get.token, token.type, token, keyword) ;* Verb
+
+   call @parser(parser$get.token, token.type, token, keyword) ;* Width
+
+   begin case
+      case token.type = PARSER$END          ;* TERM
+         display sysmsg(6844, width)        ;* Page width xx
+         display sysmsg(6845, depth)        ;* Page depth xx
+         display sysmsg(6846, @term.type)   ;* Term type xx
+
+      case keyword = KW$COLOUR              ;* TERM COLOUR
+         gosub set.colour
+
+      case keyword = KW$DISPLAY             ;* TERM DISPLAY
+         display sysmsg(6846, @term.type)   ;* Term type xx
+         display
+         tinfo = terminfo()
+
+         display sysmsg(6847) ;* INPUT KEY CODES
+         if @term.type = 'qmterm' then
+            display sysmsg(6848) ;* QMTerm does not use terminfo for input codes
+         end else
+            k = T$KEY.BACKSPACE        ; s = 'kbs   : Backspace key' ; gosub show
+            k = T$KEY.BTAB             ; s = 'kcbt  : Back tab key' ; gosub show
+            k = T$KEY.LEFT             ; s = 'kcub1 : Cursor left key' ; gosub show
+            k = T$KEY.RIGHT            ; s = 'kcuf1 : Cursor right key' ; gosub show
+            k = T$KEY.UP               ; s = 'kcuu1 : Cursor up key' ; gosub show
+            k = T$KEY.DOWN             ; s = 'kcud1 : Cursor down key' ; gosub show
+            k = T$KEY.NPAGE            ; s = 'knp   : Next page key' ; gosub show
+            k = T$KEY.PPAGE            ; s = 'kpp   : Previous page key' ; gosub show
+            k = T$KEY.HOME             ; s = 'khome : Home key' ; gosub show
+            k = T$KEY.END              ; s = 'kend  : End key' ; gosub show
+            k = T$KEY.IC               ; s = 'kich1 : Insert character key' ; gosub show
+            k = T$KEY.DC               ; s = 'kdch1 : Delete character key' ; gosub show
+            k = T$KEY.F1               ; s = 'kf1   : F1 key' ; gosub show
+            k = T$KEY.F2               ; s = 'kf2   : F2 key' ; gosub show
+            k = T$KEY.F3               ; s = 'kf3   : F3 key' ; gosub show
+            k = T$KEY.F4               ; s = 'kf4   : F4 key' ; gosub show
+            k = T$KEY.F5               ; s = 'kf5   : F5 key' ; gosub show
+            k = T$KEY.F6               ; s = 'kf6   : F6 key' ; gosub show
+            k = T$KEY.F7               ; s = 'kf7   : F7 key' ; gosub show
+            k = T$KEY.F8               ; s = 'kf8   : F8 key' ; gosub show
+            k = T$KEY.F9               ; s = 'kf9   : F9 key' ; gosub show
+            k = T$KEY.F10              ; s = 'kf10  : F10 key' ; gosub show
+            k = T$KEY.F11              ; s = 'kf11  : F11 key' ; gosub show
+            k = T$KEY.F12              ; s = 'kf12  : F12 key' ; gosub show
+            k = T$KEY.MOUSE            ; s = 'kmous : Mouse input' ; gosub show
+            k = T$KEY.USER0            ; s = 'ku0   : User 0' ; gosub show
+            k = T$KEY.USER1            ; s = 'ku1   : User 1' ; gosub show
+            k = T$KEY.USER2            ; s = 'ku2   : User 2' ; gosub show
+            k = T$KEY.USER3            ; s = 'ku3   : User 3' ; gosub show
+            k = T$KEY.USER4            ; s = 'ku4   : User 4' ; gosub show
+            k = T$KEY.USER5            ; s = 'ku5   : User 5' ; gosub show
+            k = T$KEY.USER6            ; s = 'ku6   : User 6' ; gosub show
+            k = T$KEY.USER7            ; s = 'ku7   : User 7' ; gosub show
+            k = T$KEY.USER8            ; s = 'ku8   : User 8' ; gosub show
+            k = T$KEY.USER9            ; s = 'ku9   : User 9' ; gosub show
+         end
+
+         display
+         display sysmsg(6849)  ;* OUTPUT CONTROL CODES
+         k = T$CLEAR.SCREEN         ; s = 'clear : Clear screen, cursor to top left' ; gosub show
+         k = T$CLR.EOL              ; s = 'el    : Clear to end of line' ; gosub show
+         k = T$CLR.EOS              ; s = 'ed    : Clear to end of screen' ; gosub show
+         k = T$COLUMN.ADDRESS       ; s = 'hpa   : Horizontal cursor position' ; gosub show
+         k = T$CURSOR.ADDRESS       ; s = 'cup   : Cursor position' ; gosub show
+         k = T$CURSOR.LEFT          ; s = 'cub1  : Cursor left one column' ; gosub show
+         k = T$CURSOR.LEFT.N        ; s = 'cub   : Cursor left n columns' ; gosub show
+         k = T$CURSOR.RIGHT         ; s = 'cuf1  : Cursor right one column' ; gosub show
+         k = T$CURSOR.RIGHT.N       ; s = 'cuf   : Cursor right n columns' ; gosub show
+         k = T$CURSOR.DOWN          ; s = 'cud1  : Cursor down one line' ; gosub show
+         k = T$DELETE.CHARACTER     ; s = 'dch1  : Delete one character' ; gosub show
+         k = T$DELETE.LINE          ; s = 'dl1   : Delete one line' ; gosub show
+         k = T$DELETE.LINES         ; s = 'dl    : Delete n lines' ; gosub show
+         k = T$INSERT.CHARACTER     ; s = 'ich1  : Insert one character' ; gosub show
+         k = T$INSERT.LINE          ; s = 'il1   : Insert one line' ; gosub show
+         k = T$INSERT.LINES         ; s = 'il    : Insert n lines' ; gosub show
+         k = T$ENTER.BLINK.MODE     ; s = 'blink : Start flashing text' ; gosub show
+         k = T$ENTER.DIM.MODE       ; s = 'dim   : Start half brightness text' ; gosub show
+         k = T$ENTER.REVERSE.MODE   ; s = 'rev   : Start reverse video' ; gosub show
+         k = T$ENTER.UNDERLINE.MODE ; s = 'smul  : Start underlined text' ; gosub show
+         k = T$EXIT.ATTRIBUTE.MODE  ; s = 'sgr0  : Clear all text attributes' ; gosub show
+         k = T$EXIT.UNDERLINE.MODE  ; s = 'rmul  : End underlined text' ; gosub show
+         k = T$PRTR.OFF             ; s = 'mc4   : Turn printer off' ; gosub show
+         k = T$PRTR.ON              ; s = 'mc5   : Turn printer on' ; gosub show
+         k = T$SCROLL.FORWARD       ; s = 'ind   : Scroll forward' ; gosub show
+         k = T$SCROLL.BACK          ; s = 'ri    : Scroll backward' ; gosub show
+         k = T$SET.FOREGROUND       ; s = 'setf  : Set foreground colour attribute' ; gosub show
+         k = T$SET.BACKGROUND       ; s = 'setb  : Set background colour attribute' ; gosub show
+         k = T$SREG                 ; s = 'sreg  : Save screen region' ; gosub show
+         k = T$RREG                 ; s = 'rreg  : Restore screen region' ; gosub show
+         k = T$DREG                 ; s = 'dreg  : Delete saved screen region' ; gosub show
+         k = T$USER0                ; s = 'u0    : User 0  @(-100)' ; gosub show
+         k = T$USER1                ; s = 'u1    : User 1  @(-101)' ; gosub show
+         k = T$USER2                ; s = 'u2    : User 2  @(-102)' ; gosub show
+         k = T$USER3                ; s = 'u3    : User 3  @(-103)' ; gosub show
+         k = T$USER4                ; s = 'u4    : User 4  @(-104)' ; gosub show
+         k = T$USER5                ; s = 'u5    : User 5  @(-105)' ; gosub show
+         k = T$USER6                ; s = 'u6    : User 6  @(-106)' ; gosub show
+         k = T$USER7                ; s = 'u7    : User 7  @(-107)' ; gosub show
+         k = T$USER8                ; s = 'u8    : User 8  @(-108) (asynchronous command)' ; gosub show
+         k = T$USER9                ; s = 'u9    : User 9  @(-109) (synchronous command)' ; gosub show
+
+      case keyword = KW$DEFAULT                  ;* TERM DEFAULT
+         width = MIN.WIDTH
+         depth = if @term.type = 'qmterm' then 25 else 24
+         call @parser(parser$get.token, token.type, token, keyword)
+         if token.type # PARSER$END then stop sysmsg(2018) ;* Unexpected token (XX)
+
+         gosub set.terminal
+
+      case 1                                     ;* TERM xxx
+         if token matches '1N0N' then
+            if (token < MIN.WIDTH) or (token > MAX.WIDTH) then
+               stop sysmsg(6850, MIN.WIDTH, MAX.WIDTH) ;* Width must be in range %1 to %2
+            end
+            width = token + 0
+            call @parser(parser$get.token, token.type, token, keyword)
+         end
+
+         if token.type = PARSER$COMMA then
+            call @parser(parser$get.token, token.type, token, keyword)  ;* Depth
+
+            if token matches '1N0N' then
+               if token < MIN.DEPTH or token > MAX.WIDTH then
+                  stop sysmsg(6851, MIN.DEPTH, MAX.DEPTH) ;* Depth must be in range %1 to %2
+               end
+               depth = token + 0
+               call @parser(parser$get.token, token.type, token, keyword)
+            end
+         end
+
+         if token.type = PARSER$TOKEN then   ;* Terminal type present
+            if len(token) > 32 then stop sysmsg(6852) ;* Invalid terminal name
+            term.type = token
+            call @parser(parser$get.token, token.type, token, keyword)
+         end
+
+         if token.type # PARSER$END then stop sysmsg(2018) ;* Unexpected token (xx)
+
+         gosub set.terminal
+   end case
+
+
+   @system.return.code = 0
+
+   return
+
+* ======================================================================
+
+show:
+   crt s : ': ' :
+
+   str = tinfo<k>
+   strlen = len(str)
+   for i = 1 to strlen
+      c = str[i,1]
+      j = seq(c)
+      begin case
+         case c = '^'              ; crt '\^' :
+         case c = '\'              ; crt '\\' :
+         case j > 32 and j < 127   ; crt c :
+         case j >= 127             ; crt '\' : oconv(c, 'MO0C'):
+         case j = 8                ; crt '\B' :
+         case j = 27               ; crt '\E' :
+         case j = 12               ; crt '\F' :
+         case j = 10               ; crt '\N' :
+         case j = 13               ; crt '\R' :
+         case j = 32               ; crt '\S' :
+         case j = 9                ; crt '\T' :
+         case 1                    ; crt '^' : char(j+64) :
+      end case
+   next i
+   crt
+
+   return
+
+* ======================================================================
+
+set.terminal:
+   printer setting on -1 LPTR$WIDTH, width
+   printer setting on -1 LPTR$LINES, depth
+
+   if term.type # '' then
+      term.type = downcase(term.type)
+      if kernel(K$TERM.TYPE, term.type) # term.type then
+         stop sysmsg(6853) ;* Unrecognised terminal type
+      end
+   end
+
+   if width < 256 and depth < 256 then
+      crt @(-256, width + 256 * depth) :
+   end
+
+   return
+
+* ======================================================================
+
+set.colour:
+   bgc = 0
+   fgc = 0
+   colours = 'BLACK,BLUE,GREEN,CYAN,RED,MAGENTA,BROWN,WHITE,GREY,BRIGHT BLUE,BRIGHT GREEN,BRIGHT CYAN,BRIGHT RED,BRIGHT MAGENTA,YELLOW,BRIGHT WHITE'
+
+   * Background colour
+
+   clr = ''
+   loop
+      call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   while token.type = PARSER$TOKEN
+      if clr # '' then clr := ' '
+      clr := token
+   repeat
+
+   if clr # '' then
+      clr = upcase(clr)
+      clr = change(clr, 'GRAY', 'GREY')
+      clr = change(clr, '.', ' ')
+      bgc = listindex(colours, ',', clr)
+      if bgc = 0 then stop sysmsg(6859, clr) ;* Unrecognised colour name (%1)
+   end
+
+   if token.type = PARSER$COMMA then
+      clr = ''
+      loop
+         call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+      while token.type = PARSER$TOKEN
+         if clr # '' then clr := ' '
+         clr := token
+      repeat
+
+      if clr # '' then
+         clr = upcase(clr)
+         clr = change(clr, 'GRAY', 'GREY')
+         clr = change(clr, '.', ' ')
+         fgc = listindex(colours, ',', clr)
+         if fgc = 0 then stop sysmsg(6859, clr) ;* Unrecognised colour name (%1)
+      end
+   end
+
+   if token.type # PARSER$END then
+      stop sysmsg(2018, token) ;* Unexpected token (%1)
+   end
+
+   if bgc then display @(IT$BGC, bgc - 1) :
+   if fgc then display @(IT$FGC, fgc - 1) :
+   display @(-1) :
+
+   return
+end
+
+* END-CODE
+

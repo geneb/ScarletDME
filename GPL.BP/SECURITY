@@ -1,0 +1,144 @@
+* SECURITY
+* SECURITY command.
+* Copyright (c) 2005 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 13 Jan 05  2.1-1 0302 If there is no $SECURE record in the $LOGINS file,
+*                  treat this as a secure system.
+* 18 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* SECURITY ON     Enable security checks on
+* SECURITY OFF
+
+* $LOGINS file $SECURE record:
+*    F1  Secure system? (boolean)
+*
+*
+* Implications of enabling security:
+*
+* |=====================================|=====================================|
+* | Security enabled                    | Security  disabled                  |
+* |-------------------------------------|-------------------------------------|
+* |Windows 95, 98, ME                   |                                     |
+* |Users arriving over networks will be | Users arriving over networks will   |
+* |asked for a username and password    | not be asked for any authentication |
+* |that must be in the $LOGINS register |                                     |
+* |-------------------------------------|-------------------------------------|
+* |Windows NT, 2000, XP                 |                                     |
+* |Users arriving over networks must    |Users arriving over networks must    |
+* |enter a valid Windows username and   |enter a valid Windows username and   |
+* |password. They must also appear in   |password.                            |
+* |the $LOGINS register.                |                                     |
+* |-------------------------------------|-------------------------------------|
+* |Linux                                |                                     |
+* |Users arriving over networks must    |Users arriving over networks must    |
+* |enter a valid Linux username and     |enter a valid Windows username and   |
+* |password. They must also appear in   |password.                            |
+* |the $LOGINS register.                |                                     |
+* |=====================================|=====================================|
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+$flags trusted
+program security
+$catalogue $secure
+
+$include int$keys.h
+$include parser.h
+$include err.h
+
+   prompt ''
+
+   parser = "!PARSER"
+   @system.return.code = -ER$ARGS
+
+   if system(42) # '' then
+      stop sysmsg(2006) ;* Command can only be executed from a QMConsole session
+   end
+
+   if not(kernel(K$INTERNAL, -1)) and upcase(@who) # 'QMSYS' then
+      stop sysmsg(2002) ;* Command can only be executed from the QMSYS account
+   end
+
+   if not(kernel(K$ADMINISTRATOR,-1)) then
+      stop sysmsg(2001) ;* Command requires administrator privileges
+   end
+
+
+   * Open files
+
+   openpath @qmsys:@ds:'$LOGINS' to lgn.f else
+      @system.return.code = -status()
+      stop sysmsg(6050) ;* Cannot open $LOGINS register in QMSYS account
+   end
+
+
+   * Parse command
+
+   call @parser(parser$reset, 0, @sentence, 0)
+   call @parser(parser$get.token, token.type, token, keyword) ;* Verb
+
+   call @parser(parser$get.token, token.type, token, keyword)
+   if token.type = PARSER$END then
+      read lgn.rec from lgn.f, '$SECURE' else
+         lgn.rec<1> = @true   ;* 0302 Treat as secure by default if never set
+      end
+
+      if lgn.rec<1> then display sysmsg(6077) ;* System security is enabled
+      else display sysmsg(6078) ;* System security is disabled
+   end else
+      readu lgn.rec from lgn.f, '$SECURE' else null
+
+      loop
+      while token.type # PARSER$END
+         begin case
+            case keyword = KW$OFF
+               lgn.rec<1> = @false
+
+            case keyword = KW$ON
+               lgn.rec<1> = @true
+
+            case 1
+               stop sysmsg(2018, token) ;* Unexpected token (xx)
+         end case
+
+         call @parser(parser$get.token, token.type, token, keyword)
+      repeat
+   
+      write lgn.rec to lgn.f, '$SECURE'
+
+      dummy = kernel(K$SECURE, lgn.rec<1>)
+   end
+
+   @system.return.code = 0
+
+   return
+
+   * Avoid compiler warnings
+   dummy = dummy
+end
+
+* END-CODE

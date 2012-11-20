@@ -1,0 +1,66 @@
+* _SSELCT
+* SSELECT statement recursive code
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 18 Jul 06  2.4-10 Reworked to use sort system.
+* 03 Jan 05  2.1-0 Allow break key to abort long select.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+$no.symbols
+$no.xref
+$recursive
+$flags allow.break
+
+subroutine sselct(file.var, list.no)
+
+$include syscom.h
+$include syscom err.h
+$include syscom keys.h
+$include int$keys.h
+
+   dim sort.modes(1)
+   dim keys(1)
+
+   sort.modes(1) = 0
+   sortinit 1, sort.modes
+
+   select file.var to list.no
+   loop
+      readnext keys(1) from list.no else exit
+      sortadd keys
+   repeat
+
+   select.list(list.no) = sortdata()
+   select.count(list.no) = status()
+   if list.no <= high.user.select then selected = status()
+   sortclear
+
+   return value 0
+end
+
+* END-CODE

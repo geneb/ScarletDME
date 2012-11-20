@@ -1,0 +1,2089 @@
+* PROC
+* PROC processor.
+* Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 05 Feb 07  2.4-20 0539 T (-37,10) failed to parse correctly.
+* 06 Nov 06  2.4-15 IF A2... should move input buffer pointer.
+* 02 Nov 06  2.4-15 Made commands case insensitive.
+* 18 Sep 06  2.4-14 Modified IF to allow #E (etc) rather than # E.
+* 01 Sep 06  2.4-13 Initial support for PQ style Procs.
+* 01 Sep 06  2.4-13 Labels should be treated as numbers. Thus 001 is same as 1.
+* 09 Aug 06  2.4-11 0511 T (-n) was doing CRT -n, not CRT @(-n).
+* 15 Sep 05  2.2-10 Use message handler.
+* 15 Sep 05  2.2-10 0409 Use CURRENT.LEVEL option of EXECUTE so that executed
+*                   commands run at the current command level.
+* 12 Aug 05  2.2-7 0391 Only turn on printer as needed otherwise executed
+*                  programs run with the printer on.
+* 22 Nov 04  2.0-11 New module.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* This module is extensively modified from a program donated to the OpenQM
+* project by Keith Johnson.
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+subroutine proc(proc, name, filename, (filehandle), (label))
+$catalogue $proc
+
+$include syscom.h
+$include keys.h
+$include int$keys.h
+
+deffun atvar(name) calling "!atvar"
+
+   i = @(0,0)   ;* Kill pagination
+
+   quotes = '"\':"'"
+
+   regs = '%#&!'              ;* Register symbols
+   tracing = @false
+
+   gosub start.proc
+
+   * Main processing loop
+
+   loop
+      lno += 1
+   until lno > num.lines
+      cmd = trimf(proc<lno>)
+      if tracing then display cmd
+      word = field(cmd, ' ', 1)
+      if word matches '1N0N' then cmd = cmd[len(word)+1, len(cmd)]
+      gosub process.proc.line
+   repeat
+
+   * Behave as though there were a P command at the end of the PROC
+
+   if proc.obuf(0) # '' then
+      cmd = 'P'
+      gosub process.proc.line
+   end
+
+   return
+
+* ======================================================================
+
+start.proc:
+   is.pqn = upcase(proc<1>[1, 3]) = 'PQN'
+
+   delimiter = if is.pqn then @fm else ' '
+
+   gosub.stack = ''
+   print.to.printer = @true    ;* 0391
+
+   * To optimise performance, build a table of label numbers and their
+   * corresponding source line numbers. Also, find all uses of the M
+   * command and save the line numbers of these.
+   * LABELS - the numeric statement labels
+   * LABEL.LINES - the lines the labels are on
+   * M.LINES - M command lines
+
+   m.lines = ''; labels = ''; label.lines = ''
+   num.lines = dcount(proc, @fm)
+   for lno = 2 to num.lines
+      cmd = trimf(proc<lno>)
+      word = upcase(field(cmd, ' ', 1))
+      begin case
+         case word matches '1N0N'
+            labels<-1> = word + 0  ;* Trim non-significant leading zeros
+            label.lines<-1> = lno
+         case word = 'M' or word = 'MARK'
+            m.lines<-1> = lno
+      end case
+   next lno
+
+   last.m = 0     ;* Location of last M command executed
+
+   * Find starting label if specified
+
+   lno = 1
+   if label matches '1N0N' then
+      label += 0  ;* Trim non-significant leading zeros
+      locate label in labels<1> setting posn else
+         display sysmsg(7801, label, name) ;* %1 is not in PROC %2
+         goto bad.line
+      end
+      lno = label.lines<posn> - 1
+      label = ''
+   end
+
+   return
+
+* ======================================================================
+
+process.proc.line:
+   cmd = trimf(cmd)
+   if cmd = '' then return
+   u.cmd = upcase(cmd)
+
+   * Extract widely used prefixes
+
+   cmd1 = u.cmd[1, 1]
+   cmd2 = u.cmd[1, 2]
+   cmd3 = u.cmd[1, 3]
+   posn = index('ABCDEFGHIJKLMNOPQRSTUVWXYZ', cmd1, 1)
+   begin case
+      case posn       ; on posn gosub a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z
+      case cmd1 = '+' ; gosub plus.command
+      case cmd1 = '-' ; gosub minus.command
+      case cmd1 = '(' ; gosub chain.command
+      case cmd1 = '[' ; gosub call.command
+      case cmd1 = '*' ; null                 ;* Comment
+      case 1          ; goto bad.line
+   end case
+
+   return
+
+* ======================================================================
+* These are generic error presentations
+
+bad.fileno:
+   display sysmsg(7802) ;* Bad file buffer number
+   goto bad.line
+
+bad.cmd:
+   display sysmsg(7803) ;* Command not found
+   goto bad.line
+
+bad.line:
+   display sysmsg(7804, lno, proc<lno>) ;* Bad PROC line - %1: %2
+   display sysmsg(1750) ;* Press RETURN to continue
+   c = keyin()
+
+* This is to force output and turn the printer off
+back:
+!0391   printer close
+!0391   printer off
+
+* This consumes the RETURN stack so that control passes back to the calling
+* program.
+
+caller: return to caller
+
+
+**************************************************************
+* The PROC instructions
+**************************************************************
+
+* AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+a:
+   * A[c][p][,m] or A([n|n,m|,m])
+   * Copy a field from the input buffer to the output buffer
+   *
+   * c is an optional surround character. If c is a backslash, the
+   *   surround character is ignored.
+   * p is the number of the field in the Input Buffer
+   * n is the start column in the Input Buffer
+   * m specifies the maximum string length
+
+   gosub eval.a.ref
+   proc.iptr = new.iptr
+   proc.iptr.cpos = new.iptr.cpos
+   if proc.acto then                      ;* STON
+      proc.obuf(1) := temp
+   end else                               ;* STOFF
+      proc.obuf(0) := amid:temp:amid
+   end
+
+   return
+
+* BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+
+b:
+   begin case
+      * -----------------------------------------------------------------
+      case u.cmd = 'B'
+         * B
+         * Back up input buffer pointer
+
+         if proc.iptr.cpos = 1 then
+            proc.iptr -= 1
+            if proc.iptr < 1 then proc.iptr = 1
+         end
+         proc.iptr.cpos = 1
+
+      * -----------------------------------------------------------------
+      case u.cmd = 'BO'
+         * BO
+         * Back up the output buffer pointer by removing final field
+
+         n = dcount(proc.obuf(proc.acto), delimiter) - 1
+         if n then proc.obuf(proc.acto) = field(proc.obuf(proc.acto), delimiter, 1, n)
+         else proc.obuf(proc.acto) = ''
+
+      case 1 ; goto bad.cmd
+   end case
+   return
+
+* CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+
+c:
+* A comment - No proc.action required
+   return
+
+* DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD
+
+d:
+   begin case
+      * -----------------------------------------------------------------
+      case u.cmd = 'DB'
+         * DB
+         * Show all buffers
+
+         display 'Iptr=':proc.iptr:'.':proc.iptr.cpos
+         temp = ' ':@fm:' ' ; temp<proc.acti+1> = '*'
+         display temp<1>:'PIB = "':proc.ibuf(0):'"'
+         display temp<2>:'SIB = "':proc.ibuf(1):'"'
+         temp = ' ':@fm:' ' ; temp<proc.acto+1> = '*'
+         display temp<1>:'POB = "':proc.obuf(0):'"'
+         display temp<2>:'SOB = "':proc.obuf(1):'"'
+
+      * -----------------------------------------------------------------
+      case cmd2 = 'DF'
+         * DFn
+         * Display file buffer n, default = fast file buffer
+
+         numb = trim(cmd[3,9999])[1,1]
+         if not(numb matches '0N') then goto bad.line
+         if numb then
+            display 'FILE BUFFER ':numb:
+         end else
+            numb = 0
+            display 'FAST FILE BUFFER':
+         end
+         temp = proc.frec(numb)
+         display ' - ID = "':temp<1>:'"'
+         del temp<1>
+         display temp
+
+      * -----------------------------------------------------------------
+      case cmd2 = 'DS'
+         * DSn
+         * Display select register n, default = 0
+
+         numb = trim(cmd[3,9999])[1,2]
+         if not(numb matches '0N') or numb > 10 then goto bad.line
+         display 'SELECT LIST REGISTER ':numb
+         display select.list(numb)
+
+      * -----------------------------------------------------------------
+      case 1
+         * D{ref|p}{,m}{+}
+         * Display the input buffer
+         * ref = reference to field number to use
+         * p = field number. Defaults to use input buffer pointer
+         * m = limit on displayed characters
+         * + = suppress line feed
+
+         cmd = trim(cmd[2, 999999])
+         if cmd[1] = '+' then
+            cmd = cmd[1, len(cmd)-1]
+            emit.lf = @false
+         end else emit.lf = @true
+
+         word = field(cmd, ',', 1)
+         if word = '' then
+            ref.value = proc.iptr
+            nvar = proc.iptr.cpos
+         end else
+            gosub eval.value
+            nvar = 1
+         end
+
+         mvar = oconv(field(cmd, ',', 2), 'MCN')+0
+         if mvar <= 0 then mvar = 999999
+
+         if ref.value then
+            display field(proc.ibuf(proc.acti), delimiter, ref.value)[nvar, mvar]:
+         end else
+            display proc.ibuf(proc.acti)[nvar, mvar]:
+         end
+         if emit.lf then display
+   end case
+
+   return
+
+* EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE
+
+e:
+* Non-existent
+   goto bad.cmd
+   return
+
+* FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
+
+f:
+   begin case
+      * -----------------------------------------------------------------
+      case u.cmd = 'F'
+         * F
+         * Move the input buffer pointer forward
+
+         n = dcount(proc.ibuf(proc.acti), delimiter)
+         proc.iptr += 1
+         if proc.iptr > n then proc.iptr = n + 1
+         proc.iptr.cpos = 1
+
+      * -----------------------------------------------------------------
+      case cmd2 = 'F;'
+         * F;
+         * Stack Arithmetic
+
+         sent = cmd ; wall = ';' ; sent.idx = 1
+         gosub get.next.word       ;* Consume F
+         f = ''                    ;* Create empty stack
+         loop
+            gosub get.next.word
+         until word = '' do
+            u.word = upcase(word)
+            begin case
+               case word matches '1N0N'
+                  ins word before f<1>
+               case word matches 'C1N0N'
+                  ins word[2,999] before f<1>
+               case word = '+'              ;* Add
+                  t = f<1>+f<2>; del f<1>; f<1> = t
+               case word = '-'              ;* Subtract
+                  t = f<2>-f<1>; del f<1>; f<1> = t
+               case word = '/'              ;* Integer division
+                  t = int(f<2>/f<1>); del f<1>; f<1> = t
+               case word = '*'              ;* Multiplication
+                  t = f<1>*f<2>; del f<1>; f<1> = t
+               case u.word = 'R'            ;* Remainder
+                  t = rem(f<2>, f<1>); del f<1>; f<1> = t
+               case word = '{'              ;* Swap top two items
+                  t = f<1>; f<1> = f<2>; f<2> = t
+               case word = '_'              ;* Swap top two items
+                  t = f<1>; f<1> = f<2>; f<2> = t
+               case u.word = '?P'           ;* Place result in PIB
+                  s = f<1>
+                  proc.ibuf(1)[delimiter, proc.iptr, dcount(s, delimiter)] = s
+                  del f<1>
+               case word[1, 1] = '?' and index(regs, word[2, 1], 1)
+                  word = word[2, 999999]
+                  gosub eval.ref
+                  s = f<1>
+                  n = dcount(s, delimiter)
+                  begin case
+                     case ref.type = '%'
+                        proc.ibuf(proc.acti)[delimiter, ref.field, n] = s
+                     case ref.type = '#'
+                        proc.obuf(1)[delimiter, ref.field, n] = s
+                     case ref.type = '&'
+                        proc.frec(ref.file.no)<ref.field> = s
+                     case ref.type = '!'
+                        select.list(ref.field) = f
+                        select.count(ref.field) = dcount(f, @fm)
+                  end case
+                  del f<1>
+               case index(regs, word[1, 1], 1) > 1
+                  gosub eval.ref
+                  ins ref.value before f<1>
+               case 1
+                  display '*ERROR IN STACK AT ':word
+                  goto bad.line
+            end case
+         repeat
+
+      * -----------------------------------------------------------------
+      case cmd3 = 'F-C'
+         * F-CLEAR
+         * Clear file buffer
+
+         word = field(cmd, ' ', 2) ; gosub eval.value ; fileno = ref.value
+         if not(fileno matches '1N') then goto bad.fileno
+         proc.frec(fileno) = ''
+
+      * -----------------------------------------------------------------
+      case cmd3 = 'F-D'
+         * F-DELETE n
+         * Delete record
+         * n = file number
+
+         word = field(cmd, ' ', 2) ; gosub eval.value ; fileno = ref.value
+         gosub check.file
+         delete proc.fvar(fileno), proc.frec(fileno)<1>
+
+      * -----------------------------------------------------------------
+      case cmd3 = 'F-F'
+         * F-FREE n id
+         * Unlock record
+         * n = file number
+         * id = record id, may be via reference
+
+         word = field(cmd, ' ', 2) ; gosub eval.value ; fileno = ref.value
+         word = field(cmd, ' ', 3) ; gosub eval.value ; id = ref.value
+         begin case
+            case fileno = '' and id = ''
+               for fileno = 0 to 9
+                  if fileinfo(proc.fvar(fileno), FL$OPEN) then release proc.fvar(fileno)
+               next fileno
+            case fileno matches '1N'
+               gosub check.file
+               if id # '' then release proc.fvar(fileno), id
+               else release proc.fvar(fileno)
+            case id = ''
+               release proc.fvar(0), fileno
+            case 1
+               goto bad.cmd
+         end case
+
+      * -----------------------------------------------------------------
+      case cmd3 = 'F-O'
+         * F-OPEN n {DICT }filename
+         * Open a file
+         * n = file number
+         * filename = file name, may be via ref
+
+         word = field(cmd, ' ', 2) ; gosub eval.value ; fileno = ref.value
+         if not(fileno matches '1N') then goto bad.fileno
+         word = field(cmd, ' ', 3) ; gosub eval.value
+         open ref.value to proc.fvar(fileno) then lno += 1
+
+      * -----------------------------------------------------------------
+      case cmd3 = 'F-R'
+         * F-READ n id
+         * Read a record
+         * n = file number
+         * id = record id, may be via reference
+
+         word = field(cmd, ' ', 2) ; gosub eval.value ; fileno = ref.value
+         gosub check.file
+         word = field(cmd, ' ', 3) ; gosub eval.value ; id = ref.value
+         read rec from proc.fvar(fileno), id then
+            proc.frec(fileno) = insert(rec, 1, 0, 0, id)
+            lno += 1
+         end else
+            proc.frec(fileno) = id
+         end
+
+      * -----------------------------------------------------------------
+      case cmd3 = 'F-U'
+         * F-UREAD n id
+         * Read a record with an update lock
+         * n = file number
+         * id = record id, may be via reference
+
+         word = field(cmd, ' ', 2) ; gosub eval.value ; fileno = ref.value
+         gosub check.file
+         word = field(cmd, ' ', 3) ; gosub eval.value ; id = ref.value
+         readu rec from proc.fvar(fileno), id then
+            proc.frec(fileno) = insert(rec, 1, 0, 0, id)
+            lno += 1
+         end else
+            proc.frec(fileno) = id
+         end
+
+      * -----------------------------------------------------------------
+      case cmd3 = 'F-W'
+         * F-WRITE n
+         * Write a record
+         * n = file number
+
+         word = field(cmd, ' ', 2) ; gosub eval.value ; fileno = ref.value
+         gosub check.file
+         id = proc.frec(fileno)<1>
+         write field(proc.frec(fileno), @fm, 2, 999999) to proc.fvar(fileno), id
+
+      * -----------------------------------------------------------------
+      case cmd2 = 'FB'
+         * FB
+         * Open file and read a record into the fast file buffer
+         * FB{U}({DICT }filename|ref {id|ref})
+         * U = lock record
+
+         lock = cmd[3, 1] = 'U'
+         cmd = field(cmd, ')', 1)
+         cmd = field(cmd, '(', 2)
+
+         * Extract file name
+         sent = cmd ; wall = ' ' ; sent.idx = 1
+         dict = ''
+         gosub get.next.word
+         if upcase(word) = 'DICT' then
+            dict = upcase(word)
+            gosub get.next.word
+         end
+         gosub eval.value
+         fnam = ref.value
+         if fnam = '' then goto bad.cmd
+
+         * Extract id
+         gosub get.next.word
+         gosub eval.value
+         id = ref.value
+         if id = '' then goto bad.cmd
+
+         open dict, fnam to proc.fvar(0) else return
+         proc.frec(0) = id
+         if lock then
+            readu rec from proc.fvar(0), id else return
+         end else
+            read rec from proc.fvar(0), id else return
+         end
+         proc.frec(0) = insert(rec, 1, 0, 0, id)
+         lno += 1
+
+      case 1 ; goto bad.cmd
+   end case
+   return
+
+* GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG
+
+g:
+   begin case
+      * -----------------------------------------------------------------
+      case u.cmd[1, 5] = 'GOSUB'
+         * GOSUB label
+
+         cmd = trim(cmd[6, 999999])
+         if cmd matches '1N0N' then
+            cmd += 0 ;* Trim non-significant leading zeros
+            locate cmd in labels<1> setting posn else goto bad.line
+            ins lno before gosub.stack<1>
+            lno = label.lines<posn> - 1
+         end else
+            display sysmsg(7805, cmd) ;* Incorrectly formed GOSUB: %1
+            goto bad.line
+         end
+
+      * -----------------------------------------------------------------
+      case 1
+         * GOTO label|Acmd|ref|F|B
+         * label = actual desstination
+         * Acmd = A command to compute label
+         * ref = reference to buffer holding label
+         * F = forward to mark
+         * B = backward to mark
+
+         if u.cmd[1, 4] = 'GOTO' then cmd = 'G':cmd[5, 999999]
+         if u.cmd[1, 2] = 'GO' then cmd = 'G':cmd[3, 999999]
+         cmd = trim(cmd[2, 999999])
+         u.cmd = upcase(cmd)
+
+         if u.cmd[1, 1] = 'A' then
+            word = cmd
+            gosub eval.a.ref
+            cmd = word
+         end
+
+         begin case
+            case u.cmd = 'F'
+               locate lno in m.lines<1> by 'AR' setting posn then posn += 1
+               if m.lines<posn> = '' then goto bad.line
+               lno = m.lines<posn> - 1
+
+            case u.cmd = 'B'
+               if last.m = 0 then goto bad.line
+               lno = last.m - 1
+
+            case cmd matches '1N0N'
+               cmd += 0  ;* Trim non-significant leding zeros
+               locate cmd in labels<1> setting posn else goto bad.line
+               lno = label.lines<posn> - 1
+
+            case 1
+               goto bad.cmd
+         end case
+   end case
+   return
+
+* HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
+
+h:
+   * -----------------------------------------------------------------
+   * Htext|ref
+   * Copy text to active output buffer
+
+   word = cmd[2, 999999]
+   if index(regs, word[1, 1], 1) then
+      gosub eval.ref
+      word = ref.value
+   end
+   word = trim(convert(' ', delimiter, word), delimiter, 'C')
+
+   proc.obuf(proc.acto) := word
+
+   return
+
+* IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
+
+i:
+   begin case
+      * -----------------------------------------------------------------
+      case cmd2 = 'IF'
+         * IF
+
+         cmd = trimf(cmd[3,999999])
+         u.cmd = upcase(cmd)
+         ifn = u.cmd[1, 1] = 'N'            ;* Numeric comparison?
+         if ifn then cmd = trim(cmd[2,999999])
+
+         * For strict logic test, there may be reversed logic
+         if cmd[1,1] = '#' then
+            reverse = @true
+            cmd = trimf(cmd[2,99999])
+            u.cmd = upcase(cmd)
+         end else reverse = @false
+
+         sent = cmd ; wall = ' '; sent.idx = 1
+
+         gosub get.next.word  ;* Get the condition
+
+         if.arg1 = word
+         cmd = trimf(sent[sent.idx, 999999])  ;* Save the next command
+
+         gosub get.next.word  ;* Get the operation... maybe
+
+         if len(word) = 1 and index('<>[]=#', word, 1) then
+            op = word
+            gosub get.next.word  ;* Get the comparison string
+            if.arg2 = word
+            if.string.match = is.quoted.string
+            cmd = trimf(sent[sent.idx, 999999])  ;* The next command changed
+         end else
+            op = ''
+            if.arg2 = ''
+         end
+
+         begin case
+            case upcase(if.arg1) = 'E'
+               if op = '' then
+                  * Special case for "IF E"
+                  if.arg1 = if @system.return.code < 0 then 1 else ''
+               end else if.arg1 = @system.return.code
+
+            case upcase(if.arg1) matches '"S"0-1N'
+               n = if.arg1[2, 2]
+               if.arg1 = if selectinfo(n, SL$ACTIVE) then 1 else ''
+
+            case upcase(if.arg1[1, 1]) = 'A'
+               word = if.arg1 ; gosub eval.a.ref ; if.arg1 = temp
+               proc.iptr = pvar
+               proc.iptr.cpos = 1
+
+            case index(regs, if.arg1[1, 1], 1)
+               word = if.arg1 ; gosub eval.ref ; if.arg1 = ref.value
+         end case
+
+         * Strictly logical test only
+         if op = '' then
+            test = (if.arg1 = '')
+            if reverse else test = not(test)
+            if test then goto process.proc.line
+            return
+         end
+
+         * The IFN flag means that we take only the leading numeric part
+
+         if ifn then if.arg1 = matchfield(if.arg1, '0N0X', 1)
+
+         if index('<>[]', op, 1) then
+            begin case
+               case op = '>'
+                  if if.arg1 > if.arg2 then goto process.proc.line
+               case op = '<'
+                  if if.arg1 < if.arg2 then goto process.proc.line
+               case op = ']'
+                  if if.arg1 >= if.arg2 then goto process.proc.line
+               case word = '['
+                  if if.arg1 <= if.arg2 then goto process.proc.line
+            end case
+         end
+
+         * Pattern matching
+
+         if if.arg2[1,1] = '(' and if.arg2[1] = ')' and not(if.string.match) then
+            if.arg2 = if.arg2[2, len(if.arg2) - 2]
+            begin case
+               case op = '='
+                  if if.arg1 matches if.arg2 then goto process.proc.line
+               case op = '#'
+                  if not(if.arg1 matches if.arg2) then goto process.proc.line
+            end case
+            return
+         end
+
+         * Non multi-valued comparison
+
+         if not(index(if.arg2, @vm, 1)) then
+            begin case
+               case op = '='
+                  if if.arg1 = if.arg2 then goto process.proc.line
+               case op = '#'
+                  if if.arg1 # if.arg2 then goto process.proc.line
+            end case
+            return
+         end
+
+         * GO or GOSUB to a multi-value destination
+
+         cmd = trimf(cmd)
+         u.cmd = upcase(cmd)
+         if index(cmd, @vm, 1) and u.cmd[1, 2] = 'GO' and op = '=' then
+            word = field(cmd, ' ', 1)
+            cmd = trimf(cmd[len(word)+1, 999999])
+            locate if.arg1 in if.arg2<1,1> setting posn then
+               cmd = word:' ':cmd<1, posn>
+               goto process.proc.line
+            end
+            return
+         end
+
+         * Multi-valued command
+
+         locate if.arg1 in if.arg2<1,1> setting posn then found = @true
+         else found = @false
+
+         if (op = '=') = found then   ;* Do the command
+            * The language definition says that if there index is greater
+            * than the number of commands, the last command is executed.
+
+            n = dcount(cmd, @vm)
+            if posn > n then posn = n
+
+            * Check for special case of G/GO command
+            * This allows a multi-valued list of labels instead of having to
+            * repeat the command itself in the list.
+
+            u.cmd = upcase(cmd)
+            if u.cmd[1,2] = 'G ' or u.cmd[1,3] = 'GO ' then
+               cmd = 'G ' : field(cmd, ' ', 2)<1,posn>
+            end else
+               cmd = cmd<1,posn>
+            end
+            goto process.proc.line
+         end
+
+      * -----------------------------------------------------------------
+      case trim(u.cmd) = 'IH\'
+         * IH\
+         * Replace input buffer field by null
+
+         if proc.iptr.cpos = 1 then
+            proc.ibuf(proc.acti)[delimiter, proc.iptr, 1] = ''
+         end else
+            s = field(proc.ibuf(proc.acti), delimiter, proc.iptr)[1,proc.iptr.cpos-1]
+            proc.ibuf(proc.acti)[delimiter, proc.iptr, dcount(s, delimiter)] = s
+         end
+
+      * -----------------------------------------------------------------
+      case trim(u.cmd) = 'IH \'
+         * IH \
+         * Insert a null element before the current element of the active
+         * input buffer.
+
+         if is.pqn then
+            ins '' before proc.ibuf(proc.acti)<proc.iptr>
+         end else
+            s = ' ' : field(proc.ibuf(proc.acti), ' ', proc.iptr)
+            proc.ibuf(proc.acti)[' ', proc.iptr, dcount(s, delimiter)] = s
+         end
+
+      * -----------------------------------------------------------------
+      case cmd2 = 'IH' or cmd3 = 'IBH'
+         * I{B}Htext|ref{;iconv;|:oconv:}
+         * Copy text to active input buffer
+
+         keep.blanks = u.cmd[2, 1] = 'B'
+         word = cmd[3+keep.blanks,999999]
+         if word[1, 1] # '' and index(regs, word[1, 1], 1) then
+            gosub eval.ref
+            if word[1,1] = ';' then
+               ref.value = iconv(ref.value, field(word, ';', 2))
+            end else if word[1,1] = ':' then
+               ref.value = iconv(ref.value, field(word, ':', 2))
+            end
+         end else
+            ref.value = word
+         end
+
+         if not(keep.blanks) then
+            ref.value = convert(' ', delimiter, trim(ref.value))
+         end
+
+         if proc.iptr.cpos = 1 then
+            proc.ibuf(proc.acti)[delimiter, proc.iptr, dcount(ref.value, delimiter)] = ref.value
+         end else
+            s = field(proc.ibuf(proc.acti), delimiter, proc.iptr)
+            s = s[1,proc.iptr.cpos-1] : ref.value
+            proc.ibuf(proc.acti)[delimiter, proc.iptr, dcount(s, delimiter)] = s
+         end
+
+      * -----------------------------------------------------------------
+      case cmd2 = 'IN' or cmd3 = 'IBN' or cmd2 = 'IS' or cmd3 = 'ISN'
+         * I{B}N{c} or I{B}N{c}
+         * Input data to secondary input buffer
+         * B = keep blanks
+         * c = prompt character
+
+         keep.blanks = u.cmd[2,1] = 'B'
+         c = cmd[3 + keep.blanks, 1]   ;* Prompt character
+         if c # '' then prompt c
+         input temp
+         if not(keep.blanks) then temp = convert(' ', delimiter, trim(temp))
+         proc.ibuf(1) = temp
+         * Set pointer to start of secondary input buffer
+         proc.acti = 1
+         proc.iptr = 1
+         proc.iptr.cpos = 1
+
+      * -----------------------------------------------------------------
+      case cmd2 = 'IP' or cmd3 = 'IBP' or cmd3 = 'IPB'
+         * I{B}P{c}ref
+         * Input data to any buffer
+         * B = keep blanks
+         * c = prompt character
+         * ref = destination
+
+         keep.blanks = index(cmd3, 'B', 1)
+         word = cmd[if keep.blanks then 4 else 3,99999]
+
+         c = word[1,1]
+         if c # '' and not(index(regs, c, 1)) then  ;* Prompt character present
+            prompt c
+            word = word[2,9999]
+            c = word[1,1]
+         end
+
+         if c # '' and index(regs, c, 1) then  ;* Reference present
+            gosub eval.ref
+         end else                   ;* Use current field of active input buffer
+            ref.type = '%'
+            ref.field = proc.iptr
+         end
+
+         input temp
+
+         * For a PQ type PROC, simply pressing return leaves the destination
+         * buffer unchanged.
+
+         if temp = '' and not(is.pqn) then return
+
+         if not(keep.blanks) then temp = convert(' ', delimiter, trim(temp))
+
+         n = count(temp, delimiter) + 1  ;* Blank -> 1
+         begin case
+            case ref.type = '%'
+               proc.ibuf(proc.acti)[delimiter, ref.field, n] = temp
+            case ref.type = '#'
+               proc.obuf(0)[delimiter, ref.field, n] = temp
+            case ref.type = '&'
+               proc.frec(ref.file.no) = fieldstore(proc.frec(ref.file.no),@fm, ref.field+1, dcount(temp, @fm), temp)
+            case ref.type = '!'
+               select.list(ref.field) = temp
+               select.count(ref.field) = dcount(temp, @fm)
+         end case
+
+      case 1 ; goto bad.cmd
+   end case
+   return
+
+* JJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJ
+
+j:
+* Non-existent
+   goto bad.cmd
+   return
+
+* KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK
+
+k:
+* Non-existent
+   goto bad.cmd
+   return
+
+* LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL
+
+l:
+   begin case
+      * -----------------------------------------------------------------
+      case cmd2 = 'LN'
+         * LN
+         * Redirect future L commands to terminal
+
+         print.to.printer = @false   ;* 0391
+
+      * -----------------------------------------------------------------
+      case cmd2 = 'LC'
+         * LC
+         * Close printer
+
+         if print.to.printer then printer close  ;* 0391
+
+      * -----------------------------------------------------------------
+      case cmd2 = 'LE'
+         * LE
+         * Page eject
+
+         if print.to.printer then printer on   ;* 0391
+         page
+         if print.to.printer then printer off  ;* 0391
+
+      * -----------------------------------------------------------------
+      case u.cmd[1, 4] = 'LHDR'
+         * LHDR,hdr
+         * Set page heading
+
+         t.data = trimf(cmd[5, 99999])
+         loop
+         while t.data[1] = ',' do
+            lno += 1
+            t.data := proc<lno>
+         repeat
+
+         head = ''
+
+         loop
+            t.data = trimf(t.data)
+         while t.data # ''
+            c = upcase(t.data[1,1])
+            begin case
+               case c = ','
+                  null
+
+               case t.data matches '1N0N0X' ;* Blank line count
+                  n = matchfield(t.data, '0N0X', 1)
+                  head := "'":str('L',n):"'"
+
+               case c = '"' or c = "'"      ;* Literal text
+                  head := field(t.data, c, 2)
+                  t.data = trimf(field(t.data, c, 3, 99999))
+
+               case c = 'P'                 ;* Page number
+                  head := "'P'"
+
+               case c = 'T'                 ;* Date and time
+                  head := "'T'"
+
+               case c = 'Z'                 ;* Restart page numbering
+                  page 1
+
+               case c = '('                 ;* Column position
+                  word = field(t.data[2,99999], ')', 1)
+                  t.data = trimf(field(t.data, ')', 2, 99999))
+
+                  gosub eval.value
+                  if ref.value matches '1N0N' then
+                     head := "'H":ref.value:"'"
+                  end
+
+               case index(regs, c, 1)
+                  word = t.data
+                  gosub eval.ref
+                  c = word[1,1]
+                  if c = ';' or c = ':' then
+                     s = field(word, c, 2)
+                     ref.value = if c = ';' then iconv(ref.value, s) else oconv(ref.value, s)
+                     t.data = field(word, c, 3, 99999)
+                  end
+                  print.line := ref.value
+
+               case 1
+                  goto bad.line
+            end case
+
+            t.data = field(t.data, ',', 2, 99999)
+         repeat
+
+         if print.to.printer then printer on  ;* 0391
+         heading head
+         if print.to.printer then printer off ;* 0391
+
+      * -----------------------------------------------------------------
+      case 1
+         * L
+         * Emit data to printer
+
+         t.data = trimf(cmd[2, 99999])
+         loop
+         while t.data[1] = ',' do
+            lno += 1
+            t.data := proc<lno>
+         repeat
+
+         emit.lf = is.pqn    ;* PQN implies linefeed, PQ does not
+         print.line = ''
+
+         loop
+            t.data = trimf(t.data)
+         while t.data # ''
+            c = t.data[1,1]
+            begin case
+               case c = ','
+                  null
+
+               case c = '"' or c = "'"      ;* Literal text
+                  print.line := field(t.data, c, 2)
+                  t.data = trimf(field(t.data, c, 3, 99999))
+
+               case c = '('                 ;* Column position
+                  word = field(t.data[2,99999], ')', 1)
+                  t.data = trimf(field(t.data, ')', 2, 99999))
+
+                  gosub eval.value
+                  print.line = print.line[1, ref.value - 1]
+
+               case c = '+'
+                  emit.lf = @false
+
+               case index(regs, c, 1)
+                  word = t.data
+                  gosub eval.ref
+                  c = word[1,1]
+                  if c = ';' or c = ':' then
+                     s = field(word, c, 2)
+                     ref.value = if c = ';' then iconv(ref.value, s) else oconv(ref.value, s)
+                     t.data = field(word, c, 3, 99999)
+                  end
+                  print.line := ref.value
+            end case
+
+            t.data = field(t.data, ',', 2, 9999)
+         repeat
+
+         if print.to.printer then printer on
+         print print.line :
+         if emit.lf then print
+         if print.to.printer then printer off
+   end case
+   return
+
+* MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+
+m:
+   begin case
+      * -----------------------------------------------------------------
+      case u.cmd = 'M' or u.cmd = 'MARK'
+         * M
+         * Mark
+
+         last.m = lno
+
+      * -----------------------------------------------------------------
+      case u.cmd[1,2] = 'MV'
+         * MV dst src
+         * Move data
+         * dst = reference to destination
+         * src = reference to source or literal string
+
+         sent = cmd[4, 999999] ; wall = ' ' ; sent.idx = 1
+
+         * Get destination
+
+         gosub get.next.word
+         if word = '' then goto bad.line
+         if not(index(regs, word[1, 1], 1)) then goto bad.line
+         gosub eval.ref
+         dest.type = ref.type
+         dest.field = ref.field
+         dest.file.no = ref.file.no
+
+         * Get source
+
+         src = trimf(sent[sent.idx, 9999999])
+         if src = '' then goto bad.line
+
+         * Process source item list, copying as we go
+
+         src.data = ''
+         loop
+            * Fetch item to be moved
+
+            c = src[1,1]
+            begin case
+               case c = '"' or c = "'"             ;* Quoted string
+                  src.data := field(src, c, 2)
+                  src = field(src, c, 3, 999999)
+
+               case src matches '1N0X'
+                  src.data = matchfield(src, '0N0X', 1)
+                  src = matchfield(src, '0N0X', 2)
+
+               case index(regs, c, 1)              ;* Register reference
+                  word = field(field(src, ',', 1), '*', 1)
+                  separator.position = col2()
+                  gosub eval.ref
+                  src = src[separator.position, 999999]
+
+                  * Special cases for file buffers
+
+                  if ref.type = '&' and src[1,1] = '*' then
+                     if src matches "'*'1N0X" then ;* Copy n fields
+                        n = matchfield(src, "'*'0N0X", 2)
+                        ref.value = field(proc.frec(ref.file.no),@fm,ref.field+1,n)
+                     end else                      ;* Copy all remaining fields
+                        ref.value = field(proc.frec(ref.file.no),@fm,ref.field+1,99999)
+                     end
+                  end
+
+                  src.data := ref.value
+
+               case 1                              ;* Unrecognised source
+                  goto bad.line
+            end case
+
+            c = src[1,1]
+            begin case
+               case c = ',' or c = ''              ;* Save this data
+                  begin case
+                     case dest.type = '%'
+                        proc.ibuf(proc.acti)[delimiter, dest.field, dcount(src.data, delimiter)] = src.data
+
+                     case dest.type = '#'
+                        proc.obuf(proc.acto)[delimiter, dest.field, dcount(src.data, delimiter)] = src.data
+
+                     case dest.type = '&'
+                        proc.frec(dest.file.no)<dest.field+1> = src.data
+
+                     case dest.type = '!'
+                        select.list(dest.field) = src.data
+                        select.count(dest.field) = dcount(select.list(dest.field), @fm)
+                  end case
+
+                  src.data = ''
+
+                  loop
+                  while c = ','
+                     dest.field += 1
+                     src = src[2,99999]
+                     c = src[1,1]
+                  repeat         
+
+                  if c = '' then exit
+
+                  if src = '_' then                ;* Truncate destination
+                     begin case
+                        case dest.type = '%'
+                           proc.ibuf(proc.acti) = field(proc.ibuf(proc.acti), delimiter, 1, dest.field - 1)
+
+                        case dest.type = '#'
+                           proc.obuf(proc.acto) = field(proc.obuf(proc.acto), delimiter, 1, dest.field - 1)
+
+                        case dest.type = '&'
+                           proc.frec(dest.file.no) = field(proc.frec(dest.file.no), delimiter, 1, dest.field)
+
+                        case dest.type = '!'
+                           null    ;* Should something happen here?
+                     end case
+
+                     exit
+                  end
+
+               case c = '*'                        ;* Concatenate with next
+                  src = src[2,99999]
+                  null
+
+               case 1
+                   goto bad.line
+            end case
+         repeat
+
+      * -----------------------------------------------------------------
+      case u.cmd[1,3] = 'MVA'
+         * MVA dst src
+         * Move data into sorted multivalued field
+         * dst = reference to destination
+         * src = reference to source or unquoted literal string
+
+         if not(is.pqn) then goto bad.cmd
+
+         * Get destination
+
+         word = field(cmd, ' ', 2)
+         if word = '' then goto bad.line
+         if not(index(regs, word[1, 1], 1)) then goto bad.line
+         gosub eval.ref
+         dest.type = ref.type
+         dest.field = ref.field
+         dest.file.no = ref.file.no
+
+         * Get source
+
+         word = field(cmd, ' ', 3,999999)
+         if index(regs, word[1, 1], 1) then gosub eval.ref
+         else ref.value = word
+
+         begin case
+            case dest.type = '%'
+               locate ref.value in proc.ibuf(proc.acti)<dest.field,1> by 'AL' setting pos else
+                  ins ref.value before proc.ibuf(proc.acti)<dest.field,pos>
+               end
+
+            case dest.type = '#'
+               locate ref.value in proc.obuf(proc.acto)<dest.field,1> by 'AL' setting pos else
+                  ins ref.value before proc.obuf(proc.acto)<dest.field,pos>
+               end
+
+            case dest.type = '&'
+               locate ref.value in proc.frec(dest.file.no)<dest.field+1,1> by 'AL' setting pos else
+                  ins ref.value before proc.frec(dest.file.no)<dest.field+1,pos>
+               end
+
+            case dest.type = '!'
+               locate ref.value in select.list(dest.field)<1> by 'AL' setting pos else
+                  ins ref.value before select.list(dest.field)<pos>
+                  select.count(dest.field) += 1
+               end
+         end case
+
+      * -----------------------------------------------------------------
+      case u.cmd[1,3] = 'MVD'
+         * MVD dst src
+         * Delete data from multivalued field
+         * dst = reference to destination
+         * src = reference to "source" or unquoted literal string
+
+         if not(is.pqn) then goto bad.cmd
+
+         * Get destination
+
+         word = field(cmd, ' ', 2)
+         if word = '' then goto bad.line
+         if not(index(regs, word[1, 1], 1)) then goto bad.line
+         gosub eval.ref
+         dest.type = ref.type
+         dest.field = ref.field
+         dest.file.no = ref.file.no
+
+         * Get source
+
+         word = field(cmd, ' ', 3,999999)
+         if index(regs, word[1, 1], 1) then gosub eval.ref
+         else ref.value = word
+
+         begin case
+            case dest.type = '%'
+               locate ref.value in proc.ibuf(proc.acti)<dest.field,1> setting pos then
+                  del proc.ibuf(proc.acti)<dest.field,pos>
+               end
+
+            case dest.type = '#'
+               locate ref.value in proc.obuf(proc.acto)<dest.field,1> setting pos then
+                  del proc.obuf(proc.acto)<dest.field,pos>
+               end
+
+            case dest.type = '&'
+               locate ref.value in proc.frec(dest.file.no)<dest.field+1,1> setting pos then
+                  del proc.frec(dest.file.no)<dest.field+1,pos>
+               end
+
+            case dest.type = '!'
+               locate ref.value in select.list(dest.field)<1>  setting pos then
+                  del select.list(dest.field)<pos>
+                  select.count(dest.field) -= 1
+               end
+         end case
+
+      case 1 ; goto bad.cmd
+   end case
+   return
+
+* NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN
+
+n:
+* Non-existent
+   goto bad.cmd
+   return
+
+* OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
+
+o:
+   * -----------------------------------------------------------------
+   * Otext
+   * Output text to terminal
+
+   cmd = cmd[2, 999999]
+   if cmd[1] = '+' then
+      cmd = cmd[1, len(cmd)-1]
+      emit.lf = @false
+   end else emit.lf = @true
+   display cmd:
+   if emit.lf then display
+   return
+
+* PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
+
+p:
+   * -----------------------------------------------------------------
+   * P{P|H|W|X} {Ln}
+   * Execute command in primary output buffer using secondary output
+   * buffer for DATA queue.
+   * P = Display command before execution.
+   * H = Suppress terminal output
+   * W = Prompt for confirmation before execution
+   * X = Terminate PROC on completion
+
+   if index(u.cmd, 'P', 2) or index(u.cmd, 'W', 1) then
+      display convert(delimiter, ' ', proc.obuf(0))
+      display convert(delimiter, ' ', proc.obuf(1))
+   end
+
+   if index(u.cmd, 'W', 1) then
+      loop
+         saved.prompt = prompt()
+         prompt ''
+         display 'Continue (Yes/No/Skip)? ':
+         input wait, 1
+         prompt saved.prompt
+
+         wait = upcase(wait)
+         if wait = 'N' or wait = 'S' then
+            * Clear both output buffers and make primary output buffer proc.active
+            proc.obuf(0) = ''
+            proc.obuf(1) = ''
+            proc.acto = 0
+            if wait = 'N' then abort
+         end
+      until wait = 'Y' or wait = 'S'
+      repeat
+   end
+
+   * Get both buffers, converting field marks to spaces. In the secondary
+   * buffer, also convert < characters to field marks.
+
+   ob1 = convert(delimiter, ' ', proc.obuf(0))
+   ob2 = convert(delimiter:'<', ' ':@fm, proc.obuf(1))
+
+   * Get a task lock if required
+
+   temp = index(u.cmd, 'L', 1)
+   if temp then
+      temp = cmd[temp+1, 999999]
+      if not(temp matches '1N0N') or temp > 63 then
+         display sysmsg(7806, temp) ;* Incorrectly formed lock number: %1
+         goto bad.line
+      end
+
+      lock temp
+   end
+
+   * Set up data queue
+
+   n = dcount(ob2, @fm)
+   for i = 1 to n
+      data ob2<i>
+   next i
+
+   * Execute the command
+
+   if index(u.cmd, 'H', 1) then
+      execute ob1 current.level capturing s   ;* 0409
+   end else
+      execute ob1 current.level   ;* 0409
+   end
+
+   * If there is anything left in the data queue, treat it as commands until
+   * the queue is empty.
+
+   loop
+   while system(10)
+     input ob1
+     if index(u.cmd, 'H', 1) then
+        execute ob1 current.level capturing s   ;* 0409
+     end else
+        execute ob1 current.level   ;* 0409
+     end
+   repeat
+
+   * Relese any task lock that we acquired above
+
+   if temp then unlock temp
+
+   * Clear both output buffers and make primary output buffer proc.active
+
+   proc.obuf(0) = ''
+   proc.obuf(1) = ''
+   proc.acto = 0
+
+   return
+
+* QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ
+
+q:
+   * -----------------------------------------------------------------
+   * Q{text}
+   * Abort processing
+
+   abort cmd[2, 999999]
+
+* RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+
+r:
+   begin case
+      * -----------------------------------------------------------------
+      case cmd2 = 'RI'
+         * RIf|(col)
+         *Clear input buffers, activating primary buffer
+
+         proc.ibuf(1) = ''   ;* Clear the secondary input buffer
+         proc.acti = 0       ;* Activate primary input buffer
+
+         * Clear the primary input buffer
+         temp = oconv(cmd, 'MCN') + 0
+         begin case
+            case cmd[3, 1] = '('
+               word = field(cmd[4,999999], ')', 1)
+               gosub eval.value
+               proc.ibuf(0) = proc.ibuf(0)[1, ref.value-1]
+            case temp
+               word = field(cmd[3,999999], ')', 1)
+               gosub eval.value
+               if ref.value < 2 then proc.ibuf(0) = ''
+               else proc.ibuf(0) = field(proc.ibuf(0), delimiter, 1, ref.value - 1)
+               proc.iptr = ref.value
+            case 1
+               proc.ibuf(0) = ''
+               proc.iptr = 1
+         end case
+
+      * -----------------------------------------------------------------
+      case cmd2 = 'RO'
+         * RO
+         * Clear both output buffers
+
+         proc.obuf(0) = ''
+         proc.obuf(1) = ''
+         proc.acto = 0            ;* Activate the primary output buffer
+
+      * -----------------------------------------------------------------
+      case u.cmd[1, 4] = 'RSUB'
+         * RSUB{n}
+         * Return from GOSUB, skipping n lines
+
+         if gosub.stack # '' then  ;* Ignored if not in GOSUB
+            lno = gosub.stack<1>
+            del gosub.stack<1>
+            cmd = trim(cmd[5,999])
+            if cmd matches '1N0N' and cmd > 0 then lno += cmd - 1
+         end
+
+      * -----------------------------------------------------------------
+      case cmd3 = 'RTN'
+         * RTN{n}
+         * Return from [name], skipping n lines
+
+         cmd = trim(cmd[4, 999999])
+         if cmd matches '1N0N' then label = cmd + 0
+         goto back
+
+      case 1 ; goto bad.cmd
+   end case
+   return
+
+* SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS
+
+s:
+   begin case
+      * -----------------------------------------------------------------
+      case u.cmd = 'SS'
+         * SS
+         * Activate secondary input buffer
+
+         proc.acti = 1
+
+      * -----------------------------------------------------------------
+      case u.cmd = 'SP'
+         * SP
+         * Activate primary input buffer
+
+         proc.acti = 0
+
+      * -----------------------------------------------------------------
+      case u.cmd = 'STOF' or u.cmd = 'STOFF' or u.cmd = 'ST OFF'
+         * STOF, ST OFF
+         * Activate primary output buffer
+
+         proc.acto = 0
+
+      * -----------------------------------------------------------------
+      case u.cmd = 'STON' or u.cmd = 'ST ON'
+         * STON, ST ON
+         * Activate secondary output buffer
+
+         proc.acto = 1
+
+      * -----------------------------------------------------------------
+      case 1
+         * Sf|ref|(col)
+         * Set active input buffer pointer
+         * f = field number
+         * ref = indirect reference
+         * col = column position
+
+         cmd = cmd[2, 999999]
+         begin case
+            case cmd match '0N'
+               proc.iptr = cmd + 0
+               if proc.iptr = 0 then proc.iptr = 1
+               proc.iptr.cpos = 1
+
+            case index(regs, cmd[1, 1], 1)
+               word = cmd
+               gosub eval.ref
+               if not(ref.value matches '0N' and ref.value > 0) then goto bad.line
+               proc.iptr = ref.value
+               proc.iptr.cpos = 1
+
+            case cmd[1, 1] = '('
+               n = field(cmd[2,999999], ')', 1)
+               if n matches '1N0N' then
+                  if n < 1 then n = 1
+                  gosub set.input.pointer.to.char.n
+                  proc.iptr = new.iptr
+                  proc.iptr.cpos = new.iptr.cpos
+               end
+            case 1 ; goto bad.cmd
+         end case
+   end case
+   return
+
+* TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
+
+t:
+   * -----------------------------------------------------------------
+   if cmd2 = 'TR' then
+      * TRON, TROF{F}, TR ON, TR OF{F}
+      * Enable or disable tracing
+
+      tracing = (trim(u.cmd[3, 2]) # 'OF')
+      return
+   end
+
+   * -----------------------------------------------------------------
+   * Anything else is a terminal output
+   * Merge with successive lines while the final character is a comma
+
+   t.data = trimf(cmd[2, 99999])
+   loop
+   while t.data[1] = ',' do
+      lno += 1
+      t.data := proc<lno>
+   repeat
+
+   emit.lf = is.pqn    ;* PQN implies linefeed, PQ does not
+   t.ctr = 0
+   loop
+      t.data = trimf(t.data)
+   while t.data # ''
+      c = upcase(t.data[1,1])
+      begin case
+         case c = ','
+            t.data = t.data[2,99999]
+
+         case c = '"' or c = "'"      ;* Literal text
+            display field(t.data, c, 2) :
+            t.data = trimf(field(t.data, c, 3, 99999))
+
+         case c = '('                 ;* Cursor move or other control
+            word = field(t.data[2,99999], ')', 1)
+            t.data = trimf(field(t.data, ')', 2, 99999))
+
+            gosub eval.value
+            arg1 = ref.value
+
+            if word[1,1] = ',' then
+               word = word[2,9999]
+               gosub eval.value
+               display @(arg1, ref.value) :
+            end else
+               display @(arg1) :      ;* 0511
+            end
+
+         case c = 'B'                 ;* Bell
+            display @sys.bell:
+            t.data = field(t.data, ',', 2, 9999)
+
+         case c = 'C'                 ;* Clear screen
+            display @(-1):
+            t.data = field(t.data, ',', 2, 9999)
+
+         case c = 'D'                 ;* One second delay
+            sleep 1
+            t.data = field(t.data, ',', 2, 9999)
+
+         case c = 'I'                 ;* Emit character by ASCII value
+            word = t.data[2,99999]
+            gosub eval.value
+            display char(ref.value) :
+            t.data = field(t.data, ',', 2, 9999)
+
+         case c = 'L'                 ;* End of T...L loop
+            if t.ctr then
+               t.ctr -= 1
+               t.data = t.stack
+            end else
+               t.data = field(t.data, ',', 2, 9999)
+            end
+
+         case c = 'S'                 ;* Emit n spaces
+            word = t.data[2,99999]
+            gosub eval.value
+            display space(ref.value) :
+            t.data = field(t.data, ',', 2, 9999)
+
+         case c = 'T'                 ;* Start of T...L loop
+            t.ctr = 2
+            t.stack = t.data[2,999999]
+            t.data = field(t.data, ',', 2, 9999)
+
+         case c = 'U'
+            display @(-10):
+            t.data = field(t.data, ',', 2, 9999)
+
+         case c = 'X'
+            word = t.data[2,99999]
+            gosub eval.hex.value
+            display char(ref.value) :
+            t.data = field(t.data, ',', 2, 9999)
+
+         case c = '*'                 ;* Emit repeated character
+            if t.data matches '*1X1N0X' then
+               display str(t.data[2,1], matchfield(t.data, '"*"1X0N0X', 3)) :
+            end
+            t.data = trimf(matchfield(t.data, '"*"1X0N0X', 4))
+
+         case c = '+'
+            emit.lf = @false
+            t.data = field(t.data, ',', 2, 9999)
+
+         case c = '@'
+            display atvar(field(t.data, ',', 1)) :
+            t.data = field(t.data, ',', 2, 9999)
+
+         case index(regs, c, 1)
+            word = t.data
+            gosub eval.ref
+            c = word[1,1]
+            if c = ';' or c = ':' then
+               s = field(word, c, 2)
+               ref.value = if c = ';' then iconv(ref.value, s) else oconv(ref.value, s)
+               t.data = field(word, c, 3, 99999)
+            end else
+               t.data = field(t.data, ',', 2, 9999)
+            end
+            display ref.value:
+  
+         case 1
+            goto bad.line
+    end case
+   repeat
+
+   if emit.lf then display
+
+   return
+
+* UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU
+
+u:
+   * -----------------------------------------------------------------
+   cmd = cmd[2, 999999]
+   call @cmd
+
+   return
+
+* VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+
+v:
+* Non-existent
+   goto bad.cmd
+   return
+
+* WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW
+
+w:
+* Non-existent
+   goto bad.cmd
+   return
+
+* XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+x:
+   * -----------------------------------------------------------------
+   * X{text}
+   * Terminate the PROC, displaying optional text
+
+   cmd = cmd[2, 999999]
+   if cmd # '' then display cmd
+   goto back
+
+* YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY
+
+y:
+* Non-existent
+   goto bad.cmd
+   return
+
+* ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ
+
+z:
+* Non-existent
+   goto bad.cmd
+   return
+
+* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+plus.command:
+   temp = field(proc.ibuf(proc.acti), delimiter, proc.iptr)
+   if not(temp matches '1N0N') then temp = 0
+   cmd = cmd[2, 999999]
+   sent = cmd ; wall = ' '; sent.idx = 1 ; gosub get.next.word
+   word = trim(word, '+', 'F')
+   if not(word matches '1N0N') then word = 0
+   proc.ibuf(proc.acti)[delimiter, proc.iptr, 1] = temp + word
+   return
+
+* ----------------------------------------------------------------------
+
+minus.command:
+   temp = field(proc.ibuf(proc.acti), delimiter, proc.iptr)
+   if not(temp matches '1N0N') then temp = 0
+   cmd = cmd[2, 999999]
+   sent = cmd ; wall = ' '; sent.idx = 1 ; gosub get.next.word
+   word = trim(word, '+', 'F')
+   if not(word matches '1N0N') then word = 0
+   proc.ibuf(proc.acti)[delimiter, proc.iptr, 1] = temp - word
+   return
+
+* ----------------------------------------------------------------------
+
+chain.command:
+   gosub get.called.proc
+   if err then goto bad.line
+   proc = called.proc
+   name = called.proc.id
+   filename = called.proc.filename
+   filehandle = called.proc.f
+   label = called.proc.label
+!0391  printer off
+   gosub start.proc
+   return
+
+* ----------------------------------------------------------------------
+
+call.command:
+   gosub get.called.proc
+   if err then goto bad.line
+!0391   printer off
+   call $proc(called.proc, called.proc.id, called.proc.filename, called.proc.f, called.proc.label)
+   if called.proc.label = 'X' then label = 'X'; goto back
+   if num(label) then lno += label
+   label = ''
+   return
+
+* ----------------------------------------------------------------------
+get.called.proc:
+   err = @false
+
+   if cmd[1,1] = '(' then s = field(cmd[2,999999], ')', 1)
+   else if cmd[1,1] = '[' then s = field(cmd[2,999999], ']', 1)
+   called.proc.label = trimf(cmd[col2() + 2, 999999])
+
+   called.proc.filename = field(s, ' ', 1)
+   if upcase(called.proc.filename) = 'DICT' then
+      dict = 'DICT'
+      called.proc.filename = field(s, ' ', 2)
+      called.proc.id = field(s, ' ', 3)
+   end else
+      dict = ''
+      called.proc.id = field(s, ' ', 2)
+   end
+
+   if called.proc.id = '' then
+      called.proc.id = field(proc.ibuf(proc.acti), delimiter, proc.iptr)
+   end
+
+   open dict, called.proc.filename to called.proc.f else
+      display sysmsg(1427, trimf(dict:' ':called.proc.filename)) ;* Cannot open %1
+      err = @true
+      return
+   end
+
+   read called.proc from called.proc.f, called.proc.id else
+      display sysmsg(7809, called.proc.id, trimf(dict:' ':called.proc.filename))
+         * Cannot read "%1" from %2
+      err = @true
+      return
+   end
+
+   if is.pqn # (called.proc<1>[1, 3] = 'PQN') then
+      display sysmsg(7808)  ;* Called Proc is of different type
+      err = @true
+      return
+   end
+
+   return
+
+* ======================================================================
+* eval.value  -  Get a value, possibly via a reference
+*
+*    WORD = input text
+* Returns
+*    REF.VALUE = value
+*    WORD = what is left after item
+
+eval.value:
+   begin case
+      case word[1,1] matches '1N'
+         ref.value = matchfield(word, '0N0X', 1)
+         word = matchfield(word, '0N0X', 2)
+
+      case word[1,2] matches '"-"1N'      ;* 0539
+         ref.value = -matchfield(word, '"-"0N0X', 2)
+         word = matchfield(word, '"-"0N0X', 3)
+
+      case index(regs, word[1, 1], 1)
+         gosub eval.ref
+
+      case 1
+         ref.value = word
+         word = ''
+   end case
+
+   return
+
+eval.hex.value:
+   begin case
+      case convert('0123456789ABCDEF', '', word[1,2]) = ''
+         ref.value = word[1,2]
+         word = word[3,99999]
+
+      case index(regs, word[1, 1], 1)
+         gosub eval.ref
+   end case
+   ref.value = xtd(ref.value)
+
+   return
+
+
+* ======================================================================
+* Evaluate a reference
+*    WORD = input text
+* Returns
+*    WORD = what is left after reference
+*    REF.VALUE = item
+*    REF.TYPE = buffer type byte (%, #, &, !)
+*    REF.FIELD = referenced field within buffer
+*    REF.FILE.NO = file buffer number
+
+eval.ref:
+   ref.type = word[1,1]        
+   ref.file.no = ''            ;* Not a file reference yet
+   word = word[2,99999]
+
+eval.ref.reparse:
+   c = word[1,1]
+   begin case
+      case index(regs, c, 1)   ;* Indirect reference
+         ref.type = c : ref.type        ;* Stack ref type...
+         ref.file.no = @fm:ref.file.no  ;* ...and file number
+         word = word[2,99999]
+         gosub eval.ref.reparse
+         ref.type = ref.type[2,999]     ;* Unstack ref type...
+         del ref.file.no<1>             ;* ...and file number
+
+      case c matches '1N'      ;* Number
+         ref.value = matchfield(word, '0N0X', 1)
+         word = matchfield(word, '0N0X', 2)
+
+      case 1
+         goto ref.failed
+   end case
+
+   if ref.type[1,1] = '&' and word[1,1] = '.' then  ;* Field number in file buffer
+      if ref.file.no<1> # '' then goto ref.failed
+      ref.type = ' ' : ref.type      ;* Stack pseudo-ref type...
+      ref.file.no<1> = @fm:ref.value ;* ...and file number
+      word = word[2,99999]
+      gosub eval.ref.reparse
+      ref.type = ref.type[2,999]     ;* Unstack ref type...
+      del ref.file.no<1>             ;* ...and file number
+   end
+
+   * Fetch the data
+
+   ref.field = ref.value
+   c = ref.type[1,1]
+   begin case
+      case c = '%'    ;* Active Input Buffer
+         ref.value = field(proc.ibuf(proc.acti), delimiter, ref.field)
+
+      case c = '#'    ;* Active Output Buffer
+         ref.value = field(proc.obuf(proc.acto), delimiter, ref.field)
+
+      case c = '&'    ;* File Buffer or Fast Buffer
+         ref.file.no += 0
+         ref.value = proc.frec(ref.file.no<1>)<ref.field+1>
+
+      case c = '!'    ;* Select Register
+         readnext ref.value from ref.field else null
+   end case
+
+   return
+
+ref.failed:
+   display sysmsg(7807, word) ;* Indirect reference failed: %1
+   goto bad.line
+   return
+
+
+* ----------------------------------------------------------------------
+get.next.word:
+* Get the next word from the sentence SENT
+* SENT.IDX = character index
+* WALL = terminator character
+
+   word = ''            ;* Assemble word here
+   qt = ''              ;* Delimiter when in quoted string
+   is.quoted.string = @false ;* Need this to handle null strings
+
+   loop
+      byte = sent[sent.idx, 1]
+      begin case
+         case byte = ''                           ;* Run off end of string
+            exit
+
+         case byte = qt                           ;* It's a close quote
+            is.quoted.string = @true
+            qt = ''
+
+         case qt = '' and index(quotes, byte, 1)  ;* It's an opening quote
+            qt = byte
+
+         case qt = '' and byte = wall             ;* It's the terminator
+            if word # '' or is.quoted.string then exit
+
+         case 1
+            word := byte
+      end case
+
+      sent.idx += 1
+   repeat
+
+   return
+
+* ----------------------------------------------------------------------
+* eval.a.ref  -  Evaluate A reference
+*
+* WORD = A reference...
+*   A{c}({n}{,m})
+*      c = surround character, ignored if backslash
+*      n = start char (default 1)
+*      m = chars (default all)
+*
+*   A{c}{p}{,m}
+*      c = surround character, ignored if backslash
+*      p = field no (default as input pointer),
+*      m = chars (default all)
+*
+* Returns:
+*   TEMP = result
+*   AMID = surround character
+*   NEW.IPTR, NEW.IPTR.CPOS = new input pointer
+*   PVAR = position of extracted field
+
+eval.a.ref:
+   * Look for a surround character
+
+   amid = word[2,1]
+   if amid = '' then
+      amid = ' '
+   end else if amid = '(' or amid = ',' or amid matches '1N' then
+      amid = ' '
+      word = word[2,999999]
+   end else
+      if amid = '\' then amid = ''
+      word = word[3,999999]
+   end
+
+   if word[1, 1] = '(' then                       ;* Char extraction style
+      pvar = proc.iptr
+      word = field(word[2, 999999], ')', 1)
+
+      nvar = oconv(field(word, ',', 1), 'MCN')+0    ;* Start position
+      if nvar <= 0 then nvar = index(proc.ibuf(proc.acti), delimiter, proc.iptr-1) + proc.iptr.cpos
+
+      mvar = oconv(field(word, ',', 2), 'MCN')+0    ;* Character count
+      if mvar <= 0 then mvar = 99999999
+
+      if option(OPT.PROC.A) then
+         temp = proc.ibuf(proc.acti)[nvar, mvar]
+      end else
+         temp = field(proc.ibuf(proc.acti)[nvar, mvar], delimiter, 1)
+      end
+
+      n = nvar + len(temp)   ;* Offset of next character  
+      gosub set.input.pointer.to.char.n
+   end else                                       ;* Field extraction style
+      pvar = oconv(field(word, ',', 1), 'MCN')+0   ;* Field number
+      if pvar = 0 then pvar = proc.iptr
+
+      mvar = oconv(field(word, ',', 2), 'MCN')+0   ;* Character count
+      if mvar = 0 then mvar = 999999
+
+      s = field(proc.ibuf(proc.acti), delimiter, pvar)
+      temp = s[1, mvar]
+
+      new.iptr = pvar
+      if mvar <= len(s) then
+         new.iptr.cpos = mvar
+      end else
+         new.iptr += 1
+         new.iptr.cpos = 1
+      end
+   end
+
+   return
+
+* ======================================================================
+
+set.input.pointer.to.char.n:
+   c = proc.ibuf(proc.acti)[n,1]
+   begin case
+      case c = ''                   ;* End of buffer
+         new.iptr = dcount(proc.ibuf(proc.acti)[1,n], delimiter) + 1
+         new.iptr.cpos = 1
+      case c = delimiter            ;* Start of new field
+         new.iptr = dcount(proc.ibuf(proc.acti)[1,n], delimiter)
+         new.iptr.cpos = 1
+      case 1                        ;* Still in field
+         new.iptr = dcount(proc.ibuf(proc.acti)[1,n], delimiter)
+         new.iptr.cpos = n - index(proc.ibuf(proc.acti), delimiter, new.iptr - 1)
+   end case
+
+   return
+
+* ======================================================================
+
+check.file:
+   if not(fileno matches '1N') then goto bad.fileno
+   fileno += 0
+   if not(fileinfo(proc.fvar(fileno), FL$OPEN)) then goto bad.fileno
+   return
+
+end
+
+* END-CODE

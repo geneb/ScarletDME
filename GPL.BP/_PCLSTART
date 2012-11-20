@@ -1,0 +1,84 @@
+* PCLSTART
+* Startup PCL printer
+* Copyright (c) 2005 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 10 Nov 05  2.2-16 0431 Paper size and symbol set were handled incorrectly.
+* 18 Oct 05  2.2-15 New program.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* SUBROUTINE PCL.START(PU)
+*
+* PU     = Print unit number
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+$no.symbols
+$no.xref
+$recursive
+
+subroutine pclstart(pu)
+$include syscom.h
+$include keys.h
+$include int$keys.h
+$include pcl.h
+
+   flags = getpu(PU$SPOOLFLAGS, pu)
+
+   esc = char(27)
+
+   * Reset printer
+   str = esc:'E':esc:'%-12345X':esc:'&k2G'
+
+   * Page orientation
+   str := if bitand(flags, PU$FLG.LAND) then esc:'&l1O' else esc:'&l0O'
+
+   * Font: Courier, Upright, Fixed
+   str := esc:'(s4099t0s0p'
+   str := getpu(PU$WEIGHT, pu):'b'               ;* Stroke weight
+   str := getpu(PU$CPI, pu):'H'                  ;* CPI
+
+   * Symbol set
+   str := esc:'(':getpu(PU$SYMBOL.SET, pu)
+
+   * Line spacing
+   str := esc:'&l':getpu(PU$LPI, pu):'D'
+
+   * Paper size
+   str := esc:'&l':getpu(PU$PAPER.SIZE, pu):'A'    ;* 0431
+
+   * Duplex mode
+   if bitand(flags, PU$FLG.DUPLEX.LONG) then
+      str := esc:'&l1S':esc:'a1G'     ;* Duplex long, front
+   end else if bitand(flags, PU$FLG.DUPLEX.SHORT) then
+      str := esc:'&l2S':esc:'a1G'     ;* Duplex short, front
+   end
+
+   print on pu str :
+
+   return
+end
+
+* END-CODE

@@ -1,0 +1,196 @@
+* PRINTER
+* PRINTER verb
+* Copyright (c) 2004 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 14 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* PRINTER [unit] CLOSE
+*                FILE file record
+*                AT printer.name
+*                WIDTH n
+*                LINES n
+*                TOP.MARGIN n
+*                BOTTOM.MARGIN n
+*                LEFT.MARGIN n
+*                KEEP.OPEN
+*                RESET
+*                QUERY
+*
+* More than one command option may be used and in any order.
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program $PRINTER
+$catalog $PRINTER
+
+$include int$keys.h
+$include parser.h
+$include syscom keys.h
+$include err.h
+
+
+   parser = "!PARSER"
+
+   @system.return.code = -ER$ARGS              ;* Preset for argument errors
+
+   call @parser(parser$reset, 0, @sentence, 0)
+   call @parser(parser$get.token, token.type, token, keyword) ;* Verb
+
+   call @parser(parser$get.token, token.type, unit, keyword) ;* Print unit
+   if num(unit) then
+      if (unit < -1) or (unit > LPTR$HIGH.PRINT.UNIT) then
+         stop sysmsg(2053) ;* Invalid print unit number
+      end
+      call @parser(parser$get.token, token.type, token, keyword)
+   end
+   else unit = 0
+
+   loop
+   while token.type # parser$end
+      begin case
+         case keyword = KW$AT
+            call @parser(parser$get.token, token.type, printer.name, keyword)
+            if token.type = parser$end then
+               stop sysmsg(7123, token) ;* Printer name required
+            end
+            printer name on unit printer.name else
+               stop sysmsg(7124) ;* Printer name not recognised
+            end
+
+         case keyword = KW$BOTTOM.MARGIN
+            if (token.type = parser$end) or (not(num(token))) then
+               stop sysmsg(7103) ;* Bottom margin parameter is invalid
+            end
+            printer setting on unit lptr$bottom.margin, token
+
+         case keyword = KW$CLOSE
+            * Ensure keep open flag is clear
+            flags = getpu(unit,PU$SPOOLFLAGS)
+            flags = bitand(flags, bitnot(PU$FLG.KEEP.OPEN))
+            setpu PU$SPOOLFLAGS,unit,flags
+            printer close on unit
+
+         case keyword = KW$FILE
+            call @parser(parser$get.token, token.type, file.name, keyword)
+            call @parser(parser$get.token, token.type, record.name, keyword)
+            if token.type = parser$end then
+               stop sysmsg(7125) ;* Printer file and record name required
+            end
+            printer file on unit file.name, record.name else
+               begin case
+                  case status() = ER$NVR or status() = ER$FNF
+                     stop sysmsg(2019) ;* File not found
+                  case status() = ER$NDIR
+                     stop sysmsg(1428, file.name) ;* xx is not a directory file
+                  case 1
+                     stop sysmsg(7126, status()) ;* Error %1 setting printer
+               end case
+            end
+
+         case keyword = KW$KEEP.OPEN
+            * Set keep open flag
+            flags = getpu(unit,PU$SPOOLFLAGS)
+            flags = bitor(flags, PU$FLG.KEEP.OPEN)
+            setpu PU$SPOOLFLAGS,unit,flags
+
+         case keyword = KW$LEFT.MARGIN
+            if (token.type = parser$end) or (not(num(token))) then
+               stop sysmsg(7108) ;* Left margin parameter is invalid
+            end
+            printer setting on unit lptr$left.margin, token
+
+         case keyword = KW$LINES
+            call @parser(parser$get.token, token.type, token, keyword)
+            if (token.type = parser$end) or (not(num(token))) then
+               stop sysmsg(7101) ;* Depth (lines per page) parameter is invalid
+            end
+            printer setting on unit lptr$lines, token
+
+         case keyword = KW$QUERY
+            crt sysmsg(7111, unit)  ;* PRINT UNIT xx
+            crt '   ':sysmsg(7112, printer.setting(unit, lptr$width, -2)) ;* Width
+            crt '   ':sysmsg(7113, printer.setting(unit, lptr$lines, -2)) ;* Lines per page
+            crt '   ':sysmsg(7114, printer.setting(unit, lptr$top.margin, -2)) ;* Top margin
+            crt '   ':sysmsg(7115, printer.setting(unit, lptr$bottom.margin, -2)) ;* Bottom margin
+            crt '   ':sysmsg(7127, printer.setting(unit, lptr$left.margin, -2)) ;* Left margin
+
+            mode = printer.setting(unit, lptr$mode, -2)
+            crt '   ':sysmsg(7128, mode) ;* Mode
+
+            printer.name = printer.setting(unit, lptr$name, -2)
+            begin case
+               case mode = 1
+                  if printer.name = '' then printer.name = sysmsg(7129) ;* (Default)
+                  crt '   ': sysmsg(7130, printer.name) ;* Printer
+             
+               case mode = 3
+                  if printer.name = '' then
+                     crt '   ':sysmsg(7131, unit)
+                  end else
+                     crt '   ':sysmsg(7132, printer.name)
+                  end
+            end case
+
+         case keyword = KW$RESET
+            if unit = 0 then
+               printer name on unit ''
+            end else
+               printer file on unit '', ''
+            end
+            printer setting on unit lptr$width, -1
+            printer setting on unit lptr$lines, -1
+            printer setting on unit lptr$top.margin, -1
+            printer setting on unit lptr$bottom.margin, -1
+            printer setting on unit lptr$left.margin, -1
+
+         case keyword = KW$TOP.MARGIN
+            call @parser(parser$get.token, token.type, token, keyword)
+            if (token.type = parser$end) or (not(num(token))) then
+               stop sysmsg(7102) ;* Top margin parameter is invalid
+            end
+            printer setting on unit lptr$top.margin, token
+
+         case keyword = KW$WIDTH
+            call @parser(parser$get.token, token.type, token, keyword)
+            if (token.type = parser$end) or (not(num(token))) then
+               stop sysmsg(7100) ;* Width paramter is invalid
+            end
+            printer setting on unit lptr$width, token
+
+         case 1
+            stop sysmsg(2018, token) ;* Unexpected token (xx)
+      end case
+
+      call @parser(parser$get.token, token.type, token, keyword)
+   repeat   
+
+   @system.return.code = 0
+
+   return
+end
+
+* END-CODE

@@ -1,0 +1,98 @@
+* _KEYEDIT
+* KEYEDIT statement recursive code.
+* Copyright (c) 2003 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+$no.symbols
+$no.xref
+$recursive
+
+subroutine keyedit(action, keyvalue, mode)
+$include keycode.h
+$include keyin.h
+
+   * Convert key number to internal form
+
+   begin case
+      case action < 0  ; code = -1
+      case mode # 0    ; code = action
+      case action = 2  ; code = K$LEFT
+      case action = 3  ; code = K$RETURN
+      case action = 4  ; code = K$BACKSPACE
+      case action = 6  ; code = K$RIGHT
+      case action = 7  ; code = K$INSERT
+      case action = 8  ; code = K$DELETE
+      case action = 13 ; code = K$INSERT
+      case 1           ; return
+   end case
+
+   * Construct key string
+
+   begin case
+      case keyvalue >= 1 and keyvalue <= 31
+         key.string = char(keyvalue)
+      case keyvalue >= 32 and keyvalue <= 159
+         key.string = char(27) : char(keyvalue)
+      case keyvalue >= 160
+         i = keyvalue - 160
+         key.string = ''
+         loop
+         while i
+            key.string := char(bitand(i,255))
+            i = shift(i,8)
+         repeat
+         if key.string = '' then return
+      case 1
+         return
+   end case
+
+   * Force load of standard key bindings if first time for this terminal
+
+   if kc.term.type # @term.type then i = keycode(-1)
+
+   * Now load this binding
+
+   if code >= 0 then     ;* Adding binding
+      locate key.string in kc.keys<1> by 'AL' setting i then  ;* Replace binding
+         kc.codes<i> = code + shift(mode, -8)
+      end else                                                ;* Add binding
+         ins key.string before kc.keys<i>
+         ins code + shift(mode, -8) before kc.codes<i>
+      end
+   end else              ;* Removing binding
+      locate key.string in kc.keys<1> by 'AL' setting i then
+         del kc.keys<i>
+         del kc.codes<i>
+      end
+   end
+
+   return
+end
+
+* END-CODE

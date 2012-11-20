@@ -1,0 +1,124 @@
+* _MESSAGE
+* Recursive for immediate message display.
+* Copyright (c) 2005 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 07 Sep 05  2.2-10 Modified format to use a reverse video border without
+*                   clearing the screen first.
+* 01 Sep 05  2.2-9 New module.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+$recursive
+$no.symbols
+$no.xref
+subroutine message
+
+$include syscom.h
+$include keys.h
+$include int$keys.h
+
+   if terminfo('sreg') # '' then   ;* Terminal can do save screen
+      srev = @(-13)
+      erev = @(-14)
+      border = srev : ' ' : erev
+
+      prc = 'Press return to continue'
+
+      * Display any IPC messages
+
+      if fileinfo(ipc.f, FL$OPEN) then
+         x = 'M':@userno
+         readu messages from ipc.f, x then
+            delete ipc.f, x    ;* Free up the lock immediately
+
+            if messages # '' then
+               return.key = seq(pterm(PT$INEWLINE,''))
+
+               * There could be many queued messages. Extract these a page
+               * at a time for display.
+
+               max.messages = idiv(@crthigh - 6, 2) ;* Max per page
+               loop
+                  screen.image = save.screen(0, 0, @crtwide, @crthigh)
+
+                  s = field(messages, @fm, 1, max.messages)
+                  messages = field(messages, @fm , max.messages + 1, 999999)
+                  n = dcount(s, @fm)
+               while n
+                  width = maximum(lens(s))     ;* Widest line to display
+                  if width < len(prc) then width = len(prc)
+                  width = min(width, @crtwide - 4)
+                  height = n * 2
+
+                  top = idiv(@crthigh - height, 2) - 2
+                  left = idiv(@crtwide - width, 2) - 2
+
+                  * Two lines above text, one blank, one border
+                  ln = top
+                  crt @(left, ln) : space(width + 4) :
+                  ln += 1
+                  crt @(left, ln) : ' ' : srev : space(width + 2) : erev : ' ' :
+                  ln += 1
+                  for i = 1 to n
+                     * Display message origin (could be blank)
+                     crt @(left, ln) : ' ' : border : fmt(s<i,2>[1,width], width:'L') : border :  ' ' :
+                     ln += 1
+
+                     * Display message text
+                     crt @(left, ln) : ' ' : border : fmt(s<i,1>[1,width], width:'L') : border : ' ' :
+                     ln += 1
+                  next i
+
+                  * Press return to continue prompt
+                  crt @(left, ln) : ' ' : border : fmt(prc, width:'L') : border :  ' ' :
+                  ln += 1
+ 
+                  * Two lines below text, one border, one blank
+                  crt @(left, ln) : ' ' : srev : space(width + 2) : erev : ' ' :
+                  ln += 1
+                  crt @(left, ln) : space(width + 4) :
+
+                  crt @(left + 2 + len(prc), ln - 2) :
+
+                  inputclear
+                  loop
+                     i = seq(keyin())
+                  until i = return.key
+                  repeat
+
+                  restore.screen screen.image, @true
+               repeat
+
+            end
+         end else
+            release ipc.f, x
+         end
+      end
+   end
+end
+
+* END-CODE

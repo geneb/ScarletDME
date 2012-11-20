@@ -1,0 +1,81 @@
+#!/bin/bash
+# Routine to change the running  scarlet or qm system to the one in the curent directory
+TRUE=0
+FALSE=1
+SYSTEM=
+
+# Check is legit directory
+if ls bin/qm > /dev/null; then 
+  LEGIT=$TRUE
+  SYSTEM=qm
+  echo QM detected
+else 
+  if ls bin/scarlet > /dev/null; then
+    LEGIT=$TRUE
+    SYSTEM=scarlet
+    echo Scarlet Detected
+  else
+    echo "`pwd` is Not a valid QM or ScarletDME directory"
+    exit 1
+  fi
+fi
+
+if [ `id -u` != "0" ]; then
+  echo Need to be root, quitting
+  exit 2
+fi
+
+SYSTEMDIR=/usr/${SYSTEM}sys
+CONFIGFILE=/etc/${SYSTEM}config
+
+if [ `pwd` == "$SYSTEMDIR" ]; then
+# Still has a tendancy to detect the linked dir, and allow user to do this in a softlinked copy of /usr/qmsys. weired
+  echo Error: current directory is already the running system
+  exit 3
+fi
+
+# Check if a system is already in place
+if [ -d $SYSTEMDIR ]; then 
+  # Stop the running system
+  $SYSTEMDIR/bin/$SYSTEM -stop
+
+  # Backup config 
+  echo -n Backing up /etc/${SYSTEM}config to $SYSTEMDIR/config ...
+  cp /etc/${SYSTEM}config $SYSTEMDIR/config
+  echo " DONE"
+  
+  if [ -L $SYSTEMDIR ]; then
+    rm $SYSTEMDIR
+  else
+    # Backup all current dir
+    echo -n Moving $SYSTEMDIR to $SYSTEMDIR.bak ...
+    mv $SYSTEMDIR $SYSTEMDIR.bak
+    echo " DONE"
+  fi
+fi
+
+# Link WD to sysdir
+ln -s `pwd` $SYSTEMDIR
+
+# Install config file if present
+if [ -e ./config ]; then
+  echo -n Installing local config file
+  rm $CONFIGFILE > /dev/null
+  cp -f ./config $CONFIGFILE
+  echo " DONE"
+else
+  # Write default config file
+  echo -n No local config file detected, installing default
+  echo "[qm]" > $CONFIGFILE
+  echo "QMSYS=$SYSTEMDIR" >> $CONFIGFILE
+  echo "NUMUSERS=50" >> $CONFIGFILE
+  echo "ERRLOG=1024" >> $CONFIGFILE
+  echo " DONE"
+fi
+
+if [ "! -L /usr/local/bin/$SYSTEM" ]; then
+  ln -s $SYSTEMDIR/bin/$SYSTEM /usr/local/bin/$SYSTEM
+fi
+
+# Start the new linked dir up
+bin/qm -start

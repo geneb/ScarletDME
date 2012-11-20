@@ -1,0 +1,332 @@
+* CD
+* COMPILE.DICT (CD) verb
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 02 Nov 06  2.4-15 VOC/dictionary record types now case insensitive.
+* 29 Aug 06  2.4-12 Allow DICT/DATA prefix.
+* 21 Jun 06  2.4-5 Added NO.PAGE option.
+* 10 Aug 05  2.2-7 Added use of NO.SEL.LIST.QUERY option.
+* 28 Mar 05  2.1-11 Use PARSER$MFILE.
+* 13 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* CD {DICT | DATA} file.name [I-type name]...  [ NO.QUERY ] [ NO.PAGE ]
+*
+*   Defaults to DICT portion of file.
+*
+*   If I-type name is omitted, all A, C, I and S-types are compiled unless the
+*   default select list is active, in which case it is used.
+*
+* CD LOCAL
+*
+*   Compiles all dictionary A, C, I and S-types in the account.  All F-type
+*   VOC items where the dictionary pathname does not include a directory
+*   separator are processed.
+*
+* CD ALL
+*
+*   Compiles all dictionary A,C,I and S-types visible from the account.
+*
+*
+* @SYSTEM.RETURN.CODE
+*     0  Successful
+*    -1  Command arguments incorrect or missing
+*    -2  Unable to open file
+*    -3  Compilation errors
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program $cd
+$catalog $cd
+
+$include parser.h
+$include syscom.h
+$include syscom err.h
+$include syscom keys.h
+$include dictdict.h
+$include bcomp.h
+$include int$keys.h
+
+
+   @system.return.code = -1      ;* Preset for command format errors
+
+   id = ""                       ;* List of I-type id's to compile
+   no.query = @false
+   errors = 0
+   display.file.name = ''
+   compiled.paths = ''
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+
+   * Get file name
+
+   call @parser(PARSER$MFILE, token.type, file.name, keyword)
+   if token.type = PARSER$END then stop sysmsg(2102) ;* File name required
+
+   begin case
+      case keyword = KW$LOCAL      ;* Compile all local dictionaries
+         gosub get.options
+
+         select @voc to 12
+         loop
+            readnext voc.id from 12 else exit
+            read voc.rec from @voc, voc.id then
+               dict.path = voc.rec<3>
+               if upcase(voc.rec[1,1]) = 'F' and dict.path # '' and index(dict.path, @ds, 1) = 0 then
+                  if not(listindex(compiled.paths, @fm, dict.path)) then
+                     compiled.paths<-1> = dict.path
+                     openpath dict.path to dict.f then
+                        display.file.name = voc.id
+                        gosub compile.all
+                        close dict.f
+                     end
+                  end
+               end
+            end
+         repeat
+
+      case keyword = KW$ALL        ;* Compile all dictionaries not in QMSYS
+         gosub get.options
+
+         select @voc to 12
+         loop
+            readnext voc.id from 12 else exit
+            read voc.rec from @voc, voc.id then
+               dict.path = voc.rec<3>
+               if upcase(voc.rec[1,1]) = 'F' and dict.path # '' then
+                  if not(listindex(compiled.paths, @fm, dict.path)) then
+                     compiled.paths<-1> = dict.path
+                     open 'DICT', voc.id to dict.f then
+                        display.file.name = voc.id
+                        gosub compile.all
+                        close dict.f
+                     end
+                  end
+               end
+            end
+         repeat
+
+
+      case 1                       ;* Compile specific file
+         * Open the file
+
+         file.to.open = file.name
+         begin case
+         case upcase(field(file.to.open, ' ', 1)) = 'DATA'
+            call @parser(PARSER$MFILE, token.type, file.name, keyword)
+            if token.type = PARSER$END then stop sysmsg(2102) ;* File name required
+            file.to.open = file.name
+
+         case upcase(field(file.to.open, ' ', 1)) # 'DICT'
+            file.to.open = 'DICT ' : field(file.to.open, ',', 1)
+         end case
+
+         open file.to.open to dict.f else
+            open upcase(file.to.open) to dict.f else
+               @system.return.code = -status()
+               stop sysmsg(2021, file.name) ;* File %1 not found
+            end
+
+            file.name = upcase(file.name)
+         end
+
+         * Look for record ids
+
+         loop
+            call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+         while token.type # PARSER$END
+            begin case
+               case keyword = KW$NO.PAGE
+                  void @(0,0)
+
+               case keyword = KW$NO.QUERY
+                  no.query = @true
+
+               case 1
+                  id<-1> = token      ;* Add record id to source list
+            end case
+         repeat
+
+         begin case
+            case id <> ''                  ;* We have some ids to use
+               loop
+                  remove itype.name from id setting more
+                  gosub compile
+               while more
+               repeat
+
+            case selectinfo(0, SL$ACTIVE)  ;* List 0 is active
+               readnext itype.name then
+                  if not(no.query) and not(option(OPT.NO.SEL.LIST.QUERY)) then
+                     loop
+                        display sysmsg(2050, itype.name) :  ;* Use active select list (First item 'xx')?
+                        prompt ""
+                        input reply
+
+                        if upcase(reply[1,1]) = "N" then
+                           clearselect
+                           stop
+                        end
+
+                     until upcase(reply[1,1]) = "Y"
+                     repeat
+                  end
+               end
+
+               loop
+                  gosub compile
+                  readnext itype.name else exit
+               repeat
+
+            case 1                         ;* Compile all I-types
+               gosub compile.all
+         end case
+   end case
+  
+   if errors then @system.return.code = -3
+   else @system.return.code = 0
+   
+   return
+
+* ======================================================================
+* compile.all - Compile all I-types in open dictionary
+
+compile.all:
+   select dict.f to 11
+   loop
+      readnext itype.name from 11 else exit
+      read itype.rec from dict.f,itype.name then
+         type = upcase(itype.rec[1,1])
+         begin case
+            case type = 'C' or type = 'I'
+               if display.file.name # '' then
+                  display
+                  display display.file.name
+                  display.file.name = ''
+               end
+               gosub compile
+
+            case (type = 'A' or type = 'S') and itype.rec<8> # ''
+               if display.file.name # '' then
+                  display
+                  display display.file.name
+                  display.file.name = ''
+               end
+               gosub compile
+         end case
+      end
+   repeat
+
+   return
+
+*****************************************************************************
+* COMPILE  -  Compile an individual I-type
+
+compile:
+   * Read source record
+
+   readu itype.rec from dict.f, itype.name else
+      release dict.f, itype.name
+      errors += 1
+      display sysmsg(2811, itype.name) ;* Source record 'xx' not found
+      return
+   end
+
+   type = upcase(itype.rec[1,1])
+   begin case
+      case type = 'A' or type = 'S'
+         if itype.rec<DICT.A.CORRELATIVE> = '' then goto no.source
+         
+      case type = 'I'
+         if trimf(trimb(itype.rec<DICT.ITYPE.SOURCE>)) = '' then goto no.source
+
+      case type = 'C'
+         if trimf(trimb(itype.rec<DICT.ITYPE.SOURCE>)) = '' then goto no.source
+
+      case 1
+         release dict.f, itype.name
+         display sysmsg(2974, itype.name) ;* Record 'xx' is not an C or I-type
+         errors += 1
+         return
+   end case
+
+   display "Compiling " : itype.name
+
+   itype.rec = field(itype.rec, @fm, 1, DICT.ITYPE.OBJECT - 1)
+   writeu itype.rec to dict.f, itype.name
+
+   call $dcomp(dict.f,
+               itype.name,         ;* Dict record id
+               itype.rec,
+               z,                  ;* I-type format
+               z,                  ;* I-type conversion
+               z,                  ;* I-type S/M
+               z,                  ;* I-type association
+               z,                  ;* I-type constant
+               1)                  ;* Recursion depth
+
+   if itype.rec<DICT.ITYPE.OBJECT> = '' then goto compilation.error
+
+   write itype.rec to dict.f, itype.name
+
+   return
+
+no.source:
+   release dict.f, itype.name
+   display sysmsg(2975, itype.name) ;* Record 'xx' has no expression
+   errors += 1
+   return
+
+compilation.error:
+   release dict.f, itype.name
+   display sysmsg(2976, itype.name) ;* Compilation error in 'xx'
+   errors += 1
+   return
+
+* ======================================================================
+
+get.options:
+   loop
+      call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   while token.type # PARSER$END
+      begin case
+         case keyword = KW$NO.PAGE
+            void @(0,0)
+
+         case keyword = KW$NO.QUERY
+            no.query = @true
+
+         case 1
+            stop sysmsg(2018, token) ;* Unexpected token (xx)
+      end case
+   repeat
+
+   return
+
+end
+
+* END-CODE

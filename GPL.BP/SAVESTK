@@ -1,0 +1,135 @@
+* SAVESTK
+* SAVE.STACK and GET.STACK commands
+* Copyright (c) 2002 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 18 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    SAVE.STACK [stack.name]         @option = 1
+*    GET.STACK [stack.name]          @option = 2
+*
+* stack.name = name for saved stack.  Prompts if omitted.
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+
+$internal
+program $save.stack
+$catalog $savestk
+
+$include syscom.h
+$include err.h
+$include parser.h
+
+
+   parser = "!PARSER"
+
+   @system.return.code = -ER$ARGS    ;* Preset for command format errors
+
+   begin case
+      case @option = 1     ;* SAVE.STACK
+         saving = @true
+
+      case @option = 2     ;* GET.STACK
+         saving = @false
+
+      case 1
+         stop "Invalid dispatch information in VOC record"
+   end case
+
+* ---------------  Step 1 -  Parse the command
+
+   call @parser(parser$reset, 0, @sentence, 0)
+   call @parser(parser$get.token, token.type, token, keyword) ;* Verb
+   call @parser(parser$get.token, token.type, stack.name, keyword)
+
+   * Get stack name
+
+   if token.type = PARSER$END then
+      display sysmsg(6460) :  ;* Stack name:
+      prompt ""
+      input stack.name
+      stack.name = trimf(trimb(stack.name))
+      if stack.name = '' then return
+   end else
+      if stack.name = '' then
+         stop sysmsg(2111) ;* Null record name not allowed
+      end
+      call @parser(parser$get.token, token.type, token, keyword)
+   end
+
+   * Check no further information in command
+
+   if token.type # PARSER$END then stop sysmsg(2018) ;* Unexpected token (xx)
+
+* ---------------  Step 2 -  Create the save list file if necessary
+
+   open "$SAVEDLISTS" to saved.lists.file else
+      @system.return.code = -status()
+
+      if status() # ER$NVR then
+         stop sysmsg(3248, status()) ;*  Error %1 opening $SAVEDLISTS
+      end
+
+      create.file "$SVLISTS" dynamic on error
+         stop sysmsg(3249, status()) ;* Error xx creating $SAVEDLISTS
+      end
+
+      voc.rec = "F" : @fm : "$SVLISTS"
+      recordlocku @voc, "$SAVEDLISTS"
+      write voc.rec to @voc, "$SAVEDLISTS"
+
+      display sysmsg(3250) ;* Created $SAVEDLISTS
+
+      open "$SAVEDLISTS" to saved.lists.file else
+         stop sysmsg(3248, status()) ;*  Error %1 opening $SAVEDLISTS
+      end
+   end
+
+* ---------------  Step 3 -  Save or restore the command stack
+
+   if saving then
+      recordlocku saved.lists.file, stack.name
+      write command.stack to saved.lists.file, stack.name on error
+         @system.return.code = -status()
+         stop sysmsg(6461, status()) ;* Error xx writing command stack record
+      end
+
+      display sysmsg(6462, stack.name) ;* Command stack xx saved in $SAVEDLISTS
+   end else
+      read command.stack from saved.lists.file, stack.name else
+         @system.return.code = -status()
+         stop sysmsg(6463, status()) ;* Error xx reading command stack record
+      end
+
+      display sysmsg(6464, stack.name) ;* Command stack restored from xx
+   end
+
+   @system.return.code = 0
+
+   return
+end
+
+* END-CODE

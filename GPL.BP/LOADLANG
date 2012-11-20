@@ -1,0 +1,137 @@
+* LOADLANG
+* LOADLANG - LOAD.LANGAUGE command
+* Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 15 Feb 07  2.4-20 Corrected to use prefix on records when writing.
+* 16 Sep 05  2.2-11 Use OPENPATH so we can remove VOC entry for MESSAGES.
+* 19 Oct 04  2.0-5 New program.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    LOAD.LANGUAGE pathname
+*
+* LOAD.LANGUAGE pathname
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program loadlang
+$catalogue $LOADLANG
+
+$include parser.h
+$include err.h
+$include int$keys.h
+
+   parser = "!PARSER"
+
+   @system.return.code = -ER$ARGS     ;* Preset for argument errors
+
+   call @parser(parser$reset, 0, @sentence, 0)
+   call @parser(parser$get.token, token.type, token, keyword) ;* Verb
+
+   * Get pathname of message text file
+
+   call @parser(parser$get.token, token.type, path, keyword)
+
+   call @parser(parser$get.token, token.type, token, keyword)
+   if token.type # PARSER$END then
+      stop sysmsg(2018, token) ;* Unexpected token (xx)
+   end
+
+   openseq path to seq.f else stop sysmsg(1427, path) ;* Cannot open %1
+
+   msg.path = @qmsys:@ds:'MESSAGES'
+   openpath msg.path to msg.f else stop sysmsg(1427, msg.path) ;* Cannot open %1
+
+   * Process file header
+
+   loop
+      readseq msg from seq.f else exit
+      msg = trimb(msg)
+
+   until msg matches '4N 0X'
+
+      if msg[1,7] = 'PREFIX=' then
+         pfx = upcase(msg[8,3])
+         if not(pfx matches '0A') then stop sysmsg(3340, pfx) ;* Invalid language code (%1)
+      end
+
+      if msg[1,8] = 'VERSION=' then
+         * Load a pseudo-message (it can be used as one) containing the
+         * release level to which these messages apply.
+
+         id = pfx:'0000'
+         recordlocku msg.f, id
+         write msg[9,99] to msg.f, id
+      end
+   repeat
+
+   * As a sanity check for incorrect message numbering, the message text
+   * file must be in ascending message number order. We check this as we
+   * go, reporting an error if we find anything wrong.
+
+   last = 0     ;* Last seen message number
+
+   loop
+      * Concatenate multi-field messages
+
+      loop
+      while msg[1] = '\'
+         readseq s from seq.f else exit
+         msg = msg[1, len(msg)-1] : trimb(s)
+      repeat
+
+      * Replace trailing ~ characters with spaces
+
+      i = len(msg)
+      loop
+      while i > 0
+      while msg[i,1] = '~'
+         msg[i,1] = ' '
+         i -= 1
+      repeat
+
+      * Replace \F (uppercase) by field mark
+
+      msg = change(msg, '\F', @fm)
+
+      if msg matches '4N 0X' then
+         id = field(msg, ' ', 1)
+         if id <= last then crt sysmsg(3342, id) ;* Sequence error at %1
+
+         text = field(msg, ' ', 2, 9999)
+
+         recordlocku msg.f, pfx:id
+         write text to msg.f, pfx:id
+
+         last = id
+      end
+
+      readseq msg from seq.f else exit
+      msg = trimb(msg)
+   repeat
+
+end
+
+* END-CODE

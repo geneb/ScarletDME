@@ -1,0 +1,10 @@
+Menu Action Sentence
+The Action text is the sentence to be executed for the menu option.  This may
+be any sentence that could be executed from the command prompt and may include
+inline prompts.
+
+Terminate the action text with a semicolon to cause the menu processor to
+issue a "Press return to continue" prompt when the command has completed.
+
+A menu text item that has no associated Action is treated as a sub-heading and
+is displayed aligned with the option numbers

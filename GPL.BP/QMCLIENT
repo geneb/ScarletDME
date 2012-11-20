@@ -1,0 +1,876 @@
+* QMCLIENT
+* QMClient class module for use by QMBasic programs.
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 06 Apr 09 gwb Dropped the "bp" specifier in the line that includes
+*               int$keys.h - it was preventing the program from compiling.
+*
+* 03 Jul 06  2.4-6 New module
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* bool = obj->connect(host, port, username, password, account)
+* obj->call(subr{, args})
+* obj->clearselect(listno)
+* obj->close(fno)
+* bool = obj->connected
+* obj->delete(fno, id)
+* obj->deleteu(fno, id)
+* obj->disconnect
+* obj->endcommand
+* str = obj->execute(cmd)
+* bool = obj->logto(acc)
+* obj->markmapping(fno, state)
+* fno = obj->open(name)
+* str = obj->read(fno, id, err)
+* str = obj->readl(fnom id, wait, err)
+* str = obj->readlist(listno, err)
+* str = obj->readnext(listno, err)
+* str = obj->readu(fno, id, wait, err)
+* obj->recordlock(fno, id, update, wait)
+* obj->release(fno, id)
+* str = obj->respond(response, err)
+* obj->select(fno, listno)
+* obj->selectindex(fno, indexname, indexvalue, listno)
+* str = obj->selectleft(fno, indexname, listno)
+* str = obj->selectright(fno, indexname, listno)
+* obj->setleft(fno, indexname)
+* obj->setright(fno, indexname)
+* obj->write(fno, id, data)
+* obj->writeu(fno, id, data)
+*
+* Public properties
+* obj->ServerStatus
+* obj->debug = state
+* str = obj->error
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+class qmclient
+$catalogue !qmclient
+
+$include keys.h
+$include err.h
+$include int$keys.h
+
+$define CX.DISCONNECTED   0    ;* No session active
+$define CX.CONNECTED      1    ;* Session active but not...
+$define CX.EXECUTING      2    ;* ...executing command (implies connected)
+
+$define SrvrQuit          1    ;* Disconnect
+$define SrvrGetError      2    ;* Get extended error text
+$define SrvrAccount       3    ;* Set account
+$define SrvrOpen          4    ;* Open file
+$define SrvrClose         5    ;* Close file
+$define SrvrRead          6    ;* Read record
+$define SrvrReadl         7    ;* Read record with shared lock
+$define SrvrReadlw        8    ;* Read record with shared lock, waiting
+$define SrvrReadu         9    ;* Read record with exclusive lock
+$define SrvrReaduw       10    ;* Read record with exclusive lock, waiting
+$define SrvrSelect       11    ;* Select file
+$define SrvrReadNext     12    ;* Read next id from select list
+$define SrvrClearSelect  13    ;* Clear select list
+$define SrvrReadList     14    ;* Read a select list
+$define SrvrRelease      15    ;* Release lock
+$define SrvrWrite        16    ;* Write record
+$define SrvrWriteu       17    ;* Write record, retaining lock
+$define SrvrDelete       18    ;* Delete record
+$define SrvrDeleteu      19    ;* Delete record, retaining lock
+$define SrvrCall         20    ;* Call catalogued subroutine
+$define SrvrExecute      21    ;* Execute command
+$define SrvrRespond      22    ;* Respond to request for input
+$define SrvrEndCommand   23    ;* Abort command
+$define SrvrLogin        24    ;* Network login
+$define SrvrLocalLogin   25    ;* QMLocal login
+$define SrvrSelectIndex  26    ;* Select index
+$define SrvrEnterPackage 27    ;* Enter a licensed package
+$define SrvrExitPackage  28    ;* Exit from a licensed package
+$define SrvrOpenQMNet    29    ;* Open QMNet file
+$define SrvrLockRecord   30    ;* Lock a record
+$define SrvrClearfile    31    ;* Clear file
+$define SrvrFilelock     32    ;* Get file lock
+$define SrvrFileunlock   33    ;* Release file lock
+$define SrvrRecordlocked 34    ;* Test lock
+$define SrvrIndices1     35    ;* Fetch information about indices
+$define SrvrIndices2     36    ;* Fetch information about specific index
+$define SrvrSelectList   37    ;* Select file and return list
+$define SrvrSelectIndexv 38    ;* Select index, returning indexed values
+$define SrvrSelectIndexk 39    ;* Select index, returning keys for indexed value
+$define SrvrFileinfo     40    ;* FILEINFO()
+$define SrvrReadv        41    ;* READV and variants
+$define SrvrSetLeft      42    ;* Align index position to left
+$define SrvrSetRight     43    ;* Align index position to right
+$define SrvrSelectLeft   44    ;* Move index position to left
+$define SrvrSelectRight  45    ;* Move index position to right
+$define SrvrMarkMapping  46    ;* Enable/disable mark mapping
+
+$define SV$OK             0    ;* Action successful
+$define SV$ON.ERROR       1    ;* Action took ON ERROR clause
+$define SV$ELSE           2    ;* Action took ELSE clause
+$define SV$ERROR          3    ;* Action failed. Error text available
+$define SV$LOCKED         4    ;* Took locked clause
+$define SV$PROMPT         5    ;* Server requesting input
+
+
+deffun read.record(mode, fno, id, err) local
+deffun message.pair(pkt.type, pkt) local
+deffun get.response() local
+deffun write.packet(pkt.type, pkt) local
+deffun read.packet() local
+deffun context.error(expected) local
+
+private context,        ;* State
+        skt,            ;* Socket for connection
+        server.error    ;* Returned error code from server
+
+public debugging,       ;* Debug mode
+       ServerStatus,    ;* Returned status from server
+       error            ;* Error text
+
+* ======================================================================
+
+public subroutine create.object
+   error = ''
+   context = CX.DISCONNECTED
+   debugging = @false
+end
+
+* ======================================================================
+
+public subroutine destroy.object
+   if context # CX.DISCONNECTED then gosub disconnect.session
+end
+
+* ======================================================================
+* CALL()
+
+public subroutine call(subr, ...)
+   if context.error(CX.CONNECTED) then return
+
+   if len(subr) < 1 or len(subr) > MAX.CALL.NAME.LEN then
+      abort 'Illegal subroutine name in call'
+   end
+
+   argc = arg.count() - 1
+   if argc > 20 then
+      abort 'Illegal argument count in call'
+   end
+
+   * Construct outgoing packet
+
+   * Subroutine name
+   pkt = iconv(len(subr), 'ISL') : subr
+   if rem(len(subr),2) then pkt := char(0)
+
+   * Argument count
+   pkt := iconv(argc, 'ISL')
+
+   * Arguments
+   for i = 1 to argc
+      if assigned(arg(i+1)) then
+         s = arg(i + 1) : ''
+      end else
+         s = ''
+      end
+      pkt := iconv(len(s), 'ILL') : s
+      if rem(len(s), 2) then pkt := char(0)
+   next i
+
+   * Execute subroutine
+   if message.pair(SrvrCall, pkt) then
+      * Process any returned arguments
+      loop
+      while in.pkt # ''
+         i = oconv(in.pkt[1,2], 'ISL')   ;* Argument number
+         n = oconv(in.pkt[3,4], 'ILL')   ;* Length
+         set.arg i + 1, in.pkt[7,n]
+         if rem(n, 2) then n += 1
+         in.pkt = in.pkt[7+n,999999]
+      repeat
+   end
+end
+
+* ======================================================================
+* CLEARSELECT(listno)
+
+public subroutine clearselect(listno)
+   if not(context.error(CX.CONNECTED)) then
+      pkt = iconv(listno, 'ISL')
+      if message.pair(SrvrClearSelect, pkt) then
+         if server.error = SV$ON.ERROR then
+            abort 'CLEARSELECT generated an abort event'
+         end
+      end
+   end
+end
+
+* ======================================================================
+* CLOSE(fno)
+
+public subroutine close(fno)
+   if not(context.error(CX.CONNECTED)) then 
+      pkt = iconv(fno, 'ISL')
+      if message.pair(SrvrClose, pkt) then
+         if server.error = SV$ON.ERROR then
+            abort 'CLOSE generated an abort event'
+         end
+      end
+   end
+end
+
+* ======================================================================
+* CONNECT(host, port, username, password, account)
+
+public function connect(host, (port), username, password, account)
+   error = ''
+
+   if len(host) = 0 then
+      error = 'Invalid host name'
+      return @false
+   end
+
+   if len(username) = 0 or len(username) > MAX.USERNAME.LEN then
+      error = 'Invalid user name'
+      return @false
+   end
+
+   * Create outgoing packet
+
+   * User name
+   pkt = iconv(len(username), 'ISL')
+   pkt := username
+   if rem(len(username), 2) then pkt := char(0)
+
+   * Password
+   pkt := iconv(len(password), 'ISL')
+   pkt := password
+   if rem(len(password), 2) then pkt := char(0)
+
+   * Open connection to server
+   if port < 0 then port = 4243
+   skt = open.socket(host, port, SKT$BLOCKING)
+   if status() then return @false
+
+   * Wait for an Ack to come back before continuing
+   loop
+      until read.socket(skt, 1, SKT$BLOCKING, 0) = char(6)
+   repeat
+
+   * Send authentication packet
+   pkt.type = SrvrLogin
+   if not(message.pair(pkt.type, pkt)) then
+      close.socket skt
+      return @false
+   end
+
+   if server.error # SV$OK then
+      if server.error = SV$ON.ERROR then error = in.pkt
+      close.socket skt
+      return @false
+   end
+
+   * Now attempt to attach to required account
+   if not(message.pair(SrvrAccount, account)) then
+      close.socket skt
+      return @false
+   end
+
+   context = CX.CONNECTED
+
+   return @true
+end
+
+* ======================================================================
+* CONNECTED
+
+public function connected()
+   return context # CX.DISCONNECTED
+end
+
+* ======================================================================
+* DELETE
+
+public subroutine delete(fno, id)
+   if not(context.error(CX.CONNECTED)) then
+      pkt = iconv(fno, 'ISL')
+      if len(id) < 1 or len(id) > MAX.ID.LEN then
+         server.error = SV$ON.ERROR
+         ServerStatus = ER$IID
+      end else
+         pkt := id
+         if not(message.pair(SrvrDelete, pkt)) then return
+      end
+
+      if server.error = SV$ON.ERROR then
+         abort 'DELETE generated an abort event'
+      end
+   end
+end
+
+* ======================================================================
+* DELETEU
+
+public subroutine deleteu(fno, id)
+   if not(context.error(CX.CONNECTED)) then
+      pkt = iconv(fno, 'ISL')
+      if len(id) < 1 or len(id) > MAX.ID.LEN then
+         server.error = SV$ON.ERROR
+         ServerStatus = ER$IID
+      end else
+         pkt := id
+         if not(message.pair(SrvrDeleteu, pkt)) then return
+      end
+
+      if server.error = SV$ON.ERROR then
+         abort 'DELETE generated an abort event'
+      end
+   end
+end
+
+* ======================================================================
+* DISCONNECT
+
+public subroutine disconnect
+   if context # CX.DISCONNECTED then gosub disconnect.session
+end
+
+* ======================================================================
+* ENDCOMMAND
+
+public subroutine endcommand
+   if not(context.error(CX.EXECUTING)) then
+      if message.pair(SrvrEndCommand, '') then
+         context = CX.CONNECTED
+      end
+   end
+end
+
+* ======================================================================
+* EXECUTE
+
+public function execute(cmd, err)
+   reply = ''
+   if not(context.error(CX.CONNECTED)) then
+      if message.pair(SrvrExecute, cmd) then
+         begin case
+            case server.error = SV$PROMPT
+               context = CX.EXECUTING
+               reply = in.pkt
+            case server.error = SV$OK
+               reply = in.pkt
+            case server.error = SV$ON.ERROR
+               abort 'EXECUTE generated an abort event'
+         end case
+      end
+   end
+
+   err = server.error
+   return reply
+end
+
+* ======================================================================
+* LOGTO
+
+public function logto(acc)
+   if context.error(CX.CONNECTED) then return @false
+
+   if len(acc) < 1 or len(acc) > MAX.ACCOUNT.NAME.LEN then
+      server.error = SV$ELSE
+      ServerStatus = ER$BAD.NAME
+   end else
+      if not(message.pair(SrvrAccount, acc)) then return @false
+
+      begin case
+         case server.error = SV$LOCKED ; return @false
+         case server.error = SV$ELSE   ; return @false
+         case server.error = SV$ERROR  ; return @false
+         case server.error = SV$ON.ERROR
+            abort 'LOGTO generated an abort event'
+      end case
+   end
+   return @true
+end
+
+* ======================================================================
+* MARK.MAPPING
+
+public subroutine markmapping(fno, state)
+   if not(context.error(CX.CONNECTED)) then
+      pkt = iconv(fno, 'ISL')
+      pkt := iconv(state, 'ISL')
+      void message.pair(SrvrMarkMapping, pkt)
+   end
+end
+
+* ======================================================================
+* OPEN
+
+public function open(name)
+   if not(context.error(CX.CONNECTED)) then
+      if message.pair(SrvrOpen, name) then
+         if server.error = SV$OK then return oconv(in.pkt[1,2], 'ISL')
+      end
+   end
+   return 0
+end
+
+* ======================================================================
+* READ
+
+public function read(fno, id, err)
+   return read.record(SrvrRead, fno, id, err)
+end
+
+* ======================================================================
+* READL
+
+public function readl(fno, id, wait, err)
+   return read.record(if wait then SrvrReadlw else SrvrReadl, fno, id, err)
+end
+
+* ======================================================================
+* READLIST
+
+public function readlist(listno, err)
+   err = 0
+   list = ''
+   if not(context.error(CX.CONNECTED)) then
+      pkt = iconv(listno, 'ISL')
+      if message.pair(SrvrReadList, pkt) then
+         begin case
+            case server.error = SV$OK
+               list = in.pkt
+            case server.error = SV$ON.ERROR
+               abort 'READLIST generated an abort event'
+         end case
+         err = server.error
+      end
+   end
+   return list
+end
+
+* ======================================================================
+* READNEXT
+
+public function readnext(listno, err)
+   err = 0
+   list = ''
+   if not(context.error(CX.CONNECTED)) then
+      pkt = iconv(listno, 'ISL')
+      if message.pair(SrvrReadNext, pkt) then
+         begin case
+            case server.error = SV$OK
+               list = in.pkt
+            case server.error = SV$ON.ERROR
+               abort 'READNEXT generated an abort event'
+         end case
+         err = server.error
+      end
+   end
+   return list
+end
+
+* ======================================================================
+* READU
+
+public function readu(fno, id, wait, err)
+   return read.record(if wait then SrvrReaduw else SrvrReadu, fno, id, err)
+end
+
+* ======================================================================
+* RECORDLOCK
+
+public subroutine recordlock(fno, id, update, wait)
+   if not(context.error(CX.CONNECTED)) then
+      if len(id) > MAX.ID.LEN then
+         server.error = SV$ON.ERROR
+         ServerStatus = ER$IID
+      end else
+         flags = if update then 1 else 0
+         if wait then flags += 2
+         pkt = iconv(fno, 'ISL')
+         pkt := iconv(flags, 'ISL')
+         pkt := id
+         if not(message.pair(SrvrLockRecord, pkt)) then
+            server.error = SV$ON.ERROR
+         end
+      end
+
+      if server.error = SV$ON.ERROR then
+         abort 'RECORDLOCK generated an abort event'
+      end
+   end
+end
+
+* ======================================================================
+* RELEASE
+
+public subroutine release(fno, id)
+   if not(context.error(CX.CONNECTED)) then
+      pkt = iconv(fno, 'ISL')
+      if fno then pkt := id    ;* Not releasing all locks
+      else if len(id) > MAX.ID.LEN then
+         server.error = SV$ON.ERROR
+         ServerStatus = ER$IID
+         goto release.error
+      end
+
+      if not(message.pair(SrvrRelease, pkt)) then return
+
+release.error:
+      if server.error = SV$ON.ERROR then
+         abort 'RELEASE generated an abort event'
+      end
+   end
+end
+
+* ======================================================================
+* RESPOND
+
+public function respond(response, err)
+   reply = ''
+   if not(context.error(CX.CONNECTED)) then
+      if message.pair(SrvrRespond, response) then
+         begin case
+            case server.error = SV$PROMPT
+               context = CX.CONNECTED
+               reply = in.pkt
+            case server.error = SV$OK
+               reply = in.pkt
+            case server.error = SV$ON.ERROR
+               context = CX.CONNECTED
+               abort 'EXECUTE generated an abort event'
+         end case
+      end
+   end
+
+   err = server.error
+   return reply
+
+end
+
+* ======================================================================
+* SELECT
+
+public subroutine select(fno, listno)
+   if not(context.error(CX.CONNECTED)) then
+      pkt = iconv(fno, 'ISL')
+      pkt := iconv(listno, 'ISL')
+      if message.pair(SrvrSelect, pkt) then
+         if server.error = SV$ON.ERROR then
+            abort 'SELECT generated an abort event'
+         end
+      end
+   end
+end
+
+* ======================================================================
+* SELECTINDEX
+
+public subroutine selectindex(fno, indexname, indexvalue, listno)
+   if not(context.error(CX.CONNECTED)) then
+      pkt = iconv(fno, 'ISL')
+      pkt := iconv(listno, 'ISL')
+      pkt := iconv(len(indexname), 'ISL')
+      pkt := indexname
+      if rem(len(indexname),2) then pkt := char(0)
+      pkt := iconv(len(indexvalue), 'ISL')
+      pkt := indexvalue
+      if rem(len(indexvalue),2) then pkt := char(0)
+
+      if message.pair(SrvrSelectIndex, pkt) then
+         if server.error = SV$ON.ERROR then
+            abort 'SELECTINDEX generated an abort event'
+         end
+      end
+   end
+end
+
+* ======================================================================
+* SELECTLEFT
+
+public function selectleft(fno, indexname, listno)
+   reply = ''
+   if not(context.error(CX.CONNECTED)) then
+      pkt = iconv(fno, 'ISL')
+      pkt := iconv(listno, 'ISL')
+      pkt := indexname
+      if message.pair(SrvrSelectLeft, pkt) then
+         begin case
+            case server.error = SV$OK
+               reply = in.pkt
+            case server.error = SV$ON.ERROR
+               abort 'SELECTLEFT generated an abort event'
+         end case
+      end      
+   end
+   return reply
+end
+
+* ======================================================================
+* SELECTRIGHT
+
+public function selectright(fno, indexname, listno)
+   reply = ''
+   if not(context.error(CX.CONNECTED)) then
+      pkt = iconv(fno, 'ISL')
+      pkt := iconv(listno, 'ISL')
+      pkt := indexname
+      if message.pair(SrvrSelectRight, pkt) then
+         begin case
+            case server.error = SV$OK
+               reply = in.pkt
+            case server.error = SV$ON.ERROR
+               abort 'SELECTRIGHT generated an abort event'
+         end case
+      end      
+   end
+   return reply
+end
+
+* ======================================================================
+* SETLEFT
+
+public subroutine setleft(fno, indexname)
+   if not(context.error(CX.CONNECTED)) then
+      pkt = iconv(fno, 'ISL')
+      pkt := indexname
+      if message.pair(SrvrSetLeft, pkt) then
+         if server.error = SV$ON.ERROR then
+            abort 'SETLEFT generated an abort event'
+         end
+      end      
+   end
+end
+
+* ======================================================================
+* SETRIGHT
+
+public subroutine setright(fno, indexname)
+   if not(context.error(CX.CONNECTED)) then
+      pkt = iconv(fno, 'ISL')
+      pkt := indexname
+      if message.pair(SrvrSetRight, pkt) then
+         if server.error = SV$ON.ERROR then
+            abort 'SETRIGHT generated an abort event'
+         end
+      end      
+   end
+end
+
+* ======================================================================
+* WRITE
+
+public subroutine write(fno, id, data)
+   if not(context.error(CX.CONNECTED)) then
+      if len(id) < 1 or len(id) > MAX.ID.LEN then
+         server.error = SV$ON.ERROR
+         ServerStatus = ER$IID
+         abort 'Illegal record id'
+      end
+
+      pkt = iconv(fno, 'ISL')
+      pkt := iconv(len(id), 'ISL')
+      pkt := id : data
+
+      if message.pair(SrvrWrite, pkt) then
+         if server.error = SV$ON.ERROR then
+            abort 'WRITE generated an abort event'
+         end
+      end
+   end
+end
+
+* ======================================================================
+* WRITEU
+
+public subroutine writeu(fno, id, data)
+   if not(context.error(CX.CONNECTED)) then
+      if len(id) < 1 or len(id) > MAX.ID.LEN then
+         server.error = SV$ON.ERROR
+         ServerStatus = ER$IID
+         abort 'Illegal record id'
+      end
+
+      pkt = iconv(fno, 'ISL')
+      pkt := iconv(len(id), 'ISL')
+      pkt := id : data
+
+      if message.pair(SrvrWriteu, pkt) then
+         if server.error = SV$ON.ERROR then
+            abort 'WRITEU generated an abort event'
+         end
+      end
+   end
+end
+
+* ======================================================================
+
+local function read.record(mode, fno, id, err)
+   rec = ''
+   err = -1
+   if context.error(CX.CONNECTED) then goto exit.read
+
+   if len(id) < 1 or len(id) > MAX.ID.LEN then
+      ServerStatus = ER$IID
+      err = SV$ON.ERROR
+   end else
+      pkt = iconv(fno, 'ISL')
+      pkt := id
+      if message.pair(mode, pkt) then
+         begin case
+            case server.error = SV$OK
+               rec = in.pkt
+            case server.error = SV$ON.ERROR
+               abort 'READ generated an abort event'
+         end case
+         err = server.error
+      end
+   end
+
+exit.read:
+   return rec
+end
+
+* ======================================================================
+
+local function message.pair(pkt.type, pkt)
+   if (write.packet(pkt.type, pkt)) then
+      return get.response()
+   end
+   return @false
+end
+
+* ======================================================================
+
+local function get.response()
+ if not(read.packet()) then return @false
+
+ if server.error = SV$ERROR then
+    error = 'Unable to retrieve error text'
+    void write.packet(SrvrGetError, '')
+    if read.packet() then error = in.pkt
+    return @false
+ end
+
+ return @true
+end
+
+* ======================================================================
+
+local function write.packet(pkt.type, pkt)
+   packet = iconv(len(pkt) + 6, 'ILL')
+   packet := iconv(pkt.type, 'ISL')
+   packet := pkt
+
+   if debugging then
+      display 'Write packet: type ' : pkt.type : ', ' : len(pkt) : ' bytes.'
+   end
+
+   void write.socket(skt, packet, SKT$BLOCKING, 0)
+   return (status() = 0)
+end
+
+* ======================================================================
+
+local function read.packet()
+   * Read packet header
+
+   pkt.header = ''
+   loop
+      n = 10 - len(pkt.header)
+   while n
+      s = read.socket(skt, n, SKT$BLOCKING, 0)
+      if status() then return @false
+      pkt.header := s
+   repeat
+
+   if debugging then
+      display 'Raw header = ' : oconv(pkt.header, 'MX0C')
+   end
+
+   * Extract header data
+
+   pkt.bytes = oconv(pkt.header[1,4], 'ILL')
+   server.error = oconv(pkt.header[5,2], 'ISL')
+   ServerStatus = oconv(pkt.header[7,4], 'ILL')
+
+   * Read packet data
+
+   n = pkt.bytes - 10
+   if debugging then
+      display 'Incoming packet: ' : n : ' data bytes. Error ' : server.error :', Status ' : ServerStatus
+   end
+
+   in.pkt = ''
+   loop
+   while n
+      s = read.socket(skt, n, SKT$BLOCKING, 0)
+      if status() then return @false
+      if debugging then
+         display len(s) : ': ' : oconv(s, 'MX0C')
+      end
+      in.pkt := s
+      n -= len(s)
+   repeat
+
+   return @true
+end
+
+* ======================================================================
+
+local subroutine disconnect.session
+   void write.packet(SrvrQuit, '')
+   close.socket skt
+   context = CX.DISCONNECTED
+   return
+end
+
+* ======================================================================
+
+local function context.error(expected)
+   if context # expected then
+      begin case
+         case context = CX.DISCONNECTED
+            display 'A server function has been attempted when no connection has been established'
+         case context = CX.CONNECTED
+            begin case
+               case expected = CX.DISCONNECTED
+                  display 'A function has been attempted which is not allowed when a connection has been established'
+               case expected CX.EXECUTING
+                  display 'Cannot send a response or end a command when not executing a server command'
+            end case
+         case context = CX.EXECUTING
+            display 'A new server function has been attempted while executing a server command'
+         case 1
+            display 'A function has been attempted in the wrong context'
+      end case
+      return @true
+   end
+
+   return @false
+end
+end
+
+* END-CODE

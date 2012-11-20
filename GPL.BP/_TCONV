@@ -1,0 +1,123 @@
+* _TCONV
+* T conversion code.
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 04 Aug 06  2.4-11 0509 Fix to allow space between T and filename used trimb()
+*                   where it should have used trimf().
+* 24 Jul 06  2.4-10 Allow space between T and the filename.
+* 04 May 05  2.1-13 0350 Behaviour when vloc was omitted was incorrect.
+* 03 Nov 04  2.0-9 0281 Input and output field numbers were swapped. Also, the
+*                  rule for returning source data if field number is omitted
+*                  should apply to both directions.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* T{DICT }filename;c{v};{i};{o}
+*
+* DICT can be replaced by * (no space after)
+* Allow quoted file name
+* v = value posn. If omitted, returns whole field with marks changed to spaces
+* i = field posn for input conv. If omitted, input conv returns original data
+* o = field posn for output conv. If omitted, output conv returns original data
+*
+* c = C, V, X, I, O
+*     I => V for input, C for output
+*     O => C for input, V for output
+*
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+$no.symbols
+$no.xref
+$recursive
+
+subroutine tconv(source, conv, oconv)
+
+   * Extract file name
+
+   fname = field(conv, ';', 1)
+   begin case
+       case fname[1,1] = '*'
+          file = 'DICT '
+          fname = fname[2,999]
+
+       case fname[1,5] = 'DICT '
+          file = 'DICT '
+          fname = fname[6,999]
+
+       case 1
+          file = ''
+   end case
+
+   if index(\'"\, fname[1,1], 1) and fname[1] = fname[1,1] then  ;* Quoted
+      file := fname[2, len(fname)-2]
+   end else
+      file := trimf(fname)   ;* 0509
+   end
+
+   * Extract error code and value position
+
+   code = field(conv, ';', 2)
+   vpos = code[2,999]
+   code = code[1,1]
+
+   begin case
+      case code = 'I'
+         code = if oconv then 'C' else 'V'
+      case code = 'O'
+         code = if oconv then 'V' else 'C'
+   end case
+
+   * Extract field number
+
+   if oconv then
+      fld = field(conv, ';', 4)
+   end else
+      fld = field(conv, ';', 3)
+   end
+
+   if fld = '' then
+      result = source
+      goto exit.tconv
+   end
+
+   result = trans(file, source, fld, code)
+
+   * Apply value position extraction
+
+   if vpos then
+      * 0350 Although the following line does not appear to match quite what
+      * the various manuals say, it does match what D3 does.
+
+      result = result<1,1,vpos>
+   end else
+      result = convert(@vm:@sm, '  ', result)
+   end
+
+exit.tconv:
+   return value result
+end
+
+* END-CODE

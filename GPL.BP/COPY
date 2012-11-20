@@ -1,0 +1,360 @@
+* COPY
+* COPY verb
+* Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 02 Aug 07  2.5-7 Added BINARY option.
+* 10 Aug 05  2.2-7 Added use of NO.SEL.LIST.QUERY option.
+* 21 May 05  2.2-0 0359 Corrected parsing.
+* 28 Mar 05  2.1-11 Use PARSER$MFILE.
+* 13 Oct 04  2.0-5 Use message handler.
+* 01 Oct 04  2.0-3 Minor changes for multifiles.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* COPY FROM [ DICT ] src.file [ TO [ DICT ] tgt.file ] [s1[,t1] [ s2[,t2]]...]
+*                                                      [ ALL                 ]
+*
+* If TO clause is omitted, copy is within source file.
+*
+* Additional options:
+*    OVERWRITING        Overwrite existing records
+*    UPDATING           Copy only if record already exists in target file
+*    REPORTING          Report records copied
+*    DELETING           Delete source record after successful copy
+*    BINARY             Force binary mode copy (one hashed, one directory)
+*
+* @SYSTEM.RETURN.CODE
+*   >=0  Successful - value is number of records copied
+*   -ve  if error
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program $copy
+$catalog $COPY
+
+$include parser.h
+$include syscom.h
+$include syscom err.h
+$include syscom keys.h
+$include int$keys.h
+
+   @system.return.code = -ER$ARGS      ;* Preset for command format errors
+
+   src.portion = ""
+   tgt.portion = ""
+
+   binary = @false
+   copy.all = @false
+   to.file = @false
+   reporting = @false
+   deleting = @false
+   overwriting = @false
+   updating = @false
+   no.query = @false
+
+   src.id = ""                   ;* Source record id's
+   tgt.id = ""                   ;* Target record id's
+
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+
+   * Get source file information
+
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* First argument
+   if keyword # KW$FROM then stop sysmsg(6182) ;* FROM keyword required
+
+   call @parser(PARSER$MFILE, token.type, token, keyword)
+
+   * Check for DICT keyword
+
+   if keyword = KW$DICT then     ;* DICT
+      src.portion = "DICT"
+      call @parser(PARSER$MFILE, token.type, token, keyword)
+   end
+
+   * Fetch file name
+
+   if token.type = PARSER$END then stop sysmsg(6183) ;* Source file name required
+
+   src.file.name = token
+
+   * Open the file
+
+retry.source.file.open:
+   open src.portion, src.file.name to src.file else
+      open src.portion, upcase(src.file.name) to src.file else
+         @system.return.code = -status()
+         stop sysmsg(6184) ;* Source file not found
+      end
+   end
+
+   * Get target information
+
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   if keyword = KW$TO then    ;* TO
+      call @parser(PARSER$MFILE, token.type, token, keyword)
+
+      * Check for DICT keyword
+
+      if keyword = KW$DICT then     ;* DICT
+         tgt.portion = "DICT"
+         call @parser(PARSER$MFILE, token.type, token, keyword)
+      end
+
+      * Fetch file name
+
+      if token.type = PARSER$END then stop sysmsg(6185) ;* Target file name required
+
+      tgt.file.name = token
+
+      * Open the file
+
+retry.target.file.open:
+      open tgt.portion, tgt.file.name to tgt.file else
+         open tgt.portion, upcase(tgt.file.name) to tgt.file else
+            @system.return.code = -status()
+            stop sysmsg(6186) ;* Target file not found
+         end
+      end
+
+      to.file = @true
+
+      call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   end
+
+*-----------------------------------------------------------------------------
+* Process record id's or ALL keyword and option keywords
+
+   loop
+   while token.type # PARSER$END
+      begin case
+         case keyword = KW$ALL
+            if len(src.id) then
+               stop sysmsg(6187) ;* ALL keyword cannot be given with record id's
+            end
+            copy.all = @true
+
+         case keyword = KW$BINARY
+            binary = @true
+
+         case keyword = KW$DELETING
+            deleting = @true
+
+         case keyword = KW$NO.QUERY
+            no.query = @true
+
+         case keyword = KW$OVERWRITING
+            overwriting = @true
+
+         case keyword = KW$REPORTING
+            reporting = @true
+
+         case keyword = KW$UPDATING
+            updating = @true
+
+         case 1
+            * Add record id to source list
+
+            if copy.all then
+               stop sysmsg(6187) ;* ALL keyword cannot be given with record id's
+            end
+
+            src.id<-1> = token
+            default.target = token
+
+            * Examine next token to see if it is a comma
+
+            call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+            if token.type = PARSER$COMMA then
+               call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+               tgt.id<-1> = token
+            end else
+               tgt.id<-1> = default.target
+               continue
+            end
+      end case
+
+      call @parser(PARSER$GET.TOKEN, token.type, token, keyword)  ;* 0359
+   repeat
+
+   if updating and overwriting then stop sysmsg(6188) ;* UPDATING and OVERWRITING cannot be used together
+
+   * If we are not copying to the terminal and no TO file was specified,
+   * use the source file as the target.
+
+   if not(to.file) then
+      tgt.file = src.file
+      to.file = @true
+   end
+
+   if fileinfo(tgt.file, FL$READONLY) then
+      @system.return.code = -ER$RDONLY
+      stop sysmsg(1431) ;* File is read-only
+   end
+
+*-----------------------------------------------------------------------------
+* Do the copy
+
+   * Suppress mark mapping if source and target are both directory files
+
+   if fileinfo(src.file, fl$type) = fl$type.dir then
+      if fileinfo(tgt.file, fl$type) = fl$type.dir then
+         binary = @true
+      end
+   end
+
+   if binary then
+      mark.mapping src.file, off
+      mark.mapping tgt.file, off
+   end
+
+   records.copied = 0
+
+   if copy.all then    ;* Copy all records
+      select src.file to 11
+      loop
+         readnext src.record.name from 11 else exit
+         tgt.record.name = src.record.name
+         gosub copy.record
+      repeat
+   end else
+      if len(src.id) then                     ;* Copy specific records
+         loop
+            remove src.record.name from src.id setting more
+            remove tgt.record.name from tgt.id setting dummy
+            gosub copy.record
+         while more
+         repeat
+      end else                                ;* No records specified
+         if selectinfo(0, SL$ACTIVE) then     ;* Copy using SELECT list
+            readnext src.record.name then
+               if not(no.query) and not(option(OPT.NO.SEL.LIST.QUERY)) then
+                  loop
+                     display sysmsg(2050, src.record.name) :  ;* Use active select list (First item 'xx')?
+                     prompt ""
+
+                     input reply
+
+                     if upcase(reply[1,1]) = "N" then stop
+
+                  until upcase(reply[1,1]) = "Y"
+                  repeat
+               end
+
+               loop
+                  tgt.record.name = src.record.name
+                  gosub copy.record
+
+                  readnext src.record.name else exit
+               repeat
+            end
+         end
+      end
+   end
+
+   @system.return.code = records.copied
+
+   if deleting then display sysmsg(6190, records.copied)   
+   else display sysmsg(6189, records.copied)   
+
+   return
+
+*****************************************************************************
+* COPY.RECORD  -  Copy an individual record
+
+copy.record:
+   if src.record.name = '' then
+      display sysmsg(6191) ;* Null source record name ignored
+      return
+   end
+
+   if tgt.record.name = '' then
+      display sysmsg(6192) ;* Null target record name ignored
+      return
+   end
+
+   read rec from src.file, src.record.name then
+      if to.file then
+         readvu dummy from tgt.file, tgt.record.name, 0 then exists = @true
+         else exists = @false
+
+         if not(overwriting) then
+            * Do not copy if target record already exists
+            if exists then
+               release tgt.file, tgt.record.name
+               display sysmsg(6193, tgt.record.name, src.record.name)
+               * Record 'xx' already exists - 'xx' not copied.
+               return
+            end
+         end
+
+         if updating then
+            * Copy only if target record already exists
+            if not(exists) then
+               release tgt.file, tgt.record.name
+               return
+            end
+         end
+
+         write rec to tgt.file, tgt.record.name on error
+            crt sysmsg(6164, status(), tgt.record.name) ;* Error xx writing record 'xx'
+            if status() = ER$TRIGGER then
+               crt sysmsg(3007, @trigger.return.code) ;* Data validation error: xx
+            end
+            @system.return.code = -status()
+            stop
+         end
+
+         if reporting then
+            display sysmsg(6194, src.record.name, tgt.record.name)
+         end
+
+         * Check for DELETING action - Only valid when copying to a file
+
+         if deleting then
+            recordlocku src.file, src.record.name
+            delete src.file, src.record.name on error
+               crt sysmsg(6165, status(), tgt.record.name) ;* Error xx deleting record 'xx'
+               if status() = ER$TRIGGER then
+                  crt sysmsg(3007, @trigger.return.code) ;* Data validation error: xx
+               end
+               @system.return.code = -status()
+               stop
+            end
+         end
+      end
+
+      records.copied += 1
+   end
+   else display sysmsg(2108, src.record.name)  ;* Record 'xx' not found
+
+   return
+
+   * Avoid compiler warnings
+   dummy = dummy
+end
+
+* END-CODE

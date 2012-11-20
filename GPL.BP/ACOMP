@@ -1,0 +1,1459 @@
+* ACOMP
+* Correlative compiler
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 02 Nov 06  2.4-15 Dictionary record types now case insensiive.
+* 31 Jul 06  2.4-10 0507 G was omitted from name.chars list.
+* 27 Jun 06  2.4-5 Colon (concatentation) operator should be CATS(), not CAT().
+* 21 Jun 06  2.4-5 Corrected error message for unrecognised operator in
+*                  F-correlative expression.
+* 11 Jan 05  2.1-0 Emit object header in machine byte ordering.
+* 24 Dec 04  2.1-0 New module.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* CALL $ACOMP(dict.file, field.no, source, object, depth)
+*
+*    dict.file  = file variable of dictionary file
+*    field.no   = field no from dictionary record
+*    source     = A/S-type expression source
+*    object     = compiled I-type (output)
+*    depth      = depth of recursive compilation
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+subroutine $acomp(dict.file, field.no, (source), object, depth)
+$catalog $acomp
+
+print.code = @false                ;* Expanded listing control
+
+$include syscom.h
+$include tokens.h
+$include opcodes.h
+$include header.h
+$include int$keys.h
+$include dictdict.h
+
+$include keys.h
+$include err.h
+
+*****************************************************************************
+
+
+   i = kernel(k$case.sensitive, @false)
+
+   if depth > 9 then
+      err.msg = sysmsg(3401) ;* A/S-types nested too deeply
+      goto error
+   end
+
+   object = ''
+
+* Initialise constant data
+
+   dim op(tkn.high.operator)          ;* Operator token / opcodes relationship
+   dim op.priority(tkn.high.operator) ;* Operator priorities.  Operators with
+                                       * low priority values are applied first.
+                                       * Values are (N * 10) + 1 where N is the
+                                       * priority as shown in the user
+                                       * documentation.  The + 1 is used to
+                                       * allow the ** operator to be treated
+                                       * as a special case in EXPR.
+
+   op(tkn.div) = op.idiv        ;   op.priority(tkn.div) = 31
+   op(tkn.mult) = op.imul       ;   op.priority(tkn.mult) = 31
+   op(tkn.plus) = op.iadd       ;   op.priority(tkn.plus) = 41
+   op(tkn.minus) = op.isub      ;   op.priority(tkn.minus) = 41
+   op(tkn.colon) = op.cats      ;   op.priority(tkn.colon) = 61
+   op(tkn.lt) = op.lt           ;   op.priority(tkn.lt) = 71
+   op(tkn.gt) = op.gt           ;   op.priority(tkn.gt) = 71
+   op(tkn.eq) = op.eq           ;   op.priority(tkn.eq) = 71
+   op(tkn.ne) = op.ne           ;   op.priority(tkn.ne) = 71
+   op(tkn.le) = op.le           ;   op.priority(tkn.le) = 71   
+   op(tkn.ge) = op.ge           ;   op.priority(tkn.ge) = 71
+   op(tkn.and) = op.and         ;   op.priority(tkn.and) = 81
+   op(tkn.or) = op.or           ;   op.priority(tkn.or) = 81
+
+   dim operator.stack(50)        ;* Infix - postfix operator stack...
+   dim priority.stack(50)        ;* ...and associated priority stack
+$define STACK.MARK 9999         ;* Marks start of sub-expression
+   priority.stack(0) = STACK.MARK
+
+   * Source parsing
+
+   look.ahead.token = TKN.END
+   look.ahead.token.string = ''
+   digits = '0123456789'
+   name.chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.$%_'
+
+
+   * Object header information
+
+   header.flags = HDR.ITYPE         ;* Option flags
+   greatest.call.arg.count = 0
+
+   * Expression processing
+
+   op.stack.depth = 0
+   unary.minus = @false
+
+   * Label table and jump opcode control data
+   * _Tn = skip label for TOTAL() function
+
+   label.names = ""
+   label.addrs = ""
+
+   jump.no = 0          ;* Next available jump number
+   jump.stack = ""      ;* Nested construct stack. Contains jump numbers.
+
+   * Code generation control
+
+   code.image = str(char(0), 32768)  ;* Final code image
+   pc = 0                            ;* PC of next byte to emit
+
+   no.vars = 0
+
+   embedded.objects = ''
+   embedded.object.vars = ''
+
+*****************************************************************************
+
+   if source[1,1] = "!"  & kernel(K$INTERNAL, -1) then
+      source = source[2,999999]
+      print.code = @true
+   end
+
+   if print.code then print source
+
+   src.pos = 1
+
+   * Emit skeleton object header
+
+   opcode.byte = 0
+   loop
+   until pc = itype.object.header.size
+      gosub emit
+   repeat
+
+   start.pc = pc    ;* Default start location
+
+   type = source[1,1]
+   begin case
+      case type = 'A'
+         * Remove A{;} from front of source
+         if source[2,1] = ';' then source = source[3,999999]
+         else source = source[2,999999]
+         gosub a.correlative
+
+      case type = 'F'
+         * Remove F{;} from front of source
+         if source[2,1] = ';' then source = source[3,999999]
+         else source = source[2,999999]
+         gosub f.correlative
+
+      case 1     ;* Assume anything else is a conversion code
+         fno = field.no ; gosub emit.field.load    ;* Load field data
+         opcode.string = source ; gosub emit.string.load
+         opcode.byte = OP.OCONVS ; gosub emit.simple
+   end case
+
+
+   opcode.byte = op.return ; gosub emit.simple
+
+
+   * Generate prelude if we need to pre-load any embedded code
+
+   if embedded.objects # '' then
+      start.pc = pc
+      loop
+         remove s from embedded.objects setting more
+         read embed.rec from dict.file, s else
+            err.msg = sysmsg(3400, s) ;* Unable to load embedded object code for %1
+            goto error
+         end
+
+         remove n from embedded.object.vars setting i
+         gosub emit.var.load
+
+         opcode.string = field(embed.rec, @fm, DICT.ITYPE.OBJECT)
+         gosub emit.string.load
+
+         opcode.byte = OP.STOR
+         gosub emit.simple
+      while more
+      repeat
+
+      * Generate a jump to the original entry point of the program
+
+      opcode.byte = op.jmp
+      if print.code then
+         * Show the code to be generated
+         s = fmt(opcodes<1,opcode.byte + 1>, "9L"):oconv(itype.object.header.size, "MX")
+         gosub show.code
+      end
+      gosub emit
+      code.value = itype.object.header.size
+      code.bytes = 3
+      gosub emit.multibyte.value
+   end
+
+   * Check for unclosed constructs - can only be IF/THEN/ELSE
+
+   if jump.stack # "" then
+      err.msg = sysmsg(2979) ;* Structural error in IF/THEN/ELSE
+      goto error
+   end
+
+   * Check for undefined labels
+
+   i = 1
+
+   if label.addrs # '' then
+      label.addrs = label.addrs
+      loop
+         remove s from label.addrs setting j
+         if s < 0 then
+            err.msg = sysmsg(2980, label.names<i>)
+            * Internal error: Label xx referenced but not defined
+            goto error
+         end
+      while j
+         i += 1
+      repeat
+   end
+
+   * Go back and fill in the object header
+
+   * Magic number. Offset 0, 1 byte
+   i = if system(1009) then HDR.MAGIC.NO.B else HDR.MAGIC.NO.L
+   code.image[HDR.MAGIC,1] = char(i)
+
+   * Object revision. 1 byte
+   code.image[HDR.REV,1] = char(HDR.REVISION)
+
+   * Start PC. 4 bytes
+   code.image[HDR.START.OFFSET,4] = iconv(start.pc, 'IL')
+
+   * Local variable count. 2 bytes
+   code.image[HDR.NO.VARS,2] = iconv(no.vars, 'IS')
+
+   * Stack depth. 2 bytes
+   i = 100 + greatest.call.arg.count
+   code.image[HDR.STACK.DEPTH,2] = iconv(i, 'IS')
+
+   * Object size. 4 bytes
+   code.image[HDR.OBJECT.SIZE,4] = iconv(pc, 'IL')
+
+   * Flags. 2 bytes
+   code.image[HDR.FLAGS,2] = iconv(header.flags, 'IS')
+
+   * Compile time. 2 bytes
+   code.image[HDR.COMPILE.TIME,4] = iconv(system(1005), 'IL')
+
+   if print.code then gosub display.code
+
+   * Pass object code back via call argument
+ 
+   object = code.image[1,pc]
+
+   @system.return.code = 0
+
+   return
+
+* ======================================================================
+
+a.correlative:
+   gosub get.token    ;* Get first token into look-ahead area
+   gosub expr
+
+   return
+
+* ======================================================================
+
+f.correlative:
+   gosub get.token    ;* Get first token into look-ahead area
+   stack.depth = 0
+
+   loop
+      gosub get.token
+   until token = TKN.END
+      begin case
+         case token = TKN.NUM
+            fno = token.string ; gosub emit.field.load
+            stack.depth += 1
+
+            if look.ahead.token.string = 'R' then
+               gosub get.token
+               opcode.byte = OP.REUSE ; gosub emit.simple
+            end
+
+            if look.ahead.token = TKN.LBR then
+               gosub emit.conversion
+            end
+
+         case token = TKN.STRING
+            opcode.string = token.string ; gosub emit.string.load
+            stack.depth += 1
+
+            if look.ahead.token.string = 'R' then
+               gosub get.token
+               opcode.byte = OP.REUSE ; gosub emit.simple
+            end
+
+         case token = TKN.NAME
+            begin case
+               case token.string matches '"C"1N0N'
+                  opcode.string = token.string[2,99999]
+                  gosub emit.string.load
+
+                  if look.ahead.token.string = 'R' then
+                     gosub get.token
+                     opcode.byte = OP.REUSE ; gosub emit.simple
+                  end
+
+                  stack.depth += 1
+
+               case token.string = 'D'
+                  opcode.byte = OP.DATE ; gosub emit.simple
+                  stack.depth += 1
+
+!!             case token.string = 'LPV'
+
+               case token.string = 'ND'
+                  n = SYSCOM.QPROC.ND ; gosub emit.ldsys
+                  stack.depth += 1
+
+               case token.string = 'NI'
+                  n = SYSCOM.QPROC.NI ; gosub emit.ldsys
+                  stack.depth += 1
+
+               case token.string = 'NS'
+                  n = SYSCOM.QPROC.NS ; gosub emit.ldsys
+                  stack.depth += 1
+
+               case token.string = 'NV'
+                  n = SYSCOM.QPROC.NV ; gosub emit.ldsys
+                  stack.depth += 1
+
+               case token.string = 'P'
+                  opcode.byte = OP.DUP ; gosub emit.simple
+                  stack.depth += 1
+
+               case token.string = 'R'
+                  if stack.depth < 2 then goto err.stack.underflow
+                  opcode.byte = OP.REM ; gosub emit.simple
+                  stack.depth -= 1
+
+               case token.string = 'S'
+                  opcode.byte = OP.SUMMATION ; gosub emit.simple
+
+               case token.string = 'T'
+                  opcode.byte = OP.TIME ; gosub emit.simple
+                  stack.depth += 1
+
+               case 1
+                  err.msg = sysmsg(3404, token.string) ;* Unexpected token (%1) in correlative expression
+                  goto error
+            end case
+
+         case token = TKN.PLUS
+            if stack.depth < 2 then goto err.stack.underflow
+            opcode.byte = OP.IADD ; gosub emit.simple
+            stack.depth -= 1
+
+         case token = TKN.MINUS
+            if stack.depth < 2 then goto err.stack.underflow
+            opcode.byte = OP.ISUB ; gosub emit.simple
+            stack.depth -= 1
+
+         case token = TKN.DIV
+            if stack.depth < 2 then goto err.stack.underflow
+            opcode.byte = OP.IDIV ; gosub emit.simple
+            stack.depth -= 1
+
+         case token = TKN.MULT
+            if stack.depth < 2 then goto err.stack.underflow
+            opcode.byte = OP.IMUL ; gosub emit.simple
+            stack.depth -= 1
+
+            if look.ahead.token = TKN.NUM then
+               gosub get.token
+               n = token.string ; gosub emit.numeric.load
+               opcode.byte = OP.SCALE ; gosub emit.simple               
+            end
+
+         case token = TKN.COLON
+            if stack.depth < 2 then goto err.stack.underflow
+            opcode.byte = OP.CAT ; gosub emit.simple
+            stack.depth -= 1
+
+         case token = TKN.UNDERSCORE
+            opcode.byte = OP.SWAP ; gosub emit.simple
+
+         case token = TKN.PWR ;* ^
+            if stack.depth < 1 then goto err.stack.underflow
+            opcode.byte = OP.POP ; gosub emit.simple
+            stack.depth -= 1
+
+         case token = TKN.EQ
+            if stack.depth < 2 then goto err.stack.underflow
+            opcode.byte = OP.EQ ; gosub emit.simple
+            stack.depth -= 1
+
+         case token = TKN.NE
+            if stack.depth < 2 then goto err.stack.underflow
+            opcode.byte = OP.NE ; gosub emit.simple
+            stack.depth -= 1
+
+         * NOTE: The relational operators are backwards from the normal
+         * QM use of stack arithmetic.
+
+         case token = TKN.LT
+            if stack.depth < 2 then goto err.stack.underflow
+            opcode.byte = OP.GE ; gosub emit.simple
+            stack.depth -= 1
+
+         case token = TKN.GT
+            if stack.depth < 2 then goto err.stack.underflow
+            opcode.byte = OP.LE ; gosub emit.simple
+            stack.depth -= 1
+
+         case token = TKN.LSQBR
+            if look.ahead.token = TKN.RSQBR then
+               gosub get.token
+               if stack.depth < 3 then goto err.stack.underflow
+               opcode.byte = op.substr ; gosub emit.simple
+               stack.depth -= 2
+            end else              ;* [ => LE
+               if stack.depth < 2 then goto err.stack.underflow
+               opcode.byte = OP.GT ; gosub emit.simple
+               stack.depth -= 1
+            end
+
+         case token = TKN.RSQBR   ;* ] => GE
+            if stack.depth < 2 then goto err.stack.underflow
+            opcode.byte = OP.LT ; gosub emit.simple
+            stack.depth -= 1
+
+         case token = TKN.AND
+            if stack.depth < 2 then goto err.stack.underflow
+            opcode.byte = OP.AND ; gosub emit.simple
+            stack.depth -= 1
+
+         case token = TKN.OR
+            if stack.depth < 2 then goto err.stack.underflow
+            opcode.byte = OP.OR ; gosub emit.simple
+            stack.depth -= 1
+
+         case token = TKN.LBR
+            * Because of the syntactic ambiguity of conversion codes in
+            * correlatives, we use a special parsing routine for conversions.
+            * This relies on the opening bracket still being the look-ahead
+            * token. For this call, we have already processed the left
+            * bracket so we need to cheat by backing up the source pointer
+            * to the previous token.
+
+            src.pos = last.src.pos
+            gosub emit.conversion
+
+         case 1
+            err.msg = sysmsg(3404, token) ;* Unexpected token (%1) in correlative expression
+            goto error
+      end case
+
+   until look.ahead.token = TKN.END
+
+      if look.ahead.token # TKN.SEMICOLON then goto err.semicolon
+      gosub get.token
+   repeat
+
+   return
+
+
+* ======================================================================
+* EMIT.VAR.LOAD  -  Emit LDLCL for var N
+
+emit.var.load:
+   if n < 256 then       ;* Use LDSLCL
+      if print.code then
+         s = "LDSLCL   " : n
+         gosub show.code
+      end
+
+      opcode.byte = op.ldslcl
+      gosub emit
+      opcode.byte = n
+      gosub emit
+   end else              ;* Use LDLCL
+      if print.code then
+         s = "LDLCL    " : n
+         gosub show.code
+      end
+
+      opcode.byte = op.ldlcl
+      gosub emit
+      code.value = n
+      code.bytes = 2
+      gosub emit.multibyte.value
+   end
+
+   return
+
+* ======================================================================
+* Emit an LDSYS opcode. Offset is in N
+
+emit.ldsys:
+   if print.code then
+      s = "LDSYS    " : n
+      gosub show.code
+   end
+
+   opcode.byte = op.ldsys
+   gosub emit
+
+   opcode.byte = n
+   gosub emit
+
+   return
+
+* ======================================================================
+* EMIT.NUMERIC.LOAD  -  Emit LDSINT, LDLINT or LDFLOAT
+* Value to load is in N
+
+emit.numeric.load:
+   if vartype(n) = V$FLOATNUM then  ;* 0087
+      if print.code then
+         * Show the code to be generated
+         s = "LDFLOAT  ":n
+         gosub show.code
+      end
+
+      * Emit LDFLOAT opcode
+      opcode.byte = op.ldfloat
+      gosub emit
+      code.image[pc+1, 8] = iconv(n, 'IFL')
+      pc += 8
+
+      return
+   end
+
+   if (n > -129) and (n < 128) then     ;* Use LDSINT or LD0/LD1
+      if n = 0 then
+         opcode.byte = op.ld0
+         gosub emit.simple
+         return
+      end
+
+      if n = 1 then
+         opcode.byte = op.ld1
+         gosub emit.simple
+         return
+      end
+
+      if print.code then
+         * Show the code to be generated
+         s = "LDSINT   ":n
+         gosub show.code
+      end
+
+      * Emit LDSINT opcode
+      opcode.byte = op.ldsint
+      gosub emit
+      opcode.byte = n
+      gosub emit
+   end else                           ;* Use LDLINT
+      if print.code then
+         * Show the code to be generated
+         s = "LDLINT   ":n
+         gosub show.code
+      end
+
+      * Emit LDLINT opcode
+      opcode.byte = op.ldlint
+      gosub emit
+      code.value = n
+      code.bytes = 4
+      gosub emit.multibyte.value
+   end
+
+  return
+
+* ======================================================================
+* EMIT.STRING.LOAD  -  Emit string in OPCODE.STRING
+
+emit.string.load:
+*     If the string is less than 256 characters long we can load it in
+*     one go. Otherwise we must concatenate short chunks.
+
+   k = @false           ;* K is true for second and subsequent fragments
+   loop
+      n = len(opcode.string)
+      if n > 255 then n = 255
+      if print.code then
+         s = 'LDSTR    "' : oconv(opcode.string[1, 60], 'MCP')
+         if n <= 60 then s := '"'
+         gosub show.code
+      end
+
+      opcode.byte = op.ldstr
+      gosub emit
+      opcode.byte = n
+      gosub emit
+      code.image[pc+1, n] = opcode.string
+      pc += n
+      if k then
+         * Emit a CAT opcode
+         opcode.byte = op.cat
+         gosub emit.simple
+      end
+      k = @true
+      opcode.string = opcode.string[n + 1, len(opcode.string)]
+   while len(opcode.string) > 0
+   repeat
+
+   return
+
+* ======================================================================
+* EMIT.FIELD.LOAD  -  Load a field from the current record
+* fno = field number
+
+emit.field.load:
+   begin case
+      case fno = 0
+         n = SYSCOM.QPROC.ID      ; gosub emit.ldsys
+
+      case fno = 9998
+         n = SYSCOM.QPROC.NI      ; gosub emit.ldsys
+
+      case fno = 9999
+         n = SYSCOM.QPROC.RECORD  ; gosub emit.ldsys
+         opcode.byte = OP.LEN     ; gosub emit.simple
+
+      case 1
+         n = SYSCOM.QPROC.RECORD  ; gosub emit.ldsys
+         n = fno                  ; gosub emit.numeric.load
+         n = 0                    ; gosub emit.numeric.load
+         n = 0                    ; gosub emit.numeric.load
+         opcode.byte = OP.EXTRACT ; gosub emit.simple
+   end case
+
+   return
+
+* ======================================================================
+* SET.LABEL  -  Generate source label
+
+set.label:
+   if print.code then
+      print "       ":fmt(oconv(pc, "MX"), "6'0'R"):": ":label.name
+   end
+
+   * Search label table for this label name
+   locate label.name in label.names<1> setting i then
+
+      * We have found the label in the label table.
+
+      jump.addr = label.addrs<i>
+      if jump.addr < 0 then       ;* It is a forward reference
+         update.addr = -jump.addr
+         label.addrs<i> = pc      ;* Correct the label table entry.
+
+         * Go back and fill in the jump chain.
+
+         loop
+            * Fetch next jump chain address from jump opcode, replacing by
+            * actual address as we go.
+
+            code.value = pc
+            code.bytes = 3
+            jump.addr = 0
+            byte.scale = 1
+
+            loop
+               byte.value = char(bitand(code.value, 255))
+               code.value = shift(code.value, 8)
+               jump.addr += seq(code.image[update.addr + 1, 1]) * byte.scale
+               code.image[update.addr + 1, 1] = byte.value
+
+               update.addr += 1
+               code.bytes -= 1
+            until code.bytes = 0
+               byte.scale = shift(byte.scale, -8)
+            repeat
+         while jump.addr # 0
+            update.addr = jump.addr
+         repeat
+      end else
+         * It is not a forward reference. Flag an error.
+         err.msg = sysmsg(2981) ;* Internal error: Duplicate label
+         goto error
+      end
+   end else
+      * Add new entry to the label table
+
+      ins label.name before label.names<1>
+      ins pc before label.addrs<1>
+   end
+
+   return
+              
+* ======================================================================
+* EMIT.JUMP  -  Emit a jump opcode
+* OPCODE.BYTE holds jump opcode
+* LABEL.NAME holds target label
+
+emit.jump:
+   if print.code then
+      * Show the code to be generated
+      s = fmt(opcodes<1,opcode.byte + 1>, "9L"):label.name
+      gosub show.code
+   end
+
+   * Emit the jump opcode
+   gosub emit
+   gosub emit.jump.addr
+
+   return
+
+**********************************************************************
+* EMIT.JUMP.ADDR  -  Emit 3 byte jump address
+* LABEL.NAME contains target label
+
+emit.jump.addr:
+   * Find label in symbol table
+
+   locate label.name in label.names<1> setting i then
+      jump.addr = label.addrs<i>
+      if jump.addr < 0 then
+         * This is a forward reference. Update the label table to point to
+         * this jump to build a chain through all forward references.
+
+         label.addrs<i> = -pc
+         jump.addr = - jump.addr
+      end
+   end else
+      * Label is not in symbol table. Make a forward reference entry
+
+      ins label.name before label.names<1>
+      ins -pc before label.addrs<1>
+      jump.addr = 0
+   end
+
+   * Emit the jump address
+   code.value = jump.addr
+   code.bytes = 3
+   gosub emit.multibyte.value
+
+   return
+
+* ======================================================================
+* EMIT.PREFIXED.OPCODE - Emit a prefixed opcode
+* code.value holds byte pair to emit, high byte first
+
+emit.prefixed.opcode:
+   if print.code then
+      * Show the code to be generated
+
+      locate code.value in prefixed.opcode.values<1,1> setting ppos then
+         s = prefixed.opcodes<1,ppos>
+      end else
+         s = 'OP_' : oconv(code.value, 'MX')
+      end
+      gosub show.code
+   end
+
+emit.prefixed.opcode.without.print:
+   opcode.byte = shift(code.value, 8)
+   gosub emit
+
+   opcode.byte = bitand(code.value, 255)
+   gosub emit
+
+   return
+
+*****************************************************************************
+* EMIT.SIMPLE - Emit a simple single byte opcode
+* Opcode is in OPCODE.BYTE
+
+emit.simple:
+   if opcode.byte > 256 then
+      prefixed.opcode = opcode.byte
+
+      if print.code then
+         * Show the code to be generated
+
+         locate prefixed.opcode in prefixed.opcode.values<1,1> setting ppos then
+            s = prefixed.opcodes<1,ppos>
+         end else
+            s = 'OP_' : oconv(prefixed.opcode, 'MX')
+         end
+         gosub show.code
+      end
+
+      opcode.byte = shift(prefixed.opcode, 8)
+      gosub emit
+
+      opcode.byte = bitand(prefixed.opcode, 255)
+      gosub emit
+
+      return
+   end
+
+   if print.code then
+      * Show the code to be generated
+      s = opcodes<1,opcode.byte + 1>
+      gosub show.code
+   end
+
+*********************************************
+***** FALL THROUGH FROM ABOVE INTO EMIT *****
+*********************************************
+
+**********************************************************************
+* EMIT  -  Emit byte from OPCODE.BYTE
+
+emit:
+   pc += 1   ;* Do increment first as we need PC+1 to index code.image
+   code.image[pc,1] = char(opcode.byte)
+
+   return
+
+* ======================================================================
+* EMIT.MULTIBYTE.VALUE  -  Emit multi-byte value
+* CODE.VALUE   = Value to emit
+* CODE.BYTES   = Number of bytes
+
+emit.multibyte.value:
+   loop
+      opcode.byte = bitand(code.value, 255)
+      code.value = shift(code.value, 8)
+      gosub emit
+      code.bytes -= 1
+   until code.bytes = 0
+   repeat
+
+   return
+
+* ======================================================================
+* SHOW.CODE  -  Report emitted code
+* Code string is in S
+
+show.code:
+   print "       ":fmt(oconv(pc, "MX"), "6'0'R"):":       ":s
+
+   return
+
+*****************************************************************************
+*****                   STATEMENT PROCESSING ROUTINES                   *****
+*****************************************************************************
+
+* ======================================================================
+* EXPR  -  Process expression
+*
+* ------  +  ----------  (  ---  expr  ---  )  ---|
+*   |---  -  ---|   |-------  var  -------------------  op  ---  expr  ---
+*   |-----------|   |-------  const  -------------| |-------------------|
+*
+
+expr:
+   gosub get.token
+
+   if unary.minus then
+      op.stack.depth += 1
+      operator.stack(op.stack.depth) = OP.NEG
+      priority.stack(op.stack.depth) = 1
+      unary.minus = @false
+   end
+
+   op.stack.depth += 1
+   priority.stack(op.stack.depth) = STACK.MARK
+
+   loop
+      gosub get.expr.item
+
+      * Check for operator using look ahead
+
+   until look.ahead.token < tkn.low.operator
+   until look.ahead.token > tkn.high.operator
+
+      priority = op.priority(look.ahead.token)
+      loop
+      while priority >= priority.stack(op.stack.depth)
+         opcode.byte = operator.stack(op.stack.depth)
+         gosub emit.simple
+         op.stack.depth -= 1
+      repeat
+
+      op.stack.depth += 1
+      operator.stack(op.stack.depth) =  op(look.ahead.token) ;* Opcode
+      if look.ahead.token = tkn.pwr then
+         * The ** operator associates right to left. Save a slightly higher
+         * priority on the stack to force this action.
+         priority.stack(op.stack.depth) = priority + 1            ;* Priority
+      end
+      else priority.stack(op.stack.depth) = priority              ;* Priority
+
+      gosub get.token              ;* Skip operator token
+      gosub get.token
+   repeat
+
+   * Apply remaining operators from stack
+
+   loop
+   while priority.stack(op.stack.depth) # STACK.MARK
+      opcode.byte = operator.stack(op.stack.depth)
+      gosub emit.simple
+      op.stack.depth -= 1
+   repeat
+
+   if op.stack.depth then op.stack.depth -= 1    ;* Remove STACK.MARK
+
+   return
+
+* ======================================================================
+
+get.expr.item:
+   unary.minus = @FALSE
+
+get.expr.item.again:
+   begin case
+      case token = TKN.NAME
+         begin case
+            *------------------------------------------------------------
+            * D
+            case token.string = "D"
+               opcode.byte = OP.DATE ; gosub emit.simple
+
+            *------------------------------------------------------------
+            * IF xxx THEN xxx ELSE xxx
+            case token.string = "IF"
+               gosub expr          ;* Process condition
+
+               * Add new entry to jump stack
+
+               ins jump.no before jump.stack<1>
+               label.name = "_":jump.no:"E"
+               jump.no += 1
+               opcode.byte = op.jfalse    ;* 0253
+               gosub emit.jump
+
+               * Emit THEN clause
+
+               if look.ahead.token.string # "THEN" then
+                  err.msg = sysmsg(2950) ;* THEN not found where expected in conditional expression
+                  goto error
+               end
+
+               gosub get.token
+
+               gosub expr          ;* Process THEN clause
+
+               * Emit jump to exit label
+
+               label.name = "_":jump.stack<1>:"X"
+               opcode.byte = op.jmp
+               gosub emit.jump
+
+               * Emit ELSE clause
+
+               label.name = "_":jump.stack<1>:"E"
+               gosub set.label
+
+               if look.ahead.token.string # "ELSE" then
+                  err.msg = sysmsg(2951) ;* ELSE not found where expected in conditional expression
+                  goto error
+               end
+               gosub get.token
+
+               gosub expr          ;* Process ELSE clause
+
+               * Emit exit label
+               label.name = "_":jump.stack<1>:"X"
+               gosub set.label
+
+if.then.else.expr.abort:
+               del jump.stack<1>
+
+            *------------------------------------------------------------
+            * LPV
+!!          case token.string = "LPV"
+
+            *------------------------------------------------------------
+            * ND
+            case token.string = 'ND'
+               n = SYSCOM.QPROC.ND ; gosub emit.ldsys
+
+            *------------------------------------------------------------
+            * NI
+            case token.string = 'NI'
+               n = SYSCOM.QPROC.NI ; gosub emit.ldsys
+
+            *------------------------------------------------------------
+            * NS
+            case token.string = 'NS'
+               n = SYSCOM.QPROC.NS ; gosub emit.ldsys
+
+            *------------------------------------------------------------
+            * NV
+            case token.string = 'NV'
+               n = SYSCOM.QPROC.NV ; gosub emit.ldsys
+
+            *------------------------------------------------------------
+            * T
+            case token.string = "T"
+               opcode.byte = OP.TIME ; gosub emit.simple
+
+            case 1
+               goto err.expr
+         end case
+
+      * -----------------------------------------------------------------
+      * Field number
+      case token = TKN.NUM
+         fno = token.string + 0 ; gosub emit.field.load
+         if look.ahead.token.string = 'R' then
+            gosub get.token
+            opcode.byte = OP.REUSE ; gosub emit.simple
+         end
+
+      * -----------------------------------------------------------------
+      * Literal string value
+
+      case token = TKN.STRING
+         opcode.string = token.string
+         gosub emit.string.load
+         if look.ahead.token.string = 'R' then
+            gosub get.token
+            opcode.byte = OP.REUSE ; gosub emit.simple
+         end
+
+      case token = TKN.NAME.LBR
+         begin case
+            * ----------------------------------------------------------
+            * N(name)
+            case token.string = 'N'
+               gosub get.token   ;* Skip bracket
+               gosub get.token   ;* Get name
+
+               if look.ahead.token # TKN.RBR then goto err.rbr
+               * Look up name in dictionary
+
+               read field.rec from dict.file, token.string else
+                  err.msg = sysmsg(2982, token.string) ;* Field 'xx' is not defined
+                  goto error
+               end
+
+               type = upcase(field.rec[1,1])
+               begin case
+                  case type = 'D' or ((type = 'A' or type = 'S') and field.rec<8> = '')
+                     fno = field.rec<2>
+                     gosub emit.field.load
+                     
+                  case type = 'I' or type = 'A' or type = 'S'
+                     * Unlike nested I-types, A/S-types that reference other
+                     * compiled items do this as a run time subroutine call
+                     * using ITYPE() to execute embedded object code.
+
+                     if len(field.rec<DICT.ITYPE.OBJECT>) = 0 ~
+                     or checksum(replace(field.rec, DICT.SYS.INFO, 1;'')) # field.rec<DICT.SYS.INFO,1> then
+                        * Need to compile nested item
+
+                        if depth > 10 then
+                           err.msg = sysmsg(2998) ;* Compiled dictionary items nested too deeply
+                           goto error
+                        end
+
+                        call $dcomp(dict.file,       ;* File var to source file
+                                    token.string,    ;* Record name
+                                    field.rec,       ;* Record to compile
+                                    z,               ;* I-type format
+                                    z,               ;* I-type conversion
+                                    z,               ;* I-type S/M flag
+                                    z,               ;* I-type association
+                                    z,               ;* I-type is constant
+                                    depth + 1)       ;* Recursive compilation depth
+
+                        if field.rec<DICT.ITYPE.OBJECT> = '' then
+                           err.msg = sysmsg(2612, token.string) ;* Compilation error in %1
+                           goto error
+                        end
+
+                        write field.rec to dict.file, token.string
+                     end
+
+                     * Check to see if we have already loaded this object code.
+
+                     locate token.string in embedded.objects<1> setting i then
+                        n = embedded.object.vars<i> ;* Variable number
+                     end else
+                        embedded.objects<-1> = token.string
+                        embedded.object.vars<-1> = no.vars
+                        n = no.vars
+                        no.vars += 1
+                     end
+
+                     gosub emit.var.load
+                     opcode.byte = OP.ITYPE
+                     gosub emit.simple
+
+                  case 1
+                     err.msg = sysmsg(2984, token.string) ;* Field 'xx' is not a data item
+                     goto error
+               end case
+
+               if look.ahead.token.string = 'R' then
+                  gosub get.token
+                  opcode.byte = OP.REUSE ; gosub emit.simple
+               end
+
+               gosub get.token  ;* Skip closing bracket
+
+            * ----------------------------------------------------------
+            * R(a,b)
+            case token.string = 'R'
+               gosub get.token   ;* Skip bracket
+               gosub expr
+               if look.ahead.token # TKN.COMMA then goto err.comma
+               gosub get.token
+               gosub expr
+               if look.ahead.token # TKN.RBR then goto err.rbr
+               gosub get.token
+               opcode.byte = OP.REM ; gosub emit.simple
+
+            * ----------------------------------------------------------
+            * S(a)
+            case token.string = 'S'
+               gosub get.token   ;* Skip bracket
+               gosub expr
+               if look.ahead.token # TKN.RBR then goto err.rbr
+               gosub get.token
+               opcode.byte = OP.SUMMATION ; gosub emit.simple
+
+            case 1
+               goto err.expr
+         end case
+
+      case token = TKN.LBR
+         * Call EXPR recursively to process the content of the brackets
+
+         gosub expr
+
+         * Check that the next token is a close bracket
+
+         gosub get.token
+         if token # TKN.RBR then
+            err.msg = sysmsg(2954) ;* Mismatched brackets
+            goto error
+         end
+
+      case token = TKN.PLUS               ;* Unary plus
+         gosub get.token
+         goto get.expr.item.again
+
+      case token = TKN.MINUS              ;* Unary minus
+         unary.minus = not(unary.minus)
+         gosub get.token
+         goto get.expr.item.again
+
+      case 1
+         goto err.expr
+   end case
+
+   * Check for substring extraction
+
+   if look.ahead.token = tkn.lsqbr then
+      gosub get.token     ;* Skip [ token
+      gosub expr          ;* Process first (or only) bound
+      if look.ahead.token = tkn.comma then  ;* Two bounds present
+         gosub get.token    ;* Skip comma
+         gosub expr ;* Get substring length
+         if look.ahead.token = tkn.comma then  ;* Three items, group extraction
+            gosub get.token  ;* Skip comma
+            gosub expr       ;* Get field count
+            opcode.byte = op.field
+            gosub emit.simple
+         end else
+            opcode.byte = op.substr
+            gosub emit.simple
+         end
+      end
+      else                                ;* Trailing substring extraction
+         opcode.byte = op.substre
+         gosub emit.simple
+      end
+      if look.ahead.token # tkn.rsqbr then
+         err.msg = sysmsg(2964) ;* Right square bracket not found where expected
+         goto error
+      end
+      gosub get.token        ;* Skip bracket
+   end
+
+   if unary.minus then
+      opcode.byte = op.neg
+      gosub emit.simple
+   end
+
+   * Check for conversion codes
+
+   loop
+   while look.ahead.token = TKN.LBR
+      gosub emit.conversion
+   repeat
+
+   return
+
+* ======================================================================
+* EMIT.CONVERSION
+
+emit.conversion:
+   * Because conversion codes are not quoted, there is a syntactic
+   * ambiguity here. We make an assumption that everything before a
+   * matching right bracket is the conversion code and do our own source
+   * parsing for this operation.
+
+   opcode.string = ''
+   bracket.depth = 0
+   loop
+      c = source[src.pos,1]
+      if c = '' then
+         err.msg = sysmsg(2977) ;* Unclosed string
+         goto error
+      end
+   until c = ')' and bracket.depth = 0
+      src.pos += 1
+      opcode.string := c
+      if c = '(' then bracket.depth += 1
+      else if c = ')' then bracket.depth -= 1
+   repeat
+
+   gosub emit.string.load
+   opcode.byte = OP.OCONVS ; gosub emit.simple
+
+   * Now reset normal parser to look like we are approaching the
+   * close bracket.
+
+   look.ahead.token = TKN.RBR
+   look.ahead.token.string = ')'
+   src.pos += 1
+      
+   gosub get.token   ;* Skip right bracket
+
+   return
+
+* ======================================================================
+* DISPLAY.CODE  -  Debug function to display the code
+
+display.code:
+   pcx = 0
+   loop
+   while pcx < pc
+      print fmt(oconv(pcx, "MX"), "6'0'R"):":":
+      k = 1                
+      loop
+      while k <= 16
+      while pcx < pc
+         n = seq(code.image[pcx+1,1])
+         print "  ": fmt(oconv(n, "MX"), "2'0'R"):
+         pcx += 1
+         k += 1
+      repeat
+      print
+   repeat
+
+   return
+
+* ======================================================================
+* GET.TOKEN  -  Get next token from pre-parsed source token array
+*
+* This compiler cannot use the standard source parser because correlatives
+* have a syntactic ambiguity in conversions as the codes are not quoted.
+* This parser is a bit non-optimal but it isn't worth doing anything
+* more advanced when processing a single expression.
+
+get.token:
+   last.src.pos = src.pos  ;* For F-correlative to back up pointer
+
+   token = look.ahead.token
+   token.string = look.ahead.token.string
+
+   look.ahead.token.string = ''
+   loop
+      c = source[src.pos,1]
+      src.pos += 1
+   while c = ' '
+   repeat
+
+   begin case
+      case c = ''
+         look.ahead.token = TKN.END
+
+      case alpha(c)
+         loop
+            look.ahead.token.string := c
+            c = source[src.pos,1]
+         until c = ''
+         while index(name.chars, c, 1)
+            src.pos += 1
+         repeat
+         begin case
+            case look.ahead.token.string = 'AND'
+               look.ahead.token = TKN.AND
+            case look.ahead.token.string = 'OR'
+               look.ahead.token = TKN.OR
+            case c = '('
+               look.ahead.token = TKN.NAME.LBR
+            case 1
+               look.ahead.token = TKN.NAME
+         end case
+
+      case index(digits, c, 1)
+         loop
+            look.ahead.token.string := c
+            c = source[src.pos,1]
+         until c = ''
+         while index(digits, c, 1)
+            src.pos += 1
+         repeat
+         look.ahead.token = TKN.NUM
+
+      case c = '"' or c = "'" or c = '\'
+         i = index(source[src.pos,999999], c, 1)
+         if i then
+            look.ahead.token.string = source[src.pos, i - 1]
+            src.pos += i
+            look.ahead.token = TKN.STRING
+         end else
+            err.msg = sysmsg(2977) ;* Unclosed string
+            goto error
+         end
+
+      case c = '('
+         look.ahead.token = TKN.LBR
+
+      case c = ')'
+         look.ahead.token = TKN.RBR
+
+      case c = ','
+         look.ahead.token = TKN.COMMA
+
+      case c = '+'
+         look.ahead.token = TKN.PLUS
+
+      case c = '-'
+         look.ahead.token = TKN.MINUS
+
+      case c = '['
+         look.ahead.token = TKN.LSQBR
+
+      case c = ']'
+         look.ahead.token = TKN.RSQBR
+
+      case c = '*'
+         look.ahead.token = TKN.MULT
+
+      case c = '/'
+         look.ahead.token = TKN.DIV
+
+      case c = ':'
+         look.ahead.token = TKN.COLON
+
+      case c = '='
+         look.ahead.token = TKN.EQ
+
+      case c = '#'
+         look.ahead.token = TKN.NE
+
+      case c = '<'
+         c = source[src.pos, 1]
+         begin case
+            case c = '='
+               src.pos += 1
+               look.ahead.token = TKN.LE
+            case c = '>'
+               src.pos += 1
+               look.ahead.token = TKN.NE
+            case 1
+               look.ahead.token = TKN.LT
+         end case
+
+      case c = '>'
+         c = source[src.pos, 1]
+         if c = '=' then
+            src.pos += 1
+            look.ahead.token = TKN.GE
+         end else
+            look.ahead.token = TKN.GT
+         end
+
+      case c = '&'
+         look.ahead.token = TKN.AND
+
+      case c = '!'
+         look.ahead.token = TKN.OR
+
+      case c = '_'
+         look.ahead.token = TKN.UNDERSCORE
+
+      case c = ';'
+         look.ahead.token = TKN.SEMICOLON
+
+      case c = '^'
+         look.ahead.token = TKN.PWR
+   end case
+
+   return
+
+* ======================================================================
+* ERROR  -  Report error
+
+err.comma:
+   err.msg = sysmsg(2959) ;* Comma not found where expected
+   goto error
+
+err.expr:
+   err.msg = sysmsg(2955) ;* Data item or constant not found where expected
+   goto error
+
+err.rbr:
+   err.msg = sysmsg(2963) ;* Right bracket not found where expected
+   goto error
+
+err.semicolon:
+   err.msg = sysmsg(2960) ;* Semicolon not found where expected
+   goto error
+
+err.stack.underflow:
+   err.msg = sysmsg(3403) ;* Expression would result in stack underflow
+   goto error
+
+error:
+   @system.return.code = -ER$ICOMP
+   print '*** ' : err.msg
+
+error.return:
+   return to error.return
+
+end
+
+* END-CODE

@@ -1,0 +1,67 @@
+* ABSPATH
+* Form absolute pathname from directory and relative path.
+* Copyright (c) 2005 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 27 May 05  2.2-0 New module.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* X = ABSPATH(dir, rel)
+*
+* dir = directory as root for relative path. If null, uses @PATH.
+*
+* rel = file pathname. If not already absolute, merges with dir.
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+$no.symbols
+$no.xref
+
+function abspath((dir), rel)
+$catalogue !abspath
+
+   begin case
+      case rel[1,6] = '@QMSYS'            ;* QMSYS reference
+         path = @qmsys : rel[7,99999]
+
+      case rel[1,1] = @ds                 ;* Absolute path - leave as is
+         path = rel
+
+      case system(91) and rel[2,1] = ':'  ;* Absolute path - leave as is
+         path = rel
+
+      case system(91) and rel[1,2] = '\\'  ;* Network name - leave as is
+         path = rel
+
+      case 1
+         if dir = '' then dir = @path
+         if dir[1] = @ds then path = dir : rel
+         else path = dir : @ds : rel
+   end case
+
+   return (path)
+end
+
+* END-CODE

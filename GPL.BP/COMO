@@ -1,0 +1,158 @@
+* COMO
+* COMO verb
+* Copyright (c) 2002 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 13 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+*    COMO { ON record.name          }
+*         { OFF                     }
+*
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program $como
+$catalog $COMO
+
+$include keys.h
+$include err.h
+
+$include parser.h
+$include syscom.h
+
+$define default.como.dir "$COMO"
+$define como.dir.voc.name "$COMO"
+
+
+   @system.return.code = -ER$ARGS
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+
+   * Parse action keyword
+
+   call @parser(PARSER$GET.TOKEN, token.type, action, keyword) ;* First argument
+   action = upcase(action)
+
+   begin case
+      case keyword = KW$ON           ;* Commence logging of terminal data
+         call @parser(PARSER$GET.TOKEN, token.type, como.record.name, keyword)
+         if system(91) then como.record.name = upcase(como.record.name)
+
+         if como.record.name = "" then
+            stop sysmsg(6410) ;* Record name required after ON keyword
+         end
+
+         gosub como.on
+
+      case keyword = KW$OFF          ;* Terminate logging of terminal data
+         gosub como.off
+
+      case 1
+         stop sysmsg(6411) ;* Unrecognised COMO action
+   end case
+
+   @system.return.code = 0
+
+   return
+
+*****************************************************************************
+* COMO.ON  -  Activate COMO
+
+como.on:
+   if fileinfo(como.file, FL$OPEN) then
+      @system.return.code = -ER$IN.USE
+      stop sysmsg(6412, como.record) ;* COMO file already active as xx
+   end
+
+   * Read any existing &COMO VOC record
+
+   read como.rec from @voc,como.dir.voc.name then
+      como.dir = como.rec<2>
+
+      * Check if COMO directory exists
+      
+      open como.dir to como.file then
+         * Check file type
+         if fileinfo(como.file, FL$TYPE) # FL$TYPE.DIR then
+            @system.return.code = -ER$NDIR
+            stop sysmsg(1428, como.dir) ;* xx is not a directory file
+         end
+      end else
+         if status() # ER$NVR then
+            @system.return.code = -status()
+            stop sysmsg(1430,status(), como.dir) ;* Error xx opening xx
+         end
+      end
+   end else
+      recordlocku @voc,como.dir.voc.name
+
+      como.dir = default.como.dir
+
+      * Create new COMO directory
+
+      create.file como.dir directory on error
+         release @voc,como.dir.voc.name
+         @system.return.code = -status()
+         stop sysmsg(1432, status(), os.error(), como.dir) ;* Error xx creating xx
+      end
+
+      como.rec = "File for COMO output" : @fm : como.dir
+
+      write como.rec to voc, como.dir.voc.name
+
+      open como.dir to como.file else
+         @system.return.code = -status()
+         stop sysmsg(1430,status(), como.dir) ;* Error xx opening xx
+      end
+   end
+
+   como como.dir : @ds : como.record.name
+   como.record = como.record.name
+   recordlocku como.file, como.record.name
+
+   display sysmsg(6413, como.record.name) ;* COMO file activated to xx
+
+   return
+
+*****************************************************************************
+* COMO.OFF  -  Deactivate COMO file
+
+como.off:
+   if not(fileinfo(como.file, FL$OPEN)) then
+      @system.return.code = -ER$NCOMO
+      stop sysmsg(6414) ;* No COMO file active
+   end
+
+   como ""
+   close como.file
+
+   display sysmsg(6415) ;* COMO file deactivated
+
+   return
+end
+
+* END-CODE

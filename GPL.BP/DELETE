@@ -1,0 +1,198 @@
+* DELETE
+* DELETE verb
+* Copyright (c) 2005 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 10 Aug 05  2.2-7 Added use of NO.SEL.LIST.QUERY option.
+* 28 Mar 05  2.1-11 Use PARSER$MFILE.
+* 13 Oct 04  2.0-5 Use message handler.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* DELETE [ DICT ] file.name [ record.name ] [ NO.QUERY ]
+*                           [ ALL ]
+*
+* @SYSTEM.RETURN.CODE
+*    +ve Successful, number of records deleted
+*    -ve Error code
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program $delete
+$catalog $DELETE
+
+$include parser.h
+$include syscom err.h
+$include syscom keys.h
+$include int$keys.h
+
+
+   parser = "!PARSER"
+
+   @system.return.code = -ER$ARGS    ;* Preset for command format errors
+
+   record.count = 0
+   portion = ""
+   all = @false
+   no.query = @false
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+   call @parser(PARSER$MFILE, token.type, token, keyword) ;* First argument
+
+   * Check for DICT keyword
+
+   if keyword = KW$DICT then
+      portion = "DICT"
+      call @parser(PARSER$MFILE, token.type, token, keyword)
+   end
+
+   * Fetch file name
+
+   if token.type = PARSER$END then stop sysmsg(2102) ;* File name required
+
+   file.name = token
+
+   * Open the file
+
+   open portion, file.name to file else
+      open portion, upcase(file.name) to file else
+         @system.return.code = -status()
+         stop sysmsg(2019) ;* File not found
+      end
+
+      file.name = upcase(file.name)
+   end
+
+   if fileinfo(file, FL$READONLY) then
+      @system.return.code = -ER$RDONLY
+      stop sysmsg(1431) ;* File is read-only
+   end
+
+   ids = ''
+   loop
+      call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   until token.type = PARSER$END
+      begin case
+         case keyword = KW$ALL
+            all = @true
+
+         case keyword = KW$NO.QUERY
+            no.query = @true
+
+         case 1
+            ids<-1> = token
+      end case
+   repeat
+
+   num.ids = dcount(ids, @fm)
+   begin case
+      case num.ids > 0
+         for i = 1 to num.ids
+            record.name = ids<i>
+            gosub delete.record
+         next i
+
+      case selectinfo(0, sl$active)       ;* Delete using SELECT list
+         readnext record.name then
+            if not(no.query) and not(option(OPT.NO.SEL.LIST.QUERY)) then
+               loop
+                  display sysmsg(2050, record.name) :  ;* Use active select list (First item 'xx')?
+                  prompt ""
+                  input reply
+                  if upcase(reply[1,1]) = "N" then
+                     clearselect       ;* Must do this as we have taken one id
+                     stop
+                  end
+
+               until upcase(reply[1,1]) = "Y"
+               repeat
+            end
+
+            loop
+               gosub delete.record
+               readnext record.name else exit
+            repeat
+         end
+
+      case all            ;* ALL keyword used
+         if not(no.query) then
+            loop
+               display sysmsg(3220, trimf(portion : ' ' : file.name)) :
+                     * Delete all records in xx?
+               prompt ""
+               input reply
+               if upcase(reply[1,1]) = "N" then stop
+
+            until upcase(reply[1,1]) = "Y"
+            repeat
+         end
+
+         select file to 11
+         loop
+            readnext record.name from 11 else exit
+            recordlocku file, record.name
+            delete file, record.name
+            record.count += 1
+         repeat
+
+      case 1
+         stop sysmsg(2052) ;* Record name(s), select list or ALL keyword required
+   end case
+
+   display sysmsg(3221, record.count) ;* xx record(s) deleted
+
+   @system.return.code = record.count
+
+   return
+
+* ======================================================================
+
+delete.record:
+   if record.name = '' then
+      display sysmsg(2107) ;* Null record name ignored
+   end else
+      readvu dummy from file,record.name,0 then
+         record.count += 1
+         delete file, record.name
+         on error
+            record.count -= 1
+            display sysmsg(3222, status(), record.name) ;* Error xx deleting record xx
+            if status() = ER$TRIGGER then
+               crt sysmsg(3007, @trigger.return.code) ;* Data validation error: xx
+            end
+         end
+      end else
+         release file, record.name
+         display sysmsg(2108, record.name) ;* Record 'xx' not found
+      end
+   end
+
+   return
+
+   * Avoid compiler warnings
+   dummy = dummy
+end
+
+* END-CODE

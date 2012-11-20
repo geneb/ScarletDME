@@ -1,0 +1,1860 @@
+* QMPKG
+* QM Package Installer.
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 03 Oct 07  2.6-5 Use parse.pathname.tokens() when processing ACCOUNTS record.
+* 02 May 06  2.4-2 New program.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* Copyright (c) 2006  Doug Dumitru
+* This module was donated to the OpenQM project by Doug Dumitru.
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+$catalog $QMPKG global
+
+      deffun GetAcctPath(acct) local
+      deffun CreateSpecFromAcct(acct) local
+      deffun GetAks(file.fd) local
+      deffun GetFSpec(file.fd) local
+      deffun GetFType(file.fd) local
+      deffun GetTriggers(file.fd) local
+      deffun RdSpecItem(pkg.name) local
+      deffun UrlGet(url,DstFile) local
+      deffun HttpGet(url,DstFile) local
+      deffun DbFileGet(url,DstFile) local
+      deffun FileGet(url,DstFile) local
+      deffun GetNeededDeps(pkg.name) local
+      deffun CheckQmpkgVersion() local
+      deffun AskYN(msg) local
+      deffun DownloadPkg(pkg.name) local
+      deffun LoadPkg(pkg.name) local
+      deffun LoadPkgFromFile(src.file) local
+      deffun CompVer(v1,v2) local
+      deffun FindPkgFile(pkg.name) local
+      deffun RdLbl(src.fd) local
+      deffun DispLineNo(n) local
+      deffun DispPkg(pkg.name,lvl) local
+      deffun RdS(src.fd) local
+      deffun GetDumpLevel() local
+
+      equate qmpkg.version to '1.0.13'
+
+      equate qmp.version   to 'QMPKG: 1.00'
+
+      equate lf  to char(10)
+      equate cr  to char(13)
+
+      $include SYSCOM KEYS.H
+
+      dim files(8)
+
+      equate inst.pkgs.fd  to files(1)
+      equate inst.specs.fd to files(2)
+      equate avail.pkgs.fd to files(3)
+      equate config.fd     to files(4)
+      equate dl.pkgs.fd    to files(5)
+      equate bld.specs.fd  to files(6)
+      equate bld.pkgs.fd   to files(7)
+      equate bld.hdrs.fd   to files(8)
+
+      err = ''
+      UpdateMasterFlg = 0
+
+      file.names    = ''
+      file.names<1> = 'QMPKG.FILES,INSTALLED.PKGS dynamic'
+      file.names<2> = 'QMPKG.FILES,INSTALLED.SPECS dynamic'
+      file.names<3> = 'QMPKG.FILES,AVAIL.PKGS dynamic'
+      file.names<4> = 'QMPKG.FILES,CONFIG dynamic'
+      file.names<5> = 'QMPKG.FILES,DOWNLOAD.PKGS directory'
+      file.names<6> = 'QMPKG.FILES,BUILD.SPECS directory'
+      file.names<7> = 'QMPKG.FILES,BUILD.PKGS directory'
+      file.names<8> = 'QMPKG.FILES,BUILD.HDRS directory'
+      file.names = change(file.names,' ',@vm)
+
+      opts = ''
+      opt.str = ''
+      opt.str<1,1> = 'no.page'
+      opt.str<1,2> = 'nopage'
+      opt.str<2,1> = 'no.query'
+      opt.str<2,2> = 'noquery'
+
+      sent = sentence()
+      sent = change(sent,' ',@am)
+
+      for i = dcount(sent,@am) to 1 step -1
+         for j = 1 to dcount(opt.str,@am)
+            for k = 1 to dcount(opt.str<j>,@vm)
+               if downcase(sent<i>) = downcase(opt.str<j,k>) then
+                  opts<j> = 1
+                  sent = delete(sent,i,0,0)
+                  exit
+               end
+            next k
+            if opts<j> then exit
+         next j
+      next i
+
+      begin case
+         case system(91) = 0
+            loc.target = 'linux'
+         case system(91) = 1
+            loc.target = 'win'
+         case 1
+            display 'Unknown local target.'
+            stop
+      end case
+
+      if system(31) = '0' then
+         loc.license = 'gpl'
+      end else
+         loc.license = 'com'
+      end
+
+      dummy = ''
+      dummy = dummy
+
+      if opts<1> then dummy = @(0,0)
+        
+      crlf = char(13) : char(10)
+
+      cmd.lst = ''
+      cmd.lst<1>   = 'version'
+      cmd.lst<2>   = 'help'
+      cmd.lst<3>   = 'install'
+      cmd.lst<3,2> = 'upgrade'
+      cmd.lst<3,3> = 'update'
+      cmd.lst<3,4> = 'reinstall'
+      cmd.lst<4>   = 'spec.from.acct'
+      cmd.lst<5>   = 'bld'
+      cmd.lst<5,2> = 'build'
+      cmd.lst<6>   = 'ld'
+      cmd.lst<6,2> = 'load'
+      cmd.lst<7>   = 'list'
+      cmd.lst<8>   = 'dump'
+
+      openpath @qmsys : @ds : 'ACCOUNTS' to accts.fd else
+         display 'QMPKG: Cannot open ACCOUNTS file'
+         stop
+      end
+
+      orig.path = @path
+      cur.path = orig.path
+      allowed.paths = cur.path
+      switch.acct.warn.flg = 1
+
+      * The [1,5] below is a code to allow qmsys paths such as /usr/qmsys-2.4-1
+
+      if downcase(@who)[1,5] <> 'qmsys' then
+         display 'QMPKG: You must run this application from the QMSYS account.'
+         gosub Exit
+      end
+
+      * Fix VOC BP.OUT bug in some releases
+
+      open 'BP.OUT' to bp.out.fd then
+         close bp.out.fd
+      end else
+         open 'VOC' to voc.fd else
+            display 'cannot open VOC'
+            stop
+         end
+         read dummy from voc.fd , 'BP.OUT' then
+            delete voc.fd , 'BP.OUT'
+         end
+         close voc.fd
+      end
+
+      for i = 1 to dcount(file.names,@am)
+         open file.names<i,1> to file.var else
+            execute 'create-file data ' : file.names<i,1> : ' ' : file.names<i,2>
+            open file.names<i,1> to file.var else
+               display 'QMPKG: Cannot open ' : file.names<i,1>
+               gosub Exit
+            end
+         end
+         files(i) = file.var
+      next i
+         
+      write change(system(1012),'-','.') on inst.pkgs.fd , 'QM'  
+
+      read root.rep from config.fd , 'ROOT-REPOSITORY' else
+         root.rep     = 'QMPKG 1.0'
+         root.rep<-1> = 'repository: http://qmpkg.openqm.com/qmpkg-master-list.txt'
+         write root.rep on config.fd , 'ROOT-REPOSITORY'
+      end
+
+      verb = downcase(sent<1>)
+      sent = delete(sent,1,0,0)
+      cmd  = downcase(sent<1>)
+      sent = delete(sent,1,0,0)
+
+      verb = verb
+
+      cmd.n = 0
+      for i = 1 to dcount(cmd.lst,@am)
+         for j = 1 to dcount(cmd.lst<i>,@vm)
+            if cmd = cmd.lst<i,j> then
+               cmd.n = i
+               exit
+            end
+         next j
+      next i
+
+      if not(cmd.n) then
+         display 'QMPKG: Invalid command'
+         goto cmd.help
+      end
+
+      on cmd.n goto cmd.version,
+                    cmd.help,
+                    cmd.install,
+                    cmd.spec.from.acct,
+                    cmd.mk.pkg,
+                    cmd.ld.pkg,
+                    cmd.list,
+                    cmd.dump
+
+      display 'QMPKG: Internal error [1]'
+      gosub Exit
+
+cmd.version :
+
+      display 'QMPKG: version ' : qmpkg.version
+
+      gosub Exit
+
+cmd.help :
+
+      display 'QMPKG: Usage:'
+      display
+      display '       qmpkg cmd ...'
+      display
+      display '           cmd = version,help,install.upgrade'
+
+      gosub Exit
+
+cmd.list :
+
+      gosub UpdateMasterPkgs
+
+      execute 'SSELECT QMPKG.FILES,AVAIL.PKGS' capturing dummy
+
+      display 'Package' 'l#30' : ' ' : 'ver' 'l#8' : ' ' : 'Requires' 'l#20' : ' ' : 'Plat' 'l#5' : ' ' : 'Lic' 'l#5'
+      loop
+         readnext pkg.name else exit
+         read d from avail.pkgs.fd , pkg.name else continue
+         display pkg.name 'l#30' : ' ' : d<1> 'l#8' : ' ' : d<3,1> 'l#20' : ' ' : d<4> 'l#5' : ' ' : d<5> 'l#5'
+         for i = 2 to dcount(d<3>,@vm)
+            display '' 'l#30' : ' ' : '' 'l#8' : ' ' : d<3,i> 'l#20'
+         next i
+      repeat
+
+      gosub Exit
+
+cmd.dump :
+
+      gosub UpdateMasterPkgs
+
+      pkg.name = sent<1>
+      dump.lvl = sent<2>
+      if pkg.name = '' then
+         display 'No package specified'
+         gosub Exit
+      end
+
+      gosub UpdateMasterPkgs
+      dummy = DownloadPkg(pkg.name)
+      if err <> '' then
+         for i = 1 to dcount(err,@am)
+            display err<i>
+         next i
+         gosub Exit
+      end
+
+      if dump.lvl = '' then dump.lvl = GetDumpLevel()
+         
+      dummy = DispPkg(pkg.name,dump.lvl)
+
+      gosub Exit
+
+cmd.install :
+
+      
+      gosub InstallPkgs(sent<1>,cmd='reinstall')
+
+      gosub Exit
+
+LOCAL FUNCTION GetDumpLevel()
+
+      private ans
+
+      loop
+         display
+         display 'Enter the detail level that you wish to display'
+         display '   0 - No dump'
+         display '   1 - Accounts, Files, and Executes only'
+         display '   2 - ... plus item counts'
+         display '   3 - ... plus item IDs'
+         display '   4 - ... plus 1st 20 lines of items'
+         display '   5 - ... plus entire item body       :' :
+         input ans
+         if listindex('0,1,2,3,4,5',',',downcase(ans)) then return downcase(ans)
+      repeat
+
+end
+
+LOCAL FUNCTION GetNeededDeps((pkg.name))
+
+      private req.lst,toinst.lst,ok.lst,ok.flg,req.name,req.ver,d0,d1
+
+      req.lst = downcase(pkg.name)
+      toinst.lst = ''
+      ok.lst = ''
+
+      loop
+         if req.lst = '' then exit
+         req.name = field(req.lst<1,1>,' ',1)
+         req.ver  = field(req.lst<1,1>,' ',2)
+         req.lst  = delete(req.lst,1,1,0)
+         read d0 from inst.pkgs.fd  , upcase(req.name) else d0 = ''
+         read d1 from avail.pkgs.fd , upcase(req.name) else d1 = ''
+
+         ok.flg = 0
+         begin case
+            case d0 = '' and d1 = ''
+               err<-1> = 'Package ' : req.name : ' is not available.'
+               continue
+            case d0 = '' and d1 <> ''
+               if CompVer(req.ver,d1<1>) > 0 then
+                  err<-1> = 'Package ' : req.name : ' is not available at a high enough version.'
+                  continue
+               end
+               gosub AddPkg(req.name,toinst.lst)
+            case d0 <> '' and d1 = ''
+               if CompVer(req.ver,d0<1>) > 0 then
+                  err<-1> = 'Package ' : req.name : ' is installed but at too low of a version and no new version is avaialable.'
+                  continue
+               end
+               err<-1> = 'Package ' : req.name : ' is already installed.'
+               ok.flg = 1
+            case d0 <> '' and d1 <> ''
+               if CompVer(d1<1>,d0<1>) > 0 then
+                  if CompVer(req.ver,d1<1>) > 0 then
+                     err<-1> = 'Package ' : req.name : ' is not available at a high enough version.'
+                     continue
+                  end
+               end else
+                  err<-1> = 'Package ' : req.name : ' is already installed.'
+                  ok.flg = 1
+               end
+         end case
+
+         if ok.flg then
+            ok.lst<1> = req.name
+         end else
+            gosub AddPkg(req.name,toinst.lst)
+         end
+
+         for i = 1 to dcount(d1<3>,@am)
+            req.name = field(d1<3,i>,' ',1)
+            for j = 1 to dcount(toinst.lst,@am)
+               if req.name = field(toinst.lst<j>,' ',1) then exit
+            next j
+            if j > dcount(toinst.lst,@am) then
+               for j = 1 to dcount(ok.lst,@am)
+                  if req.name = field(ok.lst<j>,' ',1) then exit
+               next j
+               if j > dcount(ok.lst,@am) then
+                  req.lst<-1> = d1<3,i>
+               end
+            end
+         next i
+      repeat
+
+      return toinst.lst
+end
+
+LOCAL FUNCTION CheckQmpkgVersion()
+
+      private toinst.lst,d1,ans
+
+      gosub UpdateMasterPkgs
+
+      if err <> '' then return 0
+
+      read d1 from avail.pkgs.fd , 'QMPKG' else return 1
+      if CompVer(qmpkg.version,d1<1>) >= 0 then return 1
+
+      display 'QMPKG itself is not up to date.'
+      display
+      ans = AskYN('Do you wish to update QMPKG now :')
+      if ans = 'n' then return 1
+
+      gosub InstallPkgs('qmpkg',1)
+      gosub Exit
+
+end
+
+LOCAL FUNCTION AskYN((msg))
+
+      private ans
+
+      loop
+         display msg :
+         input ans
+         ans = downcase(ans)
+         if ans = 'n' or ans = 'y' then
+            display
+            return ans
+         end
+      repeat
+
+end
+
+LOCAL FUNCTION DownloadPkg((pkg.name))
+
+      private d,pkg.ver,pkg.url,pkg.plat,pkg.lic,url,http.target,dummy
+
+      read d from avail.pkgs.fd , upcase(pkg.name) else
+         display '   Internal error - cannot locate package in database.'
+         return 0
+      end
+      pkg.ver = d<1>
+      pkg.url = d<2>
+      pkg.plat = d<4>
+      pkg.lic  = d<5>
+      display '   Downloading ' : pkg.name : ' ' : pkg.ver : ' from ...'
+      display '      ' : pkg.url
+
+      http.target = downcase( pkg.name : '_' : pkg.ver : '_' : pkg.plat : '_' : pkg.lic : '.qmpkg' )
+      dummy = UrlGet(pkg.url,http.target)
+      if err <> '' then
+         for i = 1 to dcount(err,@am)
+            display '   ' : err<i>
+         next i
+         return 0
+      end
+
+      return 1
+end
+
+LOCAL SUBROUTINE InstallPkgs((RootPkgName),(ReinstallFlg))
+
+      private toinst.lst,i
+
+      if downcase(RootPkgName) <> 'qmpkg' then
+         if not(CheckQmpkgVersion()) then gosub Exit
+      end
+
+      gosub UpdateMasterPkgs
+
+      toinst.lst = GetNeededDeps(RootPkgName)
+
+      if err <> '' then
+         for i = 1 to dcount(err,@am)
+            display '   ' : err<i>
+         next i
+         display
+         err = ''
+      end
+
+      if ReinstallFlg then
+         gosub AddPkg(RootPkgname,toinst.lst)
+      end
+
+      if toinst.lst = '' then
+         display 'QMPKG: Nothing to install.'
+         gosub Exit
+      end
+
+      display
+      display 'The following packages are required:'
+      for i = 1 to dcount(toinst.lst,@am)
+         display '   ' : toinst.lst<i>
+      next i
+
+      if not(opts<2>) then
+         display
+         ans = AskYN('Download and install packages :')
+         if ans <> 'y' then gosub Exit
+      end
+
+      for i = dcount(toinst.lst,@am) to 1 step -1
+         if not(DownloadPkg(toinst.lst<i>)) then gosub Exit
+      next i
+
+      if not(opts<2>) then
+         dump.lvl = GetDumpLevel()
+         if dump.lvl > 0 then
+            for i = 1 to dcount(toinst.lst,@am)
+               dummy = DispPkg(toinst.lst<i>,dump.lvl)
+            next i
+         end
+
+         display
+         ans = AskYN('Are you ready to install these packages :')
+         if ans <> 'y' then gosub Exit
+      end
+
+      for i = dcount(toinst.lst,@am) to 1 step -1
+         pkg.name = toinst.lst<i>
+         display
+         s = str('=',5) : ' Installing ' : pkg.name : str('=',80)
+         display s[1,79]
+         if not(LoadPkg(pkg.name)) then gosub Exit
+
+         read d0 from avail.pkgs.fd , upcase(pkg.name) else
+            display 'Internal error - cannot locate package in database.'
+            gosub Exit
+         end
+
+         d    = d0<1>
+         d<2> = d0<4>
+         d<3> = d0<5>
+         write d on inst.pkgs.fd , upcase(pkg.name)
+          
+      next i
+
+      return
+
+end
+
+* = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+*
+* Functions to create a spec file from an account
+*
+
+LOCAL FUNCTION CreateSpecFromAcct((acct))
+
+      PRIVATE spec,AcctPath,VocPath,voc.fd,dict.fd,data.fd,fname,voc,trigger,ak,t
+
+      spec = ''
+
+      AcctPath = GetAcctPath(acct)
+      if AcctPath = '' then
+         err<-1> = 'Cannot get account path.'
+         return ''
+      end
+
+      VocPath = AcctPath : @ds : 'VOC'
+
+      openpath VocPath to voc.fd else
+         err<-1> = 'Cannot open acccount VOC.'
+         return ''
+      end
+
+      spec<-1> = 'acct:' : acct.name : ' ' : AcctPath
+
+      select voc.fd
+      loop
+         readnext fname else exit
+         read voc from voc.fd , fname else continue
+         if downcase(voc<1>) <> 'f' then continue
+         if index(voc<2>[1,1],'/\',1) then continue
+         if index(voc<3>[1,1],'/\',1) then continue
+         if voc<2>[1,2] = '..' then continue
+         if voc<3>[1,2] = '..' then continue
+         if voc<2>[2,1] = ':'  then continue
+         if voc<3>[2,1] = ':'  then continue
+
+         if trim(voc<3>) <> '' and voc<3>[1,1] <> '@' then
+            openpath AcctPath : @ds : voc<3> to dict.fd then
+               spec<-1> = 'file:' : acct.name : ' dict ' : fname : ' ' : GetFType(dict.fd) : ' *'
+               t = GetFSpec(dict.fd)
+               if t <> '' then spec<-1> = t
+            end
+         end
+
+         if voc<4> <> '' then
+            for i = 1 to dcount(voc<4>,@vm)
+               if voc<2,i>[1,1] = '@' then continue
+               openpath AcctPath : @ds : voc<2,i> to data.fd else continue
+               spec<-1> = 'file:' : acct.name : ' data ' : fname : ',' : voc<4,i> : ' ' : GetFType(data.fd) : ' *'
+               t = GetFSpec(data.fd)
+               if t <> '' then spec<-1> = t
+            next i
+         end else
+            if voc<2>[1,1] <> '@' then
+               openpath AcctPath : @ds : voc<2> to data.fd then
+                  spec<-1> = 'file:' : acct.name : ' data ' : fname : ' ' : GetFType(data.fd) : ' *'
+                  t = GetFSpec(data.fd)
+                  if t <> '' then spec<-1> = t
+               end
+            end
+         end
+         
+      repeat
+
+      return spec
+
+END
+
+LOCAL FUNCTION GetFSpec((file.fd))
+
+      private spec,trigger,ak,i,t
+
+      spec = ''
+
+      trigger = GetTriggers(file.fd)
+      if trigger <> '' then
+         spec<-1> = 'trigger:' : acct.name : ' dict:' : fname : ':' : trigger : ' *'
+      end
+
+      ak = GetAks(file.fd)
+      for i = 1 to dcount(ak,@am)
+         t = 'index:' : acct.name : ' dict ' : fname : ' ' : ak<i,1>
+         if ak<i,4> then t := ' NO.NULLS'
+         spec<-1> = t
+      next i
+
+      return spec
+
+END
+
+LOCAL FUNCTION GetFType((file.fd))
+
+      private path
+
+      begin case
+         case fileinfo(file.fd,FL$TYPE) = FL$TYPE.DH
+            return 'dynamic'
+         case fileinfo(file.fd,FL$TYPE) = FL$TYPE.DIR
+            path = fileinfo(file.fd,FL$PATH)
+            if path[len(path)-3,4] = '.OUT' then return 'object'
+            if path[len(path)-3,4] = @ds : 'cat' then return 'object'
+            if path[len(path)-4,5] = @ds : 'gcat' then return 'object'
+            return 'directory'
+         case 1
+            return fileinfo(file.fd,FL$TYPE) : ' - unknown'
+      end case
+
+END
+      
+LOCAL FUNCTION GetTriggers((file.fd))
+
+      if fileinfo(file.fd,FL$TYPE) <> FL$TYPE.DH then return ''
+
+      return fileinfo(file.fd,FL$TRIGGER)
+
+END
+
+LOCAL FUNCTION GetAks((file.fd))
+
+      private idx.lst,i
+
+      if fileinfo(file.fd,FL$TYPE) <> FL$TYPE.DH then return ''
+
+      idx.lst = ''
+      for i = 1 to dcount(idx.lst,@am)
+         idx.lst<i,2> = indices(file.fd,idx.lst<i>)
+      next i
+
+      return idx.lst
+
+END
+
+cmd.spec.from.acct :
+
+      acct.name = sent<1>
+      dst.item  = sent<2>
+
+      spec = CreateSpecFromAcct(acct.name)
+
+      if spec = '' then
+         display err
+         gosub Exit
+      end
+
+      write spec on bld.specs.fd , dst.item
+
+      gosub Exit
+
+* = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+
+cmd.mk.pkg :
+
+      pkg.name = downcase(sent<1>)
+
+      switch.acct.warn.flg = 0
+
+      acct.xlat = ''
+    
+      gosub RdSpec
+
+      if pkg.url = '' then
+         read pkg.url from config.fd , 'DEFAULT.URL' then
+            pkg.url = pkg.url : downcase(pkg.name) : '_' : pkg.version : '_' : downcase(pkg.target) : '_' : downcase(pkg.license) : '.qmpkg'
+         end
+      end
+
+      hdr = 'package: ' : pkg.name
+      hdr<-1> = '  version: ' : pkg.version
+      for i = 1 to dcount(pkg.requires,@am)
+         hdr<-1> = '  requires: ' : downcase(pkg.requires<i>)
+      next i
+      hdr<-1> = '  platform: ' : downcase(pkg.target)
+      hdr<-1> = '  license: ' : downcase(pkg.license)
+      hdr<-1> = '  desc: ' : pkg.desc
+      hdr<-1> = '  url: ' : pkg.url
+
+      write hdr on bld.hdrs.fd , upcase(pkg.name)
+
+      pkg.file = downcase(pkg.name) : '_' : downcase(pkg.version) : '_' : downcase(pkg.target) : '_' : downcase(pkg.license) : '.qmpkg'
+      dst.file = @qmsys : @ds : 'QMPKG.FILES' : @ds : 'BUILD.PKGS' : @ds : pkg.file
+
+      openseq dst.file OVERWRITE to dst.fd else
+         create dst.fd else
+            display 'QMPKG: Error creating package output file - ' : dst.file
+            gosub Exit
+         end
+      end
+  
+
+      if pkg.name = '' or pkg.version = '' then
+         display 'QMPKG: Spec file must contain a package name and version'
+         gosub Exit
+      end
+
+      s = ( qmp.version 'l#20' : date() 'r%5' : time() 'r%5' ) 'l#80'
+      gosub wrt.s
+
+      s    = 'spec'
+      s<2> = pkg.name : @vm : pkg.version : @vm : pkg.desc
+      s<3> = spec
+      gosub wrt.blk
+
+      for i = 1 to dcount(spec,@am)
+         l = trim(spec<i>)
+         cmd = field(l,':',1)
+         l = l[len(cmd)+2,999999]
+         x = change(l,' ',@am)
+
+         begin case
+            case cmd[1,1] = '*'
+            case cmd[1,1] = '#'
+            case cmd<1> = 'xlat acct'
+               acct.xlat<1,-1> = x<1>
+               acct.xlat<2,-1> = x<2>
+               acct.xlat<3,-1> = x<3>
+            case cmd<1> = 'acct' or cmd<1> = 'winacct' or cmd<1> = 'linuxacct'
+               l1 = cmd<1>
+               locate(x<1>,acct.xlat,1;l) then
+                  x<1> = acct.xlat<2,l>
+                  x<2> = acct.xlat<3,l>
+               end
+               l1<1,2> = x<1>
+               l1<1,3> = x<2>
+               s = l1
+               gosub wrt.blk
+            case cmd<1> = 'file'
+               gosub SwitchAcct(x<1>)
+               begin case
+                  case x<2> = 'dict' or x<2> = 'data'
+                     open x<2>,x<3> to data.fd else
+                        display 'QMPKG: Cannot open file - ' : x<2> : ',' : x<3>
+                        gosub Exit
+                     end
+                  case x<2> = 'path'
+                     openpath x<3> to data.fd else
+                        display 'QMPKG: Cannot open file - ' : x<2> : ',' : x<3>
+                        gosub Exit
+                     end
+                  case 1
+                     display 'QMPKG: Bad file type - ' : x<2> : ',' : x<3>
+                     gosub Exit
+               end case
+               if x<4> = 'object' then
+                  mark.mapping data.fd, off
+               end
+
+               locate(x<1>,acct.xlat,1;l) then x<1> = acct.xlat<2,l>
+               l1 = 'file'
+               l1<1,2> = x<1>
+               l1<1,3> = x<2>
+               l1<1,4> = x<3>
+               l1<1,5> = x<4>
+               l1<1,6> = x<5>
+               s = l1
+               gosub wrt.blk
+
+               item.lst = x
+               for j = 1 to 4
+                  item.lst = delete(item.lst,1,0,0)
+               next j
+
+               begin case
+                  case item.lst = '*'
+                     select data.fd
+                  case system(11) and item.lst = ''
+                     select data.fd
+                  case 1
+                     select change(item.lst,' ',@am)
+               end case
+
+               eof = 0
+               loop
+                  readnext id else eof = 1
+               until eof do
+                  read d from data.fd , id then
+                     if downcase(x<3>) <> 'voc' or downcase(d<1>)[1,1] <> 'f' then
+                        l1 = 'item'
+                        l1<1,2> = x<1>
+                        l1<1,3> = x<2>
+                        l1<1,4> = x<3>
+                        l2 = id
+                        s = l1 : @am : l2 : @am : d
+                        gosub wrt.blk
+                     end
+                  end
+               repeat
+            case cmd<1> = 'build exec' or cmd<1> = 'bld exec'
+               gosub SwitchAcct(field(l,':',1))
+               cmd = l[col2()+1,999999999]
+               closeseq dst.fd
+               display
+               display 'build command: ' : cmd
+               execute cmd
+               openseq dst.file APPEND to dst.fd else
+                  display 'Error re-opening output file.'
+                  gosub Exit
+               end
+            case cmd<1> = 'exec'
+               l1 = 'exec'
+               l2 = l
+               s = l1 : @am : l2
+               gosub wrt.blk
+         end case
+      next i
+
+      gosub Exit
+
+cmd.ld.pkg :
+
+      pkg.name = sent<1>
+
+      if not(LoadPkg(pkg.name)) then gosub Exit
+
+      gosub Exit
+
+
+
+
+LOCAL FUNCTION FindPkgFile((pkg.name))
+
+      private src.version,src.file,f.name,f.version,f.target,f.license
+
+      src.version = ''
+      select dl.pkgs.fd
+      loop
+         readnext id else exit
+         if loc.target = 'win' then id = downcase(id)
+         if id[len(id)-5,6] <> '.qmpkg' then continue
+         id = id[1,len(id)-6]
+         f.name    = field(id,'_',1)
+         f.version = field(id,'_',2)
+         f.target  = field(id,'_',3)
+         f.license = field(id,'_',4)
+         if f.name <> downcase(pkg.name) then continue
+         if CompVer(f.version,src.version) <= 0 then continue
+         if f.target <> 'all' and f.target <> '' then
+            if f.target <> loc.target then continue
+         end
+         if f.license <> 'all' and f.license <> '' then
+            if f.license <> loc.license then continue
+         end
+         src.version = f.version
+         src.file = id
+      repeat
+
+      if src.file = '' then return ''
+
+      return @qmsys : @ds : 'QMPKG.FILES' : @ds : 'DOWNLOAD.PKGS' : @ds : src.file : '.qmpkg'
+end
+
+LOCAL SUBROUTINE DispItemSummary((fname),(ln))
+
+      if unassigned(LastFname) then
+         LastFname = fname
+         TotItemCnt = 1
+         TotItemLen = ln
+         return
+      end
+
+      if TotItemCnt > 0 and fname <> LastFname then
+
+         display '   items    : ' : LastFname : ' ' : TotItemCnt : ' items ' : TotItemLen : ' bytes'
+
+         LastFname = fname
+         TotItemCnt = 0
+         TotItemLen = 0
+      end
+
+      if fname = '' then return
+
+      LastFname = fname
+      TotItemCnt += 1
+      TotItemLen += ln
+
+      return
+end
+
+LOCAL FUNCTION DispLineNo((n))
+
+      if len(n) <= 3 then
+         return ' ' : n 'r%3'
+      end else
+         return n 'r%4'
+      end
+
+end
+
+LOCAL FUNCTION DispPkg((pkg.name),(lvl))
+
+      private src.file,last.fname,s,s1,s2,lbl
+
+      if lvl < 1 then return 1
+
+      src.file = FindPkgFile(pkg.name)
+      if src.file = '' then
+         display 'QMPKG: Cannot find an appropriate package file for package ' : pkg.name
+         return 0
+      end
+
+      openseq src.file to src.fd else
+         display 'QMPKG: Cannot open package file - ' : src.file
+         return 0
+      end
+
+      display '=== ' : pkg.name 'l#70' : ' ==='
+      display '=== ' : src.file 'l#70' : ' ==='
+      display
+
+      lbl = RdLbl(src.fd)
+      display 'Label: ' : lbl[1,20] : ' ' : oconv(lbl[21,5],'d') : ' ' : oconv(lbl[26,5],'mts')
+
+      last.fname = ''
+
+      loop
+         s = RdS(src.fd)
+         if s = '' then exit
+         s1 = s<1>
+         s2 = s<2>
+         s = s[len(s1)+len(s2)+3,999999999]
+         begin case
+            case s1<1,1> = 'spec'
+               if lvl = 2 then gosub DispItemSummary('',0)
+               display '   spec     :'
+            case s1<1,1> = 'acct' or s1<1,1> = 'winacct' or s1<1,1> = 'linuxacct'
+               if lvl = 2 then gosub DispItemSummary('',0)
+               if s1<1,1> = 'winacct'   and loc.target <> 'win'   then continue
+               if s1<1,1> = 'linuxacct' and loc.target <> 'linux' then continue
+               acct.name = downcase(s1<1,2>)
+               acct.path = s1<1,3>
+               display '   ' : s1<1,1> 'l#9' : ': ' : acct.name : ' ' : acct.path
+            case s1<1,1> = 'file'
+               if lvl = 2 then gosub DispItemSummary('',0)
+               new.acct  = downcase(s1<1,2>)
+               dict.flg  = downcase(s1<1,3>)
+               file.name = s1<1,4>
+               file.tp   = s1<1,5>
+               display '   file     : ' : dict.flg : ' ' : new.acct : ':' : file.name : ' ' : file.tp
+            case s1<1,1> = 'item'
+               new.acct  = downcase(s1<1,2>)
+               dict.flg  = downcase(s1<1,3>)
+               file.name = s1<1,4>
+               item.id   = s2
+
+               begin case
+                  case lvl = 1
+                  case lvl = 2
+                     gosub DispItemSummary(dict.flg:' ':new.acct:':':file.name,len(s))
+                  case lvl = 3
+                     display '   item     : ' : dict.flg : ' ' : new.acct : ':' : file.name : ' ' : item.id : ' len=' : len(s)
+                  case lvl = 4 or lvl = 5
+                     n.attr = dcount(s,@am)
+                     if n.attr = 1 then n.attr = dcount(s,lf)
+                     display '   item     : ' : dict.flg : ' ' : new.acct : ':' : file.name : ' ' : item.id : ' len=' : len(s) : ' attr=' : n.attr
+                     x = change(s[1,100],@am ,'.')
+                     x = change(x       ,@vm ,'.')
+                     x = change(x       ,@svm,'.')
+                     x = change(x       ,cr ,'.')
+                     x = change(x       ,lf ,'.')
+                     if x <> oconv(x,'mcp') then
+                        display '            : BINARY : ' : oconv(x[1,55],'mcp')
+                     end else
+                        s = change(s,cr,'' )
+                        s = change(s,lf,@am)
+                        i1 = dcount(s,@am)
+                        if lvl = 4 then
+                           if i1 > 20 then i1 = 20
+                        end
+                        for i = 1 to i1
+                           display DispLineNo(i) : ' : ' : s<i>[1,@CRTWIDE-8]
+                        next i
+                     end
+               end case
+
+               *voc.flg = ( downcase(file.name) = "VOC" )
+
+               *if voc.flg and downcase(s[1,1]) = 'f' then continue
+
+               *fname = dict.flg : ' ' : new.acct : ':' : file.name
+               *if fname <> last.fname then
+               *   gosub SwitchAcct(new.acct)
+               *   begin case
+               *      case downcase(dict.flg) = 'dict' or downcase(dict.flg) = 'data'
+               *         open dict.flg , file.name to data.fd else
+               *            display 'QMPKG: Warning - File open failed - ' : new.acct : ' ' : dict.flg : ' ' : file.name
+               *            continue
+               *         end
+               *      case downcase(dict.flg) = 'path'
+               *         openpath file.name to data.fd else
+               *            display 'QMPKG: Warning - File open failed - ' : new.acct : ' ' : dict.flg : ' ' : file.name
+               *            continue
+               *         end
+               *      case 1
+               *         display 'QMPKG: Warning - File open failed - ' : new.acct : ' ' : dict.flg : ' ' : file.name
+               *         continue
+               *   end case
+ 
+               *   last.fname = fname
+               *   if file.tp = 'object' then mark.mapping data.fd, off
+               *end
+
+               *if voc.flg then
+               *   if downcase(s<1>[1,1]) <> 'f' then
+               *      read dummy from data.fd , item.id else
+               *         write s on data.fd , item.id
+               *      end
+               *   end
+               *end else
+               *   write s on data.fd , item.id
+               *end
+
+            case s1 = 'exec'
+               if lvl = 2 then gosub DispItemSummary('',0)
+               new.acct = downcase(field(s2,':',1))
+               cmd = s2[col2()+1,999999]
+               *gosub SwitchAcct(new.acct)
+               display '   exec     :      ' : new.acct : ':' : cmd
+               *w1 = downcase(field(cmd,' ',1))
+               *begin case
+               *   case w1 = 'display'
+               *      display oconv(cmd,'g1 999')
+               *   case w1 = 'quiet'
+               *      execute oconv(cmd,'g1 999')
+               *   case 1
+               *      display
+               *      display 'install command: ' : cmd
+               *      execute cmd
+               *end case
+         end case
+      repeat
+
+      if lvl = 2 then gosub DispItemSummary('',0)
+
+      return 1
+end
+
+LOCAL FUNCTION LoadPkg((pkg.name))
+
+      private src.file,last.fname,s,s1,s2
+
+      src.file = FindPkgFile(pkg.name)
+      if src.file = '' then
+         display 'QMPKG: Cannot find an appropriate package file for package ' : pkg.name
+         return 0
+      end
+
+      return LoadPkgFromFile(src.file)
+
+end
+
+LOCAL FUNCTION LoadPkgFromFile((src.file))
+      
+      openseq src.file to src.fd else
+         display 'QMPKG: Cannot open package file - ' : src.file
+         return 0
+      end
+
+      display 'QMPKG: Using package file ...'
+      display '       ' : src.file
+
+      lbl = RdLbl(src.fd)
+      display 'Label: ' : lbl[1,20] : ' ' : oconv(lbl[21,5],'d') : ' ' : oconv(lbl[26,5],'mts')
+
+      last.fname = ''
+
+      loop
+         s = RdS(src.fd)
+         if s = '' then exit
+         s1 = s<1>
+         s2 = s<2>
+         s = s[len(s1)+len(s2)+3,999999999]
+         begin case
+            case s1<1,1> = 'spec'
+               write s on inst.specs.fd , downcase(pkg.name)
+            case s1<1,1> = 'acct' or s1<1,1> = 'winacct' or s1<1,1> = 'linuxacct'
+               if s1<1,1> = 'winacct'   and loc.target <> 'win'   then continue
+               if s1<1,1> = 'linuxacct' and loc.target <> 'linux' then continue
+               acct.name = s1<1,2>
+               acct.path = s1<1,3>
+               read acct from accts.fd , acct.name else
+                  gosub SwitchAcct('QMSYS')
+                  display 'Create account: ' : acct.name
+                  cmd = 'CREATE-ACCOUNT ' : acct.name : ' ' : acct.path : ' no.query'
+                  execute cmd
+                  allowed.paths<-1> = acct.path
+               end
+               read acct from accts.fd , acct.name else
+                  display 'Error reading account record for account ' : acct.name
+                  return 0
+               end
+               acc.path = parse.pathname.tokens(acct<ACC$PATH>)
+               openpath acc.path : @ds : 'VOC' to voc.fd else
+                  display 'Error opening VOC for existing account ' : acct.name
+                  return 0
+               end
+            case s1<1,1> = 'file'
+               new.acct  = s1<1,2> ; gosub SwitchAcct(new.acct)
+               dict.flg  = s1<1,3>
+               file.name = s1<1,4>
+               file.tp   = s1<1,5>
+
+               begin case
+                  case file.tp = 'object'
+                     create.tp = 'directory'
+                  case file.tp = 'directory'
+                     create.tp = 'directory'
+                  case file.tp = 'dynamic'
+                     create.tp = 'dynamic'
+                  case 1
+                     display 'QMPKG: Error - invalid file.tp ' : file.tp
+                     return 0
+               end case
+
+               begin case
+                  case dict.flg = 'dict' or dict.flg = 'data' 
+                     open dict.flg , file.name to file.fd else
+                        cmd = 'CREATE-FILE ' : dict.flg : ' ' : file.name : ' ' : create.tp
+                        * display new.acct : ': ' : cmd
+                        execute cmd
+                     end
+                  case dict.flg = 'path'
+                     openpath file.name to file.fd else
+                        begin case
+                           case create.tp = 'directory'
+                              create.file file.name DIRECTORY
+                           case create.tp = 'dynamic'
+                              create.file file.name DYNAMIC
+                        end case
+                     end
+                  case 1
+                     display 'QMPKG: Error - invalid file dict/data flag ' : dict.flg
+                     return 0
+               end case
+            case s1<1,1> = 'item'
+               new.acct  = s1<1,2> ; gosub SwitchAcct(new.acct)
+               dict.flg  = upcase(s1<1,3>)
+               file.name = s1<1,4>
+               item.id   = s2
+
+               voc.flg = ( downcase(file.name) = "VOC" )
+
+               if voc.flg and downcase(s[1,1]) = 'f' then continue
+
+               * display new.acct : ' ' : dict.flg : ' ' : file.name : ' ' : item.id
+
+               fname = dict.flg : ' ' : new.acct : ':' : file.name
+               if fname <> last.fname then
+                  gosub SwitchAcct(new.acct)
+                  begin case
+                     case downcase(dict.flg) = 'dict' or downcase(dict.flg) = 'data'
+                        open dict.flg , file.name to data.fd else
+                           display 'QMPKG: Warning - File open failed - ' : new.acct : ' ' : dict.flg : ' ' : file.name
+                           continue
+                        end
+                     case downcase(dict.flg) = 'path'
+                        openpath file.name to data.fd else
+                           display 'QMPKG: Warning - File open failed - ' : new.acct : ' ' : dict.flg : ' ' : file.name
+                           continue
+                        end
+                     case 1
+                        display 'QMPKG: Warning - File open failed - ' : new.acct : ' ' : dict.flg : ' ' : file.name
+                        continue
+                  end case
+ 
+                  last.fname = fname
+                  if file.tp = 'object' then mark.mapping data.fd, off
+               end
+
+               if voc.flg then
+                  if downcase(s<1>[1,1]) <> 'f' then
+                     read dummy from data.fd , item.id else
+                        write s on data.fd , item.id
+                     end
+                  end
+               end else
+                  write s on data.fd , item.id
+               end
+
+            case s1 = 'exec'
+               new.acct = field(s2,':',1) ; gosub SwitchAcct(new.acct)
+               cmd = s2[col2()+1,999999]
+               w1 = downcase(field(cmd,' ',1))
+               begin case
+                  case w1 = 'display'
+                     display oconv(cmd,'g1 999')
+                  case w1 = 'quiet'
+                     execute oconv(cmd,'g1 999')
+                  case 1
+                     display
+                     display 'install command: ' : cmd
+                     execute cmd
+               end case
+         end case
+      repeat
+  
+      return 1
+
+end
+
+LOCAL FUNCTION RdSpecItem((pkg.name))
+
+      PRIVATE spec,i,l,w1,w2,w3,i.specs.fd,i.id,i.spec
+
+      read spec from bld.specs.fd , upcase(pkg.name) else
+         err<-1> = 'Error reading spec for ' : pkg.name
+         return ''
+      end
+
+      for i = 1 to dcount(spec,@am)
+         l = trim(spec<i>)
+         if l = '' then continue
+         if l[1,1] = '*' then continue
+         if l[1,1] = '#' then continue
+         if l[1,1] = ';' then continue
+         if field(l,' ',1) = 'rem' then continue
+
+         w1 = field(l,' ',1)
+         w2 = field(l,' ',1)
+         w3 = field(l,' ',1)
+
+         if downcase(w1) = 'rem' then continue
+
+         if downcase(w1) = '$include' then
+            if w3 = '' then
+               i.specs.fd = bld.specs.fd
+               i.id = w2
+            end else
+               open w2 to i.specs.fd else
+                  err = 'Error opening spec include file - ' : w2
+                  return ''
+               end
+               i.id = w3
+            end
+            read i.spec from i.specs.fd , i.id else
+               err = 'Error reading spec include item - ' : i.id
+               return ''
+            end
+            spec<i> = i.spec
+         end
+      next i
+
+      return spec
+
+END
+
+LOCAL SUBROUTINE RdSpec
+
+      spec = RdSpecItem(pkg.name)
+
+      pkg.name     = ''
+      pkg.version  = ''
+      pkg.target   = ''
+      pkg.license  = ''
+      pkg.desc     = ''
+      pkg.requires = ''
+      pkg.url      = ''
+
+      for i = 1 to dcount(spec,@am)
+         l = trim(spec<i>)
+         w1 = downcase(field(l,':',1))
+         w2 = field(l,':',2)
+         begin case
+            case w1 = 'name'
+               pkg.name = trim(w2)
+            case w1 = 'version'
+               pkg.version = trim(w2)
+            case w1 = 'desc'
+               pkg.desc = trim(w2)
+            case w1 = 'target'
+               pkg.target = trim(w2)
+            case w1 = 'license'
+               pkg.license = trim(w2)
+            case w1 = 'requires'
+               pkg.requires<-1> = trim(w2)
+            case w1 = 'url'
+               pkg.url = trim(oconv(l,'g1:999'))
+         end case
+      next i
+
+      if pkg.target  = '' then pkg.target  = 'all'
+      if pkg.license = '' then pkg.license = 'all'
+
+      return
+
+end
+
+wrt.s :
+
+     writeblk s to dst.fd else
+        display 'QMPKG: Error writing to destination file'
+        gosub Exit
+     end
+
+     return
+
+wrt.blk :
+
+     s = len(s) 'r%8' : s
+     gosub wrt.s
+
+     return
+
+LOCAL FUNCTION RdLbl((file.fd))
+
+      private lbl
+
+      readblk lbl from src.fd , 80 else
+         display 'QMPKG: Error reading package file label'
+         gosub Exit
+      end
+
+      if len(lbl) <> 80 then
+         display 'QMPKG: Short read reading package file label'
+         gosub Exit
+      end
+
+      if lbl[1,20] <> qmp.version 'l#20' then
+         display 'QMPKG: Package file have invalid version string'
+         gosub Exit
+      end
+
+      return lbl
+
+end
+
+LOCAL FUNCTION RdS((file.fd))
+
+     private ln,s
+
+     readblk ln from src.fd , 8 else return ''
+     if ln = '' then return ''
+
+     if len(ln) <> 8 then
+        display 'QMPKG: Short read reading block length field'
+        gosub Exit
+     end
+
+     if not(ln matches '8N') then
+        display 'QMPKG: Invalid length field'
+        gosub Exit
+     end
+
+     ln = ln + 0
+
+     readblk s from src.fd , ln else
+        display 'QMPKG: Error reading block'
+        gosub Exit
+     end
+
+     if len(s) <> ln then
+        display 'QMPKG: Short read reading block'
+        gosub Exit
+     end
+
+     return s
+end
+
+LOCAL SUBROUTINE UpdateMasterPkgs
+
+      private rep.lst,rep.done.lst
+
+      if UpdateMasterFlg then return
+
+      UpdateMasterFlg = 1
+
+      rep.lst = ''
+      rep.done.lst = ''
+
+      display '   Getting package information.'
+
+      clearfile avail.pkgs.fd
+
+      rep.lst = 'dbfile://QMPKG.FILES,CONFIG/ROOT-REPOSITORY'
+
+      loop
+         err = ''
+         if rep.lst = '' then exit
+         url = rep.lst<1>
+         sysid = system(1028)
+         if len(sysid) <> 9 then sysid = ''
+         if not(index(url,'@systemid',1)) or sysid <> '' then
+            url = change(url,'@systemid',sysid)
+         end
+         display '      Retrieving: ' : url
+         rep.lst = delete(rep.lst,1,0,0)
+         rep.done.lst<-1> = url
+         http.target = 'var'
+         http.body = UrlGet(url,'')
+
+         if err <> '' then
+            if not(index(url,'@systemid',1)) then
+               display '         ' : err
+            end
+            continue
+         end
+
+         http.body = change(http.body,char(13),'')
+         http.body = change(http.body,char(10),@am)
+         if downcase(http.body<1>) <> 'qmpkg 1.0' THEN
+            display '      Invalid QMPKG version.'
+            continue
+         end
+         http.body<-1> = 'package: __end__'
+
+         pkg.name = ''
+
+         c.name     = ''
+         c.url      = ''
+         c.ver      = ''
+         c.req      = ''
+         c.platform = ''
+         c.license  = ''
+
+         for i = 2 to dcount(http.body,@am)
+
+            ln = trim(http.body<i>)
+            w1 = downcase(trim(field(ln,':',1)))
+            w2 = trim(oconv(ln,'g1:999'))
+            begin case
+               case w1 = 'repository'
+                  *if not(index(w2,'@systemid',1)) or system(1028) then
+                  *   w2 = change(w2,'@systemid',system(1028))
+                  *   locate(w2,rep.done.lst;dummy) else
+                        rep.lst<-1> = w2
+                  *   end
+                  *end
+               case w1 = 'package'
+                  if c.name <> '' then
+                     if c.ver      = '' then c.ver      = '0.0.0'
+                     if c.platform = '' then c.platform = 'all'
+                     if c.license  = '' then c.license  = 'all'
+                     c.platform = downcase(c.platform)
+                     c.license  = downcase(c.license)
+                     if c.url <> '' then
+                        if c.platform = 'all' or c.platform = loc.target then
+                           if c.license = 'all' or c.license = loc.license then
+                              read d from avail.pkgs.fd , upcase(c.name) else d = ''
+                              if CompVer(c.ver,d<1>) > 0 then
+                                 d    = c.ver
+                                 d<2> = c.url
+                                 d<3> = c.req
+                                 d<4> = c.platform
+                                 d<5> = c.license
+                                 write d on avail.pkgs.fd , upcase(c.name)
+                              end
+                           end
+                        end
+                     end
+                  end
+                  c.name = downcase(w2)
+                  c.url      = ''
+                  c.ver      = ''
+                  c.req      = ''
+                  c.platform = ''
+                  c.license  = ''
+               case w1 = 'version'
+                  c.ver = w2
+               case w1 = 'requires'
+                  c.req<1,-1> = w2
+               case w1 = 'url'
+                  c.url = w2
+               case w1 = 'platform'
+                  c.platform = w2
+               case w1 = 'license'
+                   c.license = w2
+           end case
+         next i
+      repeat
+
+      pkg.cnt = fileinfo(avail.pkgs.fd,FL$RECORD.COUNT)
+      begin case
+         case pkg.cnt = 0
+            display '   No packages could be found in on-line respoitories.'
+         case pkg.cnt = 1
+            display '   One package available.'
+         case pkg.cnt > 1
+            display '   ' : pkg.cnt : ' packages available.'
+      end case
+
+      display
+ 
+      return
+
+end
+
+LOCAL FUNCTION UrlGet((url),(TargetFile))
+
+
+      begin case
+         case url[1,7] = 'http://'
+            return HttpGet(url,TargetFile)
+         case url[1,9] = 'dbfile://'
+            return DbFileGet(url,TargetFile)
+         case url[1,7] = 'file://'
+            return FileGet(url,TargetFile)
+         case 1
+           err<-1> = 'Invalid URL format.'
+           return ''
+      end case
+
+end
+
+LOCAL SUBROUTINE OpenTarget((TargetFile),target.fd,r.err)
+
+      private target.path
+
+      target.fd = ''
+      r.err = ''
+
+      if TargetFile = '' then return
+
+      target.path = @qmsys : @ds : 'QMPKG.FILES' : @ds : 'DOWNLOAD.PKGS' : @ds : TargetFile
+      openseq target.path OVERWRITE to target.fd else
+         create target.fd else
+            r.err = 'Cannot open ' : http.target : ' file.'
+            return
+         end
+      end
+
+      return
+
+end
+
+LOCAL FUNCTION HttpGet((url),(TargetFile))
+
+      private host,addr,sock.fd,obuf,res,ibuf,hdr,t,hdr.body.len,l,w,i,target.file,eof.flg
+
+      host = field(url,'/',3)
+      url  = oconv(url,'g3/999')
+
+      if not(index(host,':',1)) then host = host : ':80'
+
+      addr = server.addr(field(host,':',1))
+      if addr = '' then
+         err<-1> = 'Cannot resolve address for host ' : field(host,':',1)
+         return ''
+      end
+
+      sock.fd = open.socket(addr,field(host,':',2),SKT$BLOCKING)
+      if status() then
+         err<-1> = 'Cannot open connection to host ' : field(host,':',1) : ' [' : addr : ']:' : field(host,':',2)
+         return ''
+      end
+
+      if url[1,1] <> '/' then url = '/' : url
+
+      obuf = 'GET ' : url : ' HTTP/1.0'
+      obuf<-1> = 'User-Agent: OpenQM 1.0'
+      obuf<-1> = 'Host: ' : field(host,':',1)
+
+      obuf = change(obuf,@am,crlf) : crlf : crlf
+
+      res = write.socket(sock.fd,obuf,0,60000)
+      if res <> len(obuf) then
+         close.socket sock.fd
+         err<-1> = 'Error writing HTTP GET request to TCP connection.'
+         return ''
+      end
+
+      ibuf = read.socket(sock.fd,20000,0,60000)
+      if ibuf = '' then
+         close.socket sock.fd
+         err<-1> = 'Error reading HTTP GET response from TCP connection.'
+         return ''
+      end
+
+      loop while ibuf[1,2] = crlf do
+         ibuf = ibuf[3,999999999]
+      repeat
+
+      t = index(ibuf,crlf:crlf,1)
+
+      if not(t) then
+         close.socket sock.fd
+         err<-1> = 'HTTP header not returned.'
+         return ''
+       end
+
+       hdr = ibuf[1,t-1]
+       ibuf = ibuf[t+4,999999999]
+
+       hdr = change(hdr,crlf,@am)
+
+       if field(hdr<1>,' ',2) <> '200' then
+          close.socket sock.fd
+          err<-1> = 'HTTP error ' : field(hdr<1>,' ',2)
+          return ''
+       end
+
+       hdr.body.len = 0
+       for i = 2 to dcount(hdr,@am)
+          l = downcase(hdr<i>)
+          w = trim(field(l,':',1))
+          if w <> 'content-length' then continue
+             hdr.body.len = trim(field(field(trim(field(l,':',2)),' ',1),';',1))
+          exit
+       next i
+
+      if not(hdr.body.len matches '1N0N') then
+         close.socket sock.fd
+         err<-1> = 'Invalid content length from HTTP header.'
+         return ''
+      end
+
+      gosub OpenTarget(TargetFile,target.fd,r.err)
+      if r.err <> '' then
+         err<-1> = r.err
+         return ''
+      end
+
+      body.len = len(ibuf)
+      eof.flg = 0
+
+      loop
+         res = read.socket(sock.fd,20000,0,60000)
+         if res = '' then eof.flg = 1
+         ibuf = ibuf : res
+         if len(ibuf) = 0 then exit
+         body.len = body.len + len(res)
+         if hdr.body.len > 0 and body.len >= hdr.body.len then
+            ibuf = ibuf[1,len(ibuf)-(body.len-hdr.body.len)]
+            eof.flg = 1
+         end
+         if TargetFile <> '' then
+            writeblk ibuf on target.fd else
+               closeseq target.fd
+               err<-1> = 'Error writing to ' : TargetFile
+               return ''
+            end
+            ibuf = ''
+         end
+         if eof.flg then exit
+      repeat
+
+      close.socket sock.fd
+
+      if TargetFile <> '' then
+         closeseq target.fd
+         return ''
+      end
+
+      return ibuf
+
+end
+
+LOCAL FUNCTION DbFileGet((url),(TargetFile))
+
+      private filename,itemname,http.body,dbfile.fd
+
+      filename = field(url,'/',3)
+      itemname = field(url,'/',4)
+
+      open filename to dbfile.fd else
+         err<-1> = 'Error opening ' : filename
+         return ''
+      end
+
+      read http.body from dbfile.fd , itemname else
+         err<-1> = 'Error reading ' : filename : ' ' : itemname
+         return ''
+      end
+
+      if TargetFile = '' then return http.body
+
+      gosub OpenTarget(TargetFile,target.fd,r.err)
+      if r.err <> '' then
+         err<-1> = r.err
+         return ''
+      end
+
+      writeblk http.body on target.fd else
+         closeseq target.fd
+         err<-1> = 'Error writing to ' : TargetFile : ' file.'
+         return ''
+      end
+
+      closeseq target.fd
+
+      return ''
+
+end
+
+LOCAL FUNCTION FileGet((url),(TargetFile))
+
+      private filename,blk,res
+
+      filename = field(url,'/',3)
+
+      openseq filename to file.fd else
+         err = 'Error opening ' : filename
+         return
+      end
+
+      gosub OpenTarget(TargetFile,target.fd,r.err)
+      if r.err <> '' then
+         err<-1> = r.err
+         return ''
+      end
+
+      res = ''
+      loop
+         readblk blk from file.fd , 10000 else
+            err<-1> = 'Error reading from ' : filename
+            return ''
+         end
+         if TargetFile <> '' then
+            writeblk blk on target.fd else
+               err<-1> = 'Error writing to ' : http.target : ' file.'
+               return ''
+            end
+         end else
+            res := blk
+         end
+         if len(blk) < 10000 then exit
+      repeat
+
+      closeseq file.fd
+      if TargetFile <> '' then closeseq target.fd
+
+      return res
+
+end
+
+LOCAL SUBROUTINE SwitchAcct((new.acct))
+
+      private acct,new.path
+
+      read acct from accts.fd , new.acct else
+         read acct from accts.fd , upcase(new.acct) else
+            display 'Cannot read account record for account ' : new.acct
+            gosub Exit
+         end
+      end
+
+      new.path = parse.pathname.tokens(acct<ACC$PATH>)
+      if downcase(new.acct[1,5]) <> 'qmsys' then
+         if loc.target = 'win' then
+            new.path = downcase(new.path)
+            allowed.paths = downcase(allowed.paths)
+         end
+         locate(new.path,allowed.paths;dummy) else
+            if switch.acct.warn.flg then
+               if AskYN('Allow change to accont ':new.acct:' ':new.path:' :') <> 'y' then gosub Exit
+            end
+            allowed.paths<-1> = new.path
+         end
+      end
+
+      new.path = change(new.path,'@qmsys',@qmsys)
+      new.path = change(new.path,'@QMSYS',@qmsys)
+ 
+      call $setacc(new.path,err,msg)
+      if err then
+         display 'QMPKG: Error changing account to ' : new.acct : ' ' : new.path : ' - ' : msg
+         gosub Exit
+      end
+ 
+      return
+
+end
+
+LOCAL FUNCTION CompVer(v1,v2)
+
+      private i
+
+      for i = 1 to 3
+         if field(v1,'.',i)+0 < field(v2,'.',i)+0 then return -1
+         if field(v1,'.',i)+0 > field(v2,'.',i)+0 then return 1
+      next i
+
+      return 0
+
+end
+
+LOCAL SUBROUTINE Exit
+
+     if @path <> orig.path then
+        call $setacc(orig.path,err,msg)
+        if err then
+           display 'QMPKG: Error chaning path back to ' : orig.path : ' - ' : msg
+        end
+     end
+ 
+     stop
+
+end
+
+LOCAL FUNCTION GetAcctPath((acct))
+
+     PRIVATE accts.fd,d
+ 
+     openpath @QMSYS : @ds : 'ACCOUNTS' to accts.fd else abort 'Cannot open QMSYS:ACCOUNTS file'
+     read d from accts.fd , acct else return ''
+
+     return parse.pathname.tokens(d<ACC$PATH>)
+
+END
+
+LOCAL SUBROUTINE AddPkg(PkgName,toinst.lst)
+
+      PRIVATE l
+
+      locate(Pkgname,toinst.lst;l;'al') else
+         toinst.lst = insert(toinst.lst,l,0,0,PkgName)
+      end
+
+      return
+
+END
+
+
+end
+
+

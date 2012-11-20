@@ -1,0 +1,392 @@
+* SPVIEW
+* SP.VIEW command - View/spool entries from $HOLD or other file.
+* Copyright (c) 2006 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 02 Nov 06  2.4-15 Dictionary record types now case insensitive.
+* 24 May 06  2.4-5 Rely on key binding restore to reset lone Esc handling
+*                  correctly. Previous method always enabled it.
+* 23 May 06  2.4-4 Disable KEYCODE() lone Esc handling.
+* 28 Mar 05  2.1-11 Use PARSER$MFILE.
+* 18 Jan 05  2.1-2 Show items in sorted order in pick list.
+* 18 Jan 05  2.1-2 Save and restore key bindings rather than setting and
+*                  deleting (which may upset other programs).
+* 14 Oct 04  2.0-5 Use message handler.
+* 01 Oct 04  2.0-3 Added multifile support.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+program spview
+$catalogue $spview
+
+$include parser.h
+$include err.h
+$include int$keys.h
+$include keys.h
+$include keyin.h
+
+   parser = "!PARSER"
+   prompt ''
+
+   @system.return.code = -ER$ARGS
+
+   prompt.line = @crthigh - 1
+   info.line = @crthigh - 2
+   info.fmt = (@crtwide - 1) : 'L'
+
+   call @parser(PARSER$RESET, 0, @sentence, 0)
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword) ;* Verb
+
+   * Get command arguments
+
+   file.name = ''
+   item.name = ''
+   lptr = 0
+   numbering = @false
+
+   loop
+      call @parser(PARSER$MFILE, token.type, token, keyword)
+   until token.type = PARSER$END
+      begin case
+         case keyword = KW$DICT
+            call @parser(PARSER$MFILE, token.type, token, keyword)
+            if token.type = PARSER$END then stop 'File name required'
+            file.name = 'DICT ' : token
+
+         case keyword = KW$LPTR
+            call @parser(PARSER$GET.TOKEN, token.type, lptr, keyword)
+            if token.type # PARSER$TOKEN or not(lptr matches '1-3N') or lptr < 0 or lptr > LPTR$HIGH.PRINT.UNIT then
+               stop sysmsg(2053) ;* Invalid print unit number
+            end
+            lptr += 0
+
+         case item.name = ''
+            item.name = token
+
+         case file.name = ''
+            file.name = item.name
+            item.name = token
+
+         case 1
+            stop sysmsg(2018, token ) ;* Unexpected token (xx)
+      end case
+   repeat
+
+   if file.name = '' then
+      * If we have just one name, resolve whether we are looking at a single
+      * $HOLD item or whether it is a file name. We consider it as a file
+      * name if it exists as an F or Q-type VOC entry and there is no item
+      * in $HOLD with this name.
+
+      file.name = '$HOLD'   ;* Assume $HOLD for now
+
+      if item.name # '' then
+         fn = field(item.name, ',', 1)
+         read voc.rec from @voc, fn else
+            read voc.rec from @voc, upcase(fn) else null
+         end
+
+         voc.type = upcase(voc.rec[1,1])
+         if voc.type = 'F' or voc.type = 'Q' then
+            * Check for $HOLD entry with this name
+            open '$HOLD' to data.f then
+               readv rec from data.f, item.name, 0 else
+                  * There is no such $HOLD item. Assume that the name we
+                  * are currently treating as an item is actually a file.
+                  file.name = item.name
+                  item.name = ''
+               end
+            end
+         end
+      end
+   end
+
+   open file.name to data.f else
+      open upcase(file.name) to data.f else
+         @system.return.code = status()
+         stop sysmsg(2019) ;* File not found
+      end
+      file.name = upcase(file.name)
+   end
+
+   saved.key.bindings = bindkey('', -3)
+   void bindkey('', -5)
+   i = bindkey(char(27):'V', K$PAGE.UP)
+   i = bindkey(char(27):'v', K$PAGE.UP)
+   i = bindkey(char(27):'<', K$HOME)
+   i = bindkey(char(27):'>', K$END)
+   
+   if item.name = '' then
+      sselect data.f to 11
+      readlist item.list from 11 else null
+      pick.pos = ''
+      loop
+         call !pick(item.name,
+                    0,
+                    item.list,
+                    file.name,
+                    pick.pos)
+      until item.name = ''
+         gosub show.item
+      repeat
+   end else
+      gosub show.item
+   end
+
+   display @(-1) :
+
+   @system.return.code = 0
+
+   i = bindkey(saved.key.bindings, -4)
+
+   return
+
+* ======================================================================
+* show.item  -  Show entry with name in item.name
+
+show.item:
+   data.lines.per.page = @crthigh - 4
+
+   display @(-1) :
+
+   read rec from data.f, item.name else
+      display @(20,10) : sysmsg(7137) ;* Unable to read item. It may have been deleted.
+      c = keycode()
+      return
+   end
+
+   num.lines = dcount(rec, @fm)
+
+   data.offset = 0
+   pan = 1
+   gosub show.data.page
+
+   loop
+      info.text = sysmsg(7138, item.name, num.lines, data.offset + 1, pan)
+      * %1 (%2 lines, top = %3, left = %4)
+
+      data.prompt = ''
+      if data.offset + data.lines.per.page < num.lines then data.prompt := 'Next/'
+      if data.offset > 0 then data.prompt := 'Previous/'
+      if pan > 1 then data.prompt := 'Left/'
+      if more.right then data.prompt := 'Right/'
+      data.prompt := 'Top/Bottom/Spool/Quit: '
+
+      display @(0, info.line) : @(-13) : fmt(info.text, info.fmt) :
+      display @(0,prompt.line) : fmt(data.prompt, info.fmt) : @(-14) :
+      display @(len(data.prompt), prompt.line) :
+
+      c = upcase(keycode())
+      gosub map.keys
+
+      begin case
+         case c = 'Q'
+            prompt.text = sysmsg(7136) ;* Press return to quit, any other key to continue
+            display @(0,prompt.line) : @(-13) : fmt(prompt.text, info.fmt) : @(-14) :
+            display @(len(prompt.text), prompt.line) :
+            if seq(keycode()) = K$RETURN then exit
+
+         case (c = 'P' or c = 'U') and data.offset > 0
+            data.offset -= data.lines.per.page
+            gosub show.data.page
+
+         case (c = 'N' or c = 'D') and (data.offset + data.lines.per.page < num.lines)
+            data.offset += data.lines.per.page
+            gosub show.data.page
+
+         case c = 'T'
+            data.offset = 0
+            gosub show.data.page
+
+         case c = 'B'
+            data.offset = num.lines - 1 - rem(num.lines - 1, data.lines.per.page)
+            gosub show.data.page
+
+         case c = 'R' and more.right
+            pan += @crtwide - 20
+            gosub show.data.page
+
+         case c = 'L' and pan > 1
+            pan -= @crtwide - 20
+            if (pan < 1) then pan = 1
+            gosub show.data.page
+
+         case c = 'S'
+            gosub spool.item
+            gosub show.data.page
+
+         case 1
+            display @sys.bell :
+      end case
+   repeat
+
+   return
+
+* ======================================================================
+* show.data.page  -  Show a page of data
+
+show.data.page:
+   more.right = @false
+   for i = 1 to data.lines.per.page
+      display @(0,i-1) : @(-4) :
+      j = i + data.offset
+      if j <= num.lines then
+         s = rec<j>
+         if len(s) >= pan + @crtwide then more.right = @true
+         display s[pan,@crtwide] :
+      end
+   next i
+
+   return
+
+* ======================================================================
+* spool.item  -  Spool the selected item
+
+spool.item:
+   display @(-1) :
+   display @(0,2) : sysmsg(7139, file.name, item.name) ;* Preparing to print %1 %2
+
+   display @(0,4) : sysmsg(7140, lptr) ;* Printer  : xx
+   col = 11
+   gosub show.printer
+
+   display @(0,14) : sysmsg(7141, oconv(numbering, 'B')) ;* Numbering: xx
+
+   loop
+      * Confirm the printer
+
+      loop
+         input @(col,4) : lptr, 3_:
+      until lptr matches '1-3N' and lptr <= LPTR$HIGH.PRINT.UNIT
+         inputerr sysmsg(2053) ;* Invalid printer number
+      repeat
+
+      gosub show.printer
+
+      * Select numbering mode
+
+      loop
+         s = oconv(numbering, 'B')
+         input @(col,14) : s, 1_:
+         s = iconv(s, 'B')
+      until status() = 0
+         inputerr sysmsg(7142) ;* Y or N only
+      repeat
+      numbering = s
+
+      * Confirm everything
+
+      yn = 'Y'
+      display @(0,16) : sysmsg(7143) :  ;* 'Ok to print (Y/N/Q/?)? '
+      loop
+         input @(23,16) : yn, 1_:
+         yn = upcase(yn)
+         if yn = 'Q' then return
+      until yn = 'Y' or yn = 'N'
+         inputerr sysmsg(7144) ;* Y to print, N to re-enter printer details, Q to quit
+      repeat
+   until yn = 'Y'
+   repeat
+
+   * Spool the file
+   
+   display @(0, 18) : sysmsg(7145) :   ;* Printing item...
+   number.format = "4'0'R"
+   if lptr = 0 then printer on
+   if num.lines > 9999 then number.format = len(num.lines):"'0'R"
+
+   for i = 1 to num.lines
+      if numbering then print on lptr fmt(i, number.format) : ': ' :
+      print on lptr rec<i>
+   next i
+   printer close on lptr
+
+   display @(0, 19) : sysmsg(7146) :  ;* Complete. Press any key to continue.
+   c = keycode()
+
+   return
+
+* ======================================================================
+* show.printer  -  Show printer settings
+
+show.printer:
+   display @(col,5)  : sysmsg(7112, getpu(PU$WIDTH, lptr)) : @(-4) :
+   display @(col,6)  : sysmsg(7113, getpu(PU$LENGTH, lptr)) : @(-4) :
+   display @(col,7)  : sysmsg(7114, getpu(PU$TOPMARGIN, lptr)) : @(-4) :
+   display @(col,8)  : sysmsg(7115, getpu(PU$BOTMARGIN, lptr)) : @(-4) :
+   display @(col,9)  : sysmsg(7127, getpu(PU$LEFTMARGIN, lptr)) : @(-4) :
+   mode = getpu(PU$MODE, lptr)
+   name = getpu(PU$LOCATION, lptr)
+   flags = getpu(PU$SPOOLFLAGS, lptr)
+   display @(col,10) : sysmsg(7128, mode) : @(-4) :
+   begin case
+      case mode = 1
+         if name = '' then destination = sysmsg(7147) ;* Using default printer
+         else destination = sysmsg(7130, name)
+      case mode = 3
+         if name = '' then
+            name = '$HOLD P' : lptr
+            if bitand(flags, PU$FLG.NEXT) then
+               name := ' ' : sysmsg(7148) ;* (with sequence number)
+            end
+         end
+         destination = sysmsg(7149, name) ;* File name     : xx
+   end case
+   display @(col,11) : destination : @(-4) :
+
+   flag.data = ''
+   if bitand(flags, PU$FLG.NFMT) then flag.data := 'NFMT  '
+   display @(col,12) : flag.data
+
+   return
+
+* ======================================================================
+
+map.keys:
+   n = seq(c)
+   begin case
+      case n = K$UP         ; c = 'U'
+      case n = K$DOWN       ; c = 'D'
+      case n = K$PAGE.UP    ; c = 'P'
+      case n = K$PAGE.DOWN  ; c = 'N'
+      case n = K$LEFT       ; c = 'L'
+      case n = K$RIGHT      ; c = 'R'
+      case n = K$HOME       ; c = 'T'
+      case n = K$END        ; c = 'B'
+      case n = CTRL.B       ; c = 'L'
+      case n = CTRL.F       ; c = 'R'
+      case n = CTRL.N       ; c = 'D'
+      case n = CTRL.P       ; c = 'U'
+      case n = CTRL.V       ; c = 'N'
+      case n = CTRL.Z       ; c = 'U'
+   end case
+
+   return
+
+end
+
+
+* END-CODE

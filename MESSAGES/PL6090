@@ -1,0 +1,1 @@
+The user(s) listed above have been recovered.  Any locks held by these\nprocesses will have been released and the licence slot may be used by\na new process.\nDepending on why the process(es) had terminated, there may be data integrity\nor structural problems with files that were open at the time. Some operations\nmay not be possible until QM is restarted.

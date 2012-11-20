@@ -1,0 +1,265 @@
+* _VOC_REF
+* Recursive code to map VOC name of file to pathname
+* Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 03 Oct 07  2.6-5 Moved special pathname processing into parse.pathname.tokens
+*                  external subroutine for wider use.
+* 02 Nov 06  2.4-15 VOC record types now case insensitive.
+* 28 Aug 06  2.4-12 0517 "DICT file,subfile" was reporting "no VOC record".
+* 29 Mar 06  2.3-9 Added new special pathname prefixes @TMP and @HOME.
+* 19 Jul 05  2.2-4 0376 Was accepting and ignoring a component name for a
+*                  simple file.
+* 29 Oct 04  2.0-9 Added VFS recognition.
+* 18 Oct 04  2.0-5 0263 Values for FILERULE 1 and 2 were interchanged.
+* 04 Oct 04  2.0-5 Added support for Q-pointer with field 2 blank as a
+*                  reference to the current account.
+* 04 Oct 04  2.0-4 Allow multifile with no component name by defaulting to be
+*                  the same as the filename.
+* 01 Oct 04  2.0-3 Added multi-file support.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* Note:  Also supports file name of "DICT xxx"
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+$internal
+$no.symbols
+$no.xref
+$recursive
+
+subroutine voc_ref(filename, is.dict, pathname)
+
+$include syscom.h
+$include err.h
+$include int$keys.h
+$include keys.h
+
+
+   voc.id = field(filename, ',', 1)
+   component = field(filename, ',', 2)
+
+   if is.dict then
+      fno = 3
+   end else if voc.id[1,5] = 'DICT ' then
+      voc.id = voc.id[6,9999]
+      component = ''            ;* 0517
+      fno = 3
+   end else
+      fno = 2
+   end
+
+   pathname = ""
+   dir = @path
+   qpath = ''
+
+   * If we end up following Q-pointer A that turns out to be a link to a
+   * multifile B, a file name of the form A,X must open part X whereas a
+   * filename that is simply A must open A,B (not A,A). To do this, set
+   * qfile to be the initial VOC name (in this example A) so that the
+   * multifile name is in the same variable as it will be if we go round
+   * the Q-pointer path.
+
+   qfile = voc.id
+
+   read voc.rec from voc,voc.id else
+      * We haven't found the item as a VOC entry. Is it a special syntax for
+      * a remote file or a pathname
+
+      n = dcount(voc.id, ':')
+      if n > 1 then
+         rules = config('FILERULE')
+         x1 = field(voc.id, ':', 1)
+         begin case
+            case upcase(x1) = 'PATH'   ;* Could be a pathname
+               if bitand(rules, 4) then
+                  pathname = field(voc.id, ':', 2, 99) ;* Must allow PATH:C:/a/b
+                  set.status 0
+                  return
+               end
+            case n = 2                 ;* Account:File
+               if bitand(rules, 1) then
+                  voc.rec = 'Q':@fm:x1:@fm:field(voc.id, ':', 2)
+                  goto parse.as.q.pointer
+               end
+            case n = 3                 ;* System:Account:File
+               if bitand(rules, 2) then
+                  voc.rec = 'Q':@fm:field(voc.id, ':', 2):@fm:field(voc.id, ':', 3):@fm:x1
+                  goto parse.as.q.pointer
+               end
+         end case
+      end
+
+      set.status ER$NVR
+      return
+   end
+
+parse.as.q.pointer:
+   for depth = 1 to 10
+      type = upcase(voc.rec[1,1])
+      begin case
+         case type = "F"
+            pathname = voc.rec<fno>
+
+            if fno = 2 then
+               if voc.rec<4> # '' then   ;* It's a multifile
+                  * If the filename does not include a component subfile
+                  * name, use the filename as the default.
+
+                  if component = '' then component = qfile
+
+                  * Try to find this component
+
+                  locate component in voc.rec<4,1> setting pos else
+                     set.status ER$CNF  ;* No reference to this component
+                     return
+                  end
+                  pathname = pathname<1,pos>
+               end else                    ;* It's a simple file
+                  if component # '' then   ;* 0376 Fail open if subfile given
+                     set.status ER$VNF
+                     return
+                  end
+               end
+            end
+
+            if pathname = "" then
+               set.status ER$NPN  ;* No pathname
+               return
+            end
+
+            if pathname[1,1] = '@' then pathname = parse.pathname.tokens(pathname)
+
+            if upcase(pathname[1,4]) # 'VFS:' then
+               * Make pathname absolute
+
+               if not(pathname matches "'":@ds:"'0Xý1A':\'0X") then
+                  pathname = dir : @ds : pathname
+               end
+
+               * If we got here by following a Q-pointer, we need to convert a
+               * relative pathname to absolute form.
+
+               if qpath # '' then
+                  qfile = voc.rec<fno>
+                  if system(91) then   ;* Windows
+                     if qfile[1,1] # @ds and qfile[2,2] # ':':@ds then
+                        * Convert voc item to absolute path
+                        if qfile[1,2] = ':' then  ;* Drive letter present
+                           qfile = qfile[1,2] : qpath : @ds : qfile[3,99999]
+                        end else                  ;* No drive letter present
+                           qfile = qpath : @ds : qfile
+                        end
+                     end
+                  end else             ;* Linux
+                     if qfile[1,1] # @ds then
+                        * Convert voc item to absolute path
+                        qfile = qpath : @ds : qfile
+                     end
+                  end
+               end
+            end
+
+            set.status 0
+            return
+
+         case type = "Q"
+            if index(voc.rec<3>, ',', 1) and component = '' then
+               component = field(voc.rec<3>, ',', 2)
+               voc.rec<3> = field(voc.rec<3>, ',', 1)
+            end
+
+            pathname = voc.rec<4>
+            if pathname # '' then       ;* Networked file definition
+               pathname := ';':voc.rec<2>:';'
+               if fno = 3 then pathname := 'DICT '
+               pathname := voc.rec<3>
+               set.status 0
+               return
+            end
+
+            qpath = voc.rec<2>
+            if qpath = '' then
+               * A null account name means use the current account.
+               * If this is the entry in a chain of Q-pointers, use the
+               * originating account's VOC. If we are part way down the
+               * chain, we need to use the last VOC we accessed.
+
+               if unassigned(qvoc) then qvoc = voc
+            end else
+               if index(qpath, @ds, 1) = 0 then  ;* Try lookup in ACCOUNTS file
+                  if len(qpath) < 64 then
+                     openpath @qmsys:@ds:'ACCOUNTS' to acc.f then
+                        read acc.rec from acc.f, qpath then
+                           qpath = acc.rec<ACC$PATH>
+                        end
+                     end
+                  end
+               end
+
+               if qpath[1,1] = '@' then qpath = parse.pathname.tokens(qpath)
+
+               if len(qpath) = 0 then
+                  set.status ER$NPN
+                  return
+               end
+
+               * Open target VOC file
+
+               dir = qpath
+               openpath qpath:@ds:'VOC' to qvoc else
+                  set.status ER$VNF
+                  return
+               end
+            end
+   
+            qfile = voc.rec<3>
+
+            if len(qfile) = 0 then
+               set.status ER$NPN
+               return
+            end
+
+            * Read the target record
+
+            read voc.rec from qvoc, qfile else
+               set.status ER$NVR
+               return
+            end
+
+            * Do not close the remote VOC as we may need it for a subsequent
+            * chained Q-pointer that has field 2 null.
+
+         case 1
+            set.status ER$VNF
+            return
+      end case
+   next depth
+
+   set.status ER$VNF
+
+   return
+end
+
+* END-CODE

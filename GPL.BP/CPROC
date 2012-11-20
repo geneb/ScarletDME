@@ -1,0 +1,3437 @@
+* CPROC
+* Command processor
+* Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2, or (at your option)
+* any later version.
+* 
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+* 
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software Foundation,
+* Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+* 
+* Ladybridge Systems can be contacted via the www.openqm.com web site.
+* 
+* START-HISTORY:
+* 11 Oct 07  2.6-5 Added trap for very early abort.
+* 03 Oct 07  2.6-5 Use parse.pathname.tokens() when processing ACCOUNTS record.
+* 20 Aug 07  2.6-0 Added CMDSTACK parameter.
+* 14 Aug 07  2.6-0 Added "DATE INTERNAL" for internal date and TIME INTERNAL
+*                  for internal time.
+* 19 Jun 07  2.5-7 Copyright etc now displayed by $LOGIN.
+* 01 Jun 07  2.5-6 0555 LOGTO RESET incremented command processor level.
+* 31 May 07  2.5-6 Moved decrement of command processor level so that it can be
+*                  used to control removal of phantom register entry.
+* 31 May 07  2.5-6 Continuation line in paragraph should replace underscore
+*                  with a space.
+* 17 May 07  2.5-5 Username is now maintained by kernel.
+* 27 Mar 07  2.5-1 Added LOGMSG command.
+* 14 Feb 07  2.4-20 0541 Execution of locally catalogued program doesn't clear
+*                   subroutine link on return.
+* 30 Nov 06  2.4-17 Revised command line pan to move in more sensible steps.
+* 29 Nov 06  2.4-17 Minor reoganisation for conversion of phantom to
+*                   interactive session on use of CONNECT.PORT().
+* 02 Nov 06  2.4-15 Made VOC entry types case insensitive.
+* 31 Oct 06  2.4-15 Use @SYS.BELL to honour BELL ON/OFF setting.
+* 15 Oct 06  2.4-15 Do not restore stacked Proc buffers if this command was
+*                   executed from a Proc.
+* 14 Sep 06  2.4-13 Allow unquoted null inline prompt in IF.
+* 11 Sep 06  2.4-13 Allow @(-n) and @(-n,m) in DISPLAY.
+* 01 Sep 06  2.4-13 Stack Proc buffers and control variables on EXECUTE.
+* 01 Sep 06  2.4-13 Allow PQ and PQX style Procs.
+* 21 Aug 06  2.4-11 0515 LOCK n NO.WAIT was waiting for lock.
+* 17 Aug 06  2.4-11 Added user selectable command prompt.
+* 17 Aug 06  2.4-11 Added ON.LOGTO support.
+* 07 Jul 06  2.4-9 Use of -stdout should suppress echo and "terminal" output
+*                  from reading command line.
+* 30 May 06  2.4-5 0494 Call PARA.RESET.ENVIRONMENT after each command in a
+*                  paragraph (also impacts Procs).
+* 22 May 06  2.4-4 Allow use of RUN to run rehomed VOC items.
+* 16 May 06  2.4-4 Look for catalogue entry when unable to execute VOC item
+*                  because it is not of suitable type.
+* 16 May 06  2.4-4 Added .X variant to execute command from VOC or elsewhere.
+* 20 Apr 06  2.4-2 0479 ECHO was not affecting command entry.
+* 31 Mar 06  2.4-0 Only run ON.ABORT for a true abort, not for an EXECUTE with
+*                  the TRAPPING ABORTS option.
+* 22 Mar 06  2.3-9 0469 Run ON.ABORT paragraph after abort in single command
+*                  mode.
+* 15 Mar 06  2.3-8 Replaced kernel(K$SINGLE.COMMAND) with system(1026).
+* 10 Feb 06  2.3-6 Autologout now handled in kernel.
+* 09 Feb 06  2.3-6 Added REPORT.STYLE verb.
+* 03 Feb 06  2.3-6 Remove mark characters from value in SET.
+* 15 Dec 05  2.3-2 Apply comment rules consistently.
+* 09 Dec 05  2.3-2 0438 LOGOUT was extracting field rather than value from user
+*                  data returned by kernel().
+* 08 Dec 05  2.3-1 0437 Reverted to previous handling of pa.line as changes
+*                  made for $ECHO stopped DATA statements working.
+* 05 Dec 05  2.2-18 Added $ECHO.
+* 21 Nov 05  2.2-17 0434 An abort in an EXECUTEd program was repeating the
+*                   error message for each command processor level.
+* 18 Nov 05  2.2-17 Added CHAIN.KEEP.COMMON option handling.
+* 06 Oct 05  2.2-14 Added support for multiple breakpoint values.
+* 27 Sep 05  2.2-13 The ABORT command now allows an optional text message.
+* 27 Sep 05  2.2-13 0415 An aborted EXECUTE must echo @ABORT.MESSAGE on down
+*                   the stack.
+* 27 Sep 05  2.2-12 Return @system.return.code as -ER$ARGS for "not in VOC".
+* 26 Sep 05  2.2-12 The STOP action of a menu should generate an abort, not
+*                   terminate the entire QM process.
+* 23 Sep 05  2.2-12 Added CLEAR.ABORT command.
+* 15 Sep 05  2.2-10 Introduced -quiet.
+* 15 Sep 05  2.2-10 0409 Only adjust command processor level on entry and exit
+*                   if the HDR.IS.CPROC flag is set. This is unset for entry
+*                   from a PROC where the command must run at the current
+*                   command processor level.
+* 30 Aug 05  2.2-9 Added support for ! as a verb with no space after !.
+* 26 Aug 05  2.2-8 0400 Invalidate object cache on LOGTO.
+* 25 Aug 05  2.2-8 Display non-default code with DATE.FORMAT DISPLAY.
+* 24 Aug 05  2.2-8 Changed KERNEL(K$DATE.CONV) to use entire code without
+*                  stripping leading D.
+* 04 Aug 05  2.2-7 0385 reset.environment was incorrectly decrementing the
+*                  command processor level. This caused various strange effects
+*                  including possible restart of the session when using LOGOUT.
+* 04 Aug 05  2.2-7 Added immediate argument to LOGOUT().
+* 04 Aug 05  2.2-7 In exit.actions, do nothing if we are already in the ON.EXIT
+*                  paragraph (avoids recursion if it contains a QUIT).
+* 01 Aug 05  2.2-6 0381 QUIT was not running ON.EXIT unless @LEVEL = 1.
+* 28 Mar 05  2.1-11 Use PARSER$MFILE.
+* 15 Mar 05  2.1-10 Added PDUMP command.
+* 12 Jan 05  2.1-0 0300 Hidden menu options were leaving a blank line.
+* 12 Jan 05  2.1-0 0299 Do not use screen attributes in menus as this doesn't
+*                  work if the terminal emulator is using its own colour scheme.
+* 30 Dec 04  2.1-0 Use !atvar() in place of inline code.
+* 17 Dec 04  2.1-0 Added PROC @variables and @ANS.
+* 28 Nov 04  2.0-11 Moved handling of $VOC.PARSER to allow replacement for all
+*                   executable VOC record types.
+* 29 Oct 04  2.0-9 (DBD) Added hook to CCALL.CLEANUP.
+* 29 Oct 04  2.0-8 0277 Reset line truncation on return to command prompt.
+* 13 Oct 04  2.0-5 Use message handler.
+* 09 Oct 04  2.0-5 Added ALIAS support.
+* 28 Sep 04  2.0-3 Suppress display of copyright line for single command
+*                  execution.
+* 24 Sep 04  2.0-2 Added $VOC.PARSER handling.
+* 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* VOC record types
+*
+*     D  Data descriptors (mostly found in dictionaries)
+*
+*     F  File
+*        F2 = data portion pathname
+*        F3 = dictionary portion pathname
+*        F4 = multifile element names
+*        F5 = ACCSVE remote file flag (D, E or I)
+*
+*     K  Keyword
+*        F2 = keyword number (see PARSER.H)
+*        F3 = sentence to process if keyword used as a verb
+*
+*     M  Menu
+*        F2 = Title line
+*        F3 = Item text   }
+*        F4 = Action      }  Multi-valued, one per menu entry
+*        F5 = Help text   }
+*        F6 = Access key  }
+*        F7 = Hide           If multi-valued, one per entry else applies to all
+*        F8 = Access subr
+*        F9 = Alternative prompt text
+*        F10 = Exit codes
+*        F11 = Stop codes
+*
+*     PA Paragraph
+*
+*     PH Phrase  (only substituted by certain commands)
+*
+*     Q  Indirect file pointer
+*        F2 = account name or pathname
+*        F3 = VOC item name in target account
+*
+*     R  Remote pointer
+*        F2 = file name
+*        F3 = record name
+*        F4 = security subroutine (optional)
+*
+*     S  Sentence
+*
+*     V  Verb or locally catalogued subroutine
+*          F2     F3     Description
+*          CA     name   Catalogued verb
+*          CS     path   Locally catalogued function runfile path
+*          IN     n      Internal verb number n
+*          OS     text   Operating system command
+*        F4 = dispatch info (@option) for all verbs
+*        F5 = security subroutine (optional)
+*
+*     X  Miscellaneous.  Reserved records are:
+*        $COMMAND.STACK  Saved command stack (Windows console users)
+*                        Controls saving in stacks subdirectory for other users
+*
+*        $RELEASE        F2 = Release level
+*                        F3 = Command processing modes
+*
+*
+*    $IPC file
+*
+*       Mn      Message queue for user n
+*                 Chronologically ordered list of message fields
+*                 V1 = text
+*                 V2 = sender data, if relevant    
+*
+*       Pn      Phantom register for parent process n
+*                 F1 = phantom uid   } Associated, multi-valued
+*                 F2 = time stamp    }
+*                 F3 = command       } (Also in Xn record)
+*
+*       Sn      Status record for PSTAT
+*
+*       Xn      F1 = Option flags if to inherit, else null
+*               F2+ = Phantom command for process n
+*               Record is deleted as phantom starts.
+*
+*    $LOGINS file
+*       Tokens defined in int$keys.h
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+
+$internal
+program $cproc
+$catalog $CPROC
+
+$flags cproc
+$flags trusted
+
+$execute 'BASIC REVSTAMP'
+$execute 'RUN REVSTAMP'
+$include revstamp.h
+
+$include syscom.h
+$include header.h
+$include parser.h
+$include int$keys.h
+$include debug.h
+
+$include err.h
+$include keys.h
+$include keyin.h
+$include menu.h
+$include keycode.h
+
+deffun errtext(err) calling '!errtext'
+
+$define max.elements 500
+
+   logto.reset = @false      ;* 0555
+
+restart.cproc:
+   * Save the Proc common variables
+
+   dim saved.proc.ibuf(1) ; mat saved.proc.ibuf = mat proc.ibuf
+   dim saved.proc.obuf(1) ; mat saved.proc.obuf = mat proc.obuf
+   dim saved.proc.frec(9) ; mat saved.proc.frec = mat proc.frec
+   dim saved.proc.fvar(9) ; mat saved.proc.fvar = mat proc.fvar
+   saved.proc.iptr = proc.iptr
+   saved.proc.iptr.cpos = proc.iptr.cpos
+   saved.proc.acti = proc.acti
+   saved.proc.acto = proc.acto
+
+
+   * Initialise local data
+
+   windows = system(91)
+
+   gosub set.all.links           ;* Set up names of external subroutines
+
+   * The PA.STACK holds information about nested paragraphs. There is one
+   * field per active paragraph, the most recent being in field one. The
+   * preparsed paragraph text is in PA.SAVE(PA.DEPTH).
+   *
+   * The paragraph currently executing is in PA.REC and is controlled
+   * by PA.NAME and PA.LINE.
+   *
+   * For each field of PA.STACK:
+   *   Value 1 = paragraph VOC record name
+   *   Value 2 = line number at which to resume execution on return from
+   *             the nested paragraph (PA.LINE)
+   *   Value 3 = number of lines in paragraph (PA.LENGTH)
+   *   Value 4 = echo flag
+
+   pa.stack = ""
+   pa.name = ""
+   pa.line = 0
+   dim pa.save(5)
+   pa.depth = 0
+   unwinding = 0   ;* 1 = unwind current paragraph, 2 = unwind all
+   echo.paragraph = @false
+
+   sentence.stack = ""
+
+   * The MENU.STACK holds the VOC record name of each active menu.
+
+   menu.stack = ""
+   is.phantom = kernel(K$IS.PHANTOM, 0)
+
+   prompt "?"
+
+
+   * If this is the first time through CPROC, initialise various things in
+   * the SYSCOM common block.
+
+   if not(kernel(K$CPROC.LEVEL,0)) then
+      abort.message = ""
+
+      clearselect all
+      i = high.select
+      loop
+      while i > high.user.select
+         clearselect i
+         i -= 1
+      repeat
+
+      i = kernel(K$CPROC.LEVEL,1)
+      xeq.command = ""
+      data.queue = ""
+      command.stack = ""
+      command.stack.depth = min(max(config('CMDSTACK'), 20), 999)
+      at.sentence = ""
+      last.command = ""
+      sys.bell = char(7)
+      user.return.code = 0
+      command.prompt = ':':@fm:'::'
+
+      aliased.commands = ''
+      alias.targets = ''
+      default.style.rec = ''
+
+      logname = kernel(K$USERNAME, 0)
+
+      mat qproc.breakpoint.value = ''
+      user.var.names = ''
+      user.var.values = ''
+      itype.mode = 0                  ;* Standard I-type
+      trigger.return.code = 0
+      dir.separator = if windows then '\' else '/'
+      term.reset.string = ''
+
+      mat proc.ibuf = ''
+      mat proc.obuf = ''
+      mat proc.frec = ''
+      mat proc.fvar = ''
+
+      echo not(bitand(kernel(K$COMMAND.OPTIONS, 0), CMD.STDOUT))
+
+      gosub reset.environment
+
+      prompt ''
+
+      i = '$LOGIN'
+      call @i(j,0)
+      if not(j) then goto abort.cproc
+      i = ''
+
+      gosub get.voc.parser.rec
+
+      abort.code = 0
+      report.src = @false
+
+
+      * Check for non-standard private catalogue location
+
+      gosub find.private.catalogue
+
+      if is.phantom then
+         * Open phantom como file
+         * We do this with an EXECUTE so that all the extra actions of the
+         * COMO verb get done such as creating $COMO if it does not exist and
+         * setting an update lock on the como record.
+
+         z = system(1005)
+         s = oconv(idiv(z,86400), 'D2/DMY') : "_" : oconv(mod(z,86400), 'MTS')
+         execute "COMO ON PH" : @userno : "_" : convert('/:', '', s)
+
+         display sysmsg(5010, @userno, oconv(mod(z,86400), 'MTS') : ' ' : oconv(idiv(z,86400), 'D4DMY[,A3]'))
+         * Phantom xx started at hh:mm:ss dd mmm yyyy
+
+         * Get the file lock on the $IPC file to coordinate process start-up 
+         * with the parent process.
+
+         filelock ipc.f
+
+         * Update phantom register of the parent process
+         * and find our phantom command.
+
+         n = kernel(K$PPID,0)
+         if n then    ;* Parent still running
+            x = 'P':n
+            readu s from ipc.f, x then
+               locate @userno in s<1,1> by 'AR' setting i then
+                  s<2,i> = z                ;* Set startup timestamp and...
+               end
+               write s to ipc.f, x
+            end else
+               release ipc.f, x
+            end
+         end
+
+         * Fetch the phantom command from the Xn record.  We need to look
+         * here rather than in the Pn record as the parent process may have
+         * terminated by now.
+
+         x = 'X':@userno
+         read phantom.command from ipc.f, x then delete ipc.f, x
+
+         * Field 1 contains the option flags if these are to be inherited.
+
+         s = phantom.command<1>
+         if s # '' then void kernel(K$SET.OPTIONS, s)
+         del phantom.command<1>
+
+         fileunlock ipc.f
+      end
+
+      * Look for a MASTER.LOGIN paragraph
+
+      openpath @qmsys:@ds:'VOC' to qmvoc.f on error null
+      then
+         read pa.rec from qmvoc.f,"MASTER.LOGIN" on error null
+         then
+            pa.name = 'MASTER.LOGIN'
+            if upcase(pa.rec[1,2]) = 'PA' then gosub execute.paragraph
+         end
+         close qmvoc.f
+      end
+
+      * Look for a LOGIN paragraph
+
+      read voc.rec from voc,"LOGIN" then
+         at.command = ""
+         new.sentence = "LOGIN"
+         gosub proc.sentence
+      end
+
+      break on
+   end else           ;* Stacked CPROC, abort or LOGTO RESET
+      * Trap very early abort so that we don't loop trying to access the VOC
+
+      if not(fileinfo(voc, FL$OPEN)) then goto terminate.cproc
+
+      gosub get.voc.parser.rec
+
+      n = abort.cause()
+      if n then       ;* Some form of abort
+         clearselect
+         echo on
+         hush off
+
+         abort.code = n
+         xeq.command = ''    ;* 1.2-17 Clear any pending executed command
+         mat proc.fvar = 0     ;* Ensure all PROC files are closed
+
+         begin case
+            case abort.code = K$LOGOUT   ;* LOGOUT
+               logmsg sysmsg(5062) ;* Forced logout
+
+               if is.phantom then
+                  message = sysmsg(5011, @userno) ;* Phantom nn : Forced logout.
+                  goto terminate.phantom
+               end
+               * Forced logout of foreground process.  This will already
+               * have unwound any stacked CPROCs.  We do not wait for
+               * phantom processes to terminate.
+
+               gosub exit.actions
+               display sysmsg(5020) ;* Process terminated
+               sleep 1
+               goto abort.cproc
+
+            case kernel(K$FLAGS, HDR.IGNORE.ABORTS) ;* Aborting EXECUTE
+               reset.modes hdr.is.cproc  ;* Don't want to catch echoed abort
+               i = kernel(K$CPROC.LEVEL,0)
+               delete.common '$':i   ;* Delete unnamed common
+               i = kernel(K$CPROC.LEVEL,i-1)
+
+               i = kernel(K$SET.EXIT.CAUSE, K$EXIT.ABORT) ;* 0434
+
+            case trap.aborts = ABORT.NORMAL    ;* Nothing special going on
+               if @level = 1 then
+                  * If we are at level 1, this is a real abort, not one
+                  * caught by EXECUTE ... TRAPPING ABORTS
+
+                  trap.aborts = ABORT.ON.ABORT
+                  read voc.rec from voc, "ON.ABORT" then
+                     at.command = ""
+                     new.sentence = "ON.ABORT"
+                     gosub proc.sentence
+                  end
+               end
+               trap.aborts = ABORT.NORMAL
+
+               if kernel(K$FLAGS, HDR.IS.EXECUTE) then
+                  i = kernel(K$CPROC.LEVEL,0)
+                  delete.common '$':i   ;* Delete unnamed common
+                  goto abort.cproc
+               end
+
+            case trap.aborts = ABORT.ON.ABORT   ;* Executing ON.ABORT paragraph
+               s = sysmsg(5021) ;* ON.ABORT paragraph aborted!
+               display @sys.bell : s
+               logmsg s
+               goto terminate.connection
+
+            case trap.aborts = ABORT.ON.EXIT   ;* Executing ON.EXIT paragraph
+               s = sysmsg(5022) ;* ON.EXIT paragraph aborted!
+               display @sys.bell : s
+               logmsg s
+               goto terminate.connection
+
+            case trap.aborts = ABORT.TERMINATE
+               * 0469 Run ON.ABORT paragraph
+               trap.aborts = ABORT.ON.ABORT
+               read voc.rec from voc, "ON.ABORT" then
+                  at.command = ""
+                  new.sentence = "ON.ABORT"
+                  gosub proc.sentence
+               end
+               goto abort.cproc
+         end case
+
+         if is.phantom then    ;* Phantom dies after abort
+            message = sysmsg(5012, @userno) ;* Phantom nn : Abnormal termination.
+            goto terminate.phantom
+         end
+      end else if logto.reset then   ;* 0555
+         logto.reset = @false   ;* Clear flag but do not increment level
+      end else        ;* Stacked CPROC
+         if kernel(K$FLAGS, HDR.IS.CPROC) then  ;* 0409
+            i = kernel(K$CPROC.LEVEL,kernel(K$CPROC.LEVEL,0)+1)
+         end
+      end
+   end
+
+  * Check for an EXECUTE command in the common block.
+
+   if kernel(K$FLAGS, HDR.IS.EXECUTE) then
+      pagination.state = kernel(K$PAGINATE, -1)
+      i = kernel(K$PAGINATE, @true)
+      abort.code = 0
+
+      if len(xeq.command) then
+         * 0190 Reverted to pre-1.4-4 technique of building a paragraph.
+
+         pa.name = ""
+         pa.rec = "PA" : @fm : xeq.command
+         xeq.command = ""
+         unwinding = 0
+         gosub execute.paragraph
+         printer close on -3     ;* Close all printers at this or higher level
+      end
+
+      if kernel(K$FLAGS, HDR.IS.CPROC) then  ;* 0409 Not from a PROC
+         i = kernel(K$CPROC.LEVEL,0)
+         delete.common '$':i   ;* Delete unnamed common
+
+         * Restore the Proc common variables
+
+         mat proc.ibuf = mat saved.proc.ibuf
+         mat proc.obuf = mat saved.proc.obuf
+         mat proc.frec = mat saved.proc.frec
+         mat proc.fvar = mat saved.proc.fvar
+         proc.iptr = saved.proc.iptr
+         proc.iptr.cpos = saved.proc.iptr.cpos
+         proc.acti = saved.proc.acti
+         proc.acto = saved.proc.acto
+      end
+
+      * Reinstate pagination as on entry to this command processor level
+      i = kernel(K$PAGINATE, pagination.state)
+      goto abort.cproc
+   end
+
+   * Is this a phantom process?
+
+   if is.phantom then      
+      * Execute the phantom command
+
+      at.command = phantom.command
+
+      new.sentence = at.command
+      unwinding = 0
+      gosub proc.sentence
+
+      if not(kernel(K$IS.PHANTOM, 0)) then  ;* Done CONNECT.PORT()
+         is.phantom = @false
+         goto connected.port
+      end
+
+      gosub reset.environment
+
+      message = sysmsg(5013, @userno) ;* Phantom nn : Normal termination.
+
+terminate.phantom:
+      n = kernel(K$PPID, 0)
+      if n and fileinfo(ipc.f, FL$OPEN) then
+         * Send message to parent process
+
+         x = 'M':n
+         readu s from ipc.f, x else null
+         s<-1> = message
+         write s to ipc.f, x
+      end
+
+      display sysmsg(5014, @userno, timedate())  ;* Phantom nn terminated at xx
+      goto abort.cproc
+   end else     ;* Not a phantom process
+      * Test if this a single command invocation of QM, i.e. the user typed
+      *    QM "LIST VOC"
+      * or similar.
+
+      at.command = system(1026)
+      if at.command # '' then
+         gosub reset.environment
+         new.sentence = at.command
+         unwinding = 0
+         trap.aborts = ABORT.TERMINATE
+         gosub proc.sentence
+! UV doesn't do this. Should we?         gosub exit.actions
+         goto abort.cproc
+      end
+   end
+
+   * Main command processor loop
+
+connected.port:
+   loop
+      gosub reset.environment
+      gosub set.links             ;* Unsnap subroutine links
+      unload.object               ;* Unload inactive object code
+      debug.off                   ;* Ensure debugger turned off
+      debug.initialised = @false  ;* Force restart of debugger
+
+      * Fetch new command
+
+      loop
+         * Display any IPC messages
+
+         if fileinfo(ipc.f, FL$OPEN) then
+            x = 'M':@userno
+            readu s from ipc.f, x then
+               n = dcount(s, @fm)
+               for i = 1 to n
+                  if s<i,2> # '' then crt s<i,2>
+                  crt s<i,1>
+               next i
+               delete ipc.f, x
+            end else
+               release ipc.f, x
+            end
+         end
+
+         prompt '?'
+         gosub get.command.line
+      until at.command # ""
+      repeat
+
+      if at.command[1,1] = "." then        ;* Stack manipulation command
+         gosub stack.manipulation
+         if at.command = "" then continue
+      end
+
+      if at.command[1] = '?' then
+         if len(at.command) = 1 then
+            display sysmsg(5030)   ;* Command editor help
+         end else        ;* Add to stack without execution
+            del command.stack<command.stack.depth>
+            ins at.command[1, len(at.command) - 1] before command.stack<1>
+         end
+         continue
+      end
+
+      if cmnd.ptr # 1 or at.command # command.stack<1> then
+         del command.stack<command.stack.depth>
+         ins at.command before command.stack<1>
+      end
+
+      new.sentence = at.command
+      unwinding = 0
+      gosub proc.sentence        ;* Action the verb
+
+      if report.src then
+         crt 'SRC = ' : @system.return.code
+      end
+   repeat
+ 
+abort.cproc:
+   i = kernel(K$CPROC.LEVEL,0) - 1
+   void kernel(K$CPROC.LEVEL,i)     ;* Decrement command level
+
+   if i = 0 then   ;* Now at level 0 - must be termianting session
+      n = kernel(K$PPID, 0)
+      if n and fileinfo(ipc.f, FL$OPEN) then
+         * Remove self from parent process's phantom register
+
+         x = 'P':n
+         readu s from ipc.f, x then
+            locate @userno in s<1,1> by 'AR' setting i then
+               del s<1,i>
+               del s<2,i>
+               del s<3,i>
+            end
+
+            if s<1> # '' then
+               write s to ipc.f, x
+            end else
+               delete ipc.f, x
+            end
+         end else
+            release ipc.f, x
+         end
+      end
+   end
+
+terminate.cproc:
+   return to terminate.cproc
+
+terminate.connection:
+   display sysmsg(5024) ;* Connection terminated
+   sleep 2
+   goto abort.cproc
+
+*****************************************************************************
+* RESET.ENVIRONMENT  -  Ensure screen attributes, etc are correct on
+* initial entry and on return to command prompt from verbs, programs, etc
+*
+* Called:
+*   On initial entry to QM
+*   At end of phantom command prior to terminating process
+*   At end of single command launched from qm command line
+*   At top of main command processor loop prior to prompting for command
+*   On return to menu after executing action
+*
+* Enter at PARA.RESET.ENVIRONMENT after each command in a paragraph
+
+reset.environment:
+   cleardata               ;* Clear any unused DATA queue entries
+
+   inline.prompts = ""     ;* Cast off inline prompts...
+   inline.responses = ""   ;* ...and responses
+
+para.reset.environment:
+   i = ospath("", os$flush.cache)
+   printer close on -3     ;* Close all printers at this or higher level
+   printer off
+   heading ""              ;* Ensure no heading or...
+   footing ""              ;* ...footing on default print unit
+
+   if system(1007) then rollback all
+
+   if not(system(1000) or is.phantom or kernel(K$IS.QMVBSRVR, 0)) then
+      i = kernel(K$PAGINATE, @true)
+
+      void kernel(K$SUPPRESS.COMO, @true)
+      if len(term.reset.string) then display term.reset.string :
+      display @(IT$RLT) :   ;* 0277 Ensure line truncation off
+      void kernel(K$SUPPRESS.COMO, @false)
+
+      breakpoint BRK$CLEAR, 0
+      breakpoints = ''
+
+      kc.term.type = ''    ;* Force reload of keycode values to kill keyedit
+   end
+
+   i = kernel(K$CPROC.LEVEL,0)
+   delete.common '$':i   ;* Delete unnamed common
+! 0385   i = kernel(K$CPROC.LEVEL, i - 1)
+
+   return
+
+*****************************************************************************
+* GET.COMMAND.LINE  -  Get a command line from the terminal
+
+get.command.line:
+   wm1 = @crtwide - 1
+
+   pan.increment = idiv(@crtwide,5)
+   search.string = ''
+
+   cmnd.ptr = 0       ;* Stack position if non-zero
+   at.command = ''
+
+   i = kernel(K$SUPPRESS.COMO,@true)
+
+   loop
+      if cmnd.ptr then prefix = fmt(cmnd.ptr, len(command.stack.depth):"'0'R")
+      else prefix = ''
+      prefix := command.prompt<(if selectinfo(0,1) then 2 else 1)>
+
+      prefix.len = len(prefix)
+      command.width = wm1 - prefix.len
+      command.pan = 1
+
+      x = if cursor.at.end then (len(at.command) + 1) else 1
+      csr.x = -1
+
+      image = space(wm1)
+      first = not(bitand(kernel(K$COMMAND.OPTIONS, 0), CMD.STDOUT))
+      if first or echo.input then display @(0) : @(-4) :
+
+      loop
+         if (x < command.pan) or (x >= (command.pan + command.width)) then
+            loop    ;* Pan left
+            while x <= command.pan
+               command.pan -= pan.increment
+            repeat
+            if command.pan <= 0 then command.pan = 1
+
+            loop    ;* Pan right
+            while x >= command.pan + command.width - 1
+               command.pan += pan.increment
+            repeat
+         end
+
+         if first or echo.input then   ;* 0479
+            ss = prefix : at.command[command.pan, command.width]
+            gosub zoned.update
+         end
+
+         i = prefix.len + x - command.pan
+         if i # csr.x then
+            if first or echo.input then display @(i) :    ;* 0479
+            csr.x = i
+         end
+
+         c = keycode()
+         n = seq(c)
+
+         if first and n >= 32 and n < 128 and clear.on.data then
+            at.command = ''
+            x = 1
+         end
+         first = @false
+
+         begin case
+            case n = 254    ;* Ignore field marks
+               display @sys.bell :
+
+            case n = K$HOME or n = 1
+               x = 1
+
+            case n = K$LEFT or n = 2
+               if x > 1 then x -= 1
+
+            case n = K$DELETE or n = 4
+               at.command = at.command[1, x - 1] : at.command[x + 1, 999]
+
+            case n = K$END or n = 5
+               x = len(at.command) + 1
+
+            case n = K$RIGHT or n = 6
+               if x <= len(at.command) then x += 1
+
+            case n = K$BACKSPACE
+               if x > 1 then
+                  x -= 1
+                  at.command = at.command[1, x - 1] : at.command[x + 1, 999]
+               end
+
+            case n = 11      ;* Ctrl-K
+               at.command = at.command[1, x - 1]
+
+            case n = 20      ;* Ctrl-T
+               if x > 1 and x < len(at.command) then
+                  at.command[x-1,2] = at.command[x,1]:at.command[x-1,1]
+               end
+
+            case n = K$RETURN
+               at.command = trimf(trimb(at.command))
+               i = kernel(K$SUPPRESS.COMO,@false)
+               if echo.input then   ;* 0479
+                  crt @(0) : @(-4) :
+                  crt (if selectinfo(0,1) then '::' else ':') : at.command
+               end
+               i = kernel(K$PAGINATE, @true)
+               return
+
+            case n = K$DOWN or n = 14
+               if cmnd.ptr > 1 then
+                  cmnd.ptr -= 1
+                  at.command = command.stack<cmnd.ptr>
+               end else
+                  cmnd.ptr = 0
+                  at.command = ''
+               end
+               exit
+   
+            case n = K$INSERT or n = 15   ;* Ctrl-O
+               command.overlay = not(command.overlay)
+         
+            case n = K$UP or n = 16 or n = 26
+               if cmnd.ptr < dcount(command.stack, @fm) then
+                  if show.stack and cmnd.ptr then
+                     crt @(0) : fmt(cmnd.ptr, "2'0'R") : ' ' : command.stack<cmnd.ptr>
+                  end
+                  cmnd.ptr += 1
+                  at.command = command.stack<cmnd.ptr>
+               end
+               exit
+
+            case n = 7          ;* Ctrl-G
+               cmnd.ptr = 0
+               at.command = ''
+               exit
+
+            case n = 18         ;* Ctrl-R
+               gs.prefix = 'RSearch:'
+               string = search.string
+               gosub get.string
+               if len(string) then
+                  search.string = string
+                  findstr string in field(command.stack, @fm, cmnd.ptr + 1, 9999) setting f
+                  then
+                     cmnd.ptr += f
+                     at.command = command.stack<cmnd.ptr>
+                  end else
+                     cmnd.ptr = 0
+                     at.command = ''
+                  end
+                  exit
+               end
+
+            case n = 21         ;* Ctrl-U
+               at.command = upcase(at.command)
+
+            case n = K$F1 and at.command = ''
+               s = ''
+               gosub f1.help
+            case n >= 32
+               if command.overlay then
+                  if x <= len(at.command) then at.command[x, 1] = c
+                  else at.command := c
+               end else
+                  at.command = at.command[1, x - 1] : c : at.command[x, 999]
+               end
+               x += 1
+
+            case 1
+               display @sys.bell :
+         end case
+      repeat
+   repeat
+
+   i = kernel(K$SUPPRESS.COMO,0)
+   return
+
+* **********************************************************************
+
+get.string:
+   gs.prefix.len = len(gs.prefix)
+   gs.width = wm1 - prefix.len
+   gs.pan = 1
+   x = 1
+
+   ss = gs.prefix : string
+   image = (ss : space(wm1))[1,wm1]
+   display @(0) : ss[1,wm1] : @(-4) :
+   csr.x = gs.prefix.len
+   display @(csr.x) :
+
+   first = @true
+   loop
+      c = keycode(0)
+
+      n = seq(c)
+      if first and n >= 32 and n < 128 then
+         string = ''
+         x = 1
+      end
+      first = @false
+
+      begin case
+         case n = 254    ;* Ignore field marks
+            display @sys.bell :
+
+         case n = K$HOME
+            x = 1
+
+         case n = K$LEFT
+            if x > 1 then x -= 1
+
+         case n = K$DELETE
+            string = string[1, x - 1] : string[x + 1, 999]
+
+         case n = K$END
+            x = len(string) + 1
+
+         case n = K$RIGHT
+            if x <= len(string) then x += 1
+
+         case n = K$BACKSPACE
+            if x > 1 then
+               x -= 1
+               string = string[1, x - 1] : string[x + 1, 999]
+            end
+
+         case n = 11      ;* Ctrl-K
+            string = string[1, x - 1]
+
+         case n = 20      ;* Ctrl-T
+            if x > 1 and x < len(string) then
+               string[x-1,2] = string[x,1]:string[x-1,1]
+            end
+
+         case n = K$RETURN
+            exit
+
+         case n = K$INSERT
+            command.overlay = not(command.overlay)
+         
+         case n >= 32
+            if command.overlay then
+               if x <= len(string) then string[x, 1] = c
+               else string := c
+            end else
+               string = string[1, x - 1] : c : string[x, 999]
+            end
+            x += 1
+
+         case 1
+            display @sys.bell :
+      end case
+
+      if (x < gs.pan) or (x >= (gs.pan + gs.width)) then
+         gs.pan = (int((x - 1) / pan.increment) * pan.increment) - pan.increment
+         if gs.pan <= 0 then gs.pan = 1
+      end
+
+      ss = gs.prefix : string[gs.pan, gs.width]
+      gosub zoned.update
+      i = gs.prefix.len + x - gs.pan
+      if i # csr.x then
+         display @(i) :
+         csr.x = i
+      end
+   repeat
+
+   return
+
+* *****************************************************************************
+zoned.update:
+   left = 0
+   text.line = ss : space(wm1)
+
+   if image # text.line then
+      for cl = 1 to wm1
+         if text.line[cl,1] # image[cl,1] then
+            left = cl ; right = cl
+            loop
+               cl += 1
+            while cl <= wm1
+               if text.line[cl,1] # image[cl,1] then right = cl
+            repeat
+
+            w = right - left + 1
+            i = left - 1
+            if i # csr.x then display @(i) :
+            display text.line[left,w] :
+            csr.x = i + w
+            image = text.line[1,wm1]
+            exit
+         end
+      next cl
+   end
+
+   return
+
+*****************************************************************************
+* STACK.MANIPULATION  -  Process "." command
+* Leave AT.COMMAND null to indicate no further action required or place
+* command to be executed in AT.COMMAND.
+
+stack.manipulation:
+   c = upcase(at.command[2,1])
+
+   if at.command matches "'.'1A1N0X" then
+      n = matchfield(at.command, "'.'1A1-3N0X", 3)
+      at.command = matchfield(at.command, "'.'1A1-3N0X", 4)
+   end else
+      n = -1
+      at.command = at.command[3,99999]
+   end
+
+   stack.depth = dcount(command.stack, @fm)
+
+   begin case
+      case c = "A"                                    ;* .A[n] [text]
+         if n < 0 then n = 1
+         if n > stack.depth or n = 0 then goto stack.position.error
+
+         if at.command[1,1] = ' ' then at.command = at.command[2,99999]
+         s = command.stack<n> : at.command
+         command.stack<n> = s
+         display fmt(n, "2'0'R") : '  ' : s
+
+      case c = "C"                                    ;* .C[n]/old/new/
+         if n < 0 then n = 1
+         if n > stack.depth or n = 0 then goto stack.position.error
+         s = command.stack<n>
+
+         arg.delim = at.command[1,1]
+         i = index(at.command, arg.delim, 2)
+         if i = 0 then goto format.error
+
+         arg1 = field(at.command, arg.delim, 2)
+         arg2 = field(at.command, arg.delim, 3)
+         at.command = field(at.command, arg.delim, 4) ;* G if present
+
+         if upcase(at.command) = "G" then i = count(s, arg1)
+         else
+            if len(at.command) then goto format.error
+            i = 1
+         end
+
+         loop
+            j = index(s, arg1, i)
+         while j
+            s = s[1, j - 1] : arg2 : s[j + len(arg1), 999999]
+            i -= 1
+         while i
+         repeat
+         command.stack<n> = s
+         display fmt(n, "2'0'R") : '  ' : s
+ 
+      case c = "D"                                    ;* .D
+         if n > 0 or at.command = '' then             ;* .D[n] - Delete command
+            if n < 0 then n = 1
+            if n > stack.depth or n = 0 then goto stack.position.error
+            del command.stack<n>
+         end else                                     ;* .D name
+            at.command = trimf(trimb(at.command))
+            readu voc.rec from voc, at.command else
+               release voc, at.command
+               readu voc.rec from voc, upcase(at.command) then
+                  at.command = upcase(at.command)
+               end else
+                  release voc, at.command
+               end
+            end
+
+            if upcase(voc.rec[1,1]) = "S" or upcase(voc.rec[1,2]) = "PA" then
+               loop
+                  display sysmsg(5040, at.command) :  ;* Delete VOC record '%1'?
+                  prompt ""
+                  input s
+
+                  if upcase(s[1,1]) = "N" then
+                     release voc, at.command
+                     goto exit.stack.command
+                  end
+               until upcase(s[1,1]) = "Y"
+               repeat
+               delete voc, at.command
+            end else
+               release voc, at.command
+               display sysmsg(5041, at.command) ;* VOC record 'xx' is not a sentence or paragraph
+            end
+         end
+
+      case c = "I"                                    ;* .I[n] text
+         if n < 0 then n = 1
+         if n > stack.depth or n = 0 then goto stack.position.error
+         del command.stack<command.stack.depth>
+         if at.command[1,1] = ' ' then at.command = at.command[2,99999]
+         ins at.command before command.stack<n>
+
+      case c = "L"                                    ;* .L
+         if n > 0 or at.command = '' then                ;* .L[n] - List stack
+            if n < 0 then n = min(20, @crthigh - 2)
+            if n > stack.depth then n = stack.depth
+            z = @(0,0)    ;* Kill pagination
+            i = 23
+            loop
+            while n
+               if i = 0 then
+                  display sysmsg(5042) :  ;* Press return to continue, Q to quit
+                  i = keyin()
+                  display @(0):@(-4):
+                  if upcase(i) = 'Q' then exit
+                  i = 23
+               end else
+                  i -= 1
+               end
+               display fmt(n, "2'0'R") : "  " : command.stack<n>
+               n -= 1
+            repeat
+         end else                                     ;* .L name
+            at.command = trimf(trimb(at.command))
+            read voc.rec from voc, at.command else
+               read voc.rec from voc, upcase(at.command) then
+                  at.command = upcase(at.command)
+               end else
+                  display sysmsg(5043, at.command) ;* xx not found in VOC
+                  goto exit.stack.command
+               end
+            end
+
+            display at.command
+            n = dcount(voc.rec, @fm)
+            for i = 1 to n
+               display fmt(i, "3'0'R") : '  ' : voc.rec<i>
+            next i
+         end
+
+      case c = "R"                                    ;* .R
+         if n > 0 or at.command = '' then                ;* .R[n]
+            if n > stack.depth or n = 0 then goto stack.position.error
+            if n < 0 then n = 1
+            s = command.stack<n>
+            del command.stack<command.stack.depth>
+            ins s before command.stack<1>
+            display fmt(n, "2'0'R") : "  " : s
+         end else                                     ;* .R name
+            at.command = trimf(trimb(at.command))
+            read voc.rec from voc, at.command else
+               read voc.rec from voc, upcase(at.command) then
+                  at.command = upcase(at.command)
+               end
+            end
+
+            if upcase(voc.rec[1,1]) = "S" or upcase(voc.rec[1,2]) = "PA" then
+               n = dcount(voc.rec, @fm)
+               for i = n - 1 to 2 step -1
+                  s = voc.rec<i>
+                  if s[1] = "_" then
+                     voc.rec<i> = s[1, len(s) - 1] : ' ' : voc.rec<i + 1>
+                     n -= 1
+                  end
+               next i
+               if voc.rec[1,1] = 'S' then n = 2   ;* Only one sentence
+               display sysmsg(5044, n - 1, at.command) ;* nn line(s) loaded from VOC record 'xx'
+               for i = 2 to n
+                  ins voc.rec<i> before command.stack<1>
+               next i
+               command.stack = field(command.stack, @fm, 1, command.stack.depth)
+            end
+            else display sysmsg(5041, at.command) ;* VOC record 'xx' is not a sentence or paragraph
+         end
+
+      case c = "S"                                     ;* .S name s [e]
+         if n >= 0 then goto format.error
+         at.command = trim(at.command)
+         arg1 = field(at.command, " ", 1)  ;* name
+         if len(arg1) = 0 then goto format.error
+
+         arg2 = field(at.command, " ", 2)
+         if len(arg2) = 0 then arg2 = 1
+         if not(num(arg2)) then goto format.error
+         arg2 += 0
+         if arg2 > stack.depth then goto stack.position.error
+
+         arg3 = field(at.command, " ", 3)
+         if len(arg3) = 0 then arg3 = arg2
+         if not(num(arg3)) then goto format.error
+         arg3 += 0
+         if arg2 < arg3 then
+            n = arg2
+            arg2 = arg3
+            arg3 = n
+         end
+
+         readvu voc.rec from voc, arg1, 0 then
+            loop
+               display sysmsg(5045, arg1) :  ;* Overwrite VOC record 'xx'?
+               prompt ""
+               input s
+               if upcase(s[1,1]) = "N" then
+                  release voc, arg1
+                  goto exit.stack.command
+               end
+            until upcase(s[1,1]) = "Y"
+            repeat
+         end
+
+         voc.rec = if arg2 = arg3 then "S" else "PA"
+
+         loop
+         while arg2 >= arg3
+            voc.rec<-1> = command.stack<arg2>
+            arg2 -= 1
+         repeat
+         write voc.rec to voc, arg1
+
+      case c = "U"                                    ;* .U
+         if n < 0 then n = 1
+         if n > stack.depth or n = 0 then goto stack.position.error
+         s = upcase(command.stack<n>)
+         command.stack<n> = s
+         display s
+
+      case c = "X"                                    ;* .X
+         if n < 0 and at.command # '' then  ;* Execute command from file
+            new.sentence = trim(at.command)
+            n = dcount(new.sentence, ' ')
+            if n # 2 then
+               display sysmsg(5047) ;* Format error in stack command
+               goto exit.stack.command
+            end
+
+            s = field(new.sentence, ' ', 1)
+            open s to tmp.f else
+               open upcase(s) to tmp.f else
+                  display sysmsg(2021, s)  ;* File %1 not found
+                  goto exit.stack.command
+               end
+            end
+
+            verb = field(new.sentence, ' ', 2)
+            read voc.rec from tmp.f, verb else
+               read voc.rec from tmp.f, upcase(verb) else
+                  display sysmsg(5069) ;* Command record not found
+                  goto exit.stack.command
+               end
+               verb = upcase(verb)
+            end
+
+            close tmp.f
+
+            new.sentence = verb
+            call @parser(PARSER$RESET, 0, new.sentence, 0)
+            call @parser(PARSER$GET.TOKEN, token.type, verb, keyword) ;* Verb
+            gosub proc.command
+         end else                           ;* Execute stack command
+            if n < 0 then n = 1
+            cmnd.ptr = n
+            if cmnd.ptr <= stack.depth then
+               at.command = command.stack<cmnd.ptr>
+               display at.command
+               i = kernel(K$PAGINATE, @true)
+               return
+            end
+         end
+
+      case c = "?"
+         display sysmsg(5031)   ;* Help text
+
+      case 1
+         * Leave AT.COMMAND unchanged for unrecognised commands so that
+         * they get executed as normal.
+         return
+   end case
+
+exit.stack.command:
+   at.command = ""
+   return
+
+stack.position.error:
+   display sysmsg(5046) ;* Stack position error
+   goto exit.stack.command
+
+format.error:
+   display sysmsg(5047) ;* Format error in stack command
+   goto exit.stack.command
+
+*****************************************************************************
+* PROC.PARA.SENTENCE  -  Process sentence from a paragraph
+* PROC.SENTENCE  -  Process sentence
+
+* In all modes, new.sentence holds command line we are about to execute
+
+proc.para.sentence:
+   in.paragraph = @true
+   goto proc.sentence.common
+
+proc.sentence:
+   in.paragraph = @false
+   goto proc.sentence.common
+
+* Enter at PROC.COMMAND if voc.rec holds a command to be executed from
+* use of ".X file id".
+
+proc.command:
+   in.paragraph = @false
+   goto execute.command
+
+proc.sentence.common:      ;* (Note: return to here from int.if)
+   loop
+      new.sentence = trimf(new.sentence)
+      if index(new.sentence, "<<", 1) then call @inline(new.sentence)
+
+   while len(new.sentence)
+
+      if new.sentence = '*' or new.sentence[1,2] = '* ' then return
+
+      if new.sentence[1,1] = '!' and new.sentence[2,1] # ' ' then
+         new.sentence = '! ' : new.sentence[2,999999]
+      end
+
+      call @parser(PARSER$RESET, 0, new.sentence, 0)
+      call @parser(PARSER$GET.TOKEN, token.type, verb, keyword) ;* Verb
+
+      * Look up the verb in the VOC
+
+      if len(verb) > MAX.ID.LEN then
+         display sysmsg(5050, verb) ;* Illegal verb 'xx'
+         unwinding = 2
+         exit
+      end
+
+      * Try to find something to execute
+
+      * Check for alias
+
+      locate upcase(verb) in aliased.commands<1> setting i then
+         verb = alias.targets<i>
+      end
+
+      * Try name as entered
+      read voc.rec from voc, verb else
+         * Try in uppercase
+         read voc.rec from voc, upcase(verb) else
+            * Try in uppercase with hyphens changed to dots
+            read voc.rec from voc, change(upcase(verb), '-', '.') else null
+         end
+      end
+
+      * We now either have a VOC entry in voc.rec or it's a null string
+      * indicating that there was no VOC entry.
+
+execute.command:
+      * Save date and time of start of command for @DATE, @TIME, etc
+
+      cproc.date = date()
+      cproc.time = time()
+
+reparse:
+      voc.entry.type = upcase(voc.rec<1>)
+
+      * QM follows the rules used on PI, PI/open, UniVerse, etc.
+      * The type code may be followed by comment text with no intervening
+      * space. Therefore we must look only at the number of characters
+      * that are part of the type code for which we are testing.
+
+      * First try user defined processors
+
+      for i = 1 to voc.parser.rec.keys
+         s = upcase(voc.parser.rec<2,i>)
+         if voc.entry.type[1,len(s)] = s then  ;* Found it
+            handler = voc.parser.rec<3,i>
+            if catalogued(handler) then
+               ins at.sentence before sentence.stack<1>
+               at.sentence = new.sentence
+               last.command = at.sentence
+               call @handler(verb, voc.rec)
+               handler = ''  ;* Allow object to be flushed by unlinking
+               goto exit.command
+            end
+         end
+      next i
+
+      begin case
+         case voc.entry.type[1,1] = "V"                       ;* **** Verb
+            dispatch.mode = voc.rec<2>
+            dispatch.info = voc.rec<4>
+            ins at.sentence before sentence.stack<1>
+            at.sentence = new.sentence
+            last.command = at.sentence
+
+            * Check for a security subroutine
+
+            j = voc.rec<5>
+            if j # '' then   ;* Security subroutine present
+               if catalogued(j) then
+                  call @j(i, verb, '', '')
+                  j = ''       ;* Dereference to unload object
+               end else i = @false
+
+               if not(i) then
+                  display sysmsg(5052, verb) ;* This command is restricted (xx)
+                  unwinding = 2
+                  exit
+               end
+            end
+
+            if in.paragraph then     ;* Look ahead for DATA statements
+               loop
+               while pa.line <= pa.length
+                  s = trimf(pa.rec<pa.line>)
+                  begin case
+                     case upcase(trimb(s[1,5])) = "DATA"
+                        if index(s, "<<", 1) then call @inline(s)
+                        s = field(s, " ", 2, 99999)
+                        data s
+
+                     case s = '*' or s[1,2] = '* '
+                        if index(s, "<<", 1) then call @inline(s)
+
+                     case s = ''
+                        null
+
+                     case 1
+                        exit
+                  end case
+
+!                  if echo.paragraph then
+!                     * Show command prior to any inline prompt expansion
+!                     display pa.name : ' ' : (pa.line-1) : ': ' : pa.rec<pa.line>
+!                  end
+
+                  pa.line += 1
+               repeat
+            end
+
+            begin case
+               case dispatch.mode = "CA"  ;* Catalogued command
+                  s = voc.rec<3>
+                  call @s
+                  s = ''   ;* Allow unload of object code
+
+               case dispatch.mode = "CS"  ;* Catalogued subroutine
+                  if option(OPT.RUN.NO.PAGE) then s = @(0,0)    ;* 0185 Inhibit pagination
+                  call @verb
+                  verb = ''       ;* 0541 Ensure link lost
+
+               case dispatch.mode = "IN"  ;* Internal CPROC command
+                  on voc.rec<3> gosub int.quit,  ;*  1  Quit
+                     int.clr,                    ;*  2  Clear screen
+                     int.display,                ;*  3  Display text at terminal
+                     int.run,                    ;*  4  Run program
+                     int.abort,                  ;*  5  ABORT
+                     int.clearselect,            ;*  6  Clear select list
+                     int.date,                   ;*  7  DATE
+                     int.time,                   ;*  8  TIME
+                     int.break,                  ;*  9  BREAK
+                     int.bell,                   ;* 10  BELL
+                     int.go,                     ;* 11  GO
+                     int.status,                 ;* 12  STATUS
+                     int.set.date,               ;* 13  SET.DATE
+                     int.help,                   ;* 14  HELP
+                     int.update.account,         ;* 15  UPDATE.ACCOUNT
+                     int.who,                    ;* 16  WHO
+                     int.logto,                  ;* 17  LOGTO
+                     int.if,                     ;* 18  IF
+                     int.cleardata,              ;* 19  CLEARDATA
+                     int.clearprompts,           ;* 20  CLEARPROMPTS
+                     int.clear.stack,            ;* 21  CLEAR.STACK
+                     int.echo,                   ;* 22  ECHO
+                     int.hush,                   ;* 23  HUSH
+                     int.sleep,                  ;* 24  SLEEP
+                     int.clearinput,             ;* 25  CLEARINPUT
+                     int.clear.locks,            ;* 26  CLEAR.LOCKS
+                     int.lock,                   ;* 27  LOCK
+                     int.logout,                 ;* 28  LOGOUT
+                     int.debug,                  ;* 29  DEBUG
+                     int.stop,                   ;* 30  STOP
+                     int.report.src,             ;* 31  REPORT.SRC
+                     int.pterm,                  ;* 32  PTERM
+                     int.date.format,            ;* 33  DATE.FORMAT
+                     int.set,                    ;* 34  SET
+                     int.umask,                  ;* 35  UMASK
+                     int.pdump,                  ;* 36  PDUMP
+                     int.pause,                  ;* 37  PAUSE
+                     int.clear.abort,            ;* 38  CLEAR.ABORT
+                     int.set.exit.status,        ;* 39  SET.EXIT.STATUS
+                     int.report.style,           ;* 40  REPORT.STYLE
+                     int.logmsg                  ;* 41  LOGMSG
+
+               case dispatch.mode = "OS"  ;* OS command
+                  gosub os.command
+               case dispatch.mode = "EX"  ;* Executable
+                  gosub run.exe
+
+               case 1
+                  display sysmsg(5053, verb, dispatch.mode)
+                  * Verb definition for '%1' has invalid dispatch code (%2)
+                  unwinding = 2
+            end case
+
+         case voc.entry.type[1,2] = 'PQ'
+               ins at.sentence before sentence.stack<1>
+               at.sentence = new.sentence
+               last.command = at.sentence
+
+               * Set the pointers and the active buffers
+
+               mat proc.ibuf = ''
+
+               s = @sentence
+               loop
+               while s # ''
+                  c = s[1,1]
+                  if c = '"' or c = "'" or c = '\' then
+                     j = index(s, c, 2) ; if j = 0 then j = len(s)
+                     proc.ibuf(0)<-1> = s[1,j]
+                     s = trimf(s[j+1, 9999999])
+                  end else
+                     proc.ibuf(0)<-1> = field(s, ' ', 1)
+                     s = trimf(s[col2() + 1, 999999])
+                  end
+               repeat
+
+               * If this is a PQ style Proc, change the field marks in the
+               * primary input buffer to spaces.
+
+               c = voc.entry.type[3,1]
+               if c # 'N' and c # 'X' then
+                  convert @fm to ' ' in proc.ibuf(0)
+               end
+
+               proc.iptr = 1
+               proc.iptr.cpos = 1
+               proc.acti = 0
+
+               mat proc.obuf = ''
+               proc.acto = 0
+
+               i = '$PROC'
+               call @i(voc.rec, verb, filename, @voc, '')
+               i = ''                ;* Ensure link unsnapped
+               mat proc.fvar = 0     ;* Ensure all files are closed
+
+         case voc.entry.type[1,1] = 'R'                       ;* **** Remote
+            open voc.rec<2> to rem.f then
+               read s from rem.f, voc.rec<3> else null
+               close rem.f
+
+               if s = '' then
+                  display sysmsg(5054, verb) ;* Unable to read record referenced by R-type 'xx'
+                  unwinding = 2
+                  exit
+               end
+
+               * Check for a security subroutine
+
+               j = voc.rec<4>
+               if j # '' then   ;* Security subroutine present
+                  at.sentence = new.sentence
+                  if catalogued(j) then
+                     call @j(i, verb, voc.rec<2>, voc.rec<3>)
+                     j = ''       ;* Dereference to unload object
+                  end else i = @false
+
+                  if not(i) then
+                     display sysmsg(5052, verb) ;* This command is restricted (xx)
+                     unwinding = 2
+                     exit
+                  end
+               end
+
+               voc.rec = s
+               goto reparse
+            end else
+               display sysmsg(5055, verb) ;* Unable to open file referenced by R-type 'xx'
+               unwinding = 2
+               exit
+            end
+
+         case voc.entry.type[1,1] = "S"                       ;* **** Sentence
+            call @parser(PARSER$GET.REST, token.type, s, keyword)
+
+            * Merge continuation lines
+            voc.rec := @fm
+            voc.rec<2> = change(field(voc.rec, @fm, 2, 99999), '_':@fm, ' ')
+
+            ins at.sentence before sentence.stack<1>
+            at.sentence = new.sentence
+
+            new.sentence = voc.rec<2> : s
+            gosub proc.sentence
+         
+         case voc.entry.type[1,2] = "PA"                      ;* **** Paragraph
+            if pa.depth then   ;* Entering nested paragraph
+               ins pa.name : @vm : pa.line : @vm : pa.length : @vm : echo.paragraph before pa.stack<1>
+               if pa.depth > inmat(pa.save) then ;* Expand pa.save matrix
+                  dim pa.save(inmat(pa.save) + 5)
+               end
+               pa.save(pa.depth) = pa.rec
+            end
+
+            ins at.sentence before sentence.stack<1>
+            at.sentence = new.sentence
+
+            pa.name = verb
+            pa.rec = voc.rec
+            gosub execute.paragraph
+
+            * Return to previous paragraph, if any
+
+            if pa.depth then
+               pa.name = pa.stack<1,1>
+               pa.line = pa.stack<1,2> + 0
+               pa.length = pa.stack<1,3> + 0
+               echo.paragraph = pa.stack<1,4> + 0
+               del pa.stack<1>
+               pa.rec = pa.save(pa.depth)
+               pa.save(pa.depth) = ""
+               if unwinding then exit
+            end
+
+         case voc.entry.type[1,1] = "M"                       ;* **** Menu
+            ins at.sentence before sentence.stack<1>
+            at.sentence = new.sentence
+            menu.rec = voc.rec
+            gosub process.menu
+
+         case voc.entry.type[1,1] = "K" and len(trim(voc.rec<3>))
+            voc.rec = field(voc.rec, @fm, 3, 99999)
+            goto reparse
+
+         case 1
+            * If we arrive here, either the command is not in the VOC
+            * (voc.rec will be null) or it has an invalid type code.
+
+            * Before moaning, try the catalogue
+
+            if verb[1,1] = '*' or alpha(verb[1,1]) then
+               z = ''
+               * Try private catalogue
+               openpath private.catalogue to cat.f then
+                  readv z from cat.f, verb, 0 else null
+                  close cat.f
+               end
+
+               if z = '' then
+                  * Try global catalogue
+                  openpath @qmsys:@ds:'gcat' to cat.f then
+                     readv z from cat.f, verb, 0 else null
+                     close cat.f
+                  end
+               end
+
+               if z # '' then
+                  voc.rec = 'V':@fm:'CA':@fm:verb
+                  if option(OPT.RUN.NO.PAGE) then s = @(0,0)    ;* 0185 Inhibit pagination
+                  goto reparse
+               end
+            end
+
+            * We have failed to find anything to execute.
+
+            if voc.rec = '' then
+               display sysmsg(5051, verb) ;* %1 is not in your VOC
+            end else
+               display sysmsg(5056, verb) ;* '%1' is not valid for this usage
+            end
+            @system.return.code = -ER$ARGS
+            unwinding = 2
+            exit
+      end case
+
+exit.command:
+   while len(xeq.command)
+
+      * CHAIN used
+
+      new.sentence = xeq.command
+      xeq.command = ""
+
+      if kernel(K$FLAGS, HDR.IS.CPROC) then  ;* 0409 Not from a PROC
+         if not(option(OPT.CHAIN.KEEP.COMMON)) then
+            i = kernel(K$CPROC.LEVEL,0)
+            delete.common '$':i   ;* Delete unnamed common
+            i = kernel(K$CPROC.LEVEL, i - 1)
+         end
+      end
+   repeat
+
+   at.sentence = sentence.stack<1>
+   del sentence.stack<1>
+
+   if catalogued('CCALL.CLEANUP') then call ccall.cleanup
+
+   return
+
+*****************************************************************************
+* EXECUTE.PARAGRAPH  -  Execute a paragraph
+* pa.name  = name of paragraph, null if from EXECUTE command
+* pa.rec   = paragraph text
+
+execute.paragraph:
+   pa.depth += 1
+
+* Preparse the paragraph in pa.rec, merging continuation lines
+
+   loop.depth = 0
+   new.para = ""
+
+   * Outer loop  -  Process all sentences in paragraph
+
+   loop
+      * Middle loop  -  Extract a single sentence
+
+      remove new.sent from pa.rec setting i
+      loop
+
+         * Inner loop  -  Extract a single line
+
+         loop
+         while i and (i # 2)
+            delim = char(256 - i)
+            remove s from pa.rec setting i
+            new.sent := delim : s
+         repeat
+
+      while i
+      while new.sent[1] = "_"
+
+         new.sent = new.sent[1, len(new.sent) - 1] : ' '
+         remove s from pa.rec setting i
+         new.sent := s
+      repeat
+
+      new.sent = trimf(new.sent)
+
+      s = upcase(new.sent)
+
+      * Replace LOOP and REPEAT with a hidden label and jump
+
+      begin case
+         case s = "LOOP"
+            new.sent = "@" : loop.depth : ":"
+            loop.depth += 1
+
+         case s = "REPEAT"
+            if loop.depth = 0 then
+               abort sysmsg(5057) ;* Paragraph contains unpaired LOOP and REPEAT constructs
+            end
+            loop.depth -= 1
+            new.sent = "GO @" : loop.depth
+      end case
+
+      new.para<-1> = new.sent
+   while i
+   repeat
+
+   if loop.depth then
+      abort sysmsg(5057) ;* Paragraph contains unpaired LOOP and REPEAT constructs
+   end
+
+   pa.rec = new.para
+   new.para = ""
+   pa.length = dcount(pa.rec, @fm)
+
+
+   * Now execute the paragraph
+
+   pa.line = 2
+   loop
+   while pa.line <= pa.length
+      new.sentence = pa.rec<pa.line>
+      pa.line += 1
+
+      if field(new.sentence, ' ', 1)[1] = ':' then         ;* It's a label...
+         new.sentence = trimf(new.sentence[col2(),999999]) ;* ...remove it
+      end
+
+      s = upcase(trim(new.sentence))
+      begin case
+         case s = '$ECHO' or s = '$ECHO ON'
+            echo.paragraph = @true
+         case s = '$ECHO OFF'
+            echo.paragraph = @false
+         case 1
+            if echo.paragraph then
+               s = pa.rec<pa.line-1>
+               * Hide our mangling of LOOP/REPEAT constructs
+               begin case
+                  case s matches '"@"0N":"'   ; s = 'LOOP'
+                  case s[1,4] = 'GO @'        ; s = 'REPEAT'
+               end case
+               display pa.name : ' ' : (pa.line-1) : ': ' : s
+            end
+
+            gosub proc.para.sentence
+            gosub para.reset.environment  ;* 0494
+      end case
+
+   until unwinding
+   repeat
+
+   if unwinding = 1 then unwinding = 0   ;* Just unwinding one level
+
+   pa.depth -= 1
+   return
+
+*****************************************************************************
+* PROCESS.MENU
+*
+* Menu record is in MENU.REC on entry, its name is in VERB
+
+process.menu:
+   menu.rec<1> = verb  ;* Replace type (M) with menu name
+
+restart.menu:
+   access.sub = menu.rec<M$ACCESS.SUB>
+   if access.sub # '' then
+      if not(catalogued(access.sub)) then
+        display sysmsg(5060, access.sub, menu.rec<1>)
+        * Access control subroutine 'xx' for menu 'mm' is not catalogued
+        return
+      end
+   end
+
+   loop
+      crt @(IT$CS):
+
+      * Heading
+
+      s = menu.rec<M$TITLE>[1,@crtwide]
+      if len(s) then display @((@crtwide - len(s)) / 2, 0) : s :
+
+      * Display menu options
+
+      n = dcount(menu.rec<M$TEXT>, @vm)
+      col = 0
+      menu.map = ""
+      key = 0
+      prompt.line = 0
+
+      i = 0
+      line = 2
+      loop
+         i += 1
+
+         if line > @crthigh - 4 then
+            if col = 0 and maximum(lens(menu.rec<M$TEXT>)) <= @crtwide - 8 then
+               col = idiv(@crtwide, 2)
+               line = 2
+               prompt.line = @crthigh - 2
+            end else
+               exit
+            end
+         end
+
+      while i <= n
+         descr = menu.rec<M$TEXT, i>
+         action = menu.rec<M$ACTION, i>
+
+         * Check user is allowed this option
+
+         accessible = @true
+         if menu.rec<M$ACCESS.SUB> # '' then
+            access = menu.rec<M$ACCESS, i>
+            if access # '' then
+               call @access.sub(accessible, menu.name, access)
+               if not(accessible) then
+                   j = menu.rec<M$ACCESS.HIDE>
+                   if dcount(j, @vm) > 1 then  ;* One entry per option
+                      j = j<1,i>
+                   end
+                   if j then continue
+               end
+            end
+         end
+
+$ifdef FORMATTED.MENUS
+         if descr matches "'@('1N0N','1N0N')'0X" then  ;* Formatted option
+            col = matchfield(descr, "'@('0N','0N')'0X", 2)
+            line = matchfield(descr, "'@('0N','0N')'0X", 4)
+            descr = matchfield(descr, "'@('0N','0N')'0X", 6)
+         end
+$endif
+
+         crt @(col, line) :
+
+         if len(action) then  ;* This is a menu option
+            key += 1
+
+            if accessible then
+               crt fmt(key, "3R") : " = " :
+               menu.map<key> = i
+            end else
+               crt '(' : fmt(key, "2R") : ")= " :
+            end
+         end
+
+         crt descr
+
+         line += 1       ;* 0300 moved
+      repeat
+
+      * Display input prompt
+
+      line += 1
+      col = 0
+      descr = "Select option (1 - " : key : ") = "
+
+      if prompt.line then line = prompt.line
+
+      if len(menu.rec<M$PROMPT>) then
+         descr = menu.rec<M$PROMPT>
+$ifdef FORMATTED.MENUS
+         if descr matches "'@('1N0N','1N0N')'0X" then
+            col = matchfield(descr, "'@('0N','0N')'0X", 2)
+            line = matchfield(descr, "'@('0N','0N')'0X", 4)
+            descr = matchfield(descr, "'@('0N','0N')'0X", 6)
+         end
+$endif
+      end
+
+
+      * Get input
+
+      loop
+         crt @(col, line) : descr : @(IT$CLEOL) :
+         prompt ""
+         s = ''
+         input @(col + len(descr),line) : s,4_:
+
+         crt @(0,@crthigh-1) : @(IT$CLEOS) :          ;* Clear help text area
+
+         * Check for exit menu action
+
+         if menu.rec<M$EXITS> = '' then
+            if s = '' then
+               display @(IT$CS) :
+               return
+            end
+         end else
+            locate s in menu.rec<M$EXITS, 1> setting i then
+               display @(IT$CS) :
+               return
+            end
+         end
+
+         * Check for stop (terminate all menus) action
+
+         if menu.rec<M$STOPS> = '' then
+               if upcase(s) = 'Q' then
+               display @(IT$CS) :
+               menu.stack = ""
+               abort
+            end
+         end else
+            locate s in menu.rec<M$STOPS, 1> setting i then
+               display @(IT$CS) :
+               menu.stack = ""
+               abort
+            end
+         end
+
+         * Check for menu option number
+
+         if s matches '1-2N' then
+            n = s + 0
+            if n >= 1 and n <= key then
+               i = menu.map<n>
+               if i then
+                  new.sentence = menu.rec<M$ACTION,i>
+
+                  if new.sentence[1] = ';' then
+                     new.sentence = new.sentence[1,len(new.sentence)-1]
+                     menu.stack = 1 : @im : menu.rec : @im : menu.stack
+                  end else
+                     menu.stack = 0 : @im : menu.rec : @im : menu.stack
+                  end
+
+                  i = kernel(K$PAGINATE, @true)
+                  gosub proc.sentence
+                  gosub reset.environment
+
+                  if field(menu.stack, @im, 1) then
+                     display @(0) : sysmsg(5061) : @(-4) :  ;* Press return to continue'
+                     prompt ''
+                     input i
+                  end
+
+                  menu.rec = field(menu.stack, @im, 2)
+                  menu.stack = field(menu.stack, @im, 3, 9999)
+                  goto restart.menu   ;* Start again
+               end
+            end
+         end
+
+         * Check for help request
+
+         if s[1] = "?" then
+            s = s[1, len(s) - 1]
+            if len(s) and num(s) then
+               n = int(s)
+               if (n >= 1) and (n <= key) then
+                  i = menu.map<n>
+                  if i then
+                     crt @(0,@crthigh-1) : menu.rec<M$HELP,i>[1,@crtwide-1] :
+                  end
+               end
+            end
+            continue
+         end
+      repeat
+   repeat
+
+   return
+
+*****************************************************************************
+***               INTERNAL VERBS (VOC file dispatch mode IN)              ***
+*****************************************************************************
+
+*****************************************************************************
+* INT.QUIT  -  Quit from CPROC (Internal verb 1)
+
+int.quit:
+   gosub exit.actions         ;* 0381 made unconditional
+
+   i = logout(0, @true)
+   * Shouldn't come back
+
+   return to abort.cproc
+
+*****************************************************************************
+* INT.CLR  -  Clear screen (Internal verb 2)
+
+int.clr:
+   display @(-1):
+   return
+
+*****************************************************************************
+* INT.DISPLAY  -  Display text at terminal (Internal verb 3)
+
+int.display:
+   system.return.code = 0
+   s = field(@sentence, ' ', 2, 99999999)
+   if s matches "'@('1-3N','1-3N')'...ý'@(-'1-3N','1-3N')'..." then
+      crt @(matchfield(s, "'@('0X','0X')'...", 2), matchfield(s, "'@('0X','0X')'...", 4)) :
+      s = matchfield(s, "'@('0X','0X')'...", 6)
+   end
+   if s[1] = ":" then display s[1, len(s) - 1] :
+   else display s
+   return
+
+*****************************************************************************
+* INT.RUN    -  RUN program (Internal verb 4)
+* INT.DEBUG  -  DEBUG program (Internal verb 29)
+
+int.debug:
+   if is.phantom then
+      @system.return.code = -ER$ARGS
+      display sysmsg(5070) ;* Cannot debug program in a phantom process
+      return
+   end
+
+   run.debug = @true
+   breakpoint BRK$STEP, 1
+   goto int.run.common
+
+int.run:
+   run.debug = @false
+
+int.run.common:
+   run.file.name = "BP"
+
+   * Get first name (file or record)
+
+   call @parser(PARSER$MFILE, token.type, run.record.name, keyword)
+   if token.type = PARSER$END then
+      @system.return.code = -ER$ARGS
+      display sysmsg(5071) ;* Record name required
+      return
+   end
+
+   * Get record name or options
+
+   run.record.name.seen = @false
+   loop
+      call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+
+   until token.type = PARSER$END
+
+      begin case
+         case keyword = kw$lptr
+            printer on                 ;* Output to printer by default
+
+         case keyword = kw$no.page
+            s = @(0,0)                 ;* Inhibit pagination
+
+         case 1
+            if not(run.record.name.seen) then
+               run.file.name = run.record.name
+               run.record.name = token
+               run.record.name.seen = @true
+            end
+      end case
+   repeat
+
+   if option(OPT.RUN.NO.PAGE) then s = @(0,0)    ;* 0185 Inhibit pagination
+
+   if index(run.file.name, ',', 1) then     ;* Multifile
+      run.file.name.out = run.file.name[',', 1, 1] : '.OUT,' : run.file.name[',', 2, 999]
+   end else                                 ;* Simple file
+      run.file.name.out = run.file.name : '.OUT'
+   end
+   open run.file.name.out to run.file else
+      open upcase(run.file.name.out) to run.file else
+         if run.record.name.seen then
+            * Perhaps we are trying to run a rehomed VOC item. Try opening
+            * the file without a .OUT suffix.
+
+            open run.file.name to run.file else
+               open upcase(run.file.name) to run.file else
+                  @system.return.code = -status()
+                  display sysmsg(2021, run.file.name.out)  ;* File xx not found
+                  return
+               end
+            end
+
+            * Try to find the item to run
+
+            read voc.rec from run.file, run.record.name else
+               read voc.rec from run.file, upcase(run.record.name) else
+                  close run.file
+                  display sysmsg(1141) ;* Cannot find item to run
+                  return
+               end
+            end
+
+            close run.file
+
+            * Strip the first two elements of the command. This is done as
+            * two separate steps to handle multiple spaces without impacting
+            * any later, possibly significant, multiple spacing.
+
+            new.sentence = trimf(field(@sentence, ' ', 2, 99999))
+            new.sentence = trimf(field(new.sentence, ' ', 2, 99999))
+            verb = run.file.name
+            call @parser(PARSER$RESET, 0, new.sentence, 0)
+            call @parser(PARSER$GET.TOKEN, token.type, verb, keyword) ;* Verb
+            gosub proc.command
+            return
+         end
+
+         @system.return.code = -status()
+         display sysmsg(2021, run.file.name.out)  ;* File xx not found
+         return
+      end
+      run.file.name.out = upcase(run.file.name.out)
+   end
+   run.file.name = run.file.name.out
+
+   if fileinfo(run.file, fl$type) # fl$type.dir then
+      @system.return.code = -ER$NDIR
+      close run.file
+      display sysmsg(1428, run.file.name) ;* xx is not a directory file
+      return
+   end
+
+   if windows then run.record.name = upcase(run.record.name)
+
+   readv s from run.file,run.record.name,0 on error
+      display sysmsg(5072) ;* Cannot access program record
+   end else
+      @system.return.code = -status()
+      close run.file
+      display sysmsg(5073, run.file.name, run.record.name) ;* Program xx xx not found
+      return
+   end
+
+   if run.debug then debug.on
+   
+   run.pathname = fileinfo(run.file, fl$path) : @ds : run.record.name
+   close run.file
+
+   run run.pathname
+
+   return
+
+*****************************************************************************
+* INT.ABORT  -  ABORT (Internal verb 5)
+
+int.abort:
+   call @parser(PARSER$GET.REST, token.type, s, keyword)
+   abort trimf(s)
+
+*****************************************************************************
+* INT.CLEARSELECT  -  CLEARSELECT (Internal verb 6)
+
+int.clearselect:
+   @system.return.code = -ER$ARGS      ;* Preset for command format errors
+
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   begin case
+      case keyword = kw$all
+         clearselect all
+         crt sysmsg(5080) ;* Cleared all numbered select lists
+         @system.return.code = 11
+
+      case num(token)
+         i = token + 0
+         if (i < 0) or (i > high.user.select) then
+            display sysmsg(5081) ;* Invalid select list number
+            return
+         end
+
+         clearselect i
+         crt sysmsg(5082, i) ;* Cleared numbered select list xx
+         @system.return.code = i
+
+      case 1
+         display sysmsg(5083) ;* ALL or select list number required
+   end case
+
+   return
+
+*****************************************************************************
+* INT.DATE  -  DATE command (Internal verb 7)
+
+int.date:
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   s = field(@sentence, ' ', 2, 99999999)
+
+   begin case
+      case keyword = KW$INTERNAL
+         display date()
+
+      case s = ''
+         loop
+            n = time()
+            i = date()
+         while time() < n    ;* Went past midnight
+         repeat
+
+         display oconv(i, "DWAL") : ", " : oconv(i, 'DD') : " " :  oconv(i, "DMAL") : " " : oconv(i, "DY") : "  " : oconv(n, "MTH")
+
+      case s matches "1-6Ný'-'1-6N"
+         i = s + 0
+         display oconv(i, "D4WADMAYL[', ']")
+
+      case 1
+         s = iconv(s, 'D')
+         if status() then
+            display sysmsg(5090) ;* Invalid date format
+            @system.return.code = -ER$ARGS
+            return
+         end
+         display s
+   end case
+
+   @system.return.code = 0
+   return
+
+*****************************************************************************
+* INT.TIME  -  TIME command (Internal verb 8)
+
+int.time:
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   begin case
+      case keyword = KW$INTERNAL
+         display time()
+      case 1
+         display timedate()
+   end case
+
+   return
+
+*****************************************************************************
+* INT.BREAK  -  BREAK (Internal verb 9)
+
+int.break:
+   @system.return.code = -ER$ARGS
+
+   call @parser(PARSER$GET.TOKEN, token.type, s, keyword)
+   begin case
+      case keyword = KW$ON
+         call @parser(PARSER$GET.TOKEN, token.type, s, keyword)
+         if keyword = KW$USER then
+            if kernel(K$ADMINISTRATOR,-1) then
+               call @parser(PARSER$GET.TOKEN, token.type, s, keyword)
+               if s matches '1N0N' and s > 0 then
+                  i = events(s, EVT$BREAK)
+                  if status() then display sysmsg(5100) ;* User not logged in
+                  else @system.return.code = 0
+               end else
+                  display sysmsg(5101) ;* User number required
+               end
+            end else
+               display sysmsg(5102) ;* This format of the BREAK command is restricted to administrators
+            end
+         end else
+            break on
+         end
+
+      case keyword = KW$OFF
+         break off
+
+      case keyword = KW$CLEAR
+         break clear
+
+      case keyword = KW$COUNT
+         crt sysmsg(5103, break.count()) ;* Break count is nn
+
+      case 1
+         display sysmsg(5059) ;* Mode keyword missing or invalid
+         return
+   end case
+
+   @system.return.code = break.count()
+
+   return
+
+*****************************************************************************
+* INT.BELL  -  BELL (Internal verb 10)
+
+int.bell:
+   call @parser(PARSER$GET.TOKEN, token.type, s, keyword)
+   begin case
+      case keyword = kw$on
+         @sys.bell = char(7)
+         @system.return.code = 1
+
+      case keyword = kw$off
+         @sys.bell = ""
+         @system.return.code = 0
+
+      case 1
+         display sysmsg(5059)  ;* Mode keyword missing or invalid
+         @system.return.code = -ER$ARGS
+   end case
+
+   return
+
+*****************************************************************************
+* INT.GO  -  GO (Internal verb 11)
+
+int.go:
+   if not(in.paragraph) then abort sysmsg(5110) ;* GO is only allowed within a paragraph
+
+   call @parser(PARSER$GET.TOKEN, token.type, label.to.find, keyword)
+
+   * Ensure we have a trailing colon.
+
+   if label.to.find[1] # ":" then label.to.find := ":"
+
+   if len(label.to.find) = 0 then
+      display sysmsg(5111) ;* Label name required
+      return
+   end
+
+   i = if label.to.find[1,1] = '@' then 1 else pa.line
+   n = len(label.to.find)
+   loop
+   while i <= pa.length
+      if pa.rec<i>[1,n] = label.to.find then
+         pa.line = i
+         exit
+      end
+      i += 1
+   repeat
+
+   if i > pa.length then
+      display sysmsg(5112, label.to.find) ;* Label 'xx' not found
+      unwinding = 1
+   end
+
+   return
+
+*****************************************************************************
+* INT.STATUS  -  STATUS (Internal verb 12)
+
+int.status:
+   read s from ipc.f, 'P':@userno else null
+   n = dcount(s<1>, @vm)
+   if n then
+      display sysmsg(5120) ;* User  Started            Command
+      for i = 1 to n
+         z = s<2,i>
+         display fmt(s<1,i>, "4R") : "  " :               ;* User no
+         display oconv(idiv(z,86400),'D2/DMY') : " " :    ;* Date
+         display oconv(rem(z,86400),'MTS') : "  " :       ;* Time
+         display s<3,i>[1,51]                             ;* Command
+      next i
+   end else
+      display sysmsg(5121) ;* There are no phantom processes started by this process
+   end
+
+   return
+
+*****************************************************************************
+* INT.HELP  -  HELP (Internal verb 14)
+
+int.help:
+   call @parser(PARSER$GET.REST, token.type, s, keyword)
+f1.help:
+   if kernel(K$HELP, s) then display sysmsg(5130) ;* Unable to access the help system
+
+   return
+
+*****************************************************************************
+* INT.WHO  -  WHO (Internal verb 16)
+
+int.who:
+   if initial.account.path = account.path then
+      display @userno : ' ' : who
+   end else
+      display sysmsg(5140, @userno, who, initial.account)
+   end
+
+   return
+
+*****************************************************************************
+* INT.LOGTO  -  LOGTO (Internal verb 17)
+
+int.logto:
+   * Grab hold of new account name before we look for an ON.LOGTO entry
+
+   call @parser(PARSER$GET.TOKEN, token.type, new.account, keyword)
+   if token.type = PARSER$END then
+      display sysmsg(5160) ;* Account name required
+      unwinding = 2
+      return
+   end
+
+   * Look for options
+
+   loop
+      call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   until token.type = PARSER$END
+      begin case
+         case keyword = KW$RESET
+            logto.reset = @true
+      end case
+   repeat
+
+   * Execute ON.LOGTO paragraph, if present
+
+   read voc.rec from voc, "ON.LOGTO" then
+      at.command = ""
+      new.sentence = "ON.LOGTO"
+      gosub proc.sentence
+   end
+
+   i = kernel(K$INVALIDATE.OBJECT, 0)   ;* 0400
+
+   @system.return.code = -ER$ARGS
+
+   openpath @qmsys:@ds:'ACCOUNTS' to acc.f then
+      readv acc.rec from acc.f, upcase(new.account), ACC$PATH then
+         acc.rec = parse.pathname.tokens(acc.rec)
+         new.account = upcase(new.account)
+      end else
+         acc.rec = new.account
+         new.account = ''
+      end
+      close acc.f
+   end
+
+   * new.account contains the account name, null if attaching by path
+   * acc.rec contains the pathname of the account (other fields removed)
+
+   if not(ospath(acc.rec, OS$CD)) then
+      display sysmsg(5161) ;* Unable to change to new directory
+      if ospath(account.path, OS$CD) then return
+      display sysmsg(5162) ;* Fatal error : Cannot return to previous account
+      return to abort.cproc
+   end
+
+   openpath "VOC" to new.voc else
+      display sysmsg(5163) ;* Directory is not a QM account
+      if ospath(account.path, OS$CD) then return
+      display sysmsg(5162) ;* Fatal error : Cannot return to previous account
+      return to abort.cproc
+   end
+
+   i = ospath("", os$flush.cache)
+   account.path = ospath("", os$cwd)     ;* @PATH
+
+   if new.account = '' then
+      new.account = upcase(account.path[index(account.path, @ds, count(account.path, @ds)) + 1, 99999])
+   end
+
+   who = new.account
+   voc = new.voc ; new.voc = 0   ;* Dereference temporary VOC file var
+
+   gosub find.private.catalogue
+
+   if logto.reset then
+      loop
+      while system(1029)
+         return to logto.unwind   ;* Yuck!! Clever but really nasty!
+logto.unwind:
+      repeat
+   end
+
+   @system.return.code = 0
+
+   read voc.rec from voc,"LOGIN" then
+      at.command = ""
+      new.sentence = "LOGIN"
+      break off
+      gosub proc.sentence
+      break on
+   end
+
+   if logto.reset then goto restart.cproc
+
+   return
+
+*****************************************************************************
+* INT.IF  -  IF (Internal verb 18)
+
+int.if:
+   if not(in.paragraph) then abort sysmsg(5170) ;* IF is only allowed within a paragraph
+
+   if.value = @false
+   if.or = @true
+
+   loop
+      call @parser(PARSER$GET.TOKEN, token.type, s, keyword)
+      begin case
+         case token.type = PARSER$TOKEN
+            if s[1,1] = "@" then gosub substitute.at.var
+         case token.type = PARSER$STRING
+            null
+         case 1
+            abort sysmsg(5171) ;* Value 1 missing in IF
+      end case
+      value.1 = s
+
+      if (keyword >= KW$LOW.REL.OP) and (keyword <= KW$HIGH.REL.OP) then
+         * Looks like it could be a null inline prompt response
+         rel.op = keyword
+         value.1 = ''
+      end else
+         call @parser(PARSER$GET.TOKEN, token.type, s, rel.op)
+         if (rel.op < KW$LOW.REL.OP) or (rel.op > KW$HIGH.REL.OP) then
+            abort sysmsg(5172) ;* Relational operator missing in IF
+         end
+      end
+      rel.op -= KW$LOW.REL.OP - 1
+
+      call @parser(PARSER$LOOK.AHEAD, token.type, s, keyword)
+      if keyword = KW$AND or keyword = KW$OR or upcase(s) = 'THEN' then
+         * Looks like it could be a null inline prompt response
+         value.2 = ''
+      end else
+         call @parser(PARSER$GET.TOKEN, token.type, s, keyword)
+         begin case
+            case token.type = PARSER$TOKEN
+               if s[1,1] = "@" then gosub substitute.at.var
+            case token.type = PARSER$STRING
+               null
+            case 1
+               abort sysmsg(5173) ;* Value 2 missing in IF
+         end case
+         value.2 = s
+      end
+   
+      * Perform relational comparison
+
+      on rel.op goto op.eq, op.ne, op.lt, op.le, op.ge, op.gt, op.like,
+                  op.unlike, op.said
+
+op.eq:
+      rel.val = value.1 = value.2
+      goto test.if.result
+
+op.ne:
+      rel.val = value.1 # value.2
+      goto test.if.result
+
+op.lt:
+      rel.val = value.1 < value.2
+      goto test.if.result
+
+op.le:
+      rel.val = value.1 <= value.2
+      goto test.if.result
+
+op.ge:
+      rel.val = value.1 >= value.2
+      goto test.if.result
+
+op.gt:
+      rel.val = value.1 > value.2
+      goto test.if.result
+
+op.like:
+      rel.val = value.1 matches value.2
+      goto test.if.result
+
+op.unlike:
+      rel.val = not(value.1 matches value.2)
+      goto test.if.result
+
+op.said:
+      rel.val = soundex(value.1) = soundex(value.2)
+      goto test.if.result
+
+test.if.result:
+      if.value = if if.or then (if.value or rel.val) else (if.value and rel.val)
+
+      call @parser(PARSER$GET.TOKEN, token.type, s, keyword)
+
+      begin case
+         case keyword = kw$and ; if.or = @false
+         case keyword = kw$or  ; if.or = @true
+         case 1
+            exit
+      end case
+   repeat
+
+   if upcase(s) # "THEN" then abort sysmsg(5174) ;* THEN not found where expected in IF
+
+   if if.value then
+      call @parser(PARSER$GET.REST, token.type, new.sentence, keyword)
+      return to proc.sentence.common
+   end
+
+   return
+
+substitute.at.var:
+   value = s
+   gosub expand.at.vars
+   s = value
+   return
+
+
+*****************************************************************************
+* INT.CLEARDATA  -  CLEARDATA (Internal verb 19)
+
+int.cleardata:
+   cleardata
+   return
+
+*****************************************************************************
+* INT.CLEARPROMPTS  -  CLEARPROMPTS (Internal verb 20)
+
+int.clearprompts:
+   inline.prompts = ""
+   inline.responses = ""
+   return
+
+*****************************************************************************
+* INT.CLEAR.STACK  -  CLEAR.STACK (Internal verb 21)
+
+int.clear.stack:
+   command.stack = ""
+   return
+
+*****************************************************************************
+* INT.ECHO  -  ECHO (Internal verb 22)
+
+int.echo:
+   call @parser(PARSER$GET.TOKEN, token.type, s, keyword)
+   begin case
+      case keyword = KW$ON
+         echo on
+
+      case keyword = KW$OFF
+         echo off
+
+      case token.type = PARSER$END
+         echo not(echo.input)
+
+      case 1
+         display sysmsg(5059) ;* Mode keyword missing or invalid
+   end case
+
+   return
+
+*****************************************************************************
+* INT.HUSH  -  HUSH (Internal verb 23)
+
+int.hush:
+   call @parser(PARSER$GET.TOKEN, token.type, s, keyword)
+   begin case
+      case keyword = kw$on
+         hush on
+
+      case keyword = kw$off
+         hush off
+
+      case token.type = PARSER$END
+         hush on
+         if status() then hush off
+
+      case 1
+         display sysmsg(5059) ;* Mode keyword missing or invalid
+   end case
+
+   return
+
+*****************************************************************************
+* INT.SLEEP  -  SLEEP (Internal verb 24)
+
+int.sleep:
+   @system.return.code = -ER$ARGS
+
+   call @parser(PARSER$GET.TOKEN, token.type, s, keyword)
+   if num(s) then sleep s     ;* Sleep n seconds Includes null string case
+   else                       ;* Sleep to given time
+      i = iconv(s, "MT")
+      if status() then        ;* Conversion error
+         display sysmsg(5180) ;* Invalid sleep time
+         return
+      end
+
+      i -= time()
+      if i < 0 then i += 86400
+      sleep i
+   end
+
+   @system.return.code = 0
+   return
+
+*****************************************************************************
+* INT.CLEARINPUT  -  CLEARINPUT (Internal verb 25)
+
+int.clearinput:
+   clearinput
+   return
+
+*****************************************************************************
+* INT.CLEAR.LOCKS  -  CLEAR.LOCKS (Internal verb 26)
+
+int.clear.locks:
+   call @parser(PARSER$GET.TOKEN, token.type, s, keyword)
+   if token.type # PARSER$END then      ;* Release specific task lock
+      @system.return.code = -ER$ARGS
+      if not(trim(s) matches '1N0N') then
+         display sysmsg(5190) ;* Task lock number required
+         return
+      end
+
+      i = s + 0
+      if i > 63 then
+         display sysmsg(5191) ;* Task lock number must be in range 0 to 63
+         return
+      end
+
+      unlock i then display sysmsg(5192, i) ;* Released task lock xx
+      else
+         if status() = ER$LCK then
+            display sysmsg(5193, i) ;* Task lock xx is held by another process
+         end else
+            display sysmsg(5194, i) ;* Task lock xx is not held by any process
+         end
+      end
+      @system.return.code = i
+   end else                                ;* Release all task locks
+      for i = 0 to 63
+         unlock i
+      next i
+      display sysmsg(5195) ;* All task locks released
+      @system.return.code = 64
+   end
+
+   return
+
+*****************************************************************************
+* INT.LOCK  -  LOCK (Internal verb 27)
+
+int.lock:
+   @system.return.code = -ER$ARGS
+
+   call @parser(PARSER$GET.TOKEN, token.type, s, keyword)
+   if (token.type = PARSER$END) or not(trim(s) matches '1N0N') then
+      display sysmsg(5190) ;* Task lock number required
+      return
+   end
+
+   i = s + 0
+   if i > 63 then
+      display sysmsg(5191) ;* Task lock number must be in range 0 to 63
+      return
+   end
+
+   no.lock.wait = @false
+   loop
+      call @parser(PARSER$GET.TOKEN, token.type, s, keyword)
+   while token.type # PARSER$END
+      begin case
+         case keyword = KW$NO.WAIT
+            no.lock.wait = @true
+         case 1
+            display sysmsg(5059) ;* Mode keyword missing or invalid
+            return
+      end case
+   repeat
+
+   first.lock.wait = @true
+   loop
+      lock i then exit
+      else    ;* 0515
+         if no.lock.wait then
+            @system.return.code = -ER$LCK
+            display sysmsg(5196) ;* Task lock is already in use
+            return
+         end
+
+         if first.lock.wait then
+            display sysmsg(5197) ;* Waiting for task lock to become available
+            first.lock.wait = @false
+         end
+         sleep 2
+      end
+   repeat
+
+   if status() then
+      display sysmsg(5198) ;* Task lock already owned by this process
+   end else
+      display sysmsg(5199, i) ;* Set task lock xx
+   end
+
+   @system.return.code = i
+
+   return
+
+*****************************************************************************
+* INT.LOGOUT  -  LOGOUT (Internal verb 28)
+
+int.logout:
+   @system.return.code = -ER$ARGS
+
+   call @parser(PARSER$GET.TOKEN, token.type, s, keyword)
+   begin case
+      case token.type = PARSER$END
+         gosub int.quit            ;* Treat as QUIT
+
+      case keyword = KW$ALL
+         if not(kernel(K$ADMINISTRATOR,-1)) then
+           display sysmsg(2001) ;* Command requires administrator privileges
+           return
+         end
+
+         if @who # 'QMSYS' then
+           display sysmsg(2002) ;* Command can only be executed from QMSYS account
+           return
+         end
+
+         s = kernel(K$USERS, 0)  ;* First value in each field is user no
+         n = dcount(s, @fm)
+         for i = 1 to n
+            j = s<i,1>
+            if j # @userno then z = logout(j, @false)
+         next i
+
+      case s matches '1N0N'
+         loop
+            if not(s matches "1N0N") then
+               display sysmsg(2110) ;* User number required
+               return
+            end
+
+            i = s + 0
+
+            if not(kernel(K$ADMINISTRATOR,-1)) then
+                s = kernel(K$USERS,i)<1,K$USERS.UNAME>   ;* 0438
+                if s # @logname then
+                   display sysmsg(2007) ;* Only administrators can logout processes running with other usernames
+                   return
+                end
+            end
+
+            if not(logout(i, @false)) then
+               display sysmsg(2100) ;* Invalid user number
+               return
+            end
+      
+            call @parser(PARSER$GET.TOKEN, token.type, s, keyword)
+         until token.type = PARSER$END
+         repeat
+   end case
+
+   @system.return.code = 0
+
+   return
+
+*****************************************************************************
+* INT.UPDATE.ACCOUNT    -  UPDATE.ACCOUNT (Internal verb 30)
+
+int.update.account:
+   display sysmsg(5200) ;* Copying records from NEWVOC to VOC...
+   i = '$LOGIN'
+   call @i(j,2)
+   i = ''
+   display 
+   return
+
+*****************************************************************************
+* INT.STOP  -  STOP (Internal verb 30)
+
+int.stop:
+   unwinding = 1
+   return
+
+*****************************************************************************
+* INT.REPORT.SRC  -  REPORT.SRC (Internal verb 31)
+
+int.report.src:
+   call @parser(PARSER$GET.TOKEN, token.type, s, keyword)
+   begin case
+      case keyword = kw$on
+         report.src = @true
+
+      case keyword = kw$off
+         report.src = @false
+
+      case token.type = PARSER$END
+         report.src = not(report.src)
+
+      case 1
+         display sysmsg(5059) ;* Mode keyword missing or invalid
+   end case
+
+   return
+
+*****************************************************************************
+* INT.PTERM  -  PTERM (Internal verb 32, now an external program)
+
+int.pterm:
+   s = '$PTERM'
+   call @s
+   s = ''
+
+   return
+
+*****************************************************************************
+* INT.DATE.FORMAT  -  DATE.FORMAT (Internal verb 33)
+
+int.date.format:
+   call @parser(PARSER$GET.TOKEN, token.type, s, keyword)
+   begin case
+      case keyword = KW$ON
+         i = kernel(K$DATE.FORMAT, @true)
+
+      case keyword = KW$OFF
+         i = kernel(K$DATE.FORMAT, @false)
+
+      case keyword= KW$DISPLAY
+         @system.return.code = kernel(K$DATE.FORMAT, -1)
+         if @system.return.code then
+            crt sysmsg(5210) ;* European date format is on
+         end else
+            crt sysmsg(5211) ;* European date format is off
+         end
+         s = kernel(K$DATE.CONV, '')
+         if s # 'D' then
+            crt sysmsg(5213, s) ;* Default conversion code is %1
+         end
+
+      case keyword= KW$INFORM
+         @system.return.code = kernel(K$DATE.FORMAT, -1)
+
+      case token.type = PARSER$END
+         i = kernel(K$DATE.FORMAT, @true)
+
+      case s[1,1] = 'D'
+         i = oconv(date(), s)
+         if status() = 0 then i = kernel(K$DATE.CONV, s)
+         else display sysmsg(5212) ;* Illegal data conversion code
+
+      case 1
+         display sysmsg(5059) ;* Mode keyword missing or invalid
+   end case
+
+   return
+
+*****************************************************************************
+* INT.SET  -  SET verb (Internal verb 34)
+
+int.set:
+   call @parser(PARSER$GET.TOKEN, token.type, var, keyword)
+   if token.type # PARSER$TOKEN then
+      display sysmsg(5220) ;* Illegal or missing variable name
+      return
+   end
+
+   call @parser(PARSER$LOOK.AHEAD, token.type, s, keyword)
+   if keyword = KW$EVAL then
+      call @parser(PARSER$GET.TOKEN, token.type, s, keyword)
+      call @parser(PARSER$GET.REST, token.type, value, keyword)
+      gosub expand.at.vars
+      loop
+         begin case
+            case value matches "0X1-9N' * '1-9N0X"
+               prefix = matchfield(value, "0X1-9N' * '1-9N0X", 1)
+               v1 = matchfield(value, "0X1-9N' * '1-9N0X", 2)
+               v2 = matchfield(value, "0X1-9N' * '1-9N0X", 4)
+               suffix = matchfield(value, "0X1-9N' * '1-9N0X", 5)
+               value = trim(prefix : " " : (v1 * v2) : " " : suffix)
+
+            case value matches "0X1-9N' / '1-9N0X"
+               prefix = matchfield(value, "0X1-9N' / '1-9N0X", 1)
+               v1 = matchfield(value, "0X1-9N' / '1-9N0X", 2)
+               v2 = matchfield(value, "0X1-9N' / '1-9N0X", 4)
+               suffix = matchfield(value, "0X1-9N' / '1-9N0X", 5)
+               value = trim(prefix : " " : (v1 / v2) : " " : suffix)
+
+            case value matches "0X1-9N' + '1-9N0X"
+               prefix = matchfield(value, "0X1-9N' + '1-9N0X", 1)
+               v1 = matchfield(value, "0X1-9N' + '1-9N0X", 2)
+               v2 = matchfield(value, "0X1-9N' + '1-9N0X", 4)
+               suffix = matchfield(value, "0X1-9N' + '1-9N0X", 5)
+               value = trim(prefix : " " : (v1 + v2) : " " : suffix)
+
+            case value matches "0X1-9N' - '1-9N0X"
+               prefix = matchfield(value, "0X1-9N' - '1-9N0X", 1)
+               v1 = matchfield(value, "0X1-9N' - '1-9N0X", 2)
+               v2 = matchfield(value, "0X1-9N' - '1-9N0X", 4)
+               suffix = matchfield(value, "0X1-9N' - '1-9N0X", 5)
+               value = trim(prefix : " " : (v1 - v2) : " " : suffix)
+
+            case 1
+               exit
+         end case
+      repeat
+   end else
+      call @parser(PARSER$GET.REST, token.type, value, keyword)
+      value = trimf(value)
+   end
+
+   * Remove the optional leading @ character. Although !setvar() will do
+   * this internally, doing it here makes the error messages below work.
+
+   if var[1,1] = '@' then var = var[2,9999]
+
+   call !setvar(var, value)
+   begin case
+      case status() = 0
+         null
+
+      case status() = ER$BAD.NAME
+         display sysmsg(5221)      ;* Illegal character in variable name
+
+      case status() = ER$LENGTH
+         display sysmsg(5223)      ;* Variable name has invalid length
+
+      case status() = ER$RDONLY.VAR
+         display sysmsg(5222, var) ;* The @%1 variable cannot be set
+
+      case 1
+         display errtext(status())
+   end case
+
+   return
+
+*****************************************************************************
+* INT.UMASK  -  UMASK verb (Internal verb 35)
+
+int.umask:
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   begin case
+      case token.type = PARSER$END
+         display 'UMASK value is ' : fmt(oconv(umask(-1), 'MO'), "3'0'R")
+      case token matches '3N' and convert('01234567', '', token) = ''
+         i = umask(iconv(token, 'MO'))
+      case 1
+         display sysmsg(5230) ;* Invalid UMASK value
+   end case
+   return
+
+*****************************************************************************
+* INT.PDUMP  -  PDUMP (Internal verb 36)
+
+int.pdump:
+   @system.return.code = -ER$ARGS
+
+   call @parser(PARSER$GET.TOKEN, token.type, n, keyword)
+   if not(n matches '1N0N') then
+      display sysmsg(2110) ;* User number required
+      return
+   end
+
+   if bitand(config('PDUMP'), 0x0001) and not(kernel(K$ADMINISTRATOR,-1)) then
+      * Ban dump of processes running under other usernames
+      s = kernel(K$USERS, n)
+      * uid VM pid VM ip_addr VM flags VM puid VM username FM...
+      if s<1,K$USERS.UNAME> # @logname then
+         display sysmsg(6813)  ;* PDUMP not allowed for processes run under other usernames
+         return
+      end
+   end
+
+   i = events(n, EVT$PDUMP)
+   if status() then
+      print sysmsg(6802) ;* Not logged in
+      return
+   end
+
+   @system.return.code = 0
+
+   return
+
+*****************************************************************************
+* INT.PAUSE  -  PAUSE (Internal verb 37)
+
+int.pause:
+   if option(OPT.NO.USER.ABORTS) then
+      display sysmsg(5042): ;* Press return to continue, Q to quit
+   end else
+      display sysmsg(5064): ;* Press return to continue, A to abort, Q to quit
+   end
+
+   loop
+      c = keycode(0)
+      begin case
+         case seq(c) = K$RETURN
+            display
+            exit
+         case upcase(c) = 'A' and not(option(OPT.NO.USER.ABORTS))
+            display
+            abort
+         case upcase(c) = 'Q'
+            display
+            unwinding = 1
+            exit
+      end case
+   repeat
+
+   return
+
+*****************************************************************************
+* INT.CLEAR.ABORT  -  CLEAR.ABORT (Internal verb 38)
+
+int.clear.abort:
+   trap.aborts = ABORT.NORMAL
+   return
+
+*****************************************************************************
+* INT.SET.EXIT.STATUS  -  SET.EXIT.STATUS (Internal verb 39)
+
+int.set.exit.status:
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   if token matches '1N0N' then
+      set.exit.status token
+   end else
+      display sysmsg(5065) ;* Numeric exit status required
+   end
+
+   return
+
+*****************************************************************************
+* INT.REPORT.STYLE  -  REPORT.STYLE (Internal verb 40)
+
+int.report.style:
+   call @parser(PARSER$GET.TOKEN, token.type, token, keyword)
+   begin case
+      case token.type = PARSER$END
+         if default.style.rec = '' then
+            display sysmsg(5066) ;* No default report style has been set
+         end else
+            s = default.style.rec<1,1>[2,99999] ;* Id
+            n = default.style.rec<1,2>          ;* Account
+            if n = @who then
+               display sysmsg(5067, s) ;* Default report style is '%1'
+            end else
+               display sysmsg(5068, s, n) ;* Default report style is '%1' from %2
+            end
+         end
+
+      case keyword = KW$OFF
+         default.style.rec = ''
+
+      case token.type = PARSER$TOKEN
+         call !vocrec(voc.rec, token)
+         if status() then
+            display sysmsg(7302) ;* Style record not in VOC
+            return
+         end
+
+         if voc.rec[1,1] # 'X' then
+            display sysmsg(7303) ;* Style record is not an X-type VOC entry
+            return
+         end
+
+         default.style.rec = voc.rec
+         default.style.rec<1> = 'X':token:@vm:@who
+
+      case 1
+         display sysmsg(7301) ;* Style name required
+   end case
+
+   return
+
+*****************************************************************************
+* INT.LOGMSG  -  Write message to error log (Internal verb 41)
+
+int.logmsg:
+   system.return.code = 0
+   logmsg trim(field(@sentence, ' ', 2, 99999999), ' ', 'B')
+   return
+
+*****************************************************************************
+* OS.COMMAND  -  Execute operating system command
+
+os.command:
+   @system.return.code = -ER$ARGS
+
+   call @parser(PARSER$GET.REST, token.type, s, keyword)
+   os.command.text = trimf(voc.rec<3> : " " : s)
+
+   os.execute os.command.text
+   if status() then
+      display sysmsg(5240, status()) ;* Error xx executing operating system command
+      return
+   end
+
+   @system.return.code = 0
+
+   return
+
+*****************************************************************************
+* RUN.EXE  -  Run an o/s level program
+
+run.exe:
+   @system.return.code = -ER$ARGS
+
+   call @parser(PARSER$GET.REST, token.type, s, keyword)
+   os.command.text = trimf(voc.rec<3> : " " : s)
+
+   if not(kernel(K$RUNEXE, os.command.text)) then
+      display sysmsg(5241) ;* Error xx (o/s xx) executing program
+      return
+   end
+
+   @system.return.code = 0
+
+   return
+
+*****************************************************************************
+* INT.SET.DATE
+
+int.set.date:
+   s = field(trim(@sentence), ' ', 2, 99999999)
+   if s = '' then display 'Date required'
+   else
+      s = iconv(s, 'D')
+      if status() then display sysmsg(5250) ;* Invalid date format
+      else i = kernel(K$SET.DATE, s)
+   end
+
+   return
+
+*****************************************************************************
+* SET.ALL.LINKS  -  Set up names of all external subroutines
+* SET.LINKS      -  Set up names of selected external subroutines
+*
+
+set.all.links:
+   parser = "!PARSER"          ;* Command parser subroutine
+
+set.links:
+
+* These links are reset on return to the command prompt to allow recataloguing
+* of the functions and unloading of the object code.
+
+   inline = "$INLINE"          ;* Inline prompt handler
+
+   return
+
+* *****************************************************************************
+* Perform final actions on QUIT or forced logout
+
+exit.actions:
+   if fileinfo(voc,FL$OPEN) and trap.aborts # ABORT.ON.EXIT then
+      * Execute ON.EXIT paragraph
+
+      read voc.rec from voc, "ON.EXIT" then
+         trap.aborts = ABORT.ON.EXIT
+         break off
+         at.command = ""
+         new.sentence = "ON.EXIT"
+         gosub proc.sentence
+      end
+
+      if not(is.phantom) then
+         * Save command stack if the $COMMAND.STACK VOC record is present as
+         * an X type record.
+
+         if not(fileinfo(voc, FL$READONLY)) then
+            readu voc.rec from voc,"$COMMAND.STACK" then
+               if voc.rec[1,1] = "X" then
+                  if tty = 'console' then  ;* Windows console session
+                     voc.rec = "X" : @fm : command.stack
+                     write voc.rec to voc,"$COMMAND.STACK"
+                  end else
+                     s = initial.account.path:@ds:'stacks'
+                     openpath s to stk.f else
+                        create.file s directory on error null
+                     end
+                     openpath s to stk.f then
+                        write command.stack to stk.f, @logname
+                        close stk.f
+                     end
+                  end
+               end
+            end
+            release voc, '$COMMAND.STACK'   ;* Catch all exit paths
+         end
+
+         if not(ospath(initial.account.path, OS$CD)) then
+            display sysmsg(5260, initial.account.path)
+            * Unable to change to initial account directory (xx)
+         end
+      end
+   end
+
+   i = ospath("", os$flush.cache)
+
+   return
+
+* ======================================================================
+* Expand @-variables for XEQ and SET
+*
+* Line to expand and resultant expansion passed via VALUE
+
+expand.at.vars:
+   new.value = ''
+   loop
+      i = index(value, '@', 1)
+   while i
+      new.value := value[1,i-1]
+      value = value[i+1,99999]
+
+      * Extract a string of letters, digits and dots
+
+      j = 1
+      loop
+         c = value[j,1]
+      while c matches "1Aý1Ný'.'"
+         j += 1
+      repeat
+      word = upcase(value[1, j-1])
+
+      call !atvar(s, word)
+      if status() then continue
+
+      new.value := s
+      value = value[j, 99999]
+   repeat
+
+   value = new.value : value
+
+   return
+
+* ======================================================================
+* find.private.catalogue
+
+find.private.catalogue:
+   private.catalogue = 'cat'
+   read voc.rec from voc, "$PRIVATE.CATALOGUE" then
+      if voc.rec[1,1] = 'X' then private.catalogue = voc.rec<2>
+   end
+   i = kernel(K$PRIVATE.CATALOGUE, private.catalogue)
+   return
+
+* ======================================================================
+* get.voc.parser.rec
+
+get.voc.parser.rec:
+   * Read the $VOC.PARSER record, if it exists
+
+   read voc.parser.rec from voc, '$VOC.PARSER' then
+      if voc.parser.rec[1,1] # 'X' then voc.parser.rec = ''
+   end
+   voc.parser.rec.keys = dcount(voc.parser.rec<2>, @vm)
+
+   return
+
+end
+
+* END-CODE
