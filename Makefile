@@ -208,6 +208,7 @@ datafiles:
 	@cp -r $(MAIN)tools/ $(INSTROOT)/tools
 	@cp -r $(MAIN)VOC/ $(INSTROOT)/VOC
 	@cp -r $(MAIN)VOC.DIC/ $(INSTROOT)/VOC.DIC
+	@cp -r $(MAIN)BP.OUT/ $(INSTROOT)/BP.OUT
 	@chown -R qmsys.qmusers $(INSTROOT)
 	@chmod 775 /usr/qmsys
 	@chmod 775 /usr/qmsys/*
