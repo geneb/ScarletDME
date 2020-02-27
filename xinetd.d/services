@@ -1,0 +1,3 @@
+# entries for your /etc/services file.
+qmserver	4242/tcp	# QMServer
+qmclient	4243/tcp	# QMClient

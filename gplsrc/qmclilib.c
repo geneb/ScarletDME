@@ -1,4 +1,4 @@
- /* QMCLILIB.C
+/* QMCLILIB.C
  * QM Client C library
  * Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
  *
@@ -13,7 +13,17 @@
  *
  * Ladybridge Systems can be contacted via the www.openqm.com web site.
  * 
- * START-HISTORY:
+ * ScarletDME Wiki: https://scarlet.deltasoft.com
+ * 
+ * START-HISTORY (ScarletDME):
+ * 23Feb20 gwb Cleared variable set but not used warnings in QMReadList and
+ *             context_error().  context_error() should be revisited in the
+ *             future.  See the comment in the function for more info.
+ *             Converted K&R style function declarations to ANSI style.
+ *             found an instance where an attempt at reading /etc/qmconfig 
+ *             could happen, changed to /ets/scarlet.conf
+ * 
+ * START-HISTORY (OpenQM):
  * 06 Apr 09        Add LGPL licence
  * 19 Oct 07  2.6-5 Method used to recognise IP address in qmconnect() was
  *                  inadequate.
@@ -138,7 +148,6 @@
  * START-CODE
  */
 
- 
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -150,260 +159,251 @@
 #include <sys/stat.h>
 
 #define Public
-#include <qmdefs.h>
-#include <qmnet.h>
+#include "qmdefs.h"
+#include "qmnet.h"
 
 void set_default_character_maps(void);
 
+#include <sys/wait.h>
+#include "linuxlb.h"
+#define NetErr(msg, winerr, lnxerr) net_error(msg, lnxerr)
 
+#define DLLEntry
 
-   #include <sys/wait.h>
-   #include <linuxlb.h>
-   #define NetErr(msg,winerr,lnxerr) net_error(msg, lnxerr)
+#define FOPEN_READ_MODE "r"
 
-   #define DLLEntry
-
-   #define FOPEN_READ_MODE "r"
-
-#include <err.h>
-#include <revstamp.h>
-#include <qmclient.h>
-
+#include "err.h"
+#include "revstamp.h"
+#include "qmclient.h"
 
 /* Network data */
-Private bool OpenSocket(char * host, short int port);
+Private bool OpenSocket(char* host, short int port);
 Private bool CloseSocket(void);
 Private bool read_packet(void);
-Private bool write_packet(int type, char * data, long int bytes);
-Private void net_error(char * prefix, int err);
-Private void debug(unsigned char * p, int n);
+Private bool write_packet(int type, char* data, long int bytes);
+Private void net_error(char* prefix, int err);
+Private void debug(unsigned char* p, int n);
 Private void initialise_client(void);
 Private bool FindFreeSession(void);
 Private void disconnect(void);
 
-
 typedef struct ARGDATA ARGDATA;
 struct ARGDATA {
-                short int argno;
-                long int arglen ALIGN2;
-                char text[1];
-               };
+  short int argno;
+  long int arglen ALIGN2;
+  char text[1];
+};
 
 /* Packet buffer */
-#define BUFF_INCR      4096
+#define BUFF_INCR 4096
 typedef struct INBUFF INBUFF;
-struct INBUFF
- {
+struct INBUFF {
   union {
-         struct {
-                 char message[1];
-                } abort;
-         struct {                  /* QMCall returned arguments */
-                 struct ARGDATA argdata;
-                } call;
-         struct {                  /* Error text retrieval */
-                 char text[1];
-                } error;
-         struct {                  /* QMExecute */
-                 char reply[1];
-                } execute;
-         struct {                  /* QMOpen */
-                 short int fno;
-                } open;
-         struct {                  /* QMRead, QMReadl, QMReadu */
-                 char rec[1];
-                } read;
-         struct {                  /* QMReadList */
-                 char list[1];
-                } readlist;
-         struct {                  /* QMReadNext */
-                 char id[1];
-                } readnext;
-         struct {                  /* QMSelectLeft, QMSelectRight */
-                 char key[1];
-                } selectleft;
-        } data;
- } ALIGN2;
+    struct {
+      char message[1];
+    } abort;
+    struct { /* QMCall returned arguments */
+      struct ARGDATA argdata;
+    } call;
+    struct { /* Error text retrieval */
+      char text[1];
+    } error;
+    struct { /* QMExecute */
+      char reply[1];
+    } execute;
+    struct { /* QMOpen */
+      short int fno;
+    } open;
+    struct { /* QMRead, QMReadl, QMReadu */
+      char rec[1];
+    } read;
+    struct { /* QMReadList */
+      char list[1];
+    } readlist;
+    struct { /* QMReadNext */
+      char id[1];
+    } readnext;
+    struct { /* QMSelectLeft, QMSelectRight */
+      char key[1];
+    } selectleft;
+  } data;
+} ALIGN2;
 
-Private INBUFF * buff = NULL;
-Private long int buff_size;         /* Allocated size of buffer */
-Private long int buff_bytes;        /* Size of received packet */
-Private FILE * srvr_debug = NULL;
+Private INBUFF* buff = NULL;
+Private long int buff_size;  /* Allocated size of buffer */
+Private long int buff_bytes; /* Size of received packet */
+Private FILE* srvr_debug = NULL;
 
 #define MAX_SESSIONS 4
-Private struct
-{
- bool is_local;
- short int context;
-   #define CX_DISCONNECTED  0  /* No session active */
-   #define CX_CONNECTED     1  /* Session active but not... */
-   #define CX_EXECUTING     2  /* ...executing command (implies connected) */
- char qmerror[512+1];
- short int server_error;
- long int qm_status;
- SOCKET sock;
- int RxPipe[2];
- int TxPipe[2];
- int pid;                      /* 0421 Pid of child process */
+Private struct {
+  bool is_local;
+  short int context;
+#define CX_DISCONNECTED 0 /* No session active */
+#define CX_CONNECTED 1    /* Session active but not... */
+#define CX_EXECUTING 2    /* ...executing command (implies connected) */
+  char qmerror[512 + 1];
+  short int server_error;
+  long int qm_status;
+  SOCKET sock;
+  int RxPipe[2];
+  int TxPipe[2];
+  int pid; /* 0421 Pid of child process */
 } session[MAX_SESSIONS];
 Private short int session_idx = 0;
 
 /* Matching data */
-Private char * component_start;
-Private char * component_end;
+Private char* component_start;
+Private char* component_end;
 
 /* Internally used routines */
 void DLLEntry QMDisconnect(void);
 void DLLEntry QMEndCommand(void);
 
 /* Internal functions */
-Private char * SelectLeftRight(short int fno, char * index_name, short int listno, short int mode);
-Private void SetLeftRight(short int fno, char * index_name, short int mode);
+Private char* SelectLeftRight(short int fno,
+                              char* index_name,
+                              short int listno,
+                              short int mode);
+Private void SetLeftRight(short int fno, char* index_name, short int mode);
 Private bool context_error(short int expected);
-Private void delete_record(short int mode, int fno, char * id);
-Private char * read_record(int fno, char * id, int * err, int mode);
-Private void write_record(short int mode, short int fno, char * id, char * data);
+Private void delete_record(short int mode, int fno, char* id);
+Private char* read_record(int fno, char* id, int* err, int mode);
+Private void write_record(short int mode, short int fno, char* id, char* data);
 Private bool GetResponse(void);
-Private void Abort(char * msg, bool use_response);
-Private char * memstr(char * str, char * substr, int str_len, int substr_len);
-Private bool match_template(char * string, char * template, short int component,
-                    short int return_component);
-Private bool message_pair(int type, char * data, long int bytes);
-Private char * NullString(void);
-Private char * sysdir(void);
+Private void Abort(char* msg, bool use_response);
+Private char* memstr(char* str, char* substr, int str_len, int substr_len);
+Private bool match_template(char* string,
+                            char* template,
+                            short int component,
+                            short int return_component);
+Private bool message_pair(int type, char* data, long int bytes);
+Private char* NullString(void);
+Private char* sysdir(void);
 
 #define ClearError session[session_idx].qmerror[0] = '\0'
-
-
 
 /* ======================================================================
    QMCall()  - Call catalogued subroutine                                 */
 
-void DLLEntry QMCall(char * subrname, short int argc, ...)
-{
- va_list ap;
- short int i;
- char * arg;
- int subrname_len;
- long int arg_len;
- long int bytes;     /* Total length of outgoing packet */
- long int n;
- char * p;
- INBUFF * q;
- struct ARGDATA * argptr;
- int offset;
+void DLLEntry QMCall(char* subrname, short int argc, ...) {
+  va_list ap;
+  short int i;
+  char* arg;
+  int subrname_len;
+  long int arg_len;
+  long int bytes; /* Total length of outgoing packet */
+  long int n;
+  char* p;
+  INBUFF* q;
+  struct ARGDATA* argptr;
+  int offset;
 
 #define MAX_ARGS 20
 
- if (context_error(CX_CONNECTED)) return;
+  if (context_error(CX_CONNECTED))
+    return;
 
- subrname_len = strlen(subrname);
- if ((subrname_len < 1) || (subrname_len > MAX_CALL_NAME_LEN))
-  {
-   Abort("Illegal subroutine name in call", FALSE);
+  subrname_len = strlen(subrname);
+  if ((subrname_len < 1) || (subrname_len > MAX_CALL_NAME_LEN)) {
+    Abort("Illegal subroutine name in call", FALSE);
   }
 
- if ((argc < 0) || (argc > MAX_ARGS))
-  {
-   Abort("Illegal argument count in call", FALSE);
+  if ((argc < 0) || (argc > MAX_ARGS)) {
+    Abort("Illegal argument count in call", FALSE);
   }
 
- /* Accumulate outgoing packet size */
+  /* Accumulate outgoing packet size */
 
- bytes = 2;                           /* Subrname length */
- bytes += (subrname_len + 1) & ~1;    /* Subrname string (padded) */
- bytes += 2;                          /* Arg count */
+  bytes = 2;                        /* Subrname length */
+  bytes += (subrname_len + 1) & ~1; /* Subrname string (padded) */
+  bytes += 2;                       /* Arg count */
 
- va_start(ap, argc);
- for (i = 0; i < argc; i++)
-  {
-   arg = va_arg(ap, char *);
-   arg_len = (arg == NULL)?0:strlen(arg);
-   bytes += 4 + ((arg_len + 1) & ~1); /* Four byte length + arg text (padded) */
+  va_start(ap, argc);
+  for (i = 0; i < argc; i++) {
+    arg = va_arg(ap, char*);
+    arg_len = (arg == NULL) ? 0 : strlen(arg);
+    bytes +=
+        4 + ((arg_len + 1) & ~1); /* Four byte length + arg text (padded) */
   }
- va_end(ap);
+  va_end(ap);
 
- /* Ensure buffer is big enough */
+  /* Ensure buffer is big enough */
 
- if (bytes >= buff_size)     /* Must reallocate larger buffer */
+  if (bytes >= buff_size) /* Must reallocate larger buffer */
   {
-   n = (bytes + BUFF_INCR - 1) & ~BUFF_INCR;
-   q = (INBUFF *)malloc(n);
-   if (q == NULL)
-    {
-     Abort("Unable to allocate network buffer", FALSE);
+    n = (bytes + BUFF_INCR - 1) & ~BUFF_INCR;
+    q = (INBUFF*)malloc(n);
+    if (q == NULL) {
+      Abort("Unable to allocate network buffer", FALSE);
     }
-   free(buff);
-   buff = q;
+    free(buff);
+    buff = q;
   }
 
- /* Set up outgoing packet */
+  /* Set up outgoing packet */
 
- p = (char *)buff;
+  p = (char*)buff;
 
- *((short int *)p) = ShortInt(subrname_len);    /* Subrname length */
- p += 2;
+  *((short int*)p) = ShortInt(subrname_len); /* Subrname length */
+  p += 2;
 
- memcpy(p, subrname, subrname_len);   /* Subrname */
- p += (subrname_len + 1) & ~1;
- 
- *((short int *)p) = ShortInt(argc);            /* Arg count */
- p += 2;
+  memcpy(p, subrname, subrname_len); /* Subrname */
+  p += (subrname_len + 1) & ~1;
 
- va_start(ap, argc);
- for (i = 1; i <= argc; i++)
-  {
-   arg = va_arg(ap, char *);
-   arg_len = (arg == NULL)?0:strlen(arg);
-   *((long int *)p) = LongInt(arg_len);        /* Arg length */
-   p += 4;
-   if (arg_len) memcpy(p, arg, arg_len);           /* Arg text */
-   p += (arg_len + 1) & ~1;
+  *((short int*)p) = ShortInt(argc); /* Arg count */
+  p += 2;
+
+  va_start(ap, argc);
+  for (i = 1; i <= argc; i++) {
+    arg = va_arg(ap, char*);
+    arg_len = (arg == NULL) ? 0 : strlen(arg);
+    *((long int*)p) = LongInt(arg_len); /* Arg length */
+    p += 4;
+    if (arg_len)
+      memcpy(p, arg, arg_len); /* Arg text */
+    p += (arg_len + 1) & ~1;
   }
- va_end(ap);
+  va_end(ap);
 
- if (!message_pair(SrvrCall, (char *)buff, bytes))
-  {
-   goto err;
+  if (!message_pair(SrvrCall, (char*)buff, bytes)) {
+    goto err;
   }
 
- /* Now update any returned arguments */
+  /* Now update any returned arguments */
 
- offset = offsetof(INBUFF, data.call.argdata);
- if (offset < buff_bytes)
-  {
-   va_start(ap, argc);
-   for (i = 1; i <= argc; i++)
-    {
-     argptr = (ARGDATA *)(((char *)buff) + offset);
+  offset = offsetof(INBUFF, data.call.argdata);
+  if (offset < buff_bytes) {
+    va_start(ap, argc);
+    for (i = 1; i <= argc; i++) {
+      argptr = (ARGDATA*)(((char*)buff) + offset);
 
-     arg = va_arg(ap, char *);
-     if (i == argptr->argno)
-      {
-       arg_len = LongInt(argptr->arglen);
-       memcpy(arg, argptr->text, arg_len);
-       arg[arg_len] = '\0';
+      arg = va_arg(ap, char*);
+      if (i == argptr->argno) {
+        arg_len = LongInt(argptr->arglen);
+        memcpy(arg, argptr->text, arg_len);
+        arg[arg_len] = '\0';
 
-       offset += offsetof(ARGDATA, text) + ((LongInt(argptr->arglen) + 1) & ~1);
-       if (offset >= buff_bytes) break;
+        offset +=
+            offsetof(ARGDATA, text) + ((LongInt(argptr->arglen) + 1) & ~1);
+        if (offset >= buff_bytes)
+          break;
       }
     }
-   va_end(ap);
+    va_end(ap);
   }
 
 err:
- switch(session[session_idx].server_error)
-  {
-   case SV_OK:
+  switch (session[session_idx].server_error) {
+    case SV_OK:
       break;
 
-   case SV_ON_ERROR:
+    case SV_ON_ERROR:
       Abort("CALL generated an abort event", TRUE);
       break;
 
-   case SV_LOCKED:
-   case SV_ELSE:
-   case SV_ERROR:
+    case SV_LOCKED:
+    case SV_ELSE:
+    case SV_ERROR:
       break;
   }
 }
@@ -411,641 +411,578 @@ err:
 /* ======================================================================
    QMChange()  -  Change substrings                                       */
 
-char * DLLEntry QMChange(src, old, new, occurrences, start)
-   char * src;
-   char * old;
-   char * new;
-   int occurrences;
-   int start;
-{
- int src_len;
- int old_len;
- int new_len;
- long int bytes;         /* Remaining bytes counter */
- char * start_pos;
- char * new_str;
- long int changes;
- char * pos;
- char * p;
- char * q;
- long int n;
+char* DLLEntry
+QMChange(char* src, char* old, char* new, int occurrences, int start) {
+  int src_len;
+  int old_len;
+  int new_len;
+  long int bytes; /* Remaining bytes counter */
+  char* start_pos;
+  char* new_str;
+  long int changes;
+  char* pos;
+  char* p;
+  char* q;
+  long int n;
 
- initialise_client();
+  initialise_client();
 
- src_len = strlen(src);
- old_len = strlen(old);
- new_len = strlen(new);
+  src_len = strlen(src);
+  old_len = strlen(old);
+  new_len = strlen(new);
 
- if (src_len == 0)
-  {
-   new_str = NullString();
-   return new_str;
+  if (src_len == 0) {
+    new_str = NullString();
+    return new_str;
   }
 
- if (old_len == 0) goto return_unchanged;
+  if (old_len == 0)
+    goto return_unchanged;
 
- if (occurrences < 1) occurrences = -1;
- if (start < 1) start = 1;
+  if (occurrences < 1)
+    occurrences = -1;
+  if (start < 1)
+    start = 1;
 
- /* Count occurences of old string in source string, remembering start of
+  /* Count occurences of old string in source string, remembering start of
     region to change.                                                     */
 
- changes = 0;
- bytes = src_len;
- pos = src;
- while (bytes > 0)
-  {
-   p = memstr(pos, old, bytes, old_len);
-   if (p == NULL) break;
+  changes = 0;
+  bytes = src_len;
+  pos = src;
+  while (bytes > 0) {
+    p = memstr(pos, old, bytes, old_len);
+    if (p == NULL)
+      break;
 
-   if (--start <= 0)
-    {
-     if (start == 0) start_pos = p;   /* This is the first one to replace */
+    if (--start <= 0) {
+      if (start == 0)
+        start_pos = p; /* This is the first one to replace */
 
-     changes++;
+      changes++;
 
-     if (--occurrences == 0) break;  /* This was the last one to replace */
+      if (--occurrences == 0)
+        break; /* This was the last one to replace */
     }
 
-   bytes -= (p - pos) + old_len;
-   pos = p + old_len;
+    bytes -= (p - pos) + old_len;
+    pos = p + old_len;
   }
 
- if (changes == 0) goto return_unchanged;
+  if (changes == 0)
+    goto return_unchanged;
 
- /* Now make the changes */
+  /* Now make the changes */
 
- new_str = (char *)malloc(src_len + changes * (new_len - old_len) + 1);
+  new_str = (char*)malloc(src_len + changes * (new_len - old_len) + 1);
 
- q = new_str;
- pos = src;
- bytes = src_len;
- p = start_pos;
- do {
-     /* Copy intermediate text */
+  q = new_str;
+  pos = src;
+  bytes = src_len;
+  p = start_pos;
+  do {
+    /* Copy intermediate text */
 
-     n = p - pos;
-     if (n)
-      {
-       memcpy(q, pos, n);
-       q += n;
-       pos += n;
-       bytes -= n;
-      }
+    n = p - pos;
+    if (n) {
+      memcpy(q, pos, n);
+      q += n;
+      pos += n;
+      bytes -= n;
+    }
 
-     /* Insert replacement */
+    /* Insert replacement */
 
-     if (new_len)
-      {
-       memcpy(q, new, new_len);
-       q += new_len;
-      }
+    if (new_len) {
+      memcpy(q, new, new_len);
+      q += new_len;
+    }
 
-     /* Skip old substring */
+    /* Skip old substring */
 
-     pos += old_len;
-     bytes -= old_len;
+    pos += old_len;
+    bytes -= old_len;
 
-     /* Find next replacement */
+    /* Find next replacement */
 
-     p = memstr(pos, old, bytes, old_len);
+    p = memstr(pos, old, bytes, old_len);
 
-    } while(--changes);
+  } while (--changes);
 
+  /* Copy trailing substring */
 
- /* Copy trailing substring */
-
- if (bytes) memcpy(q, pos, bytes);
- q[bytes] = '\0';
- return new_str;
-
+  if (bytes)
+    memcpy(q, pos, bytes);
+  q[bytes] = '\0';
+  return new_str;
 
 return_unchanged:
- new_str = (char *)malloc(src_len + 1);
- strcpy(new_str, src);
- return new_str;
+  new_str = (char*)malloc(src_len + 1);
+  strcpy(new_str, src);
+  return new_str;
 }
 
 /* ======================================================================
    QMClearSelect()  - Clear select list                                   */
 
-void DLLEntry QMClearSelect(listno)
-   int listno;
-{
- struct {
-         short int listno;
-        } ALIGN2 packet;
+void DLLEntry QMClearSelect(int listno) {
+  struct {
+    short int listno;
+  } ALIGN2 packet;
 
+  if (context_error(CX_CONNECTED))
+    goto exit_qmclearselect;
 
- if (context_error(CX_CONNECTED)) goto exit_qmclearselect;
+  packet.listno = ShortInt(listno);
 
- packet.listno = ShortInt(listno);
-
- if (!message_pair(SrvrClearSelect, (char *)&packet, sizeof(packet)))
-  {
-   goto exit_qmclearselect;
+  if (!message_pair(SrvrClearSelect, (char*)&packet, sizeof(packet))) {
+    goto exit_qmclearselect;
   }
 
- switch(session[session_idx].server_error)
-  {
-   case SV_ON_ERROR:
+  switch (session[session_idx].server_error) {
+    case SV_ON_ERROR:
       Abort("CLEARSELECT generated an abort event", TRUE);
       break;
   }
- 
+
 exit_qmclearselect:
- return;
+  return;
 }
 
 /* ======================================================================
    QMClose()  -  Close a file                                             */
 
-void DLLEntry QMClose(fno)
-   int fno;
-{
- struct {
-         short int fno;
-        } ALIGN2 packet;
+void DLLEntry QMClose(int fno) {
+  struct {
+    short int fno;
+  } ALIGN2 packet;
 
+  if (context_error(CX_CONNECTED))
+    goto exit_qmclose;
 
- if (context_error(CX_CONNECTED)) goto exit_qmclose;
+  packet.fno = ShortInt(fno);
 
- packet.fno = ShortInt(fno);
-
- if (!message_pair(SrvrClose, (char *)&packet, sizeof(packet)))
-  {
-   goto exit_qmclose;
+  if (!message_pair(SrvrClose, (char*)&packet, sizeof(packet))) {
+    goto exit_qmclose;
   }
 
- switch(session[session_idx].server_error)
-  {
-   case SV_ON_ERROR:
+  switch (session[session_idx].server_error) {
+    case SV_ON_ERROR:
       Abort("CLOSE generated an abort event", TRUE);
       break;
   }
- 
+
 exit_qmclose:
- return;
+  return;
 }
 
 /* ======================================================================
    QMConnect()  -  Open connection to server.                             */
 
-int DLLEntry QMConnect(host, port, username, password, account)
-   char * host;
-   int port;
-   char * username;
-   char * password;
-   char * account;
-{
- int status = FALSE;
- char login_data[2 + MAX_USERNAME_LEN + 2 + MAX_USERNAME_LEN];
- int n;
- char * p;
+int DLLEntry
+QMConnect(char* host, int port, char* username, char* password, char* account) {
+  int status = FALSE;
+  char login_data[2 + MAX_USERNAME_LEN + 2 + MAX_USERNAME_LEN];
+  int n;
+  char* p;
 
- initialise_client();
+  initialise_client();
 
- if (!FindFreeSession()) goto exit_qmconnect;
- ClearError;
- session[session_idx].is_local = FALSE;
+  if (!FindFreeSession())
+    goto exit_qmconnect;
+  ClearError;
+  session[session_idx].is_local = FALSE;
 
- n = strlen(host);
- if (n == 0)
-  {
-   strcpy(session[session_idx].qmerror, "Invalid host name");
-   goto exit_qmconnect;
+  n = strlen(host);
+  if (n == 0) {
+    strcpy(session[session_idx].qmerror, "Invalid host name");
+    goto exit_qmconnect;
   }
 
- /* Set up login data */
+  /* Set up login data */
 
- p = login_data;
+  p = login_data;
 
- n = strlen(username);
- if (n > MAX_USERNAME_LEN)
-  {
-   strcpy(session[session_idx].qmerror, "Invalid user name");
-   goto exit_qmconnect;
-  }
-  
- *((short int *)p) = ShortInt(n);            /* User name len */
- p += 2;
-
- memcpy(p, (char *)username, n);   /* User name */
- p += n;
- if (n & 1) *(p++) = '\0';
-
- n = strlen(password);
- if (n > MAX_USERNAME_LEN)
-  {
-   strcpy(session[session_idx].qmerror, "Invalid password");
-   goto exit_qmconnect;
+  n = strlen(username);
+  if (n > MAX_USERNAME_LEN) {
+    strcpy(session[session_idx].qmerror, "Invalid user name");
+    goto exit_qmconnect;
   }
 
- *((short int *)p) = ShortInt(n);            /* Password len */
- p += 2;
+  *((short int*)p) = ShortInt(n); /* User name len */
+  p += 2;
 
- memcpy(p, (char *)password, n);   /* Password */
- p += n;
- if (n & 1) *(p++) = '\0';
+  memcpy(p, (char*)username, n); /* User name */
+  p += n;
+  if (n & 1)
+    *(p++) = '\0';
 
-
- /* Open connection to server */
-
- if (!OpenSocket((char *)host, port)) goto exit_qmconnect;
-
- /* Check username and password */
-
- n = p - login_data;
- if (!message_pair(SrvrLogin, login_data, n))
-  {
-   goto exit_qmconnect;
+  n = strlen(password);
+  if (n > MAX_USERNAME_LEN) {
+    strcpy(session[session_idx].qmerror, "Invalid password");
+    goto exit_qmconnect;
   }
 
- if (session[session_idx].server_error != SV_OK)
-  {
-   if (session[session_idx].server_error == SV_ON_ERROR)
-    {
-     n = buff_bytes - offsetof(INBUFF, data.abort.message);
-     if (n > 0)
-      {
-       memcpy(session[session_idx].qmerror, buff->data.abort.message, n);
-       buff->data.abort.message[n] = '\0';
+  *((short int*)p) = ShortInt(n); /* Password len */
+  p += 2;
+
+  memcpy(p, (char*)password, n); /* Password */
+  p += n;
+  if (n & 1)
+    *(p++) = '\0';
+
+  /* Open connection to server */
+
+  if (!OpenSocket((char*)host, port))
+    goto exit_qmconnect;
+
+  /* Check username and password */
+
+  n = p - login_data;
+  if (!message_pair(SrvrLogin, login_data, n)) {
+    goto exit_qmconnect;
+  }
+
+  if (session[session_idx].server_error != SV_OK) {
+    if (session[session_idx].server_error == SV_ON_ERROR) {
+      n = buff_bytes - offsetof(INBUFF, data.abort.message);
+      if (n > 0) {
+        memcpy(session[session_idx].qmerror, buff->data.abort.message, n);
+        buff->data.abort.message[n] = '\0';
       }
     }
-   goto exit_qmconnect;
+    goto exit_qmconnect;
   }
 
+  /* Now attempt to attach to required account */
 
- /* Now attempt to attach to required account */
-
- if (!message_pair(SrvrAccount, account, strlen(account)))
-  {
-   goto exit_qmconnect;
+  if (!message_pair(SrvrAccount, account, strlen(account))) {
+    goto exit_qmconnect;
   }
 
- session[session_idx].context = CX_CONNECTED;
- status = TRUE;
+  session[session_idx].context = CX_CONNECTED;
+  status = TRUE;
 
 exit_qmconnect:
- if (!status) CloseSocket();
- return status;
+  if (!status)
+    CloseSocket();
+  return status;
 }
 
 /* ======================================================================
    QMConnected()  -  Are we connected?                                    */
 
-int DLLEntry QMConnected()
-{
- ClearError;
+int DLLEntry QMConnected() {
+  ClearError;
 
- return (session[session_idx].context == CX_DISCONNECTED)?FALSE:TRUE;
+  return (session[session_idx].context == CX_DISCONNECTED) ? FALSE : TRUE;
 }
 
 /* ======================================================================
    QMConnectLocal()  -  Open connection to local system as current user   */
 
-int DLLEntry QMConnectLocal(account)
-   char * account;
-{
- int status = FALSE;
+int DLLEntry QMConnectLocal(char* account) {
+  int status = FALSE;
 
+  int cpid;
+  char option[20];
+  char path[MAX_PATHNAME_LEN + 1];
 
- int cpid;
- char option[20];
- char path[MAX_PATHNAME_LEN+1];
+  initialise_client();
 
- initialise_client();
+  if (!FindFreeSession())
+    goto exit_qmconnect_local;
+  ClearError;
+  session[session_idx].is_local = TRUE;
 
- if (!FindFreeSession()) goto exit_qmconnect_local;
- ClearError;
- session[session_idx].is_local = TRUE;
+  /* Create pipes */
 
-
- /* Create pipes */
-
- if (pipe(session[session_idx].RxPipe) || pipe(session[session_idx].TxPipe))
-  {
-   sprintf(session[session_idx].qmerror, "Error %d creating pipe", errno);
-   goto exit_qmconnect_local;
+  if (pipe(session[session_idx].RxPipe) || pipe(session[session_idx].TxPipe)) {
+    sprintf(session[session_idx].qmerror, "Error %d creating pipe", errno);
+    goto exit_qmconnect_local;
   }
 
- /* Launch QM process */
+  /* Launch QM process */
 
- cpid = fork();
- if (cpid == 0)    /* Child process */
+  cpid = fork();
+  if (cpid == 0) /* Child process */
   {
-   sprintf(path, "%s/bin/qm", sysdir());
-   sprintf(option, "-C%d!%d", session[session_idx].RxPipe[1], session[session_idx].TxPipe[0]);
-   execl(path, path, "-Q", option, NULL); 
-  }
- else if (cpid == -1) /* Error */
+    sprintf(path, "%s/bin/qm", sysdir());
+    sprintf(option, "-C%d!%d", session[session_idx].RxPipe[1],
+            session[session_idx].TxPipe[0]);
+    execl(path, path, "-Q", option, NULL);
+  } else if (cpid == -1) /* Error */
   {
-   sprintf(session[session_idx].qmerror, "Error %d forking process", errno);
-   goto exit_qmconnect_local;
-  }
- else   /* Parent process */
+    sprintf(session[session_idx].qmerror, "Error %d forking process", errno);
+    goto exit_qmconnect_local;
+  } else /* Parent process */
   {
-   session[session_idx].pid = cpid;   /* 0421 */
-  }
-
- /* Send local login packet */
-
- if (!message_pair(SrvrLocalLogin, NULL, 0))
-  {
-   goto exit_qmconnect_local;
+    session[session_idx].pid = cpid; /* 0421 */
   }
 
- /* Now attempt to attach to required account */
+  /* Send local login packet */
 
- if (!message_pair(SrvrAccount, account, strlen(account)))
-  {
-   goto exit_qmconnect_local;
+  if (!message_pair(SrvrLocalLogin, NULL, 0)) {
+    goto exit_qmconnect_local;
   }
 
- session[session_idx].context = CX_CONNECTED;
- status = TRUE;
+  /* Now attempt to attach to required account */
+
+  if (!message_pair(SrvrAccount, account, strlen(account))) {
+    goto exit_qmconnect_local;
+  }
+
+  session[session_idx].context = CX_CONNECTED;
+  status = TRUE;
 
 exit_qmconnect_local:
- if (!status)
-  {
-
-   if (session[session_idx].RxPipe[0] >= 0)
-    {
-     close(session[session_idx].RxPipe[0]);
-     session[session_idx].RxPipe[0] = -1;
+  if (!status) {
+    if (session[session_idx].RxPipe[0] >= 0) {
+      close(session[session_idx].RxPipe[0]);
+      session[session_idx].RxPipe[0] = -1;
     }
-   if (session[session_idx].RxPipe[1] >= 0)
-    {
-     close(session[session_idx].RxPipe[1]);
-     session[session_idx].RxPipe[1] = -1;
+    if (session[session_idx].RxPipe[1] >= 0) {
+      close(session[session_idx].RxPipe[1]);
+      session[session_idx].RxPipe[1] = -1;
     }
-   if (session[session_idx].TxPipe[0] >= 0)
-    {
-     close(session[session_idx].TxPipe[0]);
-     session[session_idx].TxPipe[0] = -1;
+    if (session[session_idx].TxPipe[0] >= 0) {
+      close(session[session_idx].TxPipe[0]);
+      session[session_idx].TxPipe[0] = -1;
     }
-   if (session[session_idx].TxPipe[1] >= 0)
-    {
-     close(session[session_idx].TxPipe[1]);
-     session[session_idx].TxPipe[1] = -1;
+    if (session[session_idx].TxPipe[1] >= 0) {
+      close(session[session_idx].TxPipe[1]);
+      session[session_idx].TxPipe[1] = -1;
     }
   }
 
- return status;
+  return status;
 }
 
 /* ======================================================================
    QMDcount()  -  Count fields, values or subvalues                       */
 
-int DLLEntry QMDcount(src, delim_str)
-   char * src;
-   char * delim_str;
-{
- long int src_len;
- char * p;
- long int ct = 0;
- char delim;
+int DLLEntry QMDcount(char* src, char* delim_str) {
+  long int src_len;
+  char* p;
+  long int ct = 0;
+  char delim;
 
- initialise_client();
+  initialise_client();
 
- if (strlen(delim_str) != 0)
-  {
-   delim = *delim_str;
+  if (strlen(delim_str) != 0) {
+    delim = *delim_str;
 
-   src_len = strlen(src);
-   if (src_len != 0)
-    {
-     ct = 1;
-     while((p = memchr(src, delim, src_len)) != NULL)
-      {
-       src_len -= (1 + p - src);
-       src = p + 1;
-       ct++;
+    src_len = strlen(src);
+    if (src_len != 0) {
+      ct = 1;
+      while ((p = memchr(src, delim, src_len)) != NULL) {
+        src_len -= (1 + p - src);
+        src = p + 1;
+        ct++;
       }
     }
   }
 
- return ct;
+  return ct;
 }
 
 /* ======================================================================
    QMDebug()  -  Turn on/off packet debugging                             */
 
-void DLLEntry QMDebug(mode)
-   bool mode;
-{
- if (mode && (srvr_debug == NULL))     /* Turn on */
+void DLLEntry QMDebug(bool mode) {
+  if (mode && (srvr_debug == NULL)) /* Turn on */
   {
-
-   srvr_debug = fopen("clidbg", "w");
+    srvr_debug = fopen("clidbg", "w");
   }
 
- if (!mode && (srvr_debug != NULL))   /* Turn off */
+  if (!mode && (srvr_debug != NULL)) /* Turn off */
   {
-   fclose(srvr_debug);
-   srvr_debug = NULL;
+    fclose(srvr_debug);
+    srvr_debug = NULL;
   }
 }
 
 /* ======================================================================
    QMDel()  -  Delete field, value or subvalue                            */
 
-char * DLLEntry QMDel(src, fno, vno, svno)
-   char * src;
-   int fno;
-   int vno;
-   int svno;
-{
- long int src_len;
- char * pos;             /* Rolling source pointer */
- long int bytes;         /* Remaining bytes counter */
- long int new_len;
- char * new_str;
- char * p;
- short int i;
- long int n;
+char* DLLEntry QMDel(char* src, int fno, int vno, int svno) {
+  long int src_len;
+  char* pos;      /* Rolling source pointer */
+  long int bytes; /* Remaining bytes counter */
+  long int new_len;
+  char* new_str;
+  char* p;
+  short int i;
+  long int n;
 
- initialise_client();
+  initialise_client();
 
- src_len = strlen(src);
- if (src_len == 0) goto null_result;   /* Deleting from null string */
+  src_len = strlen(src);
+  if (src_len == 0)
+    goto null_result; /* Deleting from null string */
 
+  /* Setp 1  -  Initialise varaibles */
 
- /* Setp 1  -  Initialise varaibles */
+  if (fno < 1)
+    fno = 1;
 
- if (fno < 1) fno = 1;
+  /* Step 2  -  Position to start of item */
 
- /* Step 2  -  Position to start of item */
+  pos = src;
+  bytes = src_len;
 
- pos = src;
- bytes = src_len;
+  /* Skip to start field */
 
- /* Skip to start field */
-
- i = fno;
- while(--i)
-  {
-   p = memchr(pos, FIELD_MARK, bytes);
-   if (p == NULL) goto unchanged_result;    /* No such field */
-   bytes -= (1 + p - pos);
-   pos = p + 1;
+  i = fno;
+  while (--i) {
+    p = memchr(pos, FIELD_MARK, bytes);
+    if (p == NULL)
+      goto unchanged_result; /* No such field */
+    bytes -= (1 + p - pos);
+    pos = p + 1;
   }
 
- p = memchr(pos, FIELD_MARK, bytes);
- if (p != NULL) bytes = p - pos;    /* Length of field, excluding end mark */
+  p = memchr(pos, FIELD_MARK, bytes);
+  if (p != NULL)
+    bytes = p - pos; /* Length of field, excluding end mark */
 
- if (vno < 1)    /* Deleting whole field */
+  if (vno < 1) /* Deleting whole field */
   {
-   if (p == NULL)    /* Last field */
+    if (p == NULL) /* Last field */
     {
-     if (fno > 1) /* Not only field. Back up to include leading mark */
+      if (fno > 1) /* Not only field. Back up to include leading mark */
       {
-       pos--;
-       bytes++;
+        pos--;
+        bytes++;
       }
-    }
-   else              /* Not last field */
+    } else /* Not last field */
     {
-     bytes++;        /* Include trailing mark in deleted region */
+      bytes++; /* Include trailing mark in deleted region */
     }
-   goto done;
+    goto done;
   }
 
+  /* Skip to start value */
 
- /* Skip to start value */
-
- i = vno;
- while(--i)
-  {
-   p = memchr(pos, VALUE_MARK, bytes);
-   if (p == NULL) goto unchanged_result;    /* No such value */
-   bytes -= (1 + p - pos);
-   pos = p + 1;
+  i = vno;
+  while (--i) {
+    p = memchr(pos, VALUE_MARK, bytes);
+    if (p == NULL)
+      goto unchanged_result; /* No such value */
+    bytes -= (1 + p - pos);
+    pos = p + 1;
   }
 
- p = memchr(pos, VALUE_MARK, bytes);
- if (p != NULL) bytes = p - pos;    /* Length of value, excluding end mark */
+  p = memchr(pos, VALUE_MARK, bytes);
+  if (p != NULL)
+    bytes = p - pos; /* Length of value, excluding end mark */
 
- if (svno < 1)     /* Deleting whole value */
+  if (svno < 1) /* Deleting whole value */
   {
-   if (p == NULL)    /* Last value */
+    if (p == NULL) /* Last value */
     {
-     if (vno > 1) /* Not only value. Back up to include leading mark */
+      if (vno > 1) /* Not only value. Back up to include leading mark */
       {
-       pos--;
-       bytes++;
+        pos--;
+        bytes++;
       }
-    }
-   else              /* Not last value */
+    } else /* Not last value */
     {
-     bytes++;        /* Include trailing mark in deleted region */
+      bytes++; /* Include trailing mark in deleted region */
     }
-   goto done;
+    goto done;
   }
 
- /* Skip to start subvalue */
+  /* Skip to start subvalue */
 
- i = svno;
- while(--i)
-  {
-   p = memchr(pos, SUBVALUE_MARK, bytes);
-   if (p == NULL) goto unchanged_result;    /* No such subvalue */
-   bytes -= (1 + p - pos);
-   pos = p + 1;
+  i = svno;
+  while (--i) {
+    p = memchr(pos, SUBVALUE_MARK, bytes);
+    if (p == NULL)
+      goto unchanged_result; /* No such subvalue */
+    bytes -= (1 + p - pos);
+    pos = p + 1;
   }
- p = memchr(pos, SUBVALUE_MARK, bytes);
- if (p != NULL) bytes = p - pos;    /* Length of subvalue, excluding end mark */
+  p = memchr(pos, SUBVALUE_MARK, bytes);
+  if (p != NULL)
+    bytes = p - pos; /* Length of subvalue, excluding end mark */
 
- if (p == NULL)    /* Last subvalue */
+  if (p == NULL) /* Last subvalue */
   {
-   if (svno > 1) /* Not only subvalue. Back up to include leading mark */
+    if (svno > 1) /* Not only subvalue. Back up to include leading mark */
     {
-     pos--;
-     bytes++;
+      pos--;
+      bytes++;
     }
-  }
- else              /* Not last subvalue */
+  } else /* Not last subvalue */
   {
-   bytes++;        /* Include trailing mark in deleted region */
+    bytes++; /* Include trailing mark in deleted region */
   }
 
 done:
- /* Now construct new string with 'bytes' bytes omitted starting at 'pos' */
+  /* Now construct new string with 'bytes' bytes omitted starting at 'pos' */
 
- new_len = src_len - bytes;
- new_str = malloc(new_len + 1);
- p = new_str;
+  new_len = src_len - bytes;
+  new_str = malloc(new_len + 1);
+  p = new_str;
 
- n = pos - src;                /* Length of leading substring */
- if (n)    
-  {
-   memcpy(p, src, n);
-   p += n;
+  n = pos - src; /* Length of leading substring */
+  if (n) {
+    memcpy(p, src, n);
+    p += n;
   }
 
- n = src_len - (bytes + n);    /* Length of trailing substring */
- if (n)
-  {
-   memcpy(p, pos + bytes, n);
-   p += n;
+  n = src_len - (bytes + n); /* Length of trailing substring */
+  if (n) {
+    memcpy(p, pos + bytes, n);
+    p += n;
   }
 
- *p = '\0';
- return new_str;
+  *p = '\0';
+  return new_str;
 
 null_result:
- return NullString();
+  return NullString();
 
 unchanged_result:
- new_str = malloc(src_len + 1);
- strcpy(new_str, src);
- return new_str;
+  new_str = malloc(src_len + 1);
+  strcpy(new_str, src);
+  return new_str;
 }
 
 /* ======================================================================
    QMDelete()  -  Delete record                                           */
 
-void DLLEntry QMDelete(fno, id)
-   int fno;
-   char * id;
-{
- delete_record(SrvrDelete, fno, id);
+void DLLEntry QMDelete(int fno, char* id) {
+  delete_record(SrvrDelete, fno, id);
 }
 
 /* ======================================================================
    QMDeleteu()  -  Delete record, retaining lock                          */
 
-void DLLEntry QMDeleteu(fno, id)
-   int fno;
-   char * id;
-{
- delete_record(SrvrDeleteu, fno, id);
+void DLLEntry QMDeleteu(int fno, char* id) {
+  delete_record(SrvrDeleteu, fno, id);
 }
 
 /* ======================================================================
    QMDisconnect()  -  Close connection to server.                         */
 
-void DLLEntry QMDisconnect()
-{
- if (session[session_idx].context != CX_DISCONNECTED)
-  {
-   disconnect();
+void DLLEntry QMDisconnect() {
+  if (session[session_idx].context != CX_DISCONNECTED) {
+    disconnect();
   }
 }
 
 /* ======================================================================
    QMDisconnectAll()  -  Close connection to all servers.                 */
 
-void DLLEntry QMDisconnectAll()
-{
- short int i;
+void DLLEntry QMDisconnectAll() {
+  short int i;
 
- for (i = 0; i < MAX_SESSIONS; i++)
-  {
-   if (session[session_idx].context != CX_DISCONNECTED)
-    {
-     session_idx = i;
-     disconnect();
+  for (i = 0; i < MAX_SESSIONS; i++) {
+    if (session[session_idx].context != CX_DISCONNECTED) {
+      session_idx = i;
+      disconnect();
     }
   }
 }
@@ -1053,1025 +990,959 @@ void DLLEntry QMDisconnectAll()
 /* ======================================================================
    QMEndCommand()  -  End a command that is requesting input              */
 
-void DLLEntry QMEndCommand()
-{
- if (context_error(CX_EXECUTING)) goto exit_qmendcommand;
+void DLLEntry QMEndCommand() {
+  if (context_error(CX_EXECUTING))
+    goto exit_qmendcommand;
 
- if (!message_pair(SrvrEndCommand, NULL, 0))
-  {
-   goto exit_qmendcommand;
+  if (!message_pair(SrvrEndCommand, NULL, 0)) {
+    goto exit_qmendcommand;
   }
 
- session[session_idx].context = CX_CONNECTED;
+  session[session_idx].context = CX_CONNECTED;
 
 exit_qmendcommand:
- return;
+  return;
 }
 
 /* ======================================================================
    QMEnterPackage()  -  Enter a licensed package                          */
 
-bool DLLEntry QMEnterPackage(name)
-   char *  name;
-{
- bool status = FALSE;
- int name_len;
+bool DLLEntry QMEnterPackage(char* name) {
+  bool status = FALSE;
+  int name_len;
 
- if (context_error(CX_CONNECTED)) goto exit_EnterPackage;
+  if (context_error(CX_CONNECTED))
+    goto exit_EnterPackage;
 
- name_len = strlen(name);
- if ((name_len < 1) || (name_len > MAX_PACKAGE_NAME_LEN))
-  {
-   session[session_idx].server_error = SV_ELSE;
-   session[session_idx].qm_status = ER_BAD_NAME;
-  }
- else
-  {
-   if (!message_pair(SrvrEnterPackage, name, name_len))
-    {
-     goto exit_EnterPackage;
+  name_len = strlen(name);
+  if ((name_len < 1) || (name_len > MAX_PACKAGE_NAME_LEN)) {
+    session[session_idx].server_error = SV_ELSE;
+    session[session_idx].qm_status = ER_BAD_NAME;
+  } else {
+    if (!message_pair(SrvrEnterPackage, name, name_len)) {
+      goto exit_EnterPackage;
     }
   }
 
- switch(session[session_idx].server_error)
-  {
-   case SV_OK:
+  switch (session[session_idx].server_error) {
+    case SV_OK:
       status = TRUE;
       break;
 
-   case SV_ON_ERROR:
+    case SV_ON_ERROR:
       Abort("EnterPackage generated an abort event", TRUE);
       break;
 
-   case SV_LOCKED:
-   case SV_ELSE:
-   case SV_ERROR:
+    case SV_LOCKED:
+    case SV_ELSE:
+    case SV_ERROR:
       break;
   }
- 
+
 exit_EnterPackage:
- return status;
+  return status;
 }
 
 /* ======================================================================
    QMExitPackage()  -  Exit from a licensed package                       */
 
-bool DLLEntry QMExitPackage(name)
-   char * name;
-{
- bool status = FALSE;
- int name_len;
+bool DLLEntry QMExitPackage(char* name) {
+  bool status = FALSE;
+  int name_len;
 
- if (context_error(CX_CONNECTED)) goto exit_ExitPackage;
+  if (context_error(CX_CONNECTED))
+    goto exit_ExitPackage;
 
- name_len = strlen(name);
- if ((name_len < 1) || (name_len > MAX_PACKAGE_NAME_LEN))
-  {
-   session[session_idx].server_error = SV_ELSE;
-   session[session_idx].qm_status = ER_BAD_NAME;
-  }
- else
-  {
-   if (!message_pair(SrvrExitPackage, name, name_len))
-    {
-     goto exit_ExitPackage;
+  name_len = strlen(name);
+  if ((name_len < 1) || (name_len > MAX_PACKAGE_NAME_LEN)) {
+    session[session_idx].server_error = SV_ELSE;
+    session[session_idx].qm_status = ER_BAD_NAME;
+  } else {
+    if (!message_pair(SrvrExitPackage, name, name_len)) {
+      goto exit_ExitPackage;
     }
   }
 
- switch(session[session_idx].server_error)
-  {
-   case SV_OK:
+  switch (session[session_idx].server_error) {
+    case SV_OK:
       status = TRUE;
       break;
 
-   case SV_ON_ERROR:
+    case SV_ON_ERROR:
       Abort("ExitPackage generated an abort event", TRUE);
       break;
 
-   case SV_LOCKED:
-   case SV_ELSE:
-   case SV_ERROR:
+    case SV_LOCKED:
+    case SV_ELSE:
+    case SV_ERROR:
       break;
   }
- 
+
 exit_ExitPackage:
- return status;
+  return status;
 }
 
 /* ======================================================================
    QMError()  -  Return extended error string                             */
 
-char * DLLEntry QMError()
-{
- return session[session_idx].qmerror;
+char* DLLEntry QMError() {
+  return session[session_idx].qmerror;
 }
 
 /* ======================================================================
    QMExecute()  -  Execute a command                                      */
 
-char * DLLEntry QMExecute(cmnd, err)
-   char * cmnd;
-   int * err;
-{
- long int reply_len = 0;
- char * reply;
+char* DLLEntry QMExecute(char* cmnd, int* err) {
+  long int reply_len = 0;
+  char* reply;
 
- if (context_error(CX_CONNECTED)) goto exit_qmexecute;
+  if (context_error(CX_CONNECTED))
+    goto exit_qmexecute;
 
- if (!message_pair(SrvrExecute, cmnd, strlen(cmnd)))
-  {
-   goto exit_qmexecute;
+  if (!message_pair(SrvrExecute, cmnd, strlen(cmnd))) {
+    goto exit_qmexecute;
   }
 
- switch(session[session_idx].server_error)
-  {
-   case SV_PROMPT:
+  switch (session[session_idx].server_error) {
+    case SV_PROMPT:
       session[session_idx].context = CX_EXECUTING;
       /* **** FALL THROUGH **** */
 
-   case SV_OK:
+    case SV_OK:
       reply_len = buff_bytes - offsetof(INBUFF, data.execute.reply);
       break;
 
-   case SV_ON_ERROR:
+    case SV_ON_ERROR:
       Abort("EXECUTE generated an abort event", TRUE);
       break;
   }
 
 exit_qmexecute:
- reply = malloc(reply_len + 1);
- strcpy(reply, buff->data.execute.reply);
- *err = session[session_idx].server_error;
+  reply = malloc(reply_len + 1);
+  strcpy(reply, buff->data.execute.reply);
+  *err = session[session_idx].server_error;
 
- return reply;
+  return reply;
 }
 
 /* ======================================================================
    QMExtract()  -  Extract field, value or subvalue                       */
 
-char * DLLEntry QMExtract(src, fno, vno, svno)
-   char * src;
-   int fno;
-   int vno;
-   int svno;
-{
- long int src_len;
- char * p;
- char * result;
+char* DLLEntry QMExtract(char* src, int fno, int vno, int svno) {
+  long int src_len;
+  char* p;
+  char* result;
 
- initialise_client();
+  initialise_client();
 
- src_len = strlen(src);
- if (src_len == 0) goto null_result;   /* Extracting from null string */
+  src_len = strlen(src);
+  if (src_len == 0)
+    goto null_result; /* Extracting from null string */
 
+  /* Setp 1  -  Initialise variables */
 
- /* Setp 1  -  Initialise variables */
+  if (fno < 1)
+    fno = 1;
 
- if (fno < 1) fno = 1;
+  /* Step 2  -  Position to start of item */
 
+  /* Skip to start field */
 
- /* Step 2  -  Position to start of item */
-
- /* Skip to start field */
-
- while(--fno)
-  {
-   p = memchr(src, FIELD_MARK, src_len);
-   if (p == NULL) goto null_result;    /* No such field */
-   src_len -= (1 + p - src);
-   src = p + 1;
+  while (--fno) {
+    p = memchr(src, FIELD_MARK, src_len);
+    if (p == NULL)
+      goto null_result; /* No such field */
+    src_len -= (1 + p - src);
+    src = p + 1;
   }
- p = memchr(src, FIELD_MARK, src_len);
- if (p != NULL) src_len = p - src;    /* Adjust to ignore later fields */
+  p = memchr(src, FIELD_MARK, src_len);
+  if (p != NULL)
+    src_len = p - src; /* Adjust to ignore later fields */
 
- if (vno < 1) goto done;   /* Extracting whole field */
- 
+  if (vno < 1)
+    goto done; /* Extracting whole field */
 
- /* Skip to start value */
+  /* Skip to start value */
 
- while(--vno)
-  {
-   p = memchr(src, VALUE_MARK, src_len);
-   if (p == NULL) goto null_result;    /* No such value */
-   src_len -= (1 + p - src);
-   src = p + 1;
+  while (--vno) {
+    p = memchr(src, VALUE_MARK, src_len);
+    if (p == NULL)
+      goto null_result; /* No such value */
+    src_len -= (1 + p - src);
+    src = p + 1;
   }
 
- p = memchr(src, VALUE_MARK, src_len);
- if (p != NULL) src_len = p - src; /* Adjust to ignore later values */
+  p = memchr(src, VALUE_MARK, src_len);
+  if (p != NULL)
+    src_len = p - src; /* Adjust to ignore later values */
 
- if (svno < 1) goto done;   /* Extracting whole value */
+  if (svno < 1)
+    goto done; /* Extracting whole value */
 
+  /* Skip to start subvalue */
 
- /* Skip to start subvalue */
-
- while(--svno)
-  {
-   p = memchr(src, SUBVALUE_MARK, src_len);
-   if (p == NULL) goto null_result;    /* No such subvalue */
-   src_len -= (1 + p - src);
-   src = p + 1;
+  while (--svno) {
+    p = memchr(src, SUBVALUE_MARK, src_len);
+    if (p == NULL)
+      goto null_result; /* No such subvalue */
+    src_len -= (1 + p - src);
+    src = p + 1;
   }
- p = memchr(src, SUBVALUE_MARK, src_len);
- if (p != NULL) src_len = p - src; /* Adjust to ignore later fields */
+  p = memchr(src, SUBVALUE_MARK, src_len);
+  if (p != NULL)
+    src_len = p - src; /* Adjust to ignore later fields */
 
 done:
- result = malloc(src_len + 1);
- memcpy(result, src, src_len);
- result[src_len] = '\0';
- return result;
+  result = malloc(src_len + 1);
+  memcpy(result, src, src_len);
+  result[src_len] = '\0';
+  return result;
 
 null_result:
- return NullString();
+  return NullString();
 }
 
 /* ======================================================================
    QMField()  -  Extract delimited substring                              */
 
-char * DLLEntry QMField(src, delim, first, occurrences)
-   char * src;
-   char * delim;
-   int first;
-   int occurrences;
-{
- int src_len;
- int delim_len;
- char delimiter;
- long int bytes;         /* Remaining bytes counter */
- char * pos;
- char * p;
- char * q;
- char * result;
- int result_len;
+char* DLLEntry QMField(char* src, char* delim, int first, int occurrences) {
+  int src_len;
+  int delim_len;
+  char delimiter;
+  long int bytes; /* Remaining bytes counter */
+  char* pos;
+  char* p;
+  char* q;
+  char* result;
+  int result_len;
 
- initialise_client();
+  initialise_client();
 
- src_len = strlen(src);
+  src_len = strlen(src);
 
- delim_len = strlen(delim);
- if ((delim_len == 0) || (src_len == 0)) goto return_null;
+  delim_len = strlen(delim);
+  if ((delim_len == 0) || (src_len == 0))
+    goto return_null;
 
- if (first < 1) first = 1;
+  if (first < 1)
+    first = 1;
 
- if (occurrences < 1) occurrences = 1;
+  if (occurrences < 1)
+    occurrences = 1;
 
- delimiter = *delim;
+  delimiter = *delim;
 
+  /* Find start of data to return */
 
- /* Find start of data to return */
-
- pos = src;
- bytes = src_len;
- while(--first)
-  {
-   p = memchr(pos, delimiter, bytes);
-   if (p == NULL) goto return_null;
-   bytes -= (p - pos + 1);
-   pos = p + 1;
+  pos = src;
+  bytes = src_len;
+  while (--first) {
+    p = memchr(pos, delimiter, bytes);
+    if (p == NULL)
+      goto return_null;
+    bytes -= (p - pos + 1);
+    pos = p + 1;
   }
 
- /* Find end of data to return */
+  /* Find end of data to return */
 
- q = pos;
- do {
-     p = memchr(q, delimiter, bytes);
-     if (p == NULL)
-      {
-       p = q + bytes;
-       break;
-      }
-     bytes -= (p - q + 1);
-     q = p + 1;
-    } while(--occurrences);
+  q = pos;
+  do {
+    p = memchr(q, delimiter, bytes);
+    if (p == NULL) {
+      p = q + bytes;
+      break;
+    }
+    bytes -= (p - q + 1);
+    q = p + 1;
+  } while (--occurrences);
 
- result_len = p - pos;
- result = malloc(result_len + 1);
- memcpy(result, pos, result_len);
- result[result_len] = '\0';
- return result;
+  result_len = p - pos;
+  result = malloc(result_len + 1);
+  memcpy(result, pos, result_len);
+  result[result_len] = '\0';
+  return result;
 
 return_null:
- return NullString();
+  return NullString();
 }
 
 /* ======================================================================
    QMFree()  -  Free memory returned by other functions                   */
 
-void DLLEntry QMFree(void * p)
-{
- free(p);
+void DLLEntry QMFree(void* p) {
+  free(p);
 }
 
 /* ======================================================================
    QMGetSession()  -  Return session index                                */
 
-int DLLEntry QMGetSession()
-{
- return session_idx;
+int DLLEntry QMGetSession() {
+  return session_idx;
 }
 
 /* ======================================================================
    QMIns()  -  Insert field, value or subvalue                            */
 
-char * DLLEntry QMIns(src, fno, vno, svno, new)
-   char * src;
-   int fno;
-   int vno;
-   int svno;
-   char * new;
-{
- long int src_len;
- char * pos;             /* Rolling source pointer */
- long int bytes;         /* Remaining bytes counter */
- long int ins_len;       /* Length of inserted data */
- long int new_len;
- char * new_str;
- char * p;
- short int i;
- long int n;
- short int fm = 0;
- short int vm = 0;
- short int sm = 0;
- char postmark = '\0';
+char* DLLEntry QMIns(char* src, int fno, int vno, int svno, char* new) {
+  long int src_len;
+  char* pos;        /* Rolling source pointer */
+  long int bytes;   /* Remaining bytes counter */
+  long int ins_len; /* Length of inserted data */
+  long int new_len;
+  char* new_str;
+  char* p;
+  short int i;
+  long int n;
+  short int fm = 0;
+  short int vm = 0;
+  short int sm = 0;
+  char postmark = '\0';
 
- initialise_client();
+  initialise_client();
 
- src_len = strlen(src);
- ins_len = strlen(new);
+  src_len = strlen(src);
+  ins_len = strlen(new);
 
- pos = src;
- bytes = src_len;
+  pos = src;
+  bytes = src_len;
 
- if (fno < 1) fno = 1;
- if (vno < 0) vno = 0;
- if (svno < 0) svno = 0;
+  if (fno < 1)
+    fno = 1;
+  if (vno < 0)
+    vno = 0;
+  if (svno < 0)
+    svno = 0;
 
- if (src_len == 0)   /* Inserting in null string */
+  if (src_len == 0) /* Inserting in null string */
   {
-   if (fno > 1) fm = fno - 1;
-   if (vno > 1) vm = vno - 1;
-   if (svno > 1) sm = svno - 1;
-   goto done;
+    if (fno > 1)
+      fm = fno - 1;
+    if (vno > 1)
+      vm = vno - 1;
+    if (svno > 1)
+      sm = svno - 1;
+    goto done;
   }
 
+  /* Skip to start field */
 
- /* Skip to start field */
-
- for(i = 1; i < fno; i++)
-  {
-   p = memchr(pos, FIELD_MARK, bytes);
-   if (p == NULL)    /* No such field */
+  for (i = 1; i < fno; i++) {
+    p = memchr(pos, FIELD_MARK, bytes);
+    if (p == NULL) /* No such field */
     {
-     fm = fno - i;
-     if (vno > 1) vm = vno - 1;
-     if (svno > 1) sm = svno - 1;
-     pos = src + src_len;
-     goto done;
+      fm = fno - i;
+      if (vno > 1)
+        vm = vno - 1;
+      if (svno > 1)
+        sm = svno - 1;
+      pos = src + src_len;
+      goto done;
     }
-   bytes -= (1 + p - pos);
-   pos = p + 1;
+    bytes -= (1 + p - pos);
+    pos = p + 1;
   }
 
- p = memchr(pos, FIELD_MARK, bytes);
- if (p != NULL) bytes = p - pos;    /* Length of field */
+  p = memchr(pos, FIELD_MARK, bytes);
+  if (p != NULL)
+    bytes = p - pos; /* Length of field */
 
- if (vno == 0)   /* Inserting field */
+  if (vno == 0) /* Inserting field */
   {
-   postmark = FIELD_MARK;
-   goto done;
+    postmark = FIELD_MARK;
+    goto done;
   }
 
+  /* Skip to start value */
 
- /* Skip to start value */
-
- for(i = 1; i < vno; i++)
-  {
-   p = memchr(pos, VALUE_MARK, bytes);
-   if (p == NULL)    /* No such value */
+  for (i = 1; i < vno; i++) {
+    p = memchr(pos, VALUE_MARK, bytes);
+    if (p == NULL) /* No such value */
     {
-     vm = vno - i;
-     if (svno > 1) sm = svno - 1;
-     pos += bytes;
-     goto done;
+      vm = vno - i;
+      if (svno > 1)
+        sm = svno - 1;
+      pos += bytes;
+      goto done;
     }
-   bytes -= (1 + p - pos);
-   pos = p + 1;
+    bytes -= (1 + p - pos);
+    pos = p + 1;
   }
 
- p = memchr(pos, VALUE_MARK, bytes);
- if (p != NULL) bytes = p - pos;    /* Length of value, excluding end mark */
+  p = memchr(pos, VALUE_MARK, bytes);
+  if (p != NULL)
+    bytes = p - pos; /* Length of value, excluding end mark */
 
- if (svno == 0)   /* Inserting value */
+  if (svno == 0) /* Inserting value */
   {
-   postmark = VALUE_MARK;
-   goto done;
+    postmark = VALUE_MARK;
+    goto done;
   }
 
- /* Skip to start subvalue */
+  /* Skip to start subvalue */
 
- for(i = 1; i < svno; i++)
-  {
-   p = memchr(pos, SUBVALUE_MARK, bytes);
-   if (p == NULL)    /* No such subvalue */
+  for (i = 1; i < svno; i++) {
+    p = memchr(pos, SUBVALUE_MARK, bytes);
+    if (p == NULL) /* No such subvalue */
     {
-     sm = svno - i;
-     pos += bytes;
-     goto done;
+      sm = svno - i;
+      pos += bytes;
+      goto done;
     }
-   bytes -= (1 + p - pos);
-   pos = p + 1;
+    bytes -= (1 + p - pos);
+    pos = p + 1;
   }
 
- postmark = SUBVALUE_MARK;
-
+  postmark = SUBVALUE_MARK;
 
 done:
- /* Now construct new string inserting fm, vm and sm marks and new data
+  /* Now construct new string inserting fm, vm and sm marks and new data
     at 'pos'.                                                           */
 
- n = pos - src;    /* Length of leading substring */
- if ((n == src_len)
-     || (IsDelim(src[n]) && src[n] > postmark))   /* 0380 */
+  n = pos - src; /* Length of leading substring */
+  if ((n == src_len) || (IsDelim(src[n]) && src[n] > postmark)) /* 0380 */
   {
-   postmark = '\0';
+    postmark = '\0';
   }
 
- new_len = src_len + fm + vm + sm + ins_len + (postmark != '\0');
- new_str = malloc(new_len + 1);
- p = new_str;
+  new_len = src_len + fm + vm + sm + ins_len + (postmark != '\0');
+  new_str = malloc(new_len + 1);
+  p = new_str;
 
- if (n)    
-  {
-   memcpy(p, src, n);
-   p += n;
+  if (n) {
+    memcpy(p, src, n);
+    p += n;
   }
 
- while(fm--) *(p++) = FIELD_MARK;
- while(vm--) *(p++) = VALUE_MARK;
- while(sm--) *(p++) = SUBVALUE_MARK;
+  while (fm--)
+    *(p++) = FIELD_MARK;
+  while (vm--)
+    *(p++) = VALUE_MARK;
+  while (sm--)
+    *(p++) = SUBVALUE_MARK;
 
- if (ins_len)
-  {
-   memcpy(p, new, ins_len);
-   p += ins_len;
+  if (ins_len) {
+    memcpy(p, new, ins_len);
+    p += ins_len;
   }
 
- if (postmark != '\0') *(p++) = postmark;
+  if (postmark != '\0')
+    *(p++) = postmark;
 
- n = src_len - n;    /* Length of trailing substring */
- if (n)
-  {
-   memcpy(p, pos, n);
-   p += n;
+  n = src_len - n; /* Length of trailing substring */
+  if (n) {
+    memcpy(p, pos, n);
+    p += n;
   }
 
- *p = '\0';
+  *p = '\0';
 
- return new_str;
+  return new_str;
 }
 
 /* ======================================================================
    QMLocate()  -  Search dynamic array                                    */
 
-int DLLEntry QMLocate(item, src, fno, vno, svno, pos, order)
-   char * item;
-   char * src;
-   int fno;
-   int vno;
-   int svno;
-   int * pos;
-   char * order;
-{
- int item_len;
- int src_len;
- char * p;
- char * q;
- bool ascending = TRUE;
- bool left = TRUE;
- bool sorted = FALSE;
- short int idx = 1;
- int d;
- bool found = FALSE;
- int i;
- int bytes;
- char mark;
- int n;
- int x;
- char * s1;
- char * s2;
+int DLLEntry QMLocate(char* item,
+                      char* src,
+                      int fno,
+                      int vno,
+                      int svno,
+                      int* pos,
+                      char* order) {
+  int item_len;
+  int src_len;
+  char* p;
+  char* q;
+  bool ascending = TRUE;
+  bool left = TRUE;
+  bool sorted = FALSE;
+  short int idx = 1;
+  int d;
+  bool found = FALSE;
+  int i;
+  int bytes;
+  char mark;
+  int n;
+  int x;
+  char* s1;
+  char* s2;
 
- initialise_client();
+  initialise_client();
 
- /* Establish sort mode */
+  /* Establish sort mode */
 
- i = strlen(order);
- if (i >= 1)
-  {
-   sorted = TRUE;
-   ascending = (order[0] != 'D');
+  i = strlen(order);
+  if (i >= 1) {
+    sorted = TRUE;
+    ascending = (order[0] != 'D');
   }
 
- if (i >= 2) left = (order[1] != 'R');
+  if (i >= 2)
+    left = (order[1] != 'R');
 
- item_len = strlen(item);    /* Length of item to find */
+  item_len = strlen(item); /* Length of item to find */
 
- src_len = strlen(src);
+  src_len = strlen(src);
 
- p = src;
- bytes = src_len;
+  p = src;
+  bytes = src_len;
 
- if (fno < 1) fno = 1;
+  if (fno < 1)
+    fno = 1;
 
- /* Scan to start field */
+  /* Scan to start field */
 
- mark = FIELD_MARK;
- idx = fno;
- for(i = 1; i < fno; i++)
-  {
-   if (bytes == 0) goto done;
-   q = memchr(p, FIELD_MARK, bytes);
-   if (q == NULL) goto done;    /* No such field */
-   bytes -= (1 + q - p);
-   p = q + 1;
+  mark = FIELD_MARK;
+  idx = fno;
+  for (i = 1; i < fno; i++) {
+    if (bytes == 0)
+      goto done;
+    q = memchr(p, FIELD_MARK, bytes);
+    if (q == NULL)
+      goto done; /* No such field */
+    bytes -= (1 + q - p);
+    p = q + 1;
   }
 
- if (vno > 0)  /* Searching for value or subvalue */
+  if (vno > 0) /* Searching for value or subvalue */
   {
-   q = memchr(p, FIELD_MARK, bytes);
-   if (q != NULL) bytes = q - p;    /* Limit view to length of field */
+    q = memchr(p, FIELD_MARK, bytes);
+    if (q != NULL)
+      bytes = q - p; /* Limit view to length of field */
 
-   mark = VALUE_MARK;
-   idx = vno;
-   for(i = 1; i < vno; i++)
-    {
-     if (bytes == 0) goto done;
-     q = memchr(p, VALUE_MARK, bytes);
-     if (q == NULL) goto done;    /* No such value */
-     bytes -= (1 + q - p);
-     p = q + 1;
+    mark = VALUE_MARK;
+    idx = vno;
+    for (i = 1; i < vno; i++) {
+      if (bytes == 0)
+        goto done;
+      q = memchr(p, VALUE_MARK, bytes);
+      if (q == NULL)
+        goto done; /* No such value */
+      bytes -= (1 + q - p);
+      p = q + 1;
     }
 
-   if (svno > 0)    /* Searching for subvalue */
+    if (svno > 0) /* Searching for subvalue */
     {
-     q = memchr(p, VALUE_MARK, bytes);
-     if (q != NULL) bytes = q - p;    /* Limit view to length of value */
+      q = memchr(p, VALUE_MARK, bytes);
+      if (q != NULL)
+        bytes = q - p; /* Limit view to length of value */
 
-     mark = SUBVALUE_MARK;
-     idx = svno;
-     for(i = 1; i < svno; i++)    /* 0512 */
+      mark = SUBVALUE_MARK;
+      idx = svno;
+      for (i = 1; i < svno; i++) /* 0512 */
       {
-       if (bytes == 0) goto done;
-       q = memchr(p, SUBVALUE_MARK, bytes);
-       if (q == NULL) goto done;    /* No such subvalue */
-       bytes -= (1 + q - p);
-       p = q + 1;
+        if (bytes == 0)
+          goto done;
+        q = memchr(p, SUBVALUE_MARK, bytes);
+        if (q == NULL)
+          goto done; /* No such subvalue */
+        bytes -= (1 + q - p);
+        p = q + 1;
       }
     }
   }
 
- /* We are now at the start position for the search and 'mark' contains the
+  /* We are now at the start position for the search and 'mark' contains the
     delimiting mark character.  Because we have adjusted 'bytes' to limit
     our view to the end of the item, we do not need to worry about higher
     level marks.  Examine successive items from this point.                 */
 
- if (bytes == 0)
-  {
-   if (item_len == 0) found = TRUE;
-   goto done;
+  if (bytes == 0) {
+    if (item_len == 0)
+      found = TRUE;
+    goto done;
   }
 
- do {
-     q = memchr(p, mark, bytes);
-     n = (q == NULL)?bytes:(q - p);  /* Length of entry */
-     if ((n == item_len) && (memcmp(p, item, n) == 0))
-      {
-       found = TRUE;
-       goto done;
-      }
+  do {
+    q = memchr(p, mark, bytes);
+    n = (q == NULL) ? bytes : (q - p); /* Length of entry */
+    if ((n == item_len) && (memcmp(p, item, n) == 0)) {
+      found = TRUE;
+      goto done;
+    }
 
-     if (sorted)   /* Check if we have gone past correct position */
+    if (sorted) /* Check if we have gone past correct position */
+    {
+      if (left || (n == item_len)) {
+        d = memcmp(p, item, min(n, item_len));
+        if (d == 0) {
+          if ((n > item_len) == ascending)
+            goto done;
+        } else if ((d > 0) == ascending)
+          goto done;
+      } else /* Right sorted and lengths differ */
       {
-       if (left || (n == item_len))
+        x = n - item_len;
+        s1 = p;
+        s2 = item;
+        if (x > 0) /* Array entry longer than item to find */
         {
-         d = memcmp(p, item, min(n, item_len));
-         if (d == 0)
-          {
-           if ((n > item_len) == ascending) goto done;
-          }
-         else if ((d > 0) == ascending) goto done;
-        }
-       else   /* Right sorted and lengths differ */
+          do {
+            d = *(s1++) - ' ';
+          } while ((d == 0) && --x);
+        } else /* Array entry shorter than item to find */
         {
-         x = n - item_len;
-         s1 = p;
-         s2 = item;
-         if (x > 0)  /* Array entry longer than item to find */
-          {
-           do {d = *(s1++) - ' ';} while((d == 0) && --x);
-          }
-         else        /* Array entry shorter than item to find */
-          {
-           do {d = ' ' - *(s2++);} while((d == 0) && ++x);
-          }
-         if (d == 0) d = memcmp(s1, s2, min(n, item_len));
-         if ((d > 0) == ascending) goto done;
+          do {
+            d = ' ' - *(s2++);
+          } while ((d == 0) && ++x);
         }
+        if (d == 0)
+          d = memcmp(s1, s2, min(n, item_len));
+        if ((d > 0) == ascending)
+          goto done;
       }
-     
-     bytes -= (1 + q - p);
-     p = q + 1;
-     idx++;
-    } while(q);
+    }
 
+    bytes -= (1 + q - p);
+    p = q + 1;
+    idx++;
+  } while (q);
 
 done:
- *pos = idx;
- return found;
+  *pos = idx;
+  return found;
 }
 
 /* ======================================================================
    QMLogto()  -  LOGTO                                                    */
 
-int DLLEntry QMLogto(account_name)
-   char * account_name;
-{
- bool status = FALSE;
- int name_len;
+int DLLEntry QMLogto(char* account_name) {
+  bool status = FALSE;
+  int name_len;
 
- if (context_error(CX_CONNECTED)) goto exit_logto;
+  if (context_error(CX_CONNECTED))
+    goto exit_logto;
 
- name_len = strlen(account_name);
- if ((name_len < 1) || (name_len > MAX_ACCOUNT_NAME_LEN))
-  {
-   session[session_idx].server_error = SV_ELSE;
-   session[session_idx].qm_status = ER_BAD_NAME;
-  }
- else
-  {
-   if (!message_pair(SrvrAccount, account_name, name_len))
-    {
-     goto exit_logto;
+  name_len = strlen(account_name);
+  if ((name_len < 1) || (name_len > MAX_ACCOUNT_NAME_LEN)) {
+    session[session_idx].server_error = SV_ELSE;
+    session[session_idx].qm_status = ER_BAD_NAME;
+  } else {
+    if (!message_pair(SrvrAccount, account_name, name_len)) {
+      goto exit_logto;
     }
   }
 
- switch(session[session_idx].server_error)
-  {
-   case SV_OK:
+  switch (session[session_idx].server_error) {
+    case SV_OK:
       status = TRUE;
       break;
 
-   case SV_ON_ERROR:
+    case SV_ON_ERROR:
       Abort("LOGTO generated an abort event", TRUE);
       break;
 
-   case SV_LOCKED:
-   case SV_ELSE:
-   case SV_ERROR:
+    case SV_LOCKED:
+    case SV_ELSE:
+    case SV_ERROR:
       break;
   }
- 
+
 exit_logto:
- return status;
+  return status;
 }
 
 /* ======================================================================
    QMMarkMapping()  -  Enable/disable mark mapping on a directory file    */
 
-void DLLEntry QMMarkMapping(fno, state)
-   short int fno;
-   short int state;
-{
- struct {
-         short int fno;
-         short int state;
-        } packet;
+void DLLEntry QMMarkMapping(short int fno, short int state) {
+  struct {
+    short int fno;
+    short int state;
+  } packet;
 
+  if (!context_error(CX_CONNECTED)) {
+    packet.fno = ShortInt(fno);
+    packet.state = ShortInt(state);
 
- if (!context_error(CX_CONNECTED))
-  {
-   packet.fno = ShortInt(fno);
-   packet.state = ShortInt(state);
-
-   message_pair(SrvrMarkMapping, (char *)&packet, sizeof(packet));
+    message_pair(SrvrMarkMapping, (char*)&packet, sizeof(packet));
   }
 }
 
 /* ======================================================================
    QMMatch()  -  String matching                                          */
 
-int DLLEntry QMMatch(str, pattern)
-   char * str;
-   char * pattern;
-{
- char template[MAX_MATCH_TEMPLATE_LEN+1];
- char src_string[MAX_MATCHED_STRING_LEN+1];
- int n;
- char * p;
- char * q;
+int DLLEntry QMMatch(char* str, char* pattern) {
+  char template[MAX_MATCH_TEMPLATE_LEN + 1];
+  char src_string[MAX_MATCHED_STRING_LEN + 1];
+  int n;
+  char* p;
+  char* q;
 
- initialise_client();
+  initialise_client();
 
- component_start = NULL;
- component_end = NULL;
+  component_start = NULL;
+  component_end = NULL;
 
- /* Copy template and string to our own buffers so we can alter them */
+  /* Copy template and string to our own buffers so we can alter them */
 
- n = strlen(pattern);
- if ((n == 0) || (n > MAX_MATCH_TEMPLATE_LEN)) goto no_match;
- memcpy(template, pattern, n);
- template[n] = '\0';
+  n = strlen(pattern);
+  if ((n == 0) || (n > MAX_MATCH_TEMPLATE_LEN))
+    goto no_match;
+  memcpy(template, pattern, n);
+  template[n] = '\0';
 
- n = strlen(str);
- if (n > MAX_MATCHED_STRING_LEN) goto no_match;
- if (n) memcpy(src_string, str, n);
- src_string[n] = '\0';
+  n = strlen(str);
+  if (n > MAX_MATCHED_STRING_LEN)
+    goto no_match;
+  if (n)
+    memcpy(src_string, str, n);
+  src_string[n] = '\0';
 
- /* Try matching against each value mark delimited template */
+  /* Try matching against each value mark delimited template */
 
- p = template;
- do {                             /* Outer loop - extract templates */
-     q = strchr(p, (char)VALUE_MARK);
-     if (q != NULL) *q = '\0';
+  p = template;
+  do { /* Outer loop - extract templates */
+    q = strchr(p, (char)VALUE_MARK);
+    if (q != NULL)
+      *q = '\0';
 
-     if (match_template(src_string, p, 0, 0)) return TRUE;
+    if (match_template(src_string, p, 0, 0))
+      return TRUE;
 
-     p = q + 1;
-    } while(q != NULL);
+    p = q + 1;
+  } while (q != NULL);
 
 no_match:
- return FALSE;
+  return FALSE;
 }
 
 /* ======================================================================
    QMMatchfield()  -  String matching                                     */
 
-char * DLLEntry QMMatchfield(str, pattern, component)
-   char * str;
-   char * pattern;
-   int component;
-{
- char template[MAX_MATCH_TEMPLATE_LEN+1];
- char src_string[MAX_MATCHED_STRING_LEN+1];
- int n;
- char * p;
- char * q;
- char * result;
+char* DLLEntry QMMatchfield(char* str, char* pattern, int component) {
+  char template[MAX_MATCH_TEMPLATE_LEN + 1];
+  char src_string[MAX_MATCHED_STRING_LEN + 1];
+  int n;
+  char* p;
+  char* q;
+  char* result;
 
- initialise_client();
+  initialise_client();
 
- if (component < 1) component = 1;
+  if (component < 1)
+    component = 1;
 
- component_start = NULL;
- component_end = NULL;
+  component_start = NULL;
+  component_end = NULL;
 
- /* Copy template and string to our own buffers so we can alter them */
+  /* Copy template and string to our own buffers so we can alter them */
 
- n = strlen(pattern);
- if ((n == 0) || (n > MAX_MATCH_TEMPLATE_LEN)) goto no_match;
- memcpy(template, pattern, n);
- template[n] = '\0';
+  n = strlen(pattern);
+  if ((n == 0) || (n > MAX_MATCH_TEMPLATE_LEN))
+    goto no_match;
+  memcpy(template, pattern, n);
+  template[n] = '\0';
 
- n = strlen(str);
- if (n > MAX_MATCHED_STRING_LEN) goto no_match;
- if (n) memcpy(src_string, str, n);
- src_string[n] = '\0';
+  n = strlen(str);
+  if (n > MAX_MATCHED_STRING_LEN)
+    goto no_match;
+  if (n)
+    memcpy(src_string, str, n);
+  src_string[n] = '\0';
 
- /* Try matching against each value mark delimited template */
+  /* Try matching against each value mark delimited template */
 
- p = template;
- do {                             /* Outer loop - extract templates */
-     q = strchr(p, (char)VALUE_MARK);
-     if (q != NULL) *q = '\0';
+  p = template;
+  do { /* Outer loop - extract templates */
+    q = strchr(p, (char)VALUE_MARK);
+    if (q != NULL)
+      *q = '\0';
 
-     if (match_template(src_string, p, 0, component))
-      {
-       if (component_end != NULL) *(component_end) = '\0';
-       n = strlen(component_start);
-       result = malloc(n + 1);
-       memcpy(result, component_start, n);
-       result[n] = '\0';
-       return result;
-      }
+    if (match_template(src_string, p, 0, component)) {
+      if (component_end != NULL)
+        *(component_end) = '\0';
+      n = strlen(component_start);
+      result = malloc(n + 1);
+      memcpy(result, component_start, n);
+      result[n] = '\0';
+      return result;
+    }
 
-     p = q + 1;
-    } while(q != NULL);
+    p = q + 1;
+  } while (q != NULL);
 
 no_match:
- return NullString();
+  return NullString();
 }
 
 /* ======================================================================
    QMOpen()  -  Open file                                                 */
 
-int DLLEntry QMOpen(filename)
-   char * filename;
-{
- int fno = 0;
+int DLLEntry QMOpen(char* filename) {
+  int fno = 0;
 
+  if (context_error(CX_CONNECTED))
+    goto exit_qmopen;
 
- if (context_error(CX_CONNECTED)) goto exit_qmopen;
-
- if (!message_pair(SrvrOpen, filename, strlen(filename)))
-  {
-   goto exit_qmopen;
+  if (!message_pair(SrvrOpen, filename, strlen(filename))) {
+    goto exit_qmopen;
   }
 
- switch(session[session_idx].server_error)
-  {
-   case SV_OK:
+  switch (session[session_idx].server_error) {
+    case SV_OK:
       fno = ShortInt(buff->data.open.fno);
       break;
 
-   case SV_ON_ERROR:
-   case SV_ELSE:
-   case SV_ERROR:
+    case SV_ON_ERROR:
+    case SV_ELSE:
+    case SV_ERROR:
       break;
   }
 
 exit_qmopen:
- return fno;
+  return fno;
 }
 
 /* ======================================================================
    QMRead()  -  Read record                                               */
 
-char * DLLEntry QMRead(fno, id, err)
-   int fno;
-   char * id;
-   int * err;
-{
- return read_record(fno, id, err, SrvrRead);
+char* DLLEntry QMRead(int fno, char* id, int* err) {
+  return read_record(fno, id, err, SrvrRead);
 }
 
 /* ======================================================================
    QMReadl()  -  Read record with shared lock                             */
 
-char * DLLEntry QMReadl(fno, id, wait, err)
-   int fno;
-   char * id;
-   int wait;
-   int * err;
-{
- return read_record(fno, id, err, (wait)?SrvrReadlw:SrvrReadl);
+char* DLLEntry QMReadl(int fno, char* id, int wait, int* err) {
+  return read_record(fno, id, err, (wait) ? SrvrReadlw : SrvrReadl);
 }
 
 /* ======================================================================
    QMReadList()  - Read select list                                       */
 
-char * DLLEntry QMReadList(listno)
-   int listno;
-{
- char * list;
- short int status = 0;
- long int data_len = 0;
- struct {
-         short int listno;
-        } ALIGN2 packet;
+char* DLLEntry QMReadList(int listno) {
+  char* list;
+  /* short int status = 0; variable set but never used */
+  long int data_len = 0;
+  struct {
+    short int listno;
+  } ALIGN2 packet;
 
+  if (context_error(CX_CONNECTED))
+    goto exit_qmreadlist;
 
- if (context_error(CX_CONNECTED)) goto exit_qmreadlist;
+  packet.listno = ShortInt(listno);
 
- packet.listno = ShortInt(listno);
- 
- if (!message_pair(SrvrReadList, (char *)&packet, sizeof(packet)))
-  {
-   goto exit_qmreadlist;
+  if (!message_pair(SrvrReadList, (char*)&packet, sizeof(packet))) {
+    goto exit_qmreadlist;
   }
 
- switch(session[session_idx].server_error)
-  {
-   case SV_OK:
+  switch (session[session_idx].server_error) {
+    case SV_OK:
       data_len = buff_bytes - offsetof(INBUFF, data.readlist.list);
       break;
 
-   case SV_ON_ERROR:
+    case SV_ON_ERROR:
       Abort("READLIST generated an abort event", TRUE);
       break;
 
-   default:
+    default:
       return NULL;
   }
- 
- status = session[session_idx].server_error;
- 
+
+  /* status = session[session_idx].server_error;
+   * variable set but never used. */
+
 exit_qmreadlist:
 
- list = malloc(data_len + 1);
- memcpy(list, buff->data.readlist.list, data_len);
- list[data_len] = '\0';
- return list;
+  list = malloc(data_len + 1);
+  memcpy(list, buff->data.readlist.list, data_len);
+  list[data_len] = '\0';
+  return list;
 }
 
 /* ======================================================================
    QMReadNext()  - Read select list entry                                 */
 
-char * DLLEntry QMReadNext(listno)
-   short int listno;
-{
- char * id;
- long int id_len = 0;
- struct {
-         short int listno;
-        } ALIGN2 packet;
+char* DLLEntry QMReadNext(short int listno) {
+  char* id;
+  long int id_len = 0;
+  struct {
+    short int listno;
+  } ALIGN2 packet;
 
+  if (context_error(CX_CONNECTED))
+    goto exit_qmreadnext;
 
- if (context_error(CX_CONNECTED)) goto exit_qmreadnext;
+  packet.listno = ShortInt(listno);
 
- packet.listno = ShortInt(listno);
- 
- if (!message_pair(SrvrReadNext, (char *)&packet, sizeof(packet)))
-  {
-   goto exit_qmreadnext;
+  if (!message_pair(SrvrReadNext, (char*)&packet, sizeof(packet))) {
+    goto exit_qmreadnext;
   }
 
- switch(session[session_idx].server_error)
-  {
-   case SV_OK:
+  switch (session[session_idx].server_error) {
+    case SV_OK:
       id_len = buff_bytes - offsetof(INBUFF, data.readnext.id);
       break;
 
-   case SV_ON_ERROR:
+    case SV_ON_ERROR:
       Abort("READNEXT generated an abort event", TRUE);
       break;
 
-   default:
+    default:
       return NULL;
   }
- 
 
 exit_qmreadnext:
- id = malloc(id_len + 1);
- memcpy(id, buff->data.readnext.id, id_len);
- id[id_len] = '\0';
- return id;
+  id = malloc(id_len + 1);
+  memcpy(id, buff->data.readnext.id, id_len);
+  id[id_len] = '\0';
+  return id;
 }
 
 /* ======================================================================
    QMReadu()  -  Read record with exclusive lock                          */
 
-char * DLLEntry QMReadu(fno, id, wait, err)
-   int fno;
-   char * id;
-   int wait;
-   int * err;
-{
- return read_record(fno, id, err, (wait)?SrvrReaduw:SrvrReadu);
+char* DLLEntry QMReadu(int fno, char* id, int wait, int* err) {
+  return read_record(fno, id, err, (wait) ? SrvrReaduw : SrvrReadu);
 }
 
 /* ======================================================================
    QMRecordlock()  -  Get lock on a record                                */
 
-void DLLEntry QMRecordlock(fno, id, update_lock, wait)
-   int fno;
-   char * id;
-   int update_lock;
-   int wait;
-{
- int id_len;
- short int flags;
- struct {
-         short int fno;
-         short int flags;        /* 0x0001 : Update lock */
-                                 /* 0x0002 : No wait */
-         char id[MAX_ID_LEN];
-        } ALIGN2 packet;
+void DLLEntry QMRecordlock(int fno, char* id, int update_lock, int wait) {
+  int id_len;
+  short int flags;
+  struct {
+    short int fno;
+    short int flags; /* 0x0001 : Update lock */
+                     /* 0x0002 : No wait */
+    char id[MAX_ID_LEN];
+  } ALIGN2 packet;
 
+  if (!context_error(CX_CONNECTED)) {
+    packet.fno = ShortInt(fno);
 
- if (!context_error(CX_CONNECTED))
-  {
-   packet.fno = ShortInt(fno);
+    id_len = strlen(id);
+    if (id_len > MAX_ID_LEN) {
+      session[session_idx].server_error = SV_ON_ERROR;
+      session[session_idx].qm_status = ER_IID;
+    } else {
+      memcpy(packet.id, id, id_len);
+      flags = (update_lock) ? 1 : 0;
+      if (!wait)
+        flags |= 2;
+      packet.flags = ShortInt(flags);
 
-   id_len = strlen(id);
-   if (id_len > MAX_ID_LEN)
-    {
-     session[session_idx].server_error = SV_ON_ERROR;
-     session[session_idx].qm_status = ER_IID;
-    }
-   else
-    {
-     memcpy(packet.id, id, id_len);
-     flags = (update_lock)?1:0;
-     if (!wait) flags |= 2;
-     packet.flags = ShortInt(flags);
-
-     if (!message_pair(SrvrLockRecord, (char *)&packet, id_len + 4))
-      {
-       session[session_idx].server_error = SV_ON_ERROR;
+      if (!message_pair(SrvrLockRecord, (char*)&packet, id_len + 4)) {
+        session[session_idx].server_error = SV_ON_ERROR;
       }
     }
 
-   switch(session[session_idx].server_error)
-    {
-     case SV_OK:
+    switch (session[session_idx].server_error) {
+      case SV_OK:
         break;
 
-     case SV_ON_ERROR:
+      case SV_ON_ERROR:
         Abort("RECORDLOCK generated an abort event", TRUE);
         break;
 
-     case SV_LOCKED:
-     case SV_ELSE:
-     case SV_ERROR:
+      case SV_LOCKED:
+      case SV_ELSE:
+      case SV_ERROR:
         break;
     }
   }
@@ -2080,500 +1951,461 @@ void DLLEntry QMRecordlock(fno, id, update_lock, wait)
 /* ======================================================================
    QMRelease()  -  Release lock                                           */
 
-void DLLEntry QMRelease(fno, id)
-   int fno;
-   char * id;
-{
- int id_len;
- struct {
-         short int fno;
-         char id[MAX_ID_LEN];
-        } ALIGN2 packet;
+void DLLEntry QMRelease(int fno, char* id) {
+  int id_len;
+  struct {
+    short int fno;
+    char id[MAX_ID_LEN];
+  } ALIGN2 packet;
 
+  if (context_error(CX_CONNECTED))
+    goto exit_release;
 
- if (context_error(CX_CONNECTED)) goto exit_release;
+  packet.fno = ShortInt(fno);
 
- packet.fno = ShortInt(fno);
-
- if (fno == 0)    /* Release all locks */
+  if (fno == 0) /* Release all locks */
   {
-   id_len = 0;
-  }
- else
-  {
-   id_len = strlen(id);
-   if (id_len > MAX_ID_LEN)
-    {
-     session[session_idx].server_error = SV_ON_ERROR;
-     session[session_idx].qm_status = ER_IID;
-     goto release_error;
+    id_len = 0;
+  } else {
+    id_len = strlen(id);
+    if (id_len > MAX_ID_LEN) {
+      session[session_idx].server_error = SV_ON_ERROR;
+      session[session_idx].qm_status = ER_IID;
+      goto release_error;
     }
-   memcpy(packet.id, id, id_len);
+    memcpy(packet.id, id, id_len);
   }
 
- if (!message_pair(SrvrRelease, (char *)&packet, id_len + 2))
-  {
-   goto exit_release;
+  if (!message_pair(SrvrRelease, (char*)&packet, id_len + 2)) {
+    goto exit_release;
   }
-
 
 release_error:
- switch(session[session_idx].server_error)
-  {
-   case SV_OK:
+  switch (session[session_idx].server_error) {
+    case SV_OK:
       break;
 
-   case SV_ON_ERROR:
+    case SV_ON_ERROR:
       Abort("RELEASE generated an abort event", TRUE);
       break;
 
-   case SV_LOCKED:
-   case SV_ELSE:
-   case SV_ERROR:
+    case SV_LOCKED:
+    case SV_ELSE:
+    case SV_ERROR:
       break;
   }
- 
+
 exit_release:
- return;
+  return;
 }
 
 /* ======================================================================
    QMReplace()  -  Replace field, value or subvalue                       */
 
-char * DLLEntry QMReplace(src, fno, vno, svno, new)
-   char * src;
-   int fno;
-   int vno;
-   int svno;
-   char * new;
-{
- long int src_len;
- char * pos;             /* Rolling source pointer */
- long int bytes;         /* Remaining bytes counter */
- long int ins_len;       /* Length of inserted data */
- long int new_len;
- char * new_str;
- char * p;
- short int i;
- long int n;
- short int fm = 0;
- short int vm = 0;
- short int sm = 0;
+char* DLLEntry QMReplace(char* src, int fno, int vno, int svno, char* new) {
+  long int src_len;
+  char* pos;        /* Rolling source pointer */
+  long int bytes;   /* Remaining bytes counter */
+  long int ins_len; /* Length of inserted data */
+  long int new_len;
+  char* new_str;
+  char* p;
+  short int i;
+  long int n;
+  short int fm = 0;
+  short int vm = 0;
+  short int sm = 0;
 
- initialise_client();
+  initialise_client();
 
- src_len = strlen(src);
- ins_len = strlen(new);
+  src_len = strlen(src);
+  ins_len = strlen(new);
 
- pos = src;
- bytes = src_len;
+  pos = src;
+  bytes = src_len;
 
- if (src_len == 0)   /* Replacing in null string */
+  if (src_len == 0) /* Replacing in null string */
   {
-   if (fno > 1) fm = fno - 1;
-   if (vno > 1) vm = vno - 1;
-   if (svno > 1) sm = svno - 1;
-   bytes = 0;
-   goto done;
+    if (fno > 1)
+      fm = fno - 1;
+    if (vno > 1)
+      vm = vno - 1;
+    if (svno > 1)
+      sm = svno - 1;
+    bytes = 0;
+    goto done;
   }
 
-
- if (fno < 1)        /* Appending a new field */
+  if (fno < 1) /* Appending a new field */
   {
-   pos = src + src_len;
-   fm = 1;
-   if (vno > 1) vm = vno - 1;
-   if (svno > 1) sm = svno - 1;
-   bytes = 0;
-   goto done;
+    pos = src + src_len;
+    fm = 1;
+    if (vno > 1)
+      vm = vno - 1;
+    if (svno > 1)
+      sm = svno - 1;
+    bytes = 0;
+    goto done;
   }
 
+  /* Skip to start field */
 
- /* Skip to start field */
-
- for(i = 1; i < fno; i++)
-  {
-   p = memchr(pos, FIELD_MARK, bytes);
-   if (p == NULL)    /* No such field */
+  for (i = 1; i < fno; i++) {
+    p = memchr(pos, FIELD_MARK, bytes);
+    if (p == NULL) /* No such field */
     {
-     fm = fno - i;
-     if (vno > 1) vm = vno - 1;
-     if (svno > 1) sm = svno - 1;
-     pos = src + src_len;
-     bytes = 0;
-     goto done;
+      fm = fno - i;
+      if (vno > 1)
+        vm = vno - 1;
+      if (svno > 1)
+        sm = svno - 1;
+      pos = src + src_len;
+      bytes = 0;
+      goto done;
     }
-   bytes -= (1 + p - pos);
-   pos = p + 1;
+    bytes -= (1 + p - pos);
+    pos = p + 1;
   }
 
- p = memchr(pos, FIELD_MARK, bytes);
- if (p != NULL) bytes = p - pos;    /* Length of field */
+  p = memchr(pos, FIELD_MARK, bytes);
+  if (p != NULL)
+    bytes = p - pos; /* Length of field */
 
- if (vno == 0) goto done;   /* Replacing whole field */
+  if (vno == 0)
+    goto done; /* Replacing whole field */
 
- if (vno < 0)    /* Appending new value */
+  if (vno < 0) /* Appending new value */
   {
-   if (p != NULL) pos = p;   /* 0553 */
-   else pos += bytes;        /* 0553 */
-   if (bytes) vm = 1;        /* 0553 */
-   if (svno > 1) sm = svno - 1;
-   bytes = 0;
-   goto done;
+    if (p != NULL)
+      pos = p; /* 0553 */
+    else
+      pos += bytes; /* 0553 */
+    if (bytes)
+      vm = 1; /* 0553 */
+    if (svno > 1)
+      sm = svno - 1;
+    bytes = 0;
+    goto done;
   }
 
+  /* Skip to start value */
 
- /* Skip to start value */
-
- for(i = 1; i < vno; i++)
-  {
-   p = memchr(pos, VALUE_MARK, bytes);
-   if (p == NULL)    /* No such value */
+  for (i = 1; i < vno; i++) {
+    p = memchr(pos, VALUE_MARK, bytes);
+    if (p == NULL) /* No such value */
     {
-     vm = vno - i;
-     if (svno > 1) sm = svno - 1;
-     pos += bytes;
-     bytes = 0;
-     goto done;
+      vm = vno - i;
+      if (svno > 1)
+        sm = svno - 1;
+      pos += bytes;
+      bytes = 0;
+      goto done;
     }
-   bytes -= (1 + p - pos);
-   pos = p + 1;
+    bytes -= (1 + p - pos);
+    pos = p + 1;
   }
 
- p = memchr(pos, VALUE_MARK, bytes);
- if (p != NULL) bytes = p - pos;    /* Length of value, including end mark */
+  p = memchr(pos, VALUE_MARK, bytes);
+  if (p != NULL)
+    bytes = p - pos; /* Length of value, including end mark */
 
- if (svno == 0) goto done;   /* Replacing whole value */
+  if (svno == 0)
+    goto done; /* Replacing whole value */
 
- if (svno < 1)     /* Appending new subvalue */
+  if (svno < 1) /* Appending new subvalue */
   {
-   if (p != NULL) pos = p;  /* 0553 */
-   else pos += bytes;       /* 0553 */
-   if (bytes) sm = 1;       /* 0553 */
-   bytes = 0;
-   goto done;
+    if (p != NULL)
+      pos = p; /* 0553 */
+    else
+      pos += bytes; /* 0553 */
+    if (bytes)
+      sm = 1; /* 0553 */
+    bytes = 0;
+    goto done;
   }
 
- /* Skip to start subvalue */
+  /* Skip to start subvalue */
 
- for(i = 1; i < svno; i++)
-  {
-   p = memchr(pos, SUBVALUE_MARK, bytes);
-   if (p == NULL)    /* No such subvalue */
+  for (i = 1; i < svno; i++) {
+    p = memchr(pos, SUBVALUE_MARK, bytes);
+    if (p == NULL) /* No such subvalue */
     {
-     sm = svno - i;
-     pos += bytes;
-     bytes = 0;
-     goto done;
+      sm = svno - i;
+      pos += bytes;
+      bytes = 0;
+      goto done;
     }
-   bytes -= (1 + p - pos);
-   pos = p + 1;
+    bytes -= (1 + p - pos);
+    pos = p + 1;
   }
 
- p = memchr(pos, SUBVALUE_MARK, bytes);
- if (p != NULL) bytes = p - pos;    /* Length of subvalue, including end mark */
+  p = memchr(pos, SUBVALUE_MARK, bytes);
+  if (p != NULL)
+    bytes = p - pos; /* Length of subvalue, including end mark */
 
 done:
- /* Now construct new string with 'bytes' bytes omitted starting at 'pos',
+  /* Now construct new string with 'bytes' bytes omitted starting at 'pos',
     inserting fm, vm and sm marks and new data                             */
 
- new_len = src_len - bytes + fm + vm + sm + ins_len;
- new_str = malloc(new_len + 1);
- p = new_str;
+  new_len = src_len - bytes + fm + vm + sm + ins_len;
+  new_str = malloc(new_len + 1);
+  p = new_str;
 
- n = pos - src;    /* Length of leading substring */
- if (n)    
-  {
-   memcpy(p, src, n);
-   p += n;
+  n = pos - src; /* Length of leading substring */
+  if (n) {
+    memcpy(p, src, n);
+    p += n;
   }
 
- while(fm--) *(p++) = FIELD_MARK;
- while(vm--) *(p++) = VALUE_MARK;
- while(sm--) *(p++) = SUBVALUE_MARK;
+  while (fm--)
+    *(p++) = FIELD_MARK;
+  while (vm--)
+    *(p++) = VALUE_MARK;
+  while (sm--)
+    *(p++) = SUBVALUE_MARK;
 
- if (ins_len)
-  {
-   memcpy(p, new, ins_len);
-   p += ins_len;
+  if (ins_len) {
+    memcpy(p, new, ins_len);
+    p += ins_len;
   }
 
- n = src_len - (bytes + n);    /* Length of trailing substring */
- if (n)
-  {
-   memcpy(p, pos + bytes, n);
-   p += n;
+  n = src_len - (bytes + n); /* Length of trailing substring */
+  if (n) {
+    memcpy(p, pos + bytes, n);
+    p += n;
   }
 
- *p = '\0';
- return new_str;
+  *p = '\0';
+  return new_str;
 }
 
 /* ======================================================================
    QMRespond()  -  Respond to request for input                           */
 
-char * DLLEntry QMRespond(response, err)
-   char * response;
-   int * err;
-{
- long int reply_len = 0;
- char * reply;
+char* DLLEntry QMRespond(char* response, int* err) {
+  long int reply_len = 0;
+  char* reply;
 
- if (context_error(CX_EXECUTING)) goto exit_qmrespond;
+  if (context_error(CX_EXECUTING))
+    goto exit_qmrespond;
 
- if (!message_pair(SrvrRespond, response, strlen(response)))
-  {
-   goto exit_qmrespond;
+  if (!message_pair(SrvrRespond, response, strlen(response))) {
+    goto exit_qmrespond;
   }
 
- switch(session[session_idx].server_error)
-  {
-   case SV_OK:
+  switch (session[session_idx].server_error) {
+    case SV_OK:
       session[session_idx].context = CX_CONNECTED;
       /* **** FALL THROUGH **** */
 
-   case SV_PROMPT:
+    case SV_PROMPT:
       reply_len = buff_bytes - offsetof(INBUFF, data.execute.reply);
       break;
 
-   case SV_ERROR:      /* Probably QMRespond() used when not expected */
+    case SV_ERROR: /* Probably QMRespond() used when not expected */
       break;
 
-   case SV_ON_ERROR:
+    case SV_ON_ERROR:
       session[session_idx].context = CX_CONNECTED;
       Abort("EXECUTE generated an abort event", TRUE);
       break;
   }
 
 exit_qmrespond:
- reply = malloc(reply_len + 1);
- memcpy(reply, buff->data.execute.reply, reply_len);
- reply[reply_len] = '\0';
- *err = session[session_idx].server_error;
- return reply;
+  reply = malloc(reply_len + 1);
+  memcpy(reply, buff->data.execute.reply, reply_len);
+  reply[reply_len] = '\0';
+  *err = session[session_idx].server_error;
+  return reply;
 }
 
 /* ======================================================================
    QMSelect()  - Generate select list                                     */
 
-void DLLEntry QMSelect(fno, listno)
-   int fno;
-   int listno;
-{
- struct {
-         short int fno;
-         short int listno;
-        } ALIGN2 packet;
+void DLLEntry QMSelect(int fno, int listno) {
+  struct {
+    short int fno;
+    short int listno;
+  } ALIGN2 packet;
 
+  if (context_error(CX_CONNECTED))
+    goto exit_qmselect;
 
- if (context_error(CX_CONNECTED)) goto exit_qmselect;
+  packet.fno = ShortInt(fno);
+  packet.listno = ShortInt(listno);
 
- packet.fno = ShortInt(fno);
- packet.listno = ShortInt(listno);
-
- if (!message_pair(SrvrSelect, (char *)&packet, sizeof(packet)))
-  {
-   goto exit_qmselect;
+  if (!message_pair(SrvrSelect, (char*)&packet, sizeof(packet))) {
+    goto exit_qmselect;
   }
 
- switch(session[session_idx].server_error)
-  {
-   case SV_OK:
+  switch (session[session_idx].server_error) {
+    case SV_OK:
       break;
 
-   case SV_ON_ERROR:
+    case SV_ON_ERROR:
       Abort("Select generated an abort event", TRUE);
       break;
   }
- 
+
 exit_qmselect:
- return;
+  return;
 }
 
 /* ======================================================================
    QMSelectIndex()  - Generate select list from index entry               */
 
-void DLLEntry QMSelectIndex(fno, index_name, index_value, listno)
-   short int fno;
-   char * index_name;
-   char * index_value;
-   short int listno;
-{
- struct {
-         short int fno;
-         short int listno;
-         short int name_len;
-         char index_name[255+1];
-         short int data_len_place_holder;      /* Index name is actually... */
-         char index_data_place_holder[255+1];  /* ...var length */
-        } packet;
- short int n;
- char * p;
+void DLLEntry QMSelectIndex(short int fno,
+                            char* index_name,
+                            char* index_value,
+                            short int listno) {
+  struct {
+    short int fno;
+    short int listno;
+    short int name_len;
+    char index_name[255 + 1];
+    short int data_len_place_holder;       /* Index name is actually... */
+    char index_data_place_holder[255 + 1]; /* ...var length */
+  } packet;
+  short int n;
+  char* p;
 
+  if (context_error(CX_CONNECTED))
+    goto exit_qmselectindex;
 
- if (context_error(CX_CONNECTED)) goto exit_qmselectindex;
+  packet.fno = ShortInt(fno);
+  packet.listno = ShortInt(listno);
 
- packet.fno = ShortInt(fno);
- packet.listno = ShortInt(listno);
+  /* Insert index name */
 
- /* Insert index name */
+  n = strlen(index_name);
+  packet.name_len = ShortInt(n);
+  p = packet.index_name;
+  memcpy(p, index_name, n);
+  p += n;
+  if (n & 1)
+    *(p++) = '\0';
 
- n = strlen(index_name);
- packet.name_len = ShortInt(n);
- p = packet.index_name;
- memcpy(p, index_name, n);
- p += n;
- if (n & 1) *(p++) = '\0';
+  /* Insert index value */
 
- /* Insert index value */
+  n = strlen(index_value); /* 0267 */
+  *((short int*)p) = ShortInt(n);
+  p += sizeof(short int);
+  memcpy(p, index_value, n);
+  p += n;
+  if (n & 1)
+    *(p++) = '\0';
 
- n = strlen(index_value);   /* 0267 */
- *((short int *)p) = ShortInt(n);
- p += sizeof(short int);
- memcpy(p, index_value, n);
- p += n;
- if (n & 1) *(p++) = '\0';
-
-
- if (!message_pair(SrvrSelectIndex, (char *)&packet, p - (char *)&packet))
-  {
-   goto exit_qmselectindex;
+  if (!message_pair(SrvrSelectIndex, (char*)&packet, p - (char*)&packet)) {
+    goto exit_qmselectindex;
   }
 
- switch(session[session_idx].server_error)
-  {
-   case SV_OK:
+  switch (session[session_idx].server_error) {
+    case SV_OK:
       break;
 
-   case SV_ON_ERROR:
+    case SV_ON_ERROR:
       Abort("SelectIndex generated an abort event", TRUE);
       break;
   }
- 
+
 exit_qmselectindex:
- return;
+  return;
 }
 
 /* ======================================================================
    QMSelectLeft()  - Scan index position to left
    QMSelectRight()  - Scan index position to right                        */
 
-char *  DLLEntry QMSelectLeft(fno, index_name, listno)
-   short int fno;
-   char * index_name;
-   short int listno;
-{
- return SelectLeftRight(fno, index_name, listno, SrvrSelectLeft);
+char* DLLEntry QMSelectLeft(short int fno, char* index_name, short int listno) {
+  return SelectLeftRight(fno, index_name, listno, SrvrSelectLeft);
 }
 
-char * DLLEntry QMSelectRight(fno, index_name, listno)
-   short int fno;
-   char * index_name;
-   short int listno;
-{
- return SelectLeftRight(fno, index_name, listno, SrvrSelectRight);
+char* DLLEntry QMSelectRight(short int fno,
+                             char* index_name,
+                             short int listno) {
+  return SelectLeftRight(fno, index_name, listno, SrvrSelectRight);
 }
 
-Private char * SelectLeftRight(fno, index_name, listno, mode)
-   short int fno;
-   char * index_name;
-   short int listno;
-   short int mode;
-{
- long int key_len = 0;
- char * key;
- struct {
-         short int fno;
-         short int listno;
-         char index_name[255+1];
-        } packet;
- short int n;
- char * p;
+Private char* SelectLeftRight(short int fno,
+                              char* index_name,
+                              short int listno,
+                              short int mode) {
+  long int key_len = 0;
+  char* key;
+  struct {
+    short int fno;
+    short int listno;
+    char index_name[255 + 1];
+  } packet;
+  short int n;
+  char* p;
 
+  if (!context_error(CX_CONNECTED)) {
+    packet.fno = ShortInt(fno);
+    packet.listno = ShortInt(listno);
 
- if (!context_error(CX_CONNECTED))
-  {
-   packet.fno = ShortInt(fno);
-   packet.listno = ShortInt(listno);
+    /* Insert index name */
 
-   /* Insert index name */
+    n = strlen(index_name);
+    p = packet.index_name;
+    memcpy(p, index_name, n);
+    p += n;
 
-   n = strlen(index_name);
-   p = packet.index_name;
-   memcpy(p, index_name, n);
-   p += n;
-
-   if (message_pair(mode, (char *)&packet, p - (char *)&packet))
-    {
-     switch(session[session_idx].server_error)
-      {
-       case SV_OK:
+    if (message_pair(mode, (char*)&packet, p - (char*)&packet)) {
+      switch (session[session_idx].server_error) {
+        case SV_OK:
           key_len = buff_bytes - offsetof(INBUFF, data.selectleft.key);
           break;
 
-       case SV_ON_ERROR:
+        case SV_ON_ERROR:
           Abort("SelectLeft / SelectRight generated an abort event", TRUE);
           break;
       }
-    } 
+    }
   }
 
- key = malloc(key_len + 1);
- memcpy(key, buff->data.selectleft.key, key_len);
- key[key_len] = '\0';
- return key;
+  key = malloc(key_len + 1);
+  memcpy(key, buff->data.selectleft.key, key_len);
+  key[key_len] = '\0';
+  return key;
 }
 
 /* ======================================================================
    QMSetLeft()  - Set index position at extreme left
    QMSetRight()  - Set index position at extreme right                    */
 
-void DLLEntry QMSetLeft(fno, index_name)
-   short int fno;
-   char * index_name;
-{
- SetLeftRight(fno, index_name, SrvrSetLeft);
+void DLLEntry QMSetLeft(short int fno, char* index_name) {
+  SetLeftRight(fno, index_name, SrvrSetLeft);
 }
 
-void DLLEntry QMSetRight(fno, index_name)
-   short int fno;
-   char * index_name;
-{
- SetLeftRight(fno, index_name, SrvrSetRight);
+void DLLEntry QMSetRight(short int fno, char* index_name) {
+  SetLeftRight(fno, index_name, SrvrSetRight);
 }
 
-Private void SetLeftRight(fno, index_name, mode)
-   short int fno;
-   char * index_name;
-   short int mode;
-{
- struct {
-         short int fno;
-         char index_name[255+1];
-        } packet;
- short int n;
- char * p;
+Private void SetLeftRight(short int fno, char* index_name, short int mode) {
+  struct {
+    short int fno;
+    char index_name[255 + 1];
+  } packet;
+  short int n;
+  char* p;
 
+  if (!context_error(CX_CONNECTED)) {
+    packet.fno = ShortInt(fno);
 
- if (!context_error(CX_CONNECTED))
-  {
-   packet.fno = ShortInt(fno);
+    /* Insert index name */
 
-   /* Insert index name */
+    n = strlen(index_name);
+    p = packet.index_name;
+    memcpy(p, index_name, n);
+    p += n;
 
-   n = strlen(index_name);
-   p = packet.index_name;
-   memcpy(p, index_name, n);
-   p += n;
-
-   if (message_pair(mode, (char *)&packet, p - (char *)&packet))
-    {
-     switch(session[session_idx].server_error)
-      {
-       case SV_OK:
+    if (message_pair(mode, (char*)&packet, p - (char*)&packet)) {
+      switch (session[session_idx].server_error) {
+        case SV_OK:
           break;
 
-       case SV_ON_ERROR:
+        case SV_ON_ERROR:
           Abort("SetLeft / SetRight generated an abort event", TRUE);
           break;
       }
@@ -2584,1202 +2416,1135 @@ Private void SetLeftRight(fno, index_name, mode)
 /* ======================================================================
    QMSetSession()  -  Set session index                                   */
 
-int DLLEntry QMSetSession(int idx)
-{
- if ((idx < 0) || (idx >= MAX_SESSIONS)
-    || (session[idx].context == CX_DISCONNECTED))
-  {
-   return FALSE;
+int DLLEntry QMSetSession(int idx) {
+  if ((idx < 0) || (idx >= MAX_SESSIONS) ||
+      (session[idx].context == CX_DISCONNECTED)) {
+    return FALSE;
   }
 
- session_idx = idx;
- return TRUE;
+  session_idx = idx;
+  return TRUE;
 }
 
 /* ======================================================================
    QMStatus()  -  Return STATUS() value                                   */
 
-int DLLEntry QMStatus()
-{
- return session[session_idx].qm_status;
+int DLLEntry QMStatus() {
+  return session[session_idx].qm_status;
 }
 
 /* ======================================================================
    QMWrite()  -  Write record                                             */
 
-void DLLEntry QMWrite(fno, id, data)
-   int fno;
-   char * id;
-   char * data;
-{
- write_record(SrvrWrite, fno, id, data);
+void DLLEntry QMWrite(int fno, char* id, char* data) {
+  write_record(SrvrWrite, fno, id, data);
 }
 
 /* ======================================================================
    QMWriteu()  -  Write record, retaining lock                            */
 
-void DLLEntry QMWriteu(fno, id, data)
-   int fno;
-   char * id;
-   char * data;
-{
- write_record(SrvrWriteu, fno, id, data);
+void DLLEntry QMWriteu(int fno, char* id, char* data) {
+  write_record(SrvrWriteu, fno, id, data);
 }
 
 /* ======================================================================
    context_error()  - Check for appropriate context                       */
 
-Private bool context_error(expected)
-   short int expected;
-{
- char * p;
+Private bool context_error(short int expected) {
+  /* the char* p throws a warning about the variable being set, but never used.
+ * The annoying thing about this is that p is being set to useful values,
+ * but that detailed information is never making it out of the routine.
+ * It appears that many of these extended descriptions are also living
+ * in qmclient.c where they're used as part of a Windows message box
+ * output.  I'm going to comment out the use here in order to clean up the
+ * error, but some method of leveraging this extended information should be
+ * developed. -gwb 23Feb20
+ */
+  // char* p; triggers a variable set but never used warning.
 
- if (session[session_idx].context != expected)
-  {
-   switch(session[session_idx].context)
-    {
-     case CX_DISCONNECTED:
-        p = "A server function has been attempted when no connection has been established";
+  if (session[session_idx].context != expected) {
+    switch (session[session_idx].context) {
+      case CX_DISCONNECTED:
+        //   p = "A server function has been attempted when no connection has been "
+        //       "established";
         break;
 
-     case CX_CONNECTED:
-        switch(expected)
-         {
+      case CX_CONNECTED:
+        switch (expected) {
           case CX_DISCONNECTED:
-             p = "A function has been attempted which is not allowed when a connection has been established";
-             break;
+            // p = "A function has been attempted which is not allowed when a "
+            //     "connection has been established";
+            break;
 
           case CX_EXECUTING:
-             p = "Cannot send a response or end a command when not executing a server command";
-             break;
-         }
+            // p = "Cannot send a response or end a command when not executing a "
+            //     "server command";
+            break;
+        }
         break;
 
-     case CX_EXECUTING:
-        p = "A new server function has been attempted while executing a server command";
+      case CX_EXECUTING:
+        //   p = "A new server function has been attempted while executing a server "
+        //       "command";
         break;
 
-     default:
-        p = "A function has been attempted in the wrong context";
+      default:
+        // p = "A function has been attempted in the wrong context";
         break;
     }
 
-   return TRUE;
+    return TRUE;
   }
 
- return FALSE;
+  return FALSE;
 }
 
 /* ====================================================================== */
 
-Private void delete_record(mode, fno, id)
-   short int mode;
-   int fno;
-   char * id;
-{
- int id_len;
- struct {
-         short int fno;
-         char id[MAX_ID_LEN];
-        } ALIGN2 packet;
+Private void delete_record(short int mode, int fno, char* id) {
+  int id_len;
+  struct {
+    short int fno;
+    char id[MAX_ID_LEN];
+  } ALIGN2 packet;
 
+  if (context_error(CX_CONNECTED))
+    goto exit_delete;
 
- if (context_error(CX_CONNECTED)) goto exit_delete;
+  packet.fno = ShortInt(fno);
 
- packet.fno = ShortInt(fno);
+  id_len = strlen(id);
+  if ((id_len < 1) || (id_len > MAX_ID_LEN)) {
+    session[session_idx].server_error = SV_ON_ERROR;
+    session[session_idx].qm_status = ER_IID;
+  } else {
+    memcpy(packet.id, id, id_len);
 
- id_len = strlen(id);
- if ((id_len < 1) || (id_len > MAX_ID_LEN))
-  {
-   session[session_idx].server_error = SV_ON_ERROR;
-   session[session_idx].qm_status = ER_IID;
-  }
- else
-  {
-   memcpy(packet.id, id, id_len);
-
-   if (!message_pair(mode, (char *)&packet, id_len + 2))
-    {
-     goto exit_delete;
+    if (!message_pair(mode, (char*)&packet, id_len + 2)) {
+      goto exit_delete;
     }
   }
 
- switch(session[session_idx].server_error)
-  {
-   case SV_OK:
+  switch (session[session_idx].server_error) {
+    case SV_OK:
       break;
 
-   case SV_ON_ERROR:
+    case SV_ON_ERROR:
       Abort("DELETE generated an abort event", TRUE);
       break;
 
-   case SV_LOCKED:
-   case SV_ELSE:
-   case SV_ERROR:
+    case SV_LOCKED:
+    case SV_ELSE:
+    case SV_ERROR:
       break;
   }
- 
+
 exit_delete:
- return;
+  return;
 }
 
 /* ======================================================================
    read_record()  -  Common path for READ, READL and READU                */
 
-Private char * read_record(fno, id, err, mode)
-   int fno;
-   char * id;
-   int * err;
-   int mode;
-{
- long int status;
- long int rec_len = 0;
- int id_len;
- char * rec;
- struct {
-         short int fno;
-         char id[MAX_ID_LEN];
-        } ALIGN2 packet;
+Private char* read_record(int fno, char* id, int* err, int mode) {
+  long int status;
+  long int rec_len = 0;
+  int id_len;
+  char* rec;
+  struct {
+    short int fno;
+    char id[MAX_ID_LEN];
+  } ALIGN2 packet;
 
+  if (context_error(CX_CONNECTED))
+    goto exit_read;
 
- if (context_error(CX_CONNECTED)) goto exit_read;
-
- id_len = strlen(id);
- if ((id_len < 1) || (id_len > MAX_ID_LEN))
-  {
-   session[session_idx].qm_status = ER_IID;
-   status = SV_ON_ERROR;
-   goto exit_read;
+  id_len = strlen(id);
+  if ((id_len < 1) || (id_len > MAX_ID_LEN)) {
+    session[session_idx].qm_status = ER_IID;
+    status = SV_ON_ERROR;
+    goto exit_read;
   }
 
- packet.fno = ShortInt(fno);
- memcpy(packet.id, id, id_len);
- 
- if (!message_pair(mode, (char *)&packet, id_len + 2))
-  {
-   goto exit_read;
+  packet.fno = ShortInt(fno);
+  memcpy(packet.id, id, id_len);
+
+  if (!message_pair(mode, (char*)&packet, id_len + 2)) {
+    goto exit_read;
   }
 
- switch(session[session_idx].server_error)
-  {
-   case SV_OK:
+  switch (session[session_idx].server_error) {
+    case SV_OK:
       rec_len = buff_bytes - offsetof(INBUFF, data.read.rec);
       break;
 
-   case SV_ON_ERROR:
+    case SV_ON_ERROR:
       Abort("Read generated an abort event", TRUE);
       break;
 
-   case SV_LOCKED:
-   case SV_ELSE:
-   case SV_ERROR:
+    case SV_LOCKED:
+    case SV_ELSE:
+    case SV_ERROR:
       break;
   }
- 
- status = session[session_idx].server_error;
- 
+
+  status = session[session_idx].server_error;
+
 exit_read:
- rec = malloc(rec_len + 1);
- memcpy(rec, buff->data.read.rec, rec_len);
- rec[rec_len] = '\0';
- *err = status;
- return rec;
+  rec = malloc(rec_len + 1);
+  memcpy(rec, buff->data.read.rec, rec_len);
+  rec[rec_len] = '\0';
+  *err = status;
+  return rec;
 }
 
 /* ====================================================================== */
 
-Private void write_record(mode, fno, id, data)
-   short int mode;
-   short int fno;
-   char * id;
-   char * data;
-{
- int id_len;
- long int data_len;
- int bytes;
- INBUFF * q;
- struct PACKET {
-                short int fno;
-                short int id_len;
-                char id[1];
-               } ALIGN2;
+Private void write_record(short int mode, short int fno, char* id, char* data) {
+  int id_len;
+  long int data_len;
+  int bytes;
+  INBUFF* q;
+  struct PACKET {
+    short int fno;
+    short int id_len;
+    char id[1];
+  } ALIGN2;
 
+  if (context_error(CX_CONNECTED))
+    goto exit_write;
 
- if (context_error(CX_CONNECTED)) goto exit_write;
-
- id_len = strlen(id);
- if ((id_len < 1) || (id_len > MAX_ID_LEN))
-  {
-   Abort("Illegal record id", FALSE);
-   session[session_idx].qm_status = ER_IID;
-   goto exit_write;
+  id_len = strlen(id);
+  if ((id_len < 1) || (id_len > MAX_ID_LEN)) {
+    Abort("Illegal record id", FALSE);
+    session[session_idx].qm_status = ER_IID;
+    goto exit_write;
   }
 
- data_len = strlen(data);
+  data_len = strlen(data);
 
- /* Ensure buffer is big enough for this record */
+  /* Ensure buffer is big enough for this record */
 
- bytes = sizeof(struct PACKET) + id_len + data_len;
- if (bytes >= buff_size)     /* Must reallocate larger buffer */
+  bytes = sizeof(struct PACKET) + id_len + data_len;
+  if (bytes >= buff_size) /* Must reallocate larger buffer */
   {
-   bytes = (bytes + BUFF_INCR - 1) & ~BUFF_INCR;
-   q = (INBUFF *)malloc(bytes);
-   if (q == NULL)
-    {
-     Abort("Insufficient memory", FALSE);
-     session[session_idx].qm_status = ER_SRVRMEM;
-     goto exit_write;
+    bytes = (bytes + BUFF_INCR - 1) & ~BUFF_INCR;
+    q = (INBUFF*)malloc(bytes);
+    if (q == NULL) {
+      Abort("Insufficient memory", FALSE);
+      session[session_idx].qm_status = ER_SRVRMEM;
+      goto exit_write;
     }
-   free(buff);
-   buff = q;
-   buff_size = bytes;
+    free(buff);
+    buff = q;
+    buff_size = bytes;
   }
 
- /* Set up outgoing packet */
+  /* Set up outgoing packet */
 
- ((struct PACKET *)buff)->fno = ShortInt(fno);
- ((struct PACKET *)buff)->id_len = ShortInt(id_len);
- memcpy(((struct PACKET *)buff)->id, id, id_len);
- memcpy(((struct PACKET *)buff)->id + id_len, data, data_len);
+  ((struct PACKET*)buff)->fno = ShortInt(fno);
+  ((struct PACKET*)buff)->id_len = ShortInt(id_len);
+  memcpy(((struct PACKET*)buff)->id, id, id_len);
+  memcpy(((struct PACKET*)buff)->id + id_len, data, data_len);
 
- if (!message_pair(mode, (char *)buff, offsetof(struct PACKET, id) + id_len + data_len))
-  {
-   goto exit_write;
+  if (!message_pair(mode, (char*)buff,
+                    offsetof(struct PACKET, id) + id_len + data_len)) {
+    goto exit_write;
   }
 
- switch(session[session_idx].server_error)
-  {
-   case SV_OK:
+  switch (session[session_idx].server_error) {
+    case SV_OK:
       break;
 
-   case SV_ON_ERROR:
+    case SV_ON_ERROR:
       Abort("Write generated an abort event", TRUE);
       break;
 
-   case SV_LOCKED:
-   case SV_ELSE:
-   case SV_ERROR:
+    case SV_LOCKED:
+    case SV_ELSE:
+    case SV_ERROR:
       break;
   }
 
 exit_write:
- return;
+  return;
 }
 
 /* ====================================================================== */
 
-Private bool GetResponse()
-{
- if (!read_packet()) return FALSE;
+Private bool GetResponse() {
+  if (!read_packet())
+    return FALSE;
 
- if (session[session_idx].server_error == SV_ERROR)
-  {
-   strcpy(session[session_idx].qmerror,"Unable to retrieve error text");
-   write_packet(SrvrGetError, NULL, 0);
-   if (read_packet()) strcpy(session[session_idx].qmerror,buff->data.error.text);
-   return FALSE;
+  if (session[session_idx].server_error == SV_ERROR) {
+    strcpy(session[session_idx].qmerror, "Unable to retrieve error text");
+    write_packet(SrvrGetError, NULL, 0);
+    if (read_packet())
+      strcpy(session[session_idx].qmerror, buff->data.error.text);
+    return FALSE;
   }
 
- return TRUE;
+  return TRUE;
 }
 
 /* ====================================================================== */
 
-Private void Abort(msg, use_response)
-   char * msg;
-   bool use_response;
-{
- char abort_msg[1024+1];
- int n;
- char * p;
+Private void Abort(char* msg, bool use_response) {
+  char abort_msg[1024 + 1];
+  int n;
+  char* p;
 
- strcpy(abort_msg, msg);
+  strcpy(abort_msg, msg);
 
- if (use_response)
-  {
-   n = buff_bytes - offsetof(INBUFF, data.abort.message);
-   if (n > 0)
-    {
-     p = abort_msg + strlen(msg);
-     *(p++) = '\r';
-     memcpy(p, buff->data.abort.message, n);
-     *(p + n) = '\0';
+  if (use_response) {
+    n = buff_bytes - offsetof(INBUFF, data.abort.message);
+    if (n > 0) {
+      p = abort_msg + strlen(msg);
+      *(p++) = '\r';
+      memcpy(p, buff->data.abort.message, n);
+      *(p + n) = '\0';
     }
   }
 
- fprintf(stderr, "%s\n", abort_msg);
+  fprintf(stderr, "%s\n", abort_msg);
 }
 
 /* ====================================================================== */
 
-Private char * memstr(str, substr, str_len, substr_len)
-   char * str;
-   char * substr;
-   int str_len;
-   int substr_len;
-{
- char * p;
+Private char* memstr(char* str, char* substr, int str_len, int substr_len) {
+  char* p;
 
- while(str_len != 0)
-  {
-   p = memchr(str, *substr, str_len);
-   if (p == NULL) break;
+  while (str_len != 0) {
+    p = memchr(str, *substr, str_len);
+    if (p == NULL)
+      break;
 
-   str_len -= p - str;
-   if (str_len < substr_len) break;
+    str_len -= p - str;
+    if (str_len < substr_len)
+      break;
 
-   if (memcmp(p, substr, substr_len) == 0) return p;
+    if (memcmp(p, substr, substr_len) == 0)
+      return p;
 
-   str = p + 1;
-   str_len--;
+    str = p + 1;
+    str_len--;
   }
 
- return NULL;
+  return NULL;
 }
 
 /* ======================================================================
    match_template()  -  Match string against template                     */
 
-Private bool match_template(string, template, component, return_component)
-   char * string;
-   char * template;
-   short int component;        /* Current component number - 1 (incremented) */
-   short int return_component; /* Required component number */
-{
- bool not;
- short int n;
- short int m;
- short int z;
- char * p;
- char delimiter;
- char * start;
+Private bool match_template(
+    char* string,
+    char* template,
+    short int component, /* Current component number - 1 (incremented) */
+    short int return_component /* Required component number */) {
 
 
- while(*template != '\0')
-  {
-   component++;
-   if (component == return_component) component_start = string;
-   else if (component == return_component + 1) component_end = string;
+  bool not;
+  short int n;
+  short int m;
+  short int z;
+  char* p;
+  char delimiter;
+  char* start;
 
-   start = template;
+  while (*template != '\0') {
+    component++;
+    if (component == return_component)
+      component_start = string;
+    else if (component == return_component + 1)
+      component_end = string;
 
-   if (*template == '~')
-    {
-     not = TRUE;
-     template++;
-    }
-   else not = FALSE;
+    start = template;
 
-   if (IsDigit(*template))
-    {
-     n = 0;
-     do {
-         n = (n * 10) + (*(template++) - '0');
-        } while(IsDigit(*template));
+    if (*template == '~') {
+      not = TRUE;
+      template ++;
+    } else
+      not = FALSE;
 
-     switch(UpperCase(*(template++)))
-      {
-       case '\0':              /* String longer than template */
+    if (IsDigit(*template)) {
+      n = 0;
+      do {
+        n = (n * 10) + (*(template ++) - '0');
+      } while (IsDigit(*template));
+
+      switch (UpperCase(*(template ++))) {
+        case '\0': /* String longer than template */
           /* 0115 rewritten */
           n = --template - start;
-          if (n == 0) return FALSE;
-          if (!memcmp(start, string, n) == not) return FALSE;
+          if (n == 0)
+            return FALSE;
+          /* encapsulating the !memcmp() in parens removes a compiler
+           * warning about ambiguity.
+           */
+          if ((!memcmp(start, string, n)) == not)
+            return FALSE;
           string += n;
           break;
- 
-       case 'A':               /* nA  Alphabetic match */
-          if (n)
-           {
-            while(n--)
-             {
-              if (*string == '\0') return FALSE;
-              if ((IsAlpha(*string) != 0) == not) return FALSE;
+
+        case 'A': /* nA  Alphabetic match */
+          if (n) {
+            while (n--) {
+              if (*string == '\0')
+                return FALSE;
+              if ((IsAlpha(*string) != 0) == not)
+                return FALSE;
               string++;
-             }
-           }
-          else                 /* 0A */
-           {
+            }
+          } else /* 0A */
+          {
             if (*template != '\0') /* Further template items exist */
-             {
+            {
               /* Match as many as possible further chaarcters */
 
-              for (z = 0, p = string; ; z++, p++)
-               {
-                if ((*p == '\0') || ((IsAlpha(*p) != 0) == not)) break;
-               }
+              for (z = 0, p = string;; z++, p++) {
+                if ((*p == '\0') || ((IsAlpha(*p) != 0) == not))
+                  break;
+              }
 
               /* z now holds number of contiguous alphabetic characters ahead
                  of current position. Starting one byte after the final
                  alphabetic character, backtrack until the remainder of the
                  string matches the remainder of the template.               */
 
-              for (p = string + z; z-- >= 0; p--)
-               {
-                if (match_template(p, template, component, return_component))
-                 {
+              for (p = string + z; z-- >= 0; p--) {
+                if (match_template(p, template, component, return_component)) {
                   goto match_found;
-                 }
-               }
+                }
+              }
               return FALSE;
-             }
-            else
-             {
-              while((*string != '\0') && ((IsAlpha(*string) != 0) != not))
-               {
+            } else {
+              while ((*string != '\0') && ((IsAlpha(*string) != 0) != not)) {
                 string++;
-               }
-             }
-           }
+              }
+            }
+          }
           break;
 
-       case 'N':               /* nN  Numeric match */
-          if (n)
-           {
-            while(n--)
-             {
-              if (*string == '\0') return FALSE;
-              if ((IsDigit(*string) != 0) == not) return FALSE;
+        case 'N': /* nN  Numeric match */
+          if (n) {
+            while (n--) {
+              if (*string == '\0')
+                return FALSE;
+              if ((IsDigit(*string) != 0) == not)
+                return FALSE;
               string++;
-             }
-           }
-          else                 /* 0N */
-           {
+            }
+          } else /* 0N */
+          {
             if (*template != '\0') /* Further template items exist */
-             {
+            {
               /* Match as many as possible further chaarcters */
-  
-              for (z = 0, p = string; ; z++, p++)
-               {
-                if ((*p == '\0') || ((IsDigit(*p) != 0) == not)) break;
-               }
+
+              for (z = 0, p = string;; z++, p++) {
+                if ((*p == '\0') || ((IsDigit(*p) != 0) == not))
+                  break;
+              }
 
               /* z now holds number of contiguous numeric characters ahead
                  of current position. Starting one byte after the final
                  numeric character, backtrack until the remainder of the
                  string matches the remainder of the template.               */
 
-              for (p = string + z; z-- >= 0; p--)
-               {
-                if (match_template(p, template, component, return_component))
-                 {
+              for (p = string + z; z-- >= 0; p--) {
+                if (match_template(p, template, component, return_component)) {
                   goto match_found;
-                 }
-               }
+                }
+              }
               return FALSE;
-             }
-            else
-             {
-              while((*string != '\0') && ((IsDigit(*string) != 0) != not))
-               {
+            } else {
+              while ((*string != '\0') && ((IsDigit(*string) != 0) != not)) {
                 string++;
-               }
-             }
-           }
+              }
+            }
+          }
           break;
 
-       case 'X':               /* nX  Unrestricted match */
-          if (n)
-           {
-            while(n--)
-             {
-              if (*(string++) == '\0') return FALSE;
-             }
-           }
-          else                 /* 0X */
-           {
-            if (*template != '\0')    /* Further template items exist */
-             {
+        case 'X': /* nX  Unrestricted match */
+          if (n) {
+            while (n--) {
+              if (*(string++) == '\0')
+                return FALSE;
+            }
+          } else /* 0X */
+          {
+            if (*template != '\0') /* Further template items exist */
+            {
               /* Match as few as possible further characters */
-  
+
               do {
-                  if (match_template(string, template, component, return_component))
-                   {
-                    goto match_found;
-                   }
-                 } while(*(string++) != '\0');
+                if (match_template(string, template, component,
+                                   return_component)) {
+                  goto match_found;
+                }
+              } while (*(string++) != '\0');
               return FALSE;
-             }
+            }
             goto match_found;
-           }
+          }
           break;
 
-       case '-':               /* Count range */
-          if (!IsDigit(*template)) return FALSE;
+        case '-': /* Count range */
+          if (!IsDigit(*template))
+            return FALSE;
           m = 0;
           do {
-              m = (m * 10) + (*(template++) - '0');
-             } while(IsDigit(*template));
+            m = (m * 10) + (*(template ++) - '0');
+          } while (IsDigit(*template));
           m -= n;
-          if (m < 0) return FALSE;
+          if (m < 0)
+            return FALSE;
 
-          switch(UpperCase(*(template++)))
-           {
-            case '\0':              /* String longer than template */
-               n = --template - start;
-               if (n)          /* We have found a trailing unquoted literal */
-                {
-                 if ((memcmp(start, string, n) == 0) != not) return TRUE;
-                }
-               return FALSE;
+          switch (UpperCase(*(template ++))) {
+            case '\0': /* String longer than template */
+              n = --template - start;
+              if (n) /* We have found a trailing unquoted literal */
+              {
+                if ((memcmp(start, string, n) == 0) != not)
+                  return TRUE;
+              }
+              return FALSE;
 
-            case 'A':               /* n-mA  Alphabetic match */
-               /* Match n alphabetic items */
- 
-              while(n--)
-                {
-                 if (*string == '\0') return FALSE;
-                 if ((IsAlpha(*string) != 0) == not) return FALSE;
-                 string++;
-                }
+            case 'A': /* n-mA  Alphabetic match */
+                      /* Match n alphabetic items */
 
-               /* We may match up to m further alphabetic characters but must
+              while (n--) {
+                if (*string == '\0')
+                  return FALSE;
+                if ((IsAlpha(*string) != 0) == not)
+                  return FALSE;
+                string++;
+              }
+
+              /* We may match up to m further alphabetic characters but must
                   also match as many as possible.  Check how many alphabetic
                   characters there are (up to m) and then backtrack trying
                   matches against the remaining template (if any).           */
 
-               for(z = 0, p = string; z < m; z++, p++)
-                {
-                 if ((*p == '\0') || ((IsAlpha(*p) != 0) == not)) break;
-                }
+              for (z = 0, p = string; z < m; z++, p++) {
+                if ((*p == '\0') || ((IsAlpha(*p) != 0) == not))
+                  break;
+              }
 
-               /* z now holds max number of matchable characters.
+              /* z now holds max number of matchable characters.
                   Try match at each of these positions and also at the next
                   position (Even if it is the end of the string)            */
 
-               if (*template != '\0')    /* Further template items exist */
-                {
-                 for (p = string + z; z-- >= 0; p--)
-                  {
-                   if (match_template(p, template, component, return_component))
-                    {
-                     goto match_found;
-                    }
+              if (*template != '\0') /* Further template items exist */
+              {
+                for (p = string + z; z-- >= 0; p--) {
+                  if (match_template(p, template, component,
+                                     return_component)) {
+                    goto match_found;
                   }
-                 return FALSE;
                 }
-               else string += z;
-               break;
+                return FALSE;
+              } else
+                string += z;
+              break;
 
-            case 'N':               /* n-mN  Numeric match */
-               /* Match n numeric items */
- 
-              while(n--)
-                {
-                 if (*string == '\0') return FALSE;
-                 if ((IsDigit(*string) != 0) == not) return FALSE;
-                 string++;
-                }
+            case 'N': /* n-mN  Numeric match */
+                      /* Match n numeric items */
 
-               /* We may match up to m further numeric characters but must
+              while (n--) {
+                if (*string == '\0')
+                  return FALSE;
+                if ((IsDigit(*string) != 0) == not)
+                  return FALSE;
+                string++;
+              }
+
+              /* We may match up to m further numeric characters but must
                   also match as many as possible.  Check how many numeric
                   characters there are (up to m) and then backtrack trying
                   matches against the remaining template (if any).           */
 
-               for(z = 0, p = string; z < m; z++, p++)
-                {
-                 if ((*p == '\0') || ((IsDigit(*p) != 0) == not)) break;
-                }
-             
-               /* z now holds max number of matchable characters.
+              for (z = 0, p = string; z < m; z++, p++) {
+                if ((*p == '\0') || ((IsDigit(*p) != 0) == not))
+                  break;
+              }
+
+              /* z now holds max number of matchable characters.
                   Try match at each of these positions and also at the next
                   position (Even if it is the end of the string)            */
 
-               if (*template != '\0')    /* Further template items exist */
-                {
-                 for (p = string + z; z-- >= 0; p--)
-                  {
-                   if (match_template(p, template, component, return_component))
-                    {
-                     goto match_found;
-                    }
+              if (*template != '\0') /* Further template items exist */
+              {
+                for (p = string + z; z-- >= 0; p--) {
+                  if (match_template(p, template, component,
+                                     return_component)) {
+                    goto match_found;
                   }
-                 return FALSE;
                 }
-               else string += z;
-               break;
+                return FALSE;
+              } else
+                string += z;
+              break;
 
-            case 'X':               /* n-mX  Unrestricted match */
-               /* Match n items of any type */
+            case 'X': /* n-mX  Unrestricted match */
+              /* Match n items of any type */
 
-               while(n--)
-                {
-                 if (*(string++) == '\0') return FALSE;
-                }
+              while (n--) {
+                if (*(string++) == '\0')
+                  return FALSE;
+              }
 
-               /* Match as few as possible up to m further characters */
+              /* Match as few as possible up to m further characters */
 
-               if (*template != '\0')
-                {
-                 while(m--)
-                  {
-                   if (match_template(string, template, component, return_component))
-                    {
-                     goto match_found;
-                    }
-                   string++;
+              if (*template != '\0') {
+                while (m--) {
+                  if (match_template(string, template, component,
+                                     return_component)) {
+                    goto match_found;
                   }
-                 return FALSE;
+                  string++;
                 }
-               else
-                {
-                 if ((signed int)strlen(string) > m) return FALSE;
-                 goto match_found;
-                }
+                return FALSE;
+              } else {
+                if ((signed int)strlen(string) > m)
+                  return FALSE;
+                goto match_found;
+              }
 
             default:
-               /* We have found an unquoted literal */
-               n = --template - start;
-               if ((memcmp(start, string, n) == 0) == not) return FALSE;
-               string += n;
-               break;
-           }
+              /* We have found an unquoted literal */
+              n = --template - start;
+              if ((memcmp(start, string, n) == 0) == not)
+                return FALSE;
+              string += n;
+              break;
+          }
           break;
 
-       default:
+        default:
           /* We have found an unquoted literal */
           n = --template - start;
-          if ((memcmp(start, string, n) == 0) == not) return FALSE;
+          if ((memcmp(start, string, n) == 0) == not)
+            return FALSE;
           string += n;
           break;
       }
-    }
-   else if (memcmp(template, "...", 3) == 0)   /* ... same as 0X */
+    } else if (memcmp(template, "...", 3) == 0) /* ... same as 0X */
     {
-     template += 3;
-     if (not) return FALSE;
-     if (*template != '\0')    /* Further template items exist */
+      template += 3;
+      if (not)
+        return FALSE;
+      if (*template != '\0') /* Further template items exist */
       {
-       /* Match as few as possible further characters */
+        /* Match as few as possible further characters */
 
-       while(*string != '\0')
-        {
-         if (match_template(string, template, component, return_component))
-          {
-           goto match_found;
+        while (*string != '\0') {
+          if (match_template(string, template, component, return_component)) {
+            goto match_found;
           }
-         string++;
+          string++;
         }
-       return FALSE;
+        return FALSE;
       }
-     goto match_found;
-    }
-   else /* Must be literal text item */
+      goto match_found;
+    } else /* Must be literal text item */
     {
-     delimiter = *template;
-     if ((delimiter == '\'') || (delimiter == '"')) /* Quoted literal */
+      delimiter = *template;
+      if ((delimiter == '\'') || (delimiter == '"')) /* Quoted literal */
       {
-       template++;
-       p = strchr(template, (char)delimiter);
-       if (p == NULL) return FALSE;
-       n = p - template;
-       if (n)
-        {
-         if ((memcmp(template, string, n) == 0) == not) return FALSE;
-         string += n;
+        template ++;
+        p = strchr(template, (char)delimiter);
+        if (p == NULL)
+          return FALSE;
+        n = p - template;
+        if (n) {
+          if ((memcmp(template, string, n) == 0) == not)
+            return FALSE;
+          string += n;
         }
-       template += n + 1;
-      }
-     else                /* Unquoted literal. Treat as single character */
+        template += n + 1;
+      } else /* Unquoted literal. Treat as single character */
       {
-       if ((*(template++) == *(string++)) == not) return FALSE;
+        if ((*(template ++) == *(string++)) == not)
+          return FALSE;
       }
     }
   }
 
- if (*string != '\0') return FALSE;  /* String longer than template */
- 
+  if (*string != '\0')
+    return FALSE; /* String longer than template */
+
 match_found:
- return TRUE;
+  return TRUE;
 }
 
 /* ======================================================================
    message_pair()  -  Send packet and receive response                    */
 
-Private bool message_pair(type, data, bytes)
-   int type;
-   char * data;
-   long int bytes;
-{
- if (write_packet(type, data, bytes))
-  {
-   return GetResponse();
+Private bool message_pair(int type, char* data, long int bytes) {
+  if (write_packet(type, data, bytes)) {
+    return GetResponse();
   }
 
- return FALSE;
+  return FALSE;
 }
 
 /* ====================================================================== */
 
-Private char * NullString()
-{
- char * p;
+Private char* NullString() {
+  char* p;
 
- p = malloc(1);
- *p = '\0';
- return p;
+  p = malloc(1);
+  *p = '\0';
+  return p;
 }
 
 /* ======================================================================
    OpenSocket()  -  Open connection to server                            */
 
-Private bool OpenSocket(char * host, short int port)
-{
- bool status = FALSE;
- unsigned long nInterfaceAddr;
- struct hostent * hostdata;
- int nPort;
- struct sockaddr_in sock_addr;
- char ack_buff;
- int n;
- unsigned int n1, n2, n3, n4;
+Private bool OpenSocket(char* host, short int port) {
+  bool status = FALSE;
+  unsigned long nInterfaceAddr;
+  struct hostent* hostdata;
+  int nPort;
+  struct sockaddr_in sock_addr;
+  char ack_buff;
+  int n;
+  unsigned int n1, n2, n3, n4;
 
+  if (port < 0)
+    port = 4243;
 
- if (port < 0) port = 4243;
-
-
- if ((sscanf(host, "%u.%u.%u.%u", &n1, &n2, &n3, &n4) == 4)
-     && (n1 <= 255) && (n2 <= 255) && (n3 <= 255) && (n4 <= 255))
-  {
-   /* Looks like an IP address */
-   nInterfaceAddr = inet_addr(host);
-  }
- else
-  {
-   hostdata = gethostbyname(host);
-   if (hostdata == NULL)
-    {
-     NetErr("gethostbyname()", WSAGetLastError(), h_errno);
-     goto exit_opensocket;
+  if ((sscanf(host, "%u.%u.%u.%u", &n1, &n2, &n3, &n4) == 4) && (n1 <= 255) &&
+      (n2 <= 255) && (n3 <= 255) && (n4 <= 255)) {
+    /* Looks like an IP address */
+    nInterfaceAddr = inet_addr(host);
+  } else {
+    hostdata = gethostbyname(host);
+    if (hostdata == NULL) {
+      NetErr("gethostbyname()", WSAGetLastError(), h_errno);
+      goto exit_opensocket;
     }
 
-   nInterfaceAddr = *((long int *)(hostdata->h_addr));
+    nInterfaceAddr = *((long int*)(hostdata->h_addr));
   }
 
+  nPort = htons(port);
 
- nPort= htons(port);
-
- session[session_idx].sock = socket(AF_INET, SOCK_STREAM, 0);
- if (session[session_idx].sock == INVALID_SOCKET)
-  {
-   NetErr("socket()", WSAGetLastError(), errno);
-   goto exit_opensocket;
+  session[session_idx].sock = socket(AF_INET, SOCK_STREAM, 0);
+  if (session[session_idx].sock == INVALID_SOCKET) {
+    NetErr("socket()", WSAGetLastError(), errno);
+    goto exit_opensocket;
   }
 
- sock_addr.sin_family = AF_INET;
- sock_addr.sin_addr.s_addr = nInterfaceAddr;
- sock_addr.sin_port = nPort;
+  sock_addr.sin_family = AF_INET;
+  sock_addr.sin_addr.s_addr = nInterfaceAddr;
+  sock_addr.sin_port = nPort;
 
- if (connect(session[session_idx].sock, (struct sockaddr *)&sock_addr, sizeof(sock_addr)))
-  {
-   NetErr("connect()", WSAGetLastError(), errno);
-   goto exit_opensocket;
+  if (connect(session[session_idx].sock, (struct sockaddr*)&sock_addr,
+              sizeof(sock_addr))) {
+    NetErr("connect()", WSAGetLastError(), errno);
+    goto exit_opensocket;
   }
 
- n = TRUE;
- if (setsockopt(session[session_idx].sock, IPPROTO_TCP, TCP_NODELAY, (char *)&n, sizeof(int)))
-  {
-   NetErr("setsockopt()", WSAGetLastError(), errno);
-   goto exit_opensocket;
+  n = TRUE;
+  if (setsockopt(session[session_idx].sock, IPPROTO_TCP, TCP_NODELAY, (char*)&n,
+                 sizeof(int))) {
+    NetErr("setsockopt()", WSAGetLastError(), errno);
+    goto exit_opensocket;
   }
 
- /* Wait for an Ack character to arrive before we assume the connection
+  /* Wait for an Ack character to arrive before we assume the connection
     to be open and working. This is necessary because Linux loses anything
     we send before the QM process is up and running.                       */
 
- do {
-     if (recv(session[session_idx].sock, &ack_buff, 1, 0) < 1) goto exit_opensocket;
-    } while(ack_buff != '\x06');
+  do {
+    if (recv(session[session_idx].sock, &ack_buff, 1, 0) < 1)
+      goto exit_opensocket;
+  } while (ack_buff != '\x06');
 
- status = 1;
+  status = 1;
 
 exit_opensocket:
- return status;
+  return status;
 }
 
 /* ======================================================================
    CloseSocket()  -  Close connection to server                          */
 
-Private bool CloseSocket()
-{
- bool status = FALSE;
+Private bool CloseSocket() {
+  bool status = FALSE;
 
- if (session[session_idx].sock == INVALID_SOCKET) goto exit_closesocket;
+  if (session[session_idx].sock == INVALID_SOCKET)
+    goto exit_closesocket;
 
- closesocket(session[session_idx].sock);
- session[session_idx].sock = INVALID_SOCKET;
+  closesocket(session[session_idx].sock);
+  session[session_idx].sock = INVALID_SOCKET;
 
- status = TRUE;
+  status = TRUE;
 
 exit_closesocket:
- return status;
+  return status;
 }
 
 /* ======================================================================
    NetErr                                                               */
 
-static void net_error(char * prefix, int err)
-{
- fprintf(stderr, "Error %d from %s\n", err, prefix);
+static void net_error(char* prefix, int err) {
+  fprintf(stderr, "Error %d from %s\n", err, prefix);
 }
 
 /* ======================================================================
    read_packet()  -  Read a QM data packet                                */
 
-Private bool read_packet()
-{
- int rcvd_bytes;         /* Length of received packet fragment */
- long int packet_bytes;  /* Total length of incoming packet */
- int rcv_len;
- long int n;
- unsigned char * p;
+Private bool read_packet() {
+  int rcvd_bytes;        /* Length of received packet fragment */
+  long int packet_bytes; /* Total length of incoming packet */
+  int rcv_len;
+  long int n;
+  unsigned char* p;
 
- /* 0272 restructured */
- struct {
-         long int packet_length;
-         short int server_error ALIGN2;
-         long int status ALIGN2;
-        } in_packet_header;
- #define IN_PKT_HDR_BYTES 10
+  /* 0272 restructured */
+  struct {
+    long int packet_length;
+    short int server_error ALIGN2;
+    long int status ALIGN2;
+  } in_packet_header;
+#define IN_PKT_HDR_BYTES 10
 
+  if ((!session[session_idx].is_local) &&
+      (session[session_idx].sock == INVALID_SOCKET))
+    return FALSE;
 
- if ((!session[session_idx].is_local)
-     && (session[session_idx].sock == INVALID_SOCKET)) return FALSE;
+  /* Read packet header */
 
- /* Read packet header */ 
+  p = (unsigned char*)&in_packet_header;
+  buff_bytes = 0;
+  do {
+    rcv_len = IN_PKT_HDR_BYTES - buff_bytes;
 
- p = (unsigned char *)&in_packet_header;
- buff_bytes = 0;
- do {
-     rcv_len = IN_PKT_HDR_BYTES - buff_bytes;
+    if (session[session_idx].is_local) {
+      if ((rcvd_bytes = read(session[session_idx].RxPipe[0], p, rcv_len)) < 0)
+        return FALSE;
+    } else {
+      if ((rcvd_bytes = recv(session[session_idx].sock, p, rcv_len, 0)) <= 0)
+        return FALSE;
+    }
+    if (rcvd_bytes <= 0)
+      return FALSE;
 
-     if (session[session_idx].is_local)
-      {
-       if ((rcvd_bytes = read(session[session_idx].RxPipe[0], p, rcv_len)) < 0) return FALSE;
-      }
-     else
-      {
-       if ((rcvd_bytes = recv(session[session_idx].sock, p, rcv_len, 0)) <= 0) return FALSE;
-      }
-     if (rcvd_bytes <= 0) return FALSE;
+    buff_bytes += rcvd_bytes;
+    p += rcvd_bytes;
+  } while (buff_bytes < IN_PKT_HDR_BYTES);
 
-     buff_bytes += rcvd_bytes;
-     p += rcvd_bytes;
-    } while(buff_bytes < IN_PKT_HDR_BYTES);
+  /* Calculate remaining bytes to read */
 
- /* Calculate remaining bytes to read */
+  packet_bytes = LongInt(in_packet_header.packet_length) - IN_PKT_HDR_BYTES;
 
- packet_bytes = LongInt(in_packet_header.packet_length) - IN_PKT_HDR_BYTES;
-
- if (srvr_debug != NULL)
-  {
-   fprintf(srvr_debug, "IN (%ld bytes)\n", packet_bytes);
+  if (srvr_debug != NULL) {
+    fprintf(srvr_debug, "IN (%ld bytes)\n", packet_bytes);
   }
 
- if (packet_bytes >= buff_size)      /* Must reallocate larger buffer */
+  if (packet_bytes >= buff_size) /* Must reallocate larger buffer */
   {
-   free(buff);
-   n = (packet_bytes + BUFF_INCR) & ~(BUFF_INCR - 1);
-   buff = (INBUFF *)malloc(n);
-   if (buff == NULL) return FALSE;
-   buff_size = n;
+    free(buff);
+    n = (packet_bytes + BUFF_INCR) & ~(BUFF_INCR - 1);
+    buff = (INBUFF*)malloc(n);
+    if (buff == NULL)
+      return FALSE;
+    buff_size = n;
 
-   if (srvr_debug != NULL)
-    {
-     fprintf(srvr_debug, "Resized buffer to %ld bytes\n", n);
+    if (srvr_debug != NULL) {
+      fprintf(srvr_debug, "Resized buffer to %ld bytes\n", n);
     }
   }
 
- /* Read data part of packet */
+  /* Read data part of packet */
 
- p = (unsigned char *)buff;
- buff_bytes = 0;
- while(buff_bytes < packet_bytes)
-  {
-   rcv_len = min(buff_size - buff_bytes, 16384);
-   if (session[session_idx].is_local)
-    {
-     if ((rcvd_bytes = read(session[session_idx].RxPipe[0], p, rcv_len)) < 0) return FALSE;
-    }
-   else
-    {
-     if ((rcvd_bytes = recv(session[session_idx].sock, p, rcv_len, 0)) <= 0) return FALSE;
+  p = (unsigned char*)buff;
+  buff_bytes = 0;
+  while (buff_bytes < packet_bytes) {
+    rcv_len = min(buff_size - buff_bytes, 16384);
+    if (session[session_idx].is_local) {
+      if ((rcvd_bytes = read(session[session_idx].RxPipe[0], p, rcv_len)) < 0)
+        return FALSE;
+    } else {
+      if ((rcvd_bytes = recv(session[session_idx].sock, p, rcv_len, 0)) <= 0)
+        return FALSE;
     }
 
-   if (rcvd_bytes <= 0) return FALSE;
+    if (rcvd_bytes <= 0)
+      return FALSE;
 
-   buff_bytes += rcvd_bytes;
-   p += rcvd_bytes;
+    buff_bytes += rcvd_bytes;
+    p += rcvd_bytes;
   }
 
- ((char *)buff)[buff_bytes] = '\0';
+  ((char*)buff)[buff_bytes] = '\0';
 
- if (srvr_debug != NULL) debug((unsigned char *)buff, buff_bytes);
+  if (srvr_debug != NULL)
+    debug((unsigned char*)buff, buff_bytes);
 
- session[session_idx].server_error = ShortInt(in_packet_header.server_error);
- session[session_idx].qm_status = LongInt(in_packet_header.status);
+  session[session_idx].server_error = ShortInt(in_packet_header.server_error);
+  session[session_idx].qm_status = LongInt(in_packet_header.status);
 
- return TRUE;
+  return TRUE;
 }
 
 /* ======================================================================
    write_packet()  -  Send QM data packet                                 */
 
-Private bool write_packet(int type, char * data, long int bytes)
-{
-
- struct {
-         long int length;
-         short int type;
-        } ALIGN2 packet_header;
+Private bool write_packet(int type, char* data, long int bytes) {
+  struct {
+    long int length;
+    short int type;
+  } ALIGN2 packet_header;
 #define PKT_HDR_BYTES 6
 
- if ((!session[session_idx].is_local) && (session[session_idx].sock == INVALID_SOCKET)) return FALSE;
+  if ((!session[session_idx].is_local) &&
+      (session[session_idx].sock == INVALID_SOCKET))
+    return FALSE;
 
- packet_header.length = LongInt(bytes + PKT_HDR_BYTES);  /* 0272 */
- packet_header.type = ShortInt(type);
+  packet_header.length = LongInt(bytes + PKT_HDR_BYTES); /* 0272 */
+  packet_header.type = ShortInt(type);
 
- if (session[session_idx].is_local)
-  {
-   if (write(session[session_idx].TxPipe[1], (char *)&packet_header, PKT_HDR_BYTES) != PKT_HDR_BYTES) return FALSE;
-  }
- else
-  {
-   if (send(session[session_idx].sock, (unsigned char *)&packet_header, PKT_HDR_BYTES, 0) != PKT_HDR_BYTES) return FALSE;
-  }
-
- if (srvr_debug != NULL)
-  {
-   fprintf(srvr_debug, "OUT (%ld bytes). Type %d\n",
-           packet_header.length, (int)packet_header.type);
+  if (session[session_idx].is_local) {
+    if (write(session[session_idx].TxPipe[1], (char*)&packet_header,
+              PKT_HDR_BYTES) != PKT_HDR_BYTES)
+      return FALSE;
+  } else {
+    if (send(session[session_idx].sock, (unsigned char*)&packet_header,
+             PKT_HDR_BYTES, 0) != PKT_HDR_BYTES)
+      return FALSE;
   }
 
- if ((data != NULL) && (bytes > 0))
-  {
-   if (session[session_idx].is_local)
-    {
-     if (write(session[session_idx].TxPipe[1], data, bytes) != bytes) return FALSE;
+  if (srvr_debug != NULL) {
+    fprintf(srvr_debug, "OUT (%ld bytes). Type %d\n", packet_header.length,
+            (int)packet_header.type);
+  }
+
+  if ((data != NULL) && (bytes > 0)) {
+    if (session[session_idx].is_local) {
+      if (write(session[session_idx].TxPipe[1], data, bytes) != bytes)
+        return FALSE;
+    } else {
+      if (send(session[session_idx].sock, data, bytes, 0) != bytes)
+        return FALSE;
     }
-   else
-    {
-     if (send(session[session_idx].sock, data, bytes, 0) != bytes) return FALSE;
-    }
 
-   if (srvr_debug != NULL) debug((unsigned char *)data, bytes);
+    if (srvr_debug != NULL)
+      debug((unsigned char*)data, bytes);
   }
 
- return TRUE;
+  return TRUE;
 }
 
 /* ======================================================================
    debug()  -  Debug function                                             */
 
-Private void debug(unsigned char * p, int n)
-{
- short int i;
- short int j;
- unsigned char c;
- char s[72+1];
- static char hex[] = "0123456789ABCDEF";
+Private void debug(unsigned char* p, int n) {
+  short int i;
+  short int j;
+  unsigned char c;
+  char s[72 + 1];
+  static char hex[] = "0123456789ABCDEF";
 
- for(i = 0; i < n; i += 16)
-  {
-   memset(s, ' ', 72);
-   s[72] = '\0';
+  for (i = 0; i < n; i += 16) {
+    memset(s, ' ', 72);
+    s[72] = '\0';
 
-   s[0] = hex[i >> 12];
-   s[1] = hex[(i >> 8) & 0x0F];
-   s[2] = hex[(i >> 4) & 0x0F];
-   s[3] = hex[i & 0x0F];
-   s[4] = ':';
-   s[54] = '|';
+    s[0] = hex[i >> 12];
+    s[1] = hex[(i >> 8) & 0x0F];
+    s[2] = hex[(i >> 4) & 0x0F];
+    s[3] = hex[i & 0x0F];
+    s[4] = ':';
+    s[54] = '|';
 
-   for(j = 0; (j < 16) && ((j + i) < n); j++)
-    {
-     c = *(p++);
-     s[6 + 3 * j] = hex[c >> 4];
-     s[7 + 3 * j] = hex[c & 0x0F];
-     s[56 + j] = ((c >= 32) && (c < 128))?c:'.';
+    for (j = 0; (j < 16) && ((j + i) < n); j++) {
+      c = *(p++);
+      s[6 + 3 * j] = hex[c >> 4];
+      s[7 + 3 * j] = hex[c & 0x0F];
+      s[56 + j] = ((c >= 32) && (c < 128)) ? c : '.';
     }
 
-   fprintf(srvr_debug, "%s\n", s);
+    fprintf(srvr_debug, "%s\n", s);
   }
- fprintf(srvr_debug, "\n");
+  fprintf(srvr_debug, "\n");
 }
 
 /* ======================================================================
    sysdir()  -  Return static QMSYS directory pointer                     */
 
-Private char * sysdir()
-{
- static char sysdirpath[MAX_PATHNAME_LEN+1] = "";
- char inipath[MAX_PATHNAME_LEN + 1];
- char section[50];
- char rec[200+1];
- FILE * fu;
- char * p;
+Private char* sysdir() {
+  static char sysdirpath[MAX_PATHNAME_LEN + 1] = "";
+  char inipath[MAX_PATHNAME_LEN + 1];
+  char section[50];
+  char rec[200 + 1];
+  FILE* fu;
+  char* p;
 
- p = getenv("QMCONFIG");
- if (p != NULL) strcpy(inipath, p);
- else strcpy(inipath, "/etc/qmconfig");
+  p = getenv("QMCONFIG");
+  if (p != NULL)
+    strcpy(inipath, p);
+  else
+    strcpy(inipath, "/etc/scarlet.conf"); // was qmconfig
 
-
- fu = fopen(inipath, FOPEN_READ_MODE);
- if (fu == NULL)
-  {
-   sprintf(session[session_idx].qmerror, "%s not found", inipath);
-   return NULL;
+  fu = fopen(inipath, FOPEN_READ_MODE);
+  if (fu == NULL) {
+    sprintf(session[session_idx].qmerror, "%s not found", inipath);
+    return NULL;
   }
 
- section[0] = '\0';
- while(fgets(rec, 200, fu) != NULL)
-  {
-   if ((p = strchr(rec, '\n')) != NULL) *p = '\0';
+  section[0] = '\0';
+  while (fgets(rec, 200, fu) != NULL) {
+    if ((p = strchr(rec, '\n')) != NULL)
+      *p = '\0';
 
-   if ((rec[0] == '#') || (rec[0] == '\0')) continue;
+    if ((rec[0] == '#') || (rec[0] == '\0'))
+      continue;
 
-   if (rec[0] == '[')
-    {
-     if ((p = strchr(rec, ']')) != NULL) *p = '\0';
-     strcpy(section, rec+1);
-printf("Section '%s'\n", section);
-     for(p = section; *p != '\0'; p++) *p = UpperCase(*p);
-     continue;
+    if (rec[0] == '[') {
+      if ((p = strchr(rec, ']')) != NULL)
+        *p = '\0';
+      strcpy(section, rec + 1);
+      printf("Section '%s'\n", section);
+      for (p = section; *p != '\0'; p++)
+        *p = UpperCase(*p);
+      continue;
     }
 
-   if (strcmp(section, "QM") == 0)        /* [qm] items */
+    if (strcmp(section, "QM") == 0) /* [qm] items */
     {
-     if (strncmp(rec, "QMSYS=", 6) == 0)
-      {
-       strcpy(sysdirpath, rec+6);
-       break;
+      if (strncmp(rec, "QMSYS=", 6) == 0) {
+        strcpy(sysdirpath, rec + 6);
+        break;
       }
     }
   }
 
- fclose(fu);
+  fclose(fu);
 
- if (sysdirpath[0] == '\0')
-  {
-   sprintf(session[session_idx].qmerror, "No QMSYS parameter in configuration file");
-   return NULL;
+  if (sysdirpath[0] == '\0') {
+    sprintf(session[session_idx].qmerror,
+            "No QMSYS parameter in configuration file");
+    return NULL;
   }
 
- return sysdirpath;
+  return sysdirpath;
 }
 
 /* ====================================================================== */
 
-Private void initialise_client()
-{
- short int i;
+Private void initialise_client() {
+  short int i;
 
- if (buff == NULL)
-  {
-   set_default_character_maps();
+  if (buff == NULL) {
+    set_default_character_maps();
 
-   buff_size = 2048;
-   buff = (INBUFF *)malloc(buff_size);
+    buff_size = 2048;
+    buff = (INBUFF*)malloc(buff_size);
 
-   for(i = 0; i < MAX_SESSIONS; i++)
-    {
-     session[i].context = CX_DISCONNECTED;
-     session[i].is_local = FALSE;
-     session[i].qmerror[0] = '\0';
-     session[i].sock = INVALID_SOCKET;
-     session[i].RxPipe[0] = -1;
-     session[i].RxPipe[1] = -1;
-     session[i].TxPipe[0] = -1;
-     session[i].TxPipe[1] = -1;
+    for (i = 0; i < MAX_SESSIONS; i++) {
+      session[i].context = CX_DISCONNECTED;
+      session[i].is_local = FALSE;
+      session[i].qmerror[0] = '\0';
+      session[i].sock = INVALID_SOCKET;
+      session[i].RxPipe[0] = -1;
+      session[i].RxPipe[1] = -1;
+      session[i].TxPipe[0] = -1;
+      session[i].TxPipe[1] = -1;
     }
   }
 }
 
 /* ====================================================================== */
 
-Private bool FindFreeSession()
-{
- short int i;
+Private bool FindFreeSession() {
+  short int i;
 
- /* Find a free session table entry */
+  /* Find a free session table entry */
 
- for(i = 0; i < MAX_SESSIONS; i++)
-  {
-   if (session[i].context == CX_DISCONNECTED) break;
+  for (i = 0; i < MAX_SESSIONS; i++) {
+    if (session[i].context == CX_DISCONNECTED)
+      break;
   }
 
- if (i == MAX_SESSIONS)
-  {
-   /* Must return error via a currently connected session */
-   strcpy(session[session_idx].qmerror, "Too many sessions");
-   return FALSE;
+  if (i == MAX_SESSIONS) {
+    /* Must return error via a currently connected session */
+    strcpy(session[session_idx].qmerror, "Too many sessions");
+    return FALSE;
   }
 
- session_idx = i;
- return TRUE;
+  session_idx = i;
+  return TRUE;
 }
 
 /* ====================================================================== */
 
-Private void disconnect()
-{
- (void)write_packet(SrvrQuit, NULL, 0);
- if (session[session_idx].is_local)
-  {
-
-   if (session[session_idx].RxPipe[0] >= 0) {close(session[session_idx].RxPipe[0]); session[session_idx].RxPipe[0] = -1;}
-   if (session[session_idx].RxPipe[1] >= 0) {close(session[session_idx].RxPipe[1]); session[session_idx].RxPipe[1] = -1;}
-   if (session[session_idx].TxPipe[0] >= 0) {close(session[session_idx].TxPipe[0]); session[session_idx].TxPipe[0] = -1;}
-   if (session[session_idx].TxPipe[1] >= 0) {close(session[session_idx].TxPipe[1]); session[session_idx].TxPipe[1] = -1;}
-   waitpid(session[session_idx].pid, NULL, 0);  /* 0421 */
+Private void disconnect() {
+  (void)write_packet(SrvrQuit, NULL, 0);
+  if (session[session_idx].is_local) {
+    if (session[session_idx].RxPipe[0] >= 0) {
+      close(session[session_idx].RxPipe[0]);
+      session[session_idx].RxPipe[0] = -1;
+    }
+    if (session[session_idx].RxPipe[1] >= 0) {
+      close(session[session_idx].RxPipe[1]);
+      session[session_idx].RxPipe[1] = -1;
+    }
+    if (session[session_idx].TxPipe[0] >= 0) {
+      close(session[session_idx].TxPipe[0]);
+      session[session_idx].TxPipe[0] = -1;
+    }
+    if (session[session_idx].TxPipe[1] >= 0) {
+      close(session[session_idx].TxPipe[1]);
+      session[session_idx].TxPipe[1] = -1;
+    }
+    waitpid(session[session_idx].pid, NULL, 0); /* 0421 */
+  } else {
+    (void)CloseSocket();
   }
- else
-  {
-   (void)CloseSocket();
-  }
 
- session[session_idx].context = CX_DISCONNECTED;
+  session[session_idx].context = CX_DISCONNECTED;
 }
 
 #ifdef BIG_ENDIAN_SYSTEM
 /* ======================================================================
    swap2()                                                                */
 
-short int swap2(short int data)
-{
- union {
-        short int val;
-        unsigned char chr[2];
-       } in, out;
+short int swap2(short int data) {
+  union {
+    short int val;
+    unsigned char chr[2];
+  } in, out;
 
- in.val = data;
- out.chr[0] = in.chr[1];
- out.chr[1] = in.chr[0];
- return out.val;
+  in.val = data;
+  out.chr[0] = in.chr[1];
+  out.chr[1] = in.chr[0];
+  return out.val;
 }
 
 /* ======================================================================
    swap4()                                                                */
 
-long int swap4(long int data)
-{
- union {
-        long int val;
-        unsigned char chr[4];
-       } in, out;
+long int swap4(long int data) {
+  union {
+    long int val;
+    unsigned char chr[4];
+  } in, out;
 
- in.val = data;
- out.chr[0] = in.chr[3];
- out.chr[1] = in.chr[2];
- out.chr[2] = in.chr[1];
- out.chr[3] = in.chr[0];
- return out.val;
+  in.val = data;
+  out.chr[0] = in.chr[3];
+  out.chr[1] = in.chr[2];
+  out.chr[2] = in.chr[1];
+  out.chr[3] = in.chr[0];
+  return out.val;
 }
 
 #endif
 
-   /* When building a simply .o file instead of a DLL, we need to import
+/* When building a simply .o file instead of a DLL, we need to import
       the routines from ctype.c into this module.                        */
 
-   #include <ctype.c>
+#include "ctype.c"
 
 /* END-CODE */

@@ -1,3 +1,9 @@
+#######################################################
+# This script will not work with ScarletDME!          #
+# It's been left in place as a historical reference   #
+# and will not be updated! -gwb 26Feb20               #
+#######################################################
+#
 # This script builds the GPL OpenQM source
 #
 # The first argument can be a stage number to continue from the given stage

@@ -18,11 +18,16 @@
  * 
  * Ladybridge Systems can be contacted via the www.openqm.com web site.
  * 
+ * ScarletDME Wiki: https://scarlet.deltasoft.com
+ * 
  * START-HISTORY:
- * 09 Apr 09 gwb Added DEFAULT_CONNECT_TIMEOUT to support code update in op_skt.c
+ * 21Feb20 gwb Removed forward declaration for crypt() as it conflicted with the
+ *              one found in unistd.h.
+ * 
+ * 09Apr09 gwb Added DEFAULT_CONNECT_TIMEOUT to support code update in op_skt.c
  *
- * 05 Dec 05  2.2-18 Extracted from main source files.
- * 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
+ * 05Dec05  2.2-18 Extracted from main source files.
+ * 16Sep04  2.0-1 OpenQM launch. Earlier history details suppressed.
  * END-HISTORY
  *
  * START-DESCRIPTION:
@@ -41,7 +46,8 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #define PASSWD_FILE_NAME "/etc/shadow"
-char * crypt(char * password, char * p);
+/* removed due to conflict with unistd.h */
+/* char * crypt(char * password, char * p); */
 #define ASYNCIO
 #define TTY_50_75_134_150_200_1800
 #define TTY_57600_115200_230400
