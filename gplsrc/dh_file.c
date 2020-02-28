@@ -6,19 +6,24 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2, or (at your option)
  * any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
- * 
+ *
  * Ladybridge Systems can be contacted via the www.openqm.com web site.
+ *
+ * ScarletDME Wiki: https://scarlet.deltasoft.com
+ *
+ * START-HISTORY (ScarletDME):
+ * 22Feb20 gwb Cleaned up a variable assigned but unused warning.
  * 
- * START-HISTORY:
+ * START-HISTORY (OpenQM):
  * 01 Jul 07  2.5-7 Extensive changes for PDA merge.
  * 21 Nov 06  2.4-17 Revised interface to dio_open() and removed dh_open_path().
  * 04 Apr 06  2.4-1 Added restart_tx_ref() to handle situations where the tx_ref
@@ -77,345 +82,312 @@
 #include "locks.h"
 #include "options.h"
 #include "config.h"
+#include <sched.h>
 
+int OpenFile(char* path, int mode, int rights);
 
-   #include <sched.h>
-   int OpenFile(char * path, int mode, int rights);
-
-Private long int tx_ref = 0;  /* Running transfer count for FDS sequence */
+Private long int tx_ref = 0; /* Running transfer count for FDS sequence */
 Private short int FDS_open_count = 0;
 
 Private void restart_tx_ref(void);
 
-bool FDS_open(DH_FILE * dh_file, short int subfile);
+bool FDS_open(DH_FILE* dh_file, short int subfile);
 
 /* ====================================================================== */
 
-void dh_fsync(DH_FILE * dh_file, short int subfile)
-{
- if (!ValidFileHandle(dh_file->sf[subfile].fu))
-  {
-   if (!FDS_open(dh_file, subfile))
-    {
-     log_printf("DH_FSYNC: FDS open failure %d on %s subfile %d\n",
-                process.os_error, FPtr(dh_file->file_id)->pathname, subfile);
-     return;
+void dh_fsync(DH_FILE* dh_file, short int subfile) {
+  if (!ValidFileHandle(dh_file->sf[subfile].fu)) {
+    if (!FDS_open(dh_file, subfile)) {
+      log_printf("DH_FSYNC: FDS open failure %d on %s subfile %d.\n",
+                 process.os_error, FPtr(dh_file->file_id)->pathname, subfile);
+      return;
     }
   }
 
- fsync(dh_file->sf[subfile].fu);
+  fsync(dh_file->sf[subfile].fu);
 }
 
 /* ====================================================================== */
 
-bool dh_init()
-{
- /* Currently none */
- return TRUE;
+bool dh_init() {
+  /* Currently none */
+  return TRUE;
 }
 
 /* ====================================================================== */
 
-bool dh_open_subfile(
-   DH_FILE * dh_file,
-   char * pathname,
-   short int subfile,
-   bool create)
-{
- bool status = FALSE;
- char filename[MAX_PATHNAME_LEN+1];
- int mode;
+bool dh_open_subfile(DH_FILE* dh_file,
+                     char* pathname,
+                     short int subfile,
+                     bool create) {
+  bool status = FALSE;
+  char filename[MAX_PATHNAME_LEN + 1];
+  int mode;
 
- if (dh_file->flags & DHF_RDONLY) mode = DIO_READ;
- else if (create) mode = DIO_REPLACE;
- else mode = DIO_UPDATE;
+  if (dh_file->flags & DHF_RDONLY)
+    mode = DIO_READ;
+  else if (create)
+    mode = DIO_REPLACE;
+  else
+    mode = DIO_UPDATE;
 
- if ((subfile >= AK_BASE_SUBFILE) && (dh_file->akpath != NULL))
-  {
-   sprintf(filename, "%s%c~%d", dh_file->akpath, DS, (int)subfile);
-  }
- else
-  {
-   sprintf(filename, "%s%c~%d", pathname, DS, (int)subfile);
+  if ((subfile >= AK_BASE_SUBFILE) && (dh_file->akpath != NULL)) {
+    sprintf(filename, "%s%c~%d", dh_file->akpath, DS, (int)subfile);
+  } else {
+    sprintf(filename, "%s%c~%d", pathname, DS, (int)subfile);
   }
 
- dh_file->sf[subfile].fu = dio_open(filename, mode);
- if (!ValidFileHandle(dh_file->sf[subfile].fu)) goto exit_dh_open_subfile;
+  dh_file->sf[subfile].fu = dio_open(filename, mode);
+  if (!ValidFileHandle(dh_file->sf[subfile].fu))
+    goto exit_dh_open_subfile;
 
- FDS_open_count++;
- dh_file->sf[subfile].tx_ref = tx_ref++; /* Prevent immediate close */
- if (tx_ref < 0) restart_tx_ref();
+  FDS_open_count++;
+  dh_file->sf[subfile].tx_ref = tx_ref++; /* Prevent immediate close */
+  if (tx_ref < 0)
+    restart_tx_ref();
 
- status = TRUE;
+  status = TRUE;
 
 exit_dh_open_subfile:
- return status;
+  return status;
 }
 
 /* ====================================================================== */
 
-void dh_close_subfile(DH_FILE * dh_file, short int subfile)
-{
- if (ValidFileHandle(dh_file->sf[subfile].fu))
-  {
-   CloseFile(dh_file->sf[subfile].fu);
-   dh_file->sf[subfile].fu = INVALID_FILE_HANDLE;
-   FDS_open_count--;
+void dh_close_subfile(DH_FILE* dh_file, short int subfile) {
+  if (ValidFileHandle(dh_file->sf[subfile].fu)) {
+    CloseFile(dh_file->sf[subfile].fu);
+    dh_file->sf[subfile].fu = INVALID_FILE_HANDLE;
+    FDS_open_count--;
   }
 }
 
 /* ====================================================================== */
 
-void dh_close_file(OSFILE fu)
-{
- CloseFile(fu);
- FDS_open_count--;
+void dh_close_file(OSFILE fu) {
+  CloseFile(fu);
+  FDS_open_count--;
 }
 
 /* ====================================================================== */
 
-void dh_shutdown()
-{
- DH_FILE * p;
- DH_FILE * next;
+void dh_shutdown() {
+  DH_FILE* p;
+  DH_FILE* next;
 
- for (p = dh_file_head; p != NULL; p = next)
-  {
-   next = p->next_file;
-   p->open_count = 1; /* Force close */
-   dh_close(p);
+  for (p = dh_file_head; p != NULL; p = next) {
+    next = p->next_file;
+    p->open_count = 1; /* Force close */
+    dh_close(p);
   }
 }
 
 /* ====================================================================== */
 
-int64 dh_filesize(DH_FILE * dh_file, short int subfile)
-{
- if (!FDS_open(dh_file, subfile)) return -1;
+int64 dh_filesize(DH_FILE* dh_file, short int subfile) {
+  if (!FDS_open(dh_file, subfile))
+    return -1;
 
- return filelength64(dh_file->sf[subfile].fu);
+  return filelength64(dh_file->sf[subfile].fu);
 }
 
 /* ====================================================================== */
 
-bool FDS_open(DH_FILE * dh_file, short int subfile)
-{
- bool status = FALSE;
+bool FDS_open(DH_FILE* dh_file, short int subfile) {
+  bool status = FALSE;
 
- if (!ValidFileHandle(dh_file->sf[subfile].fu))
-  {
-   if (!dh_open_subfile(dh_file, (char *)(FPtr(dh_file->file_id)->pathname),
-                        subfile, FALSE))
-    {
-     dh_err = DHE_FDS_OPEN_ERR; 
-     process.os_error = OSError;
-     goto exit_fds_open;
+  if (!ValidFileHandle(dh_file->sf[subfile].fu)) {
+    if (!dh_open_subfile(dh_file, (char*)(FPtr(dh_file->file_id)->pathname),
+                         subfile, FALSE)) {
+      dh_err = DHE_FDS_OPEN_ERR;
+      process.os_error = OSError;
+      goto exit_fds_open;
     }
   }
 
- status = TRUE;
-  
+  status = TRUE;
+
 exit_fds_open:
- return status;
+  return status;
 }
 
 /* ====================================================================== */
 
-void FDS_close()
-{
- DH_FILE * p;
- short int i;
- long int low_ref;
- DH_FILE * dh_file = NULL;
- short int subfile;
+void FDS_close() {
+  DH_FILE* p;
+  short int i;
+  long int low_ref;
+  DH_FILE* dh_file = NULL;
+  short int subfile;
 
- /* Close the file with the lowest transfer reference number */
+  /* Close the file with the lowest transfer reference number */
 
- for (p = dh_file_head; p != NULL; p = p->next_file)
-  {
-   low_ref = LONG_MAX;
-   for(i = 0; i < p->no_of_subfiles; i++)
-    {
-     if ((ValidFileHandle(p->sf[i].fu)) && (p->sf[i].tx_ref < low_ref))
-      {
-       dh_file = p;
-       subfile = i;
-       low_ref = p->sf[i].tx_ref;
+  for (p = dh_file_head; p != NULL; p = p->next_file) {
+    low_ref = LONG_MAX;
+    for (i = 0; i < p->no_of_subfiles; i++) {
+      if ((ValidFileHandle(p->sf[i].fu)) && (p->sf[i].tx_ref < low_ref)) {
+        dh_file = p;
+        subfile = i;
+        low_ref = p->sf[i].tx_ref;
       }
     }
   }
 
- if (dh_file != NULL) dh_close_subfile(dh_file, subfile);
+  if (dh_file != NULL)
+    dh_close_subfile(dh_file, subfile);
 }
 
 /* ======================================================================
    dio_open()  -  Open a file with FDS actions                            */
 
-OSFILE dio_open(char * fn, int mode)
-{
- OSFILE fu;
+OSFILE dio_open(char* fn, int mode) {
+  OSFILE fu;
 
- int open_modes;
+  int open_modes;
 
- switch(mode)
-  {
-   case DIO_NEW:       /* Create new file, fail if exists */
+  switch (mode) {
+    case DIO_NEW: /* Create new file, fail if exists */
       open_modes = O_RDWR | O_CREAT | O_EXCL | O_BINARY;
       break;
-   case DIO_REPLACE:   /* Create new file, overwriting if exists */
+    case DIO_REPLACE: /* Create new file, overwriting if exists */
       open_modes = O_RDWR | O_CREAT | O_TRUNC | O_BINARY;
       break;
-   case DIO_READ:      /* Open existing file, read only */
+    case DIO_READ: /* Open existing file, read only */
       open_modes = O_RDONLY | O_BINARY;
       break;
-   case DIO_UPDATE:    /* Open existing file, read/write */
+    case DIO_UPDATE: /* Open existing file, read/write */
       open_modes = O_RDWR | O_BINARY;
       break;
-   case DIO_OVERWRITE: /* Open file, creating if doesn't exist */
+    case DIO_OVERWRITE: /* Open file, creating if doesn't exist */
       open_modes = O_RDWR | O_CREAT | O_BINARY;
       break;
   }
 
- /* Check if we are about to hit the FDS limit */
+  /* Check if we are about to hit the FDS limit */
 
- if (FDS_open_count == sysseg->fds_limit) FDS_close();
+  if (FDS_open_count == sysseg->fds_limit)
+    FDS_close();
 
- fu = OpenFile(fn, open_modes, default_access);
- if (!ValidFileHandle(fu)
-   && ((errno == EMFILE) || (errno == ENFILE) || (errno == ECHILD)))
-  {
-   sysseg->fds_rotate++;
-   FDS_close();
-   fu = OpenFile(fn, open_modes, default_access);
+  fu = OpenFile(fn, open_modes, default_access);
+  if (!ValidFileHandle(fu) &&
+      ((errno == EMFILE) || (errno == ENFILE) || (errno == ECHILD))) {
+    sysseg->fds_rotate++;
+    FDS_close();
+    fu = OpenFile(fn, open_modes, default_access);
   }
 
- if (!ValidFileHandle(fu)) process.os_error = OSError;
+  if (!ValidFileHandle(fu))
+    process.os_error = OSError;
 
- return fu;
+  return fu;
 }
 
 /* ======================================================================
    dh_read_group()  -  Read a group buffer                                */
 
-bool dh_read_group(
-   DH_FILE * dh_file,
-   short int subfile,
-   long int group,
-   char * buff,
-   short int bytes)
-{
- FILE_ENTRY * fptr;
- int64 offset;
+bool dh_read_group(DH_FILE* dh_file,
+                   short int subfile,
+                   long int group,
+                   char* buff,
+                   short int bytes) {
+  FILE_ENTRY* fptr;
+  int64 offset;
 
- if (group)
-  {
-   if (subfile < AK_BASE_SUBFILE)
-    {
-     offset = GroupOffset(dh_file, group);
+  if (group) {
+    if (subfile < AK_BASE_SUBFILE) {
+      offset = GroupOffset(dh_file, group);
+    } else {
+      offset = ((int64)group - 1) * DH_AK_NODE_SIZE + dh_file->ak_header_bytes;
     }
-   else
-    {
-     offset = ((int64)group - 1) * DH_AK_NODE_SIZE + dh_file->ak_header_bytes;
-    }
-  }
- else offset = 0;
+  } else
+    offset = 0;
 
- if (!ValidFileHandle(dh_file->sf[subfile].fu))
-  {
-   if (!FDS_open(dh_file, subfile))
-    {
-     fptr = FPtr(dh_file->file_id);
-     log_printf("DH_READ_GROUP: FDS open failure %d on %s subfile %d\n",
-                process.os_error, fptr->pathname, (int)subfile);
-     return FALSE;
+  if (!ValidFileHandle(dh_file->sf[subfile].fu)) {
+    if (!FDS_open(dh_file, subfile)) {
+      fptr = FPtr(dh_file->file_id);
+      log_printf("DH_READ_GROUP: FDS open failure %d on %s subfile %d.\n",
+                 process.os_error, fptr->pathname, (int)subfile);
+      return FALSE;
     }
   }
 
- dh_file->sf[subfile].tx_ref = tx_ref++;
- if (tx_ref < 0) restart_tx_ref();
+  dh_file->sf[subfile].tx_ref = tx_ref++;
+  if (tx_ref < 0)
+    restart_tx_ref();
 
- if (Seek(dh_file->sf[subfile].fu, offset, SEEK_SET) < 0)
-  {
-   process.os_error = OSError;
-   fptr = FPtr(dh_file->file_id);
-   log_printf("DH_READ_GROUP: Seek error %d on %s subfile %d, group %ld\n",
-              process.os_error, fptr->pathname, (int)subfile, group);
-   dh_err = DHE_SEEK_ERROR;
-   return FALSE;
+  if (Seek(dh_file->sf[subfile].fu, offset, SEEK_SET) < 0) {
+    process.os_error = OSError;
+    fptr = FPtr(dh_file->file_id);
+    log_printf("DH_READ_GROUP: Seek error %d on %s subfile %d, group %ld.\n",
+               process.os_error, fptr->pathname, (int)subfile, group);
+    dh_err = DHE_SEEK_ERROR;
+    return FALSE;
   }
 
- if (Read(dh_file->sf[subfile].fu, buff, bytes) < 0)
-  {
-   process.os_error = OSError;
-   fptr = FPtr(dh_file->file_id);
-   log_printf("DH_READ_GROUP: Read error %d on %s subfile %d, group %ld\n",
-              process.os_error, fptr->pathname, (int)subfile, group);
-   dh_err = DHE_READ_ERROR;
-   return FALSE;
+  if (Read(dh_file->sf[subfile].fu, buff, bytes) < 0) {
+    process.os_error = OSError;
+    fptr = FPtr(dh_file->file_id);
+    log_printf("DH_READ_GROUP: Read error %d on %s subfile %d, group %ld.\n",
+               process.os_error, fptr->pathname, (int)subfile, group);
+    dh_err = DHE_READ_ERROR;
+    return FALSE;
   }
 
- return TRUE;
+  return TRUE;
 }
 
 /* ======================================================================
    dh_write_group()  -  Write a group buffer                              */
 
-bool dh_write_group(
-   DH_FILE * dh_file,
-   short int subfile,
-   long int group,
-   char * buff,
-   short int bytes)
-{
- int64 offset;
- FILE_ENTRY * fptr;
+bool dh_write_group(DH_FILE* dh_file,
+                    short int subfile,
+                    long int group,
+                    char* buff,
+                    short int bytes) {
+  int64 offset;
+  FILE_ENTRY* fptr;
 
- if (group)
-  {
-   if (subfile < AK_BASE_SUBFILE)
-    {
-     offset = GroupOffset(dh_file, group);
+  if (group) {
+    if (subfile < AK_BASE_SUBFILE) {
+      offset = GroupOffset(dh_file, group);
+    } else {
+      offset = ((int64)group - 1) * DH_AK_NODE_SIZE + dh_file->ak_header_bytes;
     }
-   else
-    {
-     offset = ((int64)group - 1) * DH_AK_NODE_SIZE + dh_file->ak_header_bytes;
-    }
-  }
- else offset = 0;
+  } else
+    offset = 0;
 
- if (!ValidFileHandle(dh_file->sf[subfile].fu))
-  {
-   if (!FDS_open(dh_file, subfile))
-    {
-     fptr = FPtr(dh_file->file_id);
-     log_printf("DH_WRITE_GROUP: FDS open failure %d on %s subfile %d\n",
-                process.os_error, fptr->pathname, (int)subfile);
-     return FALSE;
+  if (!ValidFileHandle(dh_file->sf[subfile].fu)) {
+    if (!FDS_open(dh_file, subfile)) {
+      fptr = FPtr(dh_file->file_id);
+      log_printf("DH_WRITE_GROUP: FDS open failure %d on %s subfile %d.\n",
+                 process.os_error, fptr->pathname, (int)subfile);
+      return FALSE;
     }
   }
 
- dh_file->sf[subfile].tx_ref = tx_ref++;
- if (tx_ref < 0) restart_tx_ref();
+  dh_file->sf[subfile].tx_ref = tx_ref++;
+  if (tx_ref < 0)
+    restart_tx_ref();
 
- if (Seek(dh_file->sf[subfile].fu, offset, SEEK_SET) < 0)
-  {
-   process.os_error = OSError;
-   log_printf("DH_WRITE_GROUP: Seek error %d on %s subfile %d, group %ld\n",
-              process.os_error, FPtr(dh_file->file_id)->pathname, (int)subfile, group);
-   dh_err = DHE_SEEK_ERROR;
-   return FALSE;
+  if (Seek(dh_file->sf[subfile].fu, offset, SEEK_SET) < 0) {
+    process.os_error = OSError;
+    log_printf("DH_WRITE_GROUP: Seek error %d on %s subfile %d, group %ld.\n",
+               process.os_error, FPtr(dh_file->file_id)->pathname, (int)subfile,
+               group);
+    dh_err = DHE_SEEK_ERROR;
+    return FALSE;
   }
 
- if (Write(dh_file->sf[subfile].fu, buff, bytes) < 0)
-  {
-   process.os_error = OSError;
-   log_printf("DH_WRITE_GROUP: Write error %d on %s subfile %d, group %ld\n",
-              process.os_error, FPtr(dh_file->file_id)->pathname, (int)subfile, group);
-   dh_err = DHE_WRITE_ERROR;
-   return FALSE;
+  if (Write(dh_file->sf[subfile].fu, buff, bytes) < 0) {
+    process.os_error = OSError;
+    log_printf("DH_WRITE_GROUP: Write error %d on %s subfile %d, group %ld.\n",
+               process.os_error, FPtr(dh_file->file_id)->pathname, (int)subfile,
+               group);
+    dh_err = DHE_WRITE_ERROR;
+    return FALSE;
   }
 
- return TRUE;
+  return TRUE;
 }
 
 /* ======================================================================
@@ -423,474 +395,422 @@ bool dh_write_group(
    Returns zero if unable to allocate block.                              */
 
 long int dh_get_overflow(
-   DH_FILE * dh_file,
-   bool have_group_lock)  /* Process already owns header group lock. Also
+    DH_FILE* dh_file,
+    bool have_group_lock) /* Process already owns header group lock. Also
                              we do not flush the header if we are keeping
                              an existing lock.                            */
 {
- short int header_lock;
- DH_BLOCK overflow_block;
- long int ogrp;
- int64 offset;
- FILE_ENTRY * fptr;
- char * buff = NULL;
- short int group_bytes;
- short int subfile = OVERFLOW_SUBFILE;
+  short int header_lock;
+  DH_BLOCK overflow_block;
+  long int ogrp;
+  int64 offset;
+  FILE_ENTRY* fptr;
+  char* buff = NULL;
+  short int group_bytes;
+  short int subfile = OVERFLOW_SUBFILE;
 
+  fptr = FPtr(dh_file->file_id);
 
- fptr = FPtr(dh_file->file_id);
+  /* The file table free chain item is protected by the group lock on group 0 */
 
- /* The file table free chain item is protected by the group lock on group 0 */
+  if (!have_group_lock)
+    header_lock = GetGroupWriteLock(dh_file, 0);
 
- if (!have_group_lock) header_lock = GetGroupWriteLock(dh_file, 0);
-
- if ((ogrp = fptr->params.free_chain) != 0)
-  {
-   if (!dh_read_group(dh_file, subfile, ogrp,
-                      (char *)(&overflow_block), BLOCK_HEADER_SIZE))
-    {
-     ogrp = 0;
-     goto exit_get_overflow;
+  if ((ogrp = fptr->params.free_chain) != 0) {
+    if (!dh_read_group(dh_file, subfile, ogrp, (char*)(&overflow_block),
+                       BLOCK_HEADER_SIZE)) {
+      ogrp = 0;
+      goto exit_get_overflow;
     }
 
-   fptr->params.free_chain = GetFwdLink(dh_file, overflow_block.next);
-  }
- else
-  {
-   /* Must make new overflow block(s) */
+    fptr->params.free_chain = GetFwdLink(dh_file, overflow_block.next);
+  } else {
+    /* Must make new overflow block(s) */
 
-   group_bytes = (short int)(dh_file->group_size);
-   buff = (char *)k_alloc(74, group_bytes);
+    group_bytes = (short int)(dh_file->group_size);
+    buff = (char*)k_alloc(74, group_bytes);
 
-   if (!ValidFileHandle(dh_file->sf[subfile].fu))
-    {
-     if (!FDS_open(dh_file, subfile))
-      {
-       log_printf("DH_GET_OVERFLOW: FDS open failure %d on %s subfile %d\n",
-                  process.os_error, fptr->pathname, subfile);
-       return FALSE;
+    if (!ValidFileHandle(dh_file->sf[subfile].fu)) {
+      if (!FDS_open(dh_file, subfile)) {
+        log_printf("DH_GET_OVERFLOW: FDS open failure %d on %s subfile %d.\n",
+                   process.os_error, fptr->pathname, subfile);
+        return FALSE;
       }
     }
 
-   dh_file->sf[subfile].tx_ref = tx_ref++;
-   if (tx_ref < 0) restart_tx_ref();
+    dh_file->sf[subfile].tx_ref = tx_ref++;
+    if (tx_ref < 0)
+      restart_tx_ref();
 
-   if ((offset = Seek(dh_file->sf[subfile].fu, (int64)0, SEEK_END)) == -1)
-    {
-     dh_err = DHE_SEEK_ERROR;
-     process.os_error = OSError;
-     ogrp = 0;
-     goto exit_get_overflow;
+    if ((offset = Seek(dh_file->sf[subfile].fu, (int64)0, SEEK_END)) == -1) {
+      dh_err = DHE_SEEK_ERROR;
+      process.os_error = OSError;
+      ogrp = 0;
+      goto exit_get_overflow;
     }
 
-   if (dh_file->file_version < 2)
-    {
-     /* Check not about to go over 2Gb */
+    if (dh_file->file_version < 2) {
+      /* Check not about to go over 2Gb */
 
-     if ((((unsigned long)offset) + group_bytes) > 0x80000000L)
-      {
-       dh_err = DHE_SIZE;
-       ogrp = 0;
-       goto exit_get_overflow;
+      if ((((unsigned long)offset) + group_bytes) > 0x80000000L) {
+        dh_err = DHE_SIZE;
+        ogrp = 0;
+        goto exit_get_overflow;
       }
     }
 
-   memset(buff, '\0', group_bytes);
+    memset(buff, '\0', group_bytes);
 
-   if (Write(dh_file->sf[subfile].fu, buff, group_bytes) < 0)
-    {
-     process.os_error = OSError;
-     log_printf("DH_GET_OVERFLOW: Write error %d on %s subfile %d at %ld\n",
-                process.os_error, FPtr(dh_file->file_id)->pathname, subfile, offset);
-     dh_err = DHE_WRITE_ERROR;
-     ogrp = 0;
-     goto exit_get_overflow;
+    if (Write(dh_file->sf[subfile].fu, buff, group_bytes) < 0) {
+      process.os_error = OSError;
+      log_printf("DH_GET_OVERFLOW: Write error %d on %s subfile %d at %ld.\n",
+                 process.os_error, FPtr(dh_file->file_id)->pathname, subfile,
+                 offset);
+      dh_err = DHE_WRITE_ERROR;
+      ogrp = 0;
+      goto exit_get_overflow;
     }
 
-   ogrp = (long int)(((offset - dh_file->header_bytes) / group_bytes) + 1);
+    ogrp = (long int)(((offset - dh_file->header_bytes) / group_bytes) + 1);
   }
 
 exit_get_overflow:
- if (!have_group_lock)
-  {
-   dh_flush_header(dh_file);
-   FreeGroupWriteLock(header_lock);
+  if (!have_group_lock) {
+    dh_flush_header(dh_file);
+    FreeGroupWriteLock(header_lock);
   }
 
- if (buff != NULL) k_free(buff);
- dh_file->flags |= FILE_UPDATED;
+  if (buff != NULL)
+    k_free(buff);
+  dh_file->flags |= FILE_UPDATED;
 
- return ogrp;
+  return ogrp;
 }
 
 /* ======================================================================
    dh_free_overflow()  -  Add a block to the free overflow chain          */
 
-void dh_free_overflow(DH_FILE * dh_file, long int ogrp)
-{
- short int header_lock;
- char * buff;
- short int group_bytes;
- FILE_ENTRY * fptr;
+void dh_free_overflow(DH_FILE* dh_file, long int ogrp) {
+  short int header_lock;
+  char* buff;
+  short int group_bytes;
+  FILE_ENTRY* fptr;
 
- fptr = FPtr(dh_file->file_id);
- group_bytes = (short int)(dh_file->group_size);
+  fptr = FPtr(dh_file->file_id);
+  group_bytes = (short int)(dh_file->group_size);
 
- buff = (char *)k_alloc(103, group_bytes);
- memset(buff, '\0', group_bytes);
+  buff = (char*)k_alloc(103, group_bytes);
+  memset(buff, '\0', group_bytes);
 
- header_lock = GetGroupWriteLock(dh_file, 0);
- ((DH_BIG_BLOCK *)buff)->next = SetFwdLink(dh_file, fptr->params.free_chain);
- if (dh_write_group(dh_file, OVERFLOW_SUBFILE, ogrp, buff, group_bytes))
-  {
-   fptr->params.free_chain = ogrp;
+  header_lock = GetGroupWriteLock(dh_file, 0);
+  ((DH_BIG_BLOCK*)buff)->next = SetFwdLink(dh_file, fptr->params.free_chain);
+  if (dh_write_group(dh_file, OVERFLOW_SUBFILE, ogrp, buff, group_bytes)) {
+    fptr->params.free_chain = ogrp;
   }
- FreeGroupWriteLock(header_lock);
+  FreeGroupWriteLock(header_lock);
 
- k_free(buff);
+  k_free(buff);
 }
 
 /* ======================================================================
    dh_flush_header()  -  Write file header                                */
 
-bool dh_flush_header(DH_FILE * dh_file)
-{
- DH_HEADER header;
- FILE_ENTRY * fptr;
+bool dh_flush_header(DH_FILE* dh_file) {
+  DH_HEADER header;
+  FILE_ENTRY* fptr;
 
- /* Save if we have updated the file or statistics counting is enabled */
+  /* Save if we have updated the file or statistics counting is enabled */
 
- fptr = FPtr(dh_file->file_id);
- if (((dh_file->flags & FILE_UPDATED) || fptr->stats.reset)
-   && !(dh_file->flags & DHF_RDONLY))
-  {
-   dh_file->flags &= ~FILE_UPDATED;
+  fptr = FPtr(dh_file->file_id);
+  if (((dh_file->flags & FILE_UPDATED) || fptr->stats.reset) &&
+      !(dh_file->flags & DHF_RDONLY)) {
+    dh_file->flags &= ~FILE_UPDATED;
 
-   if (!ValidFileHandle(dh_file->sf[PRIMARY_SUBFILE].fu))
-    {
-     if (!FDS_open(dh_file, PRIMARY_SUBFILE))
-      {
-       log_printf("DH_FLUSH_HEADER: FDS open failure %d on %s subfile %d\n",
-                  process.os_error, fptr->pathname, PRIMARY_SUBFILE);
-       return FALSE;
+    if (!ValidFileHandle(dh_file->sf[PRIMARY_SUBFILE].fu)) {
+      if (!FDS_open(dh_file, PRIMARY_SUBFILE)) {
+        log_printf("DH_FLUSH_HEADER: FDS open failure %d on %s subfile %d.\n",
+                   process.os_error, fptr->pathname, PRIMARY_SUBFILE);
+        return FALSE;
       }
     }
 
-   dh_file->sf[PRIMARY_SUBFILE].tx_ref = tx_ref++;
-   if (tx_ref < 0) restart_tx_ref();
+    dh_file->sf[PRIMARY_SUBFILE].tx_ref = tx_ref++;
+    if (tx_ref < 0)
+      restart_tx_ref();
 
-   if (!read_at(dh_file->sf[PRIMARY_SUBFILE].fu, (int64)0, (char *)(&header),
-                DH_HEADER_SIZE))
-    {
-     return FALSE;
+    if (!read_at(dh_file->sf[PRIMARY_SUBFILE].fu, (int64)0, (char*)(&header),
+                 DH_HEADER_SIZE)) {
+      return FALSE;
     }
 
-   header.params.modulus = fptr->params.modulus;
-   header.params.min_modulus = fptr->params.min_modulus;
-   header.params.big_rec_size = fptr->params.big_rec_size;
-   header.params.split_load = fptr->params.split_load;
-   header.params.merge_load = fptr->params.merge_load;
-   header.params.load_bytes = (unsigned long int)(fptr->params.load_bytes & 0xFFFFFFFF);
-   header.params.extended_load_bytes = (short int)(fptr->params.load_bytes >> 32);
-   header.params.mod_value = fptr->params.mod_value;
-   header.params.longest_id = fptr->params.longest_id;
-   header.params.free_chain = SetFwdLink(dh_file, fptr->params.free_chain);
-   header.record_count = fptr->record_count + 1; /* See dh_fmt.h */
+    header.params.modulus = fptr->params.modulus;
+    header.params.min_modulus = fptr->params.min_modulus;
+    header.params.big_rec_size = fptr->params.big_rec_size;
+    header.params.split_load = fptr->params.split_load;
+    header.params.merge_load = fptr->params.merge_load;
+    header.params.load_bytes =
+        (unsigned long int)(fptr->params.load_bytes & 0xFFFFFFFF);
+    header.params.extended_load_bytes =
+        (short int)(fptr->params.load_bytes >> 32);
+    header.params.mod_value = fptr->params.mod_value;
+    header.params.longest_id = fptr->params.longest_id;
+    header.params.free_chain = SetFwdLink(dh_file, fptr->params.free_chain);
+    header.record_count = fptr->record_count + 1; /* See dh_fmt.h */
 
-   header.stats = fptr->stats;
+    header.stats = fptr->stats;
 
-   if (!write_at(dh_file->sf[PRIMARY_SUBFILE].fu, (int64)0, (char *)(&header),
-                 DH_HEADER_SIZE))
-    {
-     return FALSE;
+    if (!write_at(dh_file->sf[PRIMARY_SUBFILE].fu, (int64)0, (char*)(&header),
+                  DH_HEADER_SIZE)) {
+      return FALSE;
     }
 
-   if (pcfg.fsync & 0x0001)
-    {
-     dh_fsync(dh_file, PRIMARY_SUBFILE);
-     dh_fsync(dh_file, OVERFLOW_SUBFILE);
+    if (pcfg.fsync & 0x0001) {
+      dh_fsync(dh_file, PRIMARY_SUBFILE);
+      dh_fsync(dh_file, OVERFLOW_SUBFILE);
     }
   }
 
- dh_file->flags |= FILE_UPDATED;
+  dh_file->flags |= FILE_UPDATED;
 
- return TRUE;
+  return TRUE;
 }
 
 /* ======================================================================
    dh_get_group_lock()  -  Set a group                                        */
 
-short int dh_get_group_lock(
-   DH_FILE * dh_file,
-   long int group,
-   bool write_lock)
-{
- short int file_id;
- short int idx;          /* Index of hash cell */
- short int scan_idx;     /* Scanning index */
- GLOCK_ENTRY * lptr;
- short int active_locks;
- short int free_cell;
- static short int pause_ct = 5;
- bool retry = FALSE;
- FILE_ENTRY * fptr;
- int steps = 0;
+short int dh_get_group_lock(DH_FILE* dh_file, long int group, bool write_lock) {
+  short int file_id;
+  short int idx;      /* Index of hash cell */
+  short int scan_idx; /* Scanning index */
+  GLOCK_ENTRY* lptr;
+  short int active_locks;
+  short int free_cell;
+  static short int pause_ct = 5;
+  bool retry = FALSE;
+  /* FILE_ENTRY* fptr; variable set but not used. */
+  int steps = 0;
 
- file_id = dh_file->file_id;
- idx = GLockHash(file_id, group);
- fptr = FPtr(file_id);
+  file_id = dh_file->file_id;
+  idx = GLockHash(file_id, group);
+  /* fptr = FPtr(file_id); variable set but not used. */
 
 again:
- scan_idx = idx;
- lptr = GLPtr(scan_idx);
- free_cell = 0;
+  scan_idx = idx;
+  lptr = GLPtr(scan_idx);
+  free_cell = 0;
 
- StartExclusive(GROUP_LOCK_SEM, 7);
+  StartExclusive(GROUP_LOCK_SEM, 7);
 
- /* Scan to see if this lock is already owned, remembering any blank cell */
+  /* Scan to see if this lock is already owned, remembering any blank cell */
 
- active_locks = lptr->count;   /* There are this many locks somewhere */
- while(active_locks)
-  {
-   steps++;
-   if (lptr->hash == idx)
-    {
-     if ((lptr->file_id == file_id)
-       && (lptr->group == group))
-      {
-       if (!write_lock)
-        {
-         if (lptr->grp_count >= 0)  /* Read lock - can increment count */
+  active_locks = lptr->count; /* There are this many locks somewhere */
+  while (active_locks) {
+    steps++;
+    if (lptr->hash == idx) {
+      if ((lptr->file_id == file_id) && (lptr->group == group)) {
+        if (!write_lock) {
+          if (lptr->grp_count >= 0) /* Read lock - can increment count */
           {
-           lptr->grp_count++;
-           lptr->owner = process.user_no;  /* Use newest owner */
+            lptr->grp_count++;
+            lptr->owner = process.user_no; /* Use newest owner */
 
-           sysseg->gl_count++;
-           sysseg->gl_scan += steps;
-           EndExclusive(GROUP_LOCK_SEM);
-           return scan_idx;
+            sysseg->gl_count++;
+            sysseg->gl_scan += steps;
+            EndExclusive(GROUP_LOCK_SEM);
+            return scan_idx;
           }
         }
 
-       goto wait_for_lock;      /* Must wait */
-      }
-     else   /* Not the right lock */
+        goto wait_for_lock; /* Must wait */
+      } else                /* Not the right lock */
       {
       }
-     active_locks--;
-    }
-   else if (lptr->hash == 0)    /* Unused cell */
+      active_locks--;
+    } else if (lptr->hash == 0) /* Unused cell */
     {
-     if (free_cell == 0) free_cell = scan_idx;
+      if (free_cell == 0)
+        free_cell = scan_idx;
     }
 
-   if (++scan_idx > sysseg->num_glocks)
-    {
-     scan_idx = 1;
-     lptr = GLPtr(1);
-    }
-   else
-    {
-     lptr++;
+    if (++scan_idx > sysseg->num_glocks) {
+      scan_idx = 1;
+      lptr = GLPtr(1);
+    } else {
+      lptr++;
     }
 
-   if (scan_idx == idx) goto wait_for_lock;  /* Table full */
+    if (scan_idx == idx)
+      goto wait_for_lock; /* Table full */
   }
 
- /* Continue looking if we have yet to find a spare cell */
+  /* Continue looking if we have yet to find a spare cell */
 
- if (free_cell == 0)
-  {
-   do {
-       steps++;
+  if (free_cell == 0) {
+    do {
+      steps++;
 
-       if (lptr->hash == 0)
-        {
-         free_cell = scan_idx;
-         break;
-        }
+      if (lptr->hash == 0) {
+        free_cell = scan_idx;
+        break;
+      }
 
-       if (++scan_idx > sysseg->num_glocks)
-        {
-         scan_idx = 1;
-         lptr = GLPtr(1);
-        }
-       else
-        {
-         lptr++;
-        }
+      if (++scan_idx > sysseg->num_glocks) {
+        scan_idx = 1;
+        lptr = GLPtr(1);
+      } else {
+        lptr++;
+      }
 
-       if (scan_idx == idx) goto wait_for_lock;  /* Table full */
-      } while(1);
+      if (scan_idx == idx)
+        goto wait_for_lock; /* Table full */
+    } while (1);
   }
 
- /* Set up a new lock in the free cell */
+  /* Set up a new lock in the free cell */
 
- lptr = GLPtr(free_cell);
- lptr->hash = idx;
- lptr->owner = process.user_no;
- lptr->file_id = file_id;
- lptr->group = group;
- lptr->grp_count = (write_lock)?-1:1;
+  lptr = GLPtr(free_cell);
+  lptr->hash = idx;
+  lptr->owner = process.user_no;
+  lptr->file_id = file_id;
+  lptr->group = group;
+  lptr->grp_count = (write_lock) ? -1 : 1;
 
- GLPtr(idx)->count += 1;
- 
- EndExclusive(GROUP_LOCK_SEM);
+  GLPtr(idx)->count += 1;
 
- sysseg->gl_count++;
- sysseg->gl_scan += steps;
- return free_cell;
+  EndExclusive(GROUP_LOCK_SEM);
 
+  sysseg->gl_count++;
+  sysseg->gl_scan += steps;
+  return free_cell;
 
 wait_for_lock:
-   /* We need to wait for another user to give away this (or another) group
-      lock.  Release the lock we hold on the group lock table and then pause
-      briefly before trying again.
-      It is not good enough simply to give away our timeslice as a lower
-      priority process might own the lock and we would end up spinning
-      through the scheduler without giving it a chance to give the lock away.
-      A timed wait would potentially result in unacceptable performance. As
-      a compromise, we give away our time slice but on every tenth attempt we
-      pause for one millisecond.                                             */
+  /* We need to wait for another user to give away this (or another) group
+     lock.  Release the lock we hold on the group lock table and then pause
+     briefly before trying again.
+     It is not good enough simply to give away our timeslice as a lower
+     priority process might own the lock and we would end up spinning
+     through the scheduler without giving it a chance to give the lock away.
+     A timed wait would potentially result in unacceptable performance. As
+     a compromise, we give away our time slice but on every tenth attempt we
+     pause for one millisecond.                                             */
 
-   if (retry) sysseg->gl_retry++;
-   else sysseg->gl_wait++;
+  if (retry)
+    sysseg->gl_retry++;
+  else
+    sysseg->gl_wait++;
 
-   EndExclusive(GROUP_LOCK_SEM);
+  EndExclusive(GROUP_LOCK_SEM);
 
-   if (--pause_ct)
-    {
-     RelinquishTimeslice;
-    }
-   else
-    {
-     Sleep(1);
-     pause_ct = 10;
-    }
+  if (--pause_ct) {
+    RelinquishTimeslice;
+  } else {
+    Sleep(1);
+    pause_ct = 10;
+  }
 
-   retry = TRUE;
-   goto again;
+  retry = TRUE;
+  goto again;
 }
 
 /* ======================================================================
    dh_free_group_lock()  -  Free a group lock                             */
 
-void dh_free_group_lock(short int slot)
-{
- GLOCK_ENTRY * lptr;
- GLOCK_ENTRY * hash_lptr;
+void dh_free_group_lock(short int slot) {
+  GLOCK_ENTRY* lptr;
+  GLOCK_ENTRY* hash_lptr;
 
+  lptr = GLPtr(slot);
+  StartExclusive(GROUP_LOCK_SEM, 8);
 
- lptr = GLPtr(slot);
- StartExclusive(GROUP_LOCK_SEM, 8);
-
- if (lptr->grp_count < 0)  /* Write lock */
+  if (lptr->grp_count < 0) /* Write lock */
   {
-   hash_lptr = GLPtr(lptr->hash);
-   lptr->hash = 0;
-   (hash_lptr->count)--;
-  }
- else                                  /* Read lock */
+    hash_lptr = GLPtr(lptr->hash);
+    lptr->hash = 0;
+    (hash_lptr->count)--;
+  } else /* Read lock */
   {
-   if (--(lptr->grp_count) == 0)
-    {
-     hash_lptr = GLPtr(lptr->hash);
-     lptr->hash = 0;
-     (hash_lptr->count)--;
+    if (--(lptr->grp_count) == 0) {
+      hash_lptr = GLPtr(lptr->hash);
+      lptr->hash = 0;
+      (hash_lptr->count)--;
     }
   }
 
- EndExclusive(GROUP_LOCK_SEM);
+  EndExclusive(GROUP_LOCK_SEM);
 }
 
 /* ======================================================================
    dh_configure()  - Change file parameters                               */
 
-void dh_configure(
-   DH_FILE * dh_file,
-   long int min_modulus,
-   short int split_load,
-   short int merge_load,
-   long int large_rec_size)
-{
- FILE_ENTRY * fptr;
- fptr = FPtr(dh_file->file_id);
+void dh_configure(DH_FILE* dh_file,
+                  long int min_modulus,
+                  short int split_load,
+                  short int merge_load,
+                  long int large_rec_size) {
+  FILE_ENTRY* fptr;
+  fptr = FPtr(dh_file->file_id);
 
- StartExclusive(FILE_TABLE_LOCK, 9);
- if (min_modulus >= 0) fptr->params.min_modulus = min_modulus;
- if (split_load >= 0) fptr->params.split_load = split_load;
- if (merge_load >= 0) fptr->params.merge_load = merge_load;
- if (large_rec_size >= 0) fptr->params.big_rec_size = large_rec_size;
- dh_file->flags |= FILE_UPDATED;
- EndExclusive(FILE_TABLE_LOCK);
+  StartExclusive(FILE_TABLE_LOCK, 9);
+  if (min_modulus >= 0)
+    fptr->params.min_modulus = min_modulus;
+  if (split_load >= 0)
+    fptr->params.split_load = split_load;
+  if (merge_load >= 0)
+    fptr->params.merge_load = merge_load;
+  if (large_rec_size >= 0)
+    fptr->params.big_rec_size = large_rec_size;
+  dh_file->flags |= FILE_UPDATED;
+  EndExclusive(FILE_TABLE_LOCK);
 
- dh_flush_header(dh_file);
+  dh_flush_header(dh_file);
 }
 
 /* ======================================================================
    read_at()  -  Read from given file position                            */
 
-bool read_at(
-   OSFILE fu,
-   int64 offset,
-   char * buff,
-   int bytes)
-{
- if (Seek(fu, offset, SEEK_SET) < 0)
-  {
-   dh_err = DHE_SEEK_ERROR;
-   process.os_error = OSError;
-   return FALSE;
+bool read_at(OSFILE fu, int64 offset, char* buff, int bytes) {
+  if (Seek(fu, offset, SEEK_SET) < 0) {
+    dh_err = DHE_SEEK_ERROR;
+    process.os_error = OSError;
+    return FALSE;
   }
 
- if (Read(fu, buff, bytes) < 0)
-  {
-   dh_err = DHE_READ_ERROR;
-   process.os_error = OSError;
-   return FALSE;
+  if (Read(fu, buff, bytes) < 0) {
+    dh_err = DHE_READ_ERROR;
+    process.os_error = OSError;
+    return FALSE;
   }
 
- return TRUE;
+  return TRUE;
 }
 
 /* ======================================================================
    write_at()  -  Write at given file position                            */
 
-bool write_at(
-   OSFILE fu,
-   int64 offset,
-   char * buff,
-   int bytes)
-{
- if (Seek(fu, offset, SEEK_SET) < 0)
-  {
-   dh_err = DHE_SEEK_ERROR;
-   process.os_error = OSError;
-   return FALSE;
+bool write_at(OSFILE fu, int64 offset, char* buff, int bytes) {
+  if (Seek(fu, offset, SEEK_SET) < 0) {
+    dh_err = DHE_SEEK_ERROR;
+    process.os_error = OSError;
+    return FALSE;
   }
 
- if (Write(fu, buff, bytes) < 0)
-  {
-   process.os_error = OSError;
-   log_printf("DH_WRITE_AT: Write error %d\n", process.os_error);
-   dh_err = DHE_WRITE_ERROR;
-   return FALSE;
+  if (Write(fu, buff, bytes) < 0) {
+    process.os_error = OSError;
+    log_printf("DH_WRITE_AT: Write error %d\n", process.os_error);
+    dh_err = DHE_WRITE_ERROR;
+    return FALSE;
   }
 
- return TRUE;
+  return TRUE;
 }
 
 /* ======================================================================
    dh_set_subfile  -  Copy a file unit number into the DH_FILE system,
    adjusting the FDS open count.                                          */
 
-void dh_set_subfile(
-   DH_FILE * dh_file,
-   short int subfile,
-   OSFILE fu)
-{
- dh_file->sf[subfile].fu = fu;
- FDS_open_count++;
+void dh_set_subfile(DH_FILE* dh_file, short int subfile, OSFILE fu) {
+  dh_file->sf[subfile].fu = fu;
+  FDS_open_count++;
 }
 
 /* ======================================================================
@@ -904,51 +824,40 @@ void dh_set_subfile(
    to one. Files may get closed once in error but things will quickly
    sort themselves out.                                                   */
 
-Private void restart_tx_ref()
-{
- DH_FILE * p;
- short int sf;
+Private void restart_tx_ref() {
+  DH_FILE* p;
+  short int sf;
 
- for (p = dh_file_head; p != NULL; p = p->next_file)
-  {
-   for (sf = 0; sf < p->no_of_subfiles; sf++)
-    {
-     p->sf[sf].tx_ref = 1;
+  for (p = dh_file_head; p != NULL; p = p->next_file) {
+    for (sf = 0; sf < p->no_of_subfiles; sf++) {
+      p->sf[sf].tx_ref = 1;
     }
   }
- tx_ref = 2;
+  tx_ref = 2;
 }
 
 /* ======================================================================
    OpenFile()  -  Open a file, marking as not inheritable                 */
 
-int OpenFile(
-   char * path,
-   int mode,
-   int rights)
-{
- OSFILE fu;
- int flags;
+int OpenFile(char* path, int mode, int rights) {
+  OSFILE fu;
+  int flags;
 
- fu = open(path, mode, rights);
- if (fu >= 0)
-  {
-   flags = fcntl(fu, F_GETFD);
-   flags |= FD_CLOEXEC;
-   fcntl(fu, F_SETFD, flags);
+  fu = open(path, mode, rights);
+  if (fu >= 0) {
+    flags = fcntl(fu, F_GETFD);
+    flags |= FD_CLOEXEC;
+    fcntl(fu, F_SETFD, flags);
   }
- return fu;
+  return fu;
 }
 
 /* ======================================================================
    SetFileSize()  -  Change file size                                     */
 
-bool SetFileSize(OSFILE fu, int64 bytes)
-{
- chsize64(fu, bytes);
- return TRUE;
+bool SetFileSize(OSFILE fu, int64 bytes) {
+  chsize64(fu, bytes);
+  return TRUE;
 }
 
-
 /* END-CODE */
-

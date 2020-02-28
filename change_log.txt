@@ -1,3 +1,28 @@
+26Feb20 - gwb
+Eight. Years. Later....
+
+The entire codebase was sifted through and all compiler warnings have been resolved.
+The vast majority of the warnings were related to potential overflow problems
+with sprintf() calls.  All the problematic calls were converted to snprintf() calls
+and some minor error handling logic was added.  The error handling needs more work
+to be actually beneficial.  (a grep for "TODO" will find most of these)
+
+The remainder of the compiler warnings were triggered by variables that were declared
+and set, but were never used after that point.  This items are marked by comments
+and should be reviewed to see if they're part of functionality that was partially
+removed (and mayhap could be restored) or just dead code that could safely be
+ignored.
+
+ScarletDME is currently building and working without error on CentOS 8.
+See README.md for details on how to configure the build environment.
+
+Some (not all!) K&R style function declarations have been converted to ANSI style.
+Each source file that was edited has been reformatted for readiblity.  See the main
+README.md file on guidelines for that.
+
+A bug was found in op_config.c that would have prevented the successful parsing of the
+"SH" and "SH1" configuration options.  See op_config.c for more info.
+
 20Jun12 - gwb
 -------------
 Fixed a compiler warning in k_error() - caused by an sprintf() call missing a format specifier.

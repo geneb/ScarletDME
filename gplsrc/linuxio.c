@@ -6,20 +6,22 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2, or (at your option)
  * any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
- * 
+ *
  * Ladybridge Systems can be contacted via the www.openqm.com web site.
  * 
+ * ScarletDME Wiki: https://scarlet.deltasoft.com
+ * 
  * START-HISTORY:
- * 05 Nov 07  2.6-5 0566 Applied casts to handle keyin() correctly.
+  * 05 Nov 07  2.6-5 0566 Applied casts to handle keyin() correctly.
  * 13 Sep 07  2.6-3 0562 Need to inhibit input_handler() when doing SH command.
  * 03 Sep 07  2.6-3 Disable OPOST output mode so that LF is not mapped to CRLF.
  * 14 Aug 07  2.6-0 Enable asyncio for console mode too.
@@ -71,35 +73,35 @@
  *
  */
 
-#include <qm.h>
-#include <tio.h>
-#include <header.h>
-#include <config.h>
-#include <telnet.h>
-#include <qmtermlb.h>
-#include <err.h>
-#include <qmnet.h>
+#include "qm.h"
+#include "config.h"
+#include "err.h"
+#include "header.h"
+#include "qmnet.h"
+#include "qmtermlb.h"
+#include "telnet.h"
+#include "tio.h"
 
+#include <netdb.h>
+#include <pwd.h>
+#include <signal.h>
 #include <sys/poll.h>
 #include <sys/socket.h>
 #include <sys/time.h>
-#include <netdb.h>
-#include <signal.h>
 #include <time.h>
-#include <pwd.h>
 
-   #include <sched.h>
+#include <sched.h>
 
 Public int ChildPipe;
-Public bool in_sh;     /* 0562 Doing SH command? */
+Public bool in_sh; /* 0562 Doing SH command? */
 
 #define RING_SIZE 1024
 Private volatile char ring_buff[RING_SIZE];
 Private volatile short int ring_in = 0;
 Private volatile short int ring_out = 0;
 
-   Private void io_handler(int sig);
-   Private int stdin_modes;
+Private void io_handler(int sig);
+Private int stdin_modes;
 Private void do_input(void);
 Private bool input_handler_enabled = TRUE;
 Private bool piped_input = FALSE;
@@ -123,189 +125,177 @@ bool negotiate_telnet_parameter(void);
 /* ======================================================================
    start_connection()  -  Start Linux socket / pipe based connection      */
 
-bool start_connection(int unused)
-{
- socklen_t n;
- struct sockaddr_in sa;
- int flag;
+bool start_connection(int unused) {
+  socklen_t n;
+  struct sockaddr_in sa;
+  int flag;
 
+  if (is_QMVbSrvr)
+    strcpy(command_processor, "$VBSRVR");
 
- if (is_QMVbSrvr) strcpy(command_processor, "$VBSRVR");
+  if (connection_type == CN_SOCKET) {
+    if (is_QMVbSrvr) {
+      flag = TRUE;
+      setsockopt(0, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, sizeof(int));
 
- if (connection_type == CN_SOCKET)
-  {
-   if (is_QMVbSrvr)
-    {
-     flag = TRUE;
-     setsockopt(0, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int));
+      /* Fire an Ack character up the connection to start the conversation.
+         This is necessary because Linux loses anything we send before the
+         new process is up and running so QMClient isn't going to talk until
+         we go first. The Ack comes from QMSvc on NT style systems.          */
 
-     /* Fire an Ack character up the connection to start the conversation.
-        This is necessary because Linux loses anything we send before the
-        new process is up and running so QMClient isn't going to talk until
-        we go first. The Ack comes from QMSvc on NT style systems.          */
-
-     send(0, "\x06", 1, 0);
-    }
-   else
-    {
-     send(1, "\xff\xfd\x2d", 3, 0);   /* DO SuppressLocalEcho */
-     send(1, "\xff\xfb\x01", 3, 0);   /* WILL echo */
-     send(1, "\xff\xfd\x03", 3, 0);   /* DO suppress go ahead */
-     send(1, "\xff\xfb\x03", 3, 0);   /* WILL suppress go ahead */
-     send(1, "\xff\xfe\x22", 3, 0);   /* DONT line mode */
-     send(1, "\xff\xfd\x18", 3, 0);   /* DO TERMTYPE */
+      send(0, "\x06", 1, 0);
+    } else {
+      send(1, "\xff\xfd\x2d", 3, 0); /* DO SuppressLocalEcho */
+      send(1, "\xff\xfb\x01", 3, 0); /* WILL echo */
+      send(1, "\xff\xfd\x03", 3, 0); /* DO suppress go ahead */
+      send(1, "\xff\xfb\x03", 3, 0); /* WILL suppress go ahead */
+      send(1, "\xff\xfe\x22", 3, 0); /* DONT line mode */
+      send(1, "\xff\xfd\x18", 3, 0); /* DO TERMTYPE */
     }
 
-   n = sizeof(sa);
-   getpeername(0, (struct sockaddr *)&sa, &n);
-   strcpy(ip_addr, (char *)inet_ntoa(sa.sin_addr));
+    n = sizeof(sa);
+    getpeername(0, (struct sockaddr*)&sa, &n);
+    strcpy(ip_addr, (char*)inet_ntoa(sa.sin_addr));
 
-   n = sizeof(sa);
-   getsockname(0, (struct sockaddr *)&sa, &n);
-   port_no = ntohs(sa.sin_port);
+    n = sizeof(sa);
+    getsockname(0, (struct sockaddr*)&sa, &n);
+    port_no = ntohs(sa.sin_port);
 
-   /* Create output buffer */
+    /* Create output buffer */
 
-   outbuf = (char *)malloc(OUTBUF_SIZE);
-   if (outbuf == NULL)
-    {
-     printf("Unable to allocate socket output buffer\n");
-     return FALSE;   /* Error */
+    outbuf = (char*)malloc(OUTBUF_SIZE);
+    if (outbuf == NULL) {
+      printf("Unable to allocate socket output buffer\n");
+      return FALSE; /* Error */
     }
   }
 
- case_inversion = TRUE;
- set_term(TRUE);
+  case_inversion = TRUE;
+  set_term(TRUE);
 
- /* Set up signal handler */
+  /* Set up signal handler */
 
- signal(SIGINT, signal_handler);
- signal(SIGHUP, signal_handler);
- signal(SIGTERM, signal_handler);
+  signal(SIGINT, signal_handler);
+  signal(SIGHUP, signal_handler);
+  signal(SIGTERM, signal_handler);
 
- /* Set up a signal handler to catch SIGIO generated by arrival of
-    input data.                                                       */
+  /* Set up a signal handler to catch SIGIO generated by arrival of
+     input data.                                                       */
 
- signal(SIGIO, io_handler);
- fcntl(0, F_SETOWN, (int) getpid());
- fcntl(0, F_SETFL, fcntl(0, F_GETFL) | O_NONBLOCK|O_ASYNC);
+  signal(SIGIO, io_handler);
+  fcntl(0, F_SETOWN, (int)getpid());
+  fcntl(0, F_SETFL, fcntl(0, F_GETFL) | O_NONBLOCK | O_ASYNC);
 
- return TRUE;
+  return TRUE;
 }
 
 /* ====================================================================== */
 
-bool init_console()
-{
- struct stat statbuf;
+bool init_console() {
+  struct stat statbuf;
 
- /* ----------------------- Display ------------------------ */
+  /* ----------------------- Display ------------------------ */
 
- tio.dsp.width = 80;
- tio.dsp.lines_per_page = 24;
+  tio.dsp.width = 80;
+  tio.dsp.lines_per_page = 24;
 
- if (connection_type == CN_CONSOLE)
-  {
-   /* ----------------------- Keyboard ----------------------- */
+  if (connection_type == CN_CONSOLE) {
+    /* ----------------------- Keyboard ----------------------- */
 
-   /* Fetch the current terminal settings and attempt to set new ones. */
+    /* Fetch the current terminal settings and attempt to set new ones. */
 
-   ttyin = 0;
-   if (!tcgetattr(ttyin, &old_tty_settings))
-    {
-     tty_modes_saved = TRUE;
+    ttyin = 0;
+    if (!tcgetattr(ttyin, &old_tty_settings)) {
+      tty_modes_saved = TRUE;
 
-     /* Construct desired settings */
+      /* Construct desired settings */
 
-     new_tty_settings = old_tty_settings;
+      new_tty_settings = old_tty_settings;
 
-     new_tty_settings.c_iflag &= ~ISTRIP;     /* 8 bit input */
-     new_tty_settings.c_iflag |= IGNPAR;      /* Disable parity */
-     new_tty_settings.c_iflag &= ~ICRNL;      /* Do not map CR to NL */
-     new_tty_settings.c_iflag &= ~IGNCR;      /* Do not discard CR */
-     new_tty_settings.c_iflag &= ~INLCR;       /* Do not map NL to CR */
-     new_tty_settings.c_iflag &= ~IXON;       /* Kill X-on/off for output... */
-     new_tty_settings.c_iflag &= ~IXOFF;      /* ...and input */
+      new_tty_settings.c_iflag &= ~ISTRIP; /* 8 bit input */
+      new_tty_settings.c_iflag |= IGNPAR;  /* Disable parity */
+      new_tty_settings.c_iflag &= ~ICRNL;  /* Do not map CR to NL */
+      new_tty_settings.c_iflag &= ~IGNCR;  /* Do not discard CR */
+      new_tty_settings.c_iflag &= ~INLCR;  /* Do not map NL to CR */
+      new_tty_settings.c_iflag &= ~IXON;   /* Kill X-on/off for output... */
+      new_tty_settings.c_iflag &= ~IXOFF;  /* ...and input */
 
-     new_tty_settings.c_oflag &= ~OPOST;      /* Do not convert LF to CRLF */
+      new_tty_settings.c_oflag &= ~OPOST; /* Do not convert LF to CRLF */
 
-     new_tty_settings.c_cflag &= ~CSIZE;      /* Enable... */
-     new_tty_settings.c_cflag |= CS8;         /* ...8 bit operation */
+      new_tty_settings.c_cflag &= ~CSIZE; /* Enable... */
+      new_tty_settings.c_cflag |= CS8;    /* ...8 bit operation */
 
-     new_tty_settings.c_lflag &= ~ICANON;     /* No erase/kill processing */
-     new_tty_settings.c_lflag |= ISIG;        /* Enable signal processing */
-     new_tty_settings.c_lflag &= ~ECHO;       /* Half duplex */
-     new_tty_settings.c_lflag &= ~ECHONL;     /* No echo of linefeed */
+      new_tty_settings.c_lflag &= ~ICANON; /* No erase/kill processing */
+      new_tty_settings.c_lflag |= ISIG;    /* Enable signal processing */
+      new_tty_settings.c_lflag &= ~ECHO;   /* Half duplex */
+      new_tty_settings.c_lflag &= ~ECHONL; /* No echo of linefeed */
 
-     new_tty_settings.c_cc[VMIN] = 1;         /* Single character input */
-     new_tty_settings.c_cc[VQUIT] = '\0';     /* No quit character */
-     new_tty_settings.c_cc[VSUSP] = '\0';     /* No suspend character */
-     new_tty_settings.c_cc[VEOF] = '\0';      /* No eof character */
+      new_tty_settings.c_cc[VMIN] = 1;     /* Single character input */
+      new_tty_settings.c_cc[VQUIT] = '\0'; /* No quit character */
+      new_tty_settings.c_cc[VSUSP] = '\0'; /* No suspend character */
+      new_tty_settings.c_cc[VEOF] = '\0';  /* No eof character */
 
-     /* Attempt to set device to this mode */
+      /* Attempt to set device to this mode */
 
-     tcsetattr(ttyin, TCSANOW, &new_tty_settings);
+      tcsetattr(ttyin, TCSANOW, &new_tty_settings);
     }
   }
 
- case_inversion = TRUE;
- set_term(TRUE);
+  case_inversion = TRUE;
+  set_term(TRUE);
 
- fstat(0, &statbuf);
- if (S_ISFIFO(statbuf.st_mode)) piped_input = TRUE;
+  fstat(0, &statbuf);
+  if (S_ISFIFO(statbuf.st_mode))
+    piped_input = TRUE;
 
- /* Set up signal handler  0351 */
+  /* Set up signal handler  0351 */
 
- signal(SIGINT, signal_handler);
- signal(SIGHUP, signal_handler);
- signal(SIGTERM, signal_handler);
+  signal(SIGINT, signal_handler);
+  signal(SIGHUP, signal_handler);
+  signal(SIGTERM, signal_handler);
 
- /* Set up a signal handler to catch SIGIO generated by arrival of
-    input data.                                                       */
+  /* Set up a signal handler to catch SIGIO generated by arrival of
+     input data.                                                       */
 
- if (!piped_input)
-  {
-   signal(SIGIO, io_handler);
-   fcntl(0, F_SETOWN, (int) getpid());
-   stdin_modes = fcntl(0, F_GETFL);
-   fcntl(0, F_SETFL, stdin_modes | O_NONBLOCK | O_ASYNC);
+  if (!piped_input) {
+    signal(SIGIO, io_handler);
+    fcntl(0, F_SETOWN, (int)getpid());
+    stdin_modes = fcntl(0, F_GETFL);
+    fcntl(0, F_SETFL, stdin_modes | O_NONBLOCK | O_ASYNC);
   }
 
- return TRUE;
+  return TRUE;
 }
 
 /* ======================================================================
    set_term()  -  Set or reset terminal modes                             */
 
-void set_term(trap_break)
-   bool trap_break;   /* Treat break char as a break? */
+void set_term(trap_break) bool trap_break; /* Treat break char as a break? */
 {
- trap_break_char = trap_break;
+  trap_break_char = trap_break;
 
- if (connection_type == CN_CONSOLE)
-  {
-   if (trap_break_char) new_tty_settings.c_lflag |= ISIG;
-   else new_tty_settings.c_lflag &= ~ISIG;
-   set_new_tty_modes();
+  if (connection_type == CN_CONSOLE) {
+    if (trap_break_char)
+      new_tty_settings.c_lflag |= ISIG;
+    else
+      new_tty_settings.c_lflag &= ~ISIG;
+    set_new_tty_modes();
   }
 }
 
 /* ======================================================================
    shut_console()  -  Shutdown console functions                          */
 
-void shut_console()
-{
- if (connection_type == CN_CONSOLE)
-  {
-   set_old_tty_modes();
+void shut_console() {
+  if (connection_type == CN_CONSOLE) {
+    set_old_tty_modes();
 
-   /* Remove signal handler for SIGIO */
+    /* Remove signal handler for SIGIO */
 
-   if (!piped_input)
-    {
-     signal(SIGIO, SIG_DFL);
-     fcntl(0, F_SETOWN, (int) getpid());
-     fcntl(0, F_SETFL, stdin_modes);
+    if (!piped_input) {
+      signal(SIGIO, SIG_DFL);
+      fcntl(0, F_SETOWN, (int)getpid());
+      fcntl(0, F_SETFL, stdin_modes);
     }
   }
 }
@@ -313,285 +303,265 @@ void shut_console()
 /* ======================================================================
    set_old_tty_modes()  -  Reset tty to modes it had on entry             */
 
-void set_old_tty_modes()
-{
- if (tty_modes_saved) tcsetattr(ttyin, TCSANOW, &old_tty_settings);
+void set_old_tty_modes() {
+  if (tty_modes_saved)
+    tcsetattr(ttyin, TCSANOW, &old_tty_settings);
 }
 
 /* ======================================================================
    set_new_tty_modes()  -  Reset tty to modes required by QM              */
 
-void set_new_tty_modes()
-{
- tcsetattr(ttyin, TCSANOW, &new_tty_settings);
+void set_new_tty_modes() {
+  tcsetattr(ttyin, TCSANOW, &new_tty_settings);
 }
 
 /* ====================================================================== */
 
-bool write_console(char * p, int bytes)
-{
- int n;
- 
- while(bytes)
-  {
-   n = write(1, p, bytes);
-   if (n < 0)  /* An error occured */
+bool write_console(char* p, int bytes) {
+  int n;
+
+  while (bytes) {
+    n = write(1, p, bytes);
+    if (n < 0) /* An error occured */
     {
-     if (errno != EAGAIN) return FALSE;
-     sched_yield();
-    }
-   else
-    {
-     bytes -= n;
-     p += n;
+      if (errno != EAGAIN)
+        return FALSE;
+      sched_yield();
+    } else {
+      bytes -= n;
+      p += n;
     }
   }
 
- return TRUE;
+  return TRUE;
 }
 
 /* ======================================================================
    Low level keyboard handling functions                                  */
 
-bool keyready()
-{
- /* If there is type-ahead, we can return immediately */
+bool keyready() {
+  /* If there is type-ahead, we can return immediately */
 
- if (type_ahead >= 0) return TRUE;
+  if (type_ahead >= 0)
+    return TRUE;
 
- if (piped_input) return TRUE;
+  if (piped_input)
+    return TRUE;
 
- input_handler_enabled = FALSE;
+  input_handler_enabled = FALSE;
 
- /* Check if there is anything pending on stdin. We may have had
-    the SIGIO handler disabled when this arrived.                       */
+  /* Check if there is anything pending on stdin. We may have had
+     the SIGIO handler disabled when this arrived.                       */
 
- if (qmpoll(0, 0) > 0)
-  {
-   /* There is something waiting.  Go get it as a type ahead character */
-   type_ahead = (char)keyin(0);
-  }
- else
-  {
-   /* Ok, so there's nothing out in the Linux world. Is there anything
-      in our ring buffer?                                              */
+  if (qmpoll(0, 0) > 0) {
+    /* There is something waiting.  Go get it as a type ahead character */
+    type_ahead = (char)keyin(0);
+  } else {
+    /* Ok, so there's nothing out in the Linux world. Is there anything
+       in our ring buffer?                                              */
 
-   if (ring_in == ring_out)
-    {
-     input_handler_enabled = TRUE;
-     return FALSE;
+    if (ring_in == ring_out) {
+      input_handler_enabled = TRUE;
+      return FALSE;
     }
 
-   type_ahead = ring_buff[ring_out];
-   ring_out = (ring_out + 1) % RING_SIZE;
+    type_ahead = ring_buff[ring_out];
+    ring_out = (ring_out + 1) % RING_SIZE;
   }
 
- input_handler_enabled = TRUE;
- return TRUE;
+  input_handler_enabled = TRUE;
+  return TRUE;
 }
 
-
-short int keyin(timeout)
-   int timeout;     /* Milliseconds */
+short int keyin(timeout) int timeout; /* Milliseconds */
 {
- char c;
- struct timeval tv;
- int64 t1;
- int64 t2;
- int td;
- int poll_ret;
- bool using_autologout = FALSE;
+  char c;
+  struct timeval tv;
+  int64 t1;
+  int64 t2;
+  int td;
+  int poll_ret;
+  bool using_autologout = FALSE;
 
- /* Disable the signal handler. Once this is done, no input can arrive
-    from anywhere else. We can then safely test the ring buffer. Because
-    we use a signal handler rather than multi-threading, the two styles
-    of input cannot be running simulataneously.                          */
+  /* Disable the signal handler. Once this is done, no input can arrive
+     from anywhere else. We can then safely test the ring buffer. Because
+     we use a signal handler rather than multi-threading, the two styles
+     of input cannot be running simulataneously.                          */
 
- input_handler_enabled = FALSE;
+  input_handler_enabled = FALSE;
 
- if (type_ahead >= 0)    /* 0211 */
+  if (type_ahead >= 0) /* 0211 */
   {
-   c = type_ahead;
-   type_ahead = -1;
-   goto exit_keyin;
-  }
- else
-  {
-   if (piped_input)
-    {
-     if (read(0, &c, 1) <= 0)
-      {
-       process.status = ER_EOF;
-       return -1;
+    c = type_ahead;
+    type_ahead = -1;
+    goto exit_keyin;
+  } else {
+    if (piped_input) {
+      if (read(0, &c, 1) <= 0) {
+        process.status = ER_EOF;
+        return -1;
       }
 
-     if (c == 10) c = inewline;
-     goto exit_keyin;
+      if (c == 10)
+        c = inewline;
+      goto exit_keyin;
     }
 
-   if (autologout) using_autologout = (autologout < timeout) || !timeout;
-   if (using_autologout) timeout = autologout;
+    if (autologout)
+      using_autologout = (autologout < timeout) || !timeout;
+    if (using_autologout)
+      timeout = autologout;
 
-   if (timeout)
-    {
-     gettimeofday(&tv, NULL);
-     t1 = (((int64)(tv.tv_sec)) * 1000) + (tv.tv_usec / 1000);
+    if (timeout) {
+      gettimeofday(&tv, NULL);
+      t1 = (((int64)(tv.tv_sec)) * 1000) + (tv.tv_usec / 1000);
     }
 
-   while(ring_in == ring_out)   /* Nothing in ring buffer */
+    while (ring_in == ring_out) /* Nothing in ring buffer */
     {
-     /* Do our own i/o wait so that we can handle events while we are
-        waiting. The paths that return special values all re-enable the
-        signal handler. If any input arrives between the call to poll()
-        and re-enabling the handler, it will be picked up by the next
-        call to keyin() or keyready() as it will still be in the queue. */
+      /* Do our own i/o wait so that we can handle events while we are
+         waiting. The paths that return special values all re-enable the
+         signal handler. If any input arrives between the call to poll()
+         and re-enabling the handler, it will be picked up by the next
+         call to keyin() or keyready() as it will still be in the queue. */
 
-     do {
-         poll_ret = qmpoll(0, (timeout && timeout < 1000)?timeout:1000);
+      do {
+        poll_ret = qmpoll(0, (timeout && timeout < 1000) ? timeout : 1000);
 
-          /* 0188 Added check for EINTR so that signals do not cause us
-             to terminate the process.                                  */
+        /* 0188 Added check for EINTR so that signals do not cause us
+           to terminate the process.                                  */
 
-          if ((poll_ret < 0) && (errno != EINTR))
-           {
-            connection_lost = TRUE;
-            k_exit_cause = K_TERMINATE;
-           }
+        if ((poll_ret < 0) && (errno != EINTR)) {
+          connection_lost = TRUE;
+          k_exit_cause = K_TERMINATE;
+        }
 
-          if ((my_uptr != NULL) && (my_uptr->events)) process_events();
+        if ((my_uptr != NULL) && (my_uptr->events))
+          process_events();
 
-          if (k_exit_cause & K_INTERRUPT)
-          {
-           /* Force our way out for logout, etc */
-           input_handler_enabled = TRUE;
-           return 0;
-          }
+        if (k_exit_cause & K_INTERRUPT) {
+          /* Force our way out for logout, etc */
+          input_handler_enabled = TRUE;
+          return 0;
+        }
 
-         if (timeout)
-          {
-           gettimeofday(&tv, NULL);
-           t2 = (((int64)(tv.tv_sec)) * 1000) + (tv.tv_usec / 1000);
-           td = t2 - t1;
-           timeout -= td;
-           t1 = t2;
-           if (timeout <= 0)
-            {
-             input_handler_enabled = TRUE;
+        if (timeout) {
+          gettimeofday(&tv, NULL);
+          t2 = (((int64)(tv.tv_sec)) * 1000) + (tv.tv_usec / 1000);
+          td = t2 - t1;
+          timeout -= td;
+          t1 = t2;
+          if (timeout <= 0) {
+            input_handler_enabled = TRUE;
 
-             if (using_autologout)
-              {
-               log_printf("%s\n", sysmsg(2503)); /* Inactivity timer expired - Process logged out */
-               Sleep(3000);
-               k_exit_cause = K_TERMINATE;
-              }
-
-             process.status = ER_TIMEOUT;
-             return -1;
+            if (using_autologout) {
+              log_printf("%s\n", sysmsg(2503)); /* Inactivity timer expired -
+                                                   Process logged out */
+              Sleep(3000);
+              k_exit_cause = K_TERMINATE;
             }
+
+            process.status = ER_TIMEOUT;
+            return -1;
           }
-        } while(poll_ret <= 0);
+        }
+      } while (poll_ret <= 0);
 
-     /* There should be something waiting for us.  Because we may choose
-        to discard whatever is waiting (NUL, quit key, etc), we must go
-        round the loop again to check if there is now anything in the
-        ring buffer.                                                      */
+      /* There should be something waiting for us.  Because we may choose
+         to discard whatever is waiting (NUL, quit key, etc), we must go
+         round the loop again to check if there is now anything in the
+         ring buffer.                                                      */
 
-     do_input();
+      do_input();
     }
 
-   /* Grab the character from the ring buffer */
+    /* Grab the character from the ring buffer */
 
-   c = ring_buff[ring_out];
-   ring_out = (ring_out + 1) % RING_SIZE;
+    c = ring_buff[ring_out];
+    ring_out = (ring_out + 1) % RING_SIZE;
   }
 
 exit_keyin:
 
- /* Re-enable the handler. As above, any input arriving in the final
-    moments before it was re-enabled will be picked up later.         */
+  /* Re-enable the handler. As above, any input arriving in the final
+     moments before it was re-enabled will be picked up later.         */
 
- input_handler_enabled = TRUE;
- return (short int)((u_char)c);
+  input_handler_enabled = TRUE;
+  return (short int)((u_char)c);
 }
 
-void io_handler(int sig)
-{
- /* Collect the input and re-enable the signal */
+void io_handler(int sig) {
+  /* Collect the input and re-enable the signal */
 
- if (input_handler_enabled && !in_sh) do_input();  /* 0562 */
- signal(SIGIO,io_handler);
+  if (input_handler_enabled && !in_sh)
+    do_input(); /* 0562 */
+  signal(SIGIO, io_handler);
 }
 
-Private void do_input()
-{
- char c;
- short int n;
- static bool last_was_cr = TRUE;  /* May need to skip leading NUL/LF */
+Private void do_input() {
+  char c;
+  short int n;
+  static bool last_was_cr = TRUE; /* May need to skip leading NUL/LF */
 
 again:
- while(!connection_lost)
-  {
-   if (qmpoll(0, 0) <= 0) break;
+  while (!connection_lost) {
+    if (qmpoll(0, 0) <= 0)
+      break;
 
-   n = (ring_in + 1) % RING_SIZE;
-   if (n == ring_out) return;       /* Ring buffer is full */
+    n = (ring_in + 1) % RING_SIZE;
+    if (n == ring_out)
+      return; /* Ring buffer is full */
 
-   if (read(0, &c, 1) <= 0)
-    {
-     if (errno == EAGAIN) goto again;  /* 0429 io_handler() stole our data */
+    if (read(0, &c, 1) <= 0) {
+      if (errno == EAGAIN)
+        goto again; /* 0429 io_handler() stole our data */
 
-     connection_lost = TRUE;   /* Lost connection */
-     k_exit_cause = K_TERMINATE;  /* 0393 */
-     c = 0;    /* 0338 */
-//0338     return;
+      connection_lost = TRUE;     /* Lost connection */
+      k_exit_cause = K_TERMINATE; /* 0393 */
+      c = 0;                      /* 0338 */
+                                  // 0338     return;
     }
 
-   if (!is_QMVbSrvr)
-    {
-     if (c == tio.break_char)           /* The break key */
+    if (!is_QMVbSrvr) {
+      if (c == tio.break_char) /* The break key */
       {
-       if (trap_break_char)
-        {
-         break_key();
-         continue;
+        if (trap_break_char) {
+          break_key();
+          continue;
         }
-      }
-     else
-      {
-       if (((u_char)c == TN_IAC) && telnet_negotiation)
-        {
-         (void)negotiate_telnet_parameter();
-         continue;
+      } else {
+        if (((u_char)c == TN_IAC) && telnet_negotiation) {
+          (void)negotiate_telnet_parameter();
+          continue;
         }
       }
     }
 
-   if (!telnet_binary_mode_in)
-    {
-     if (last_was_cr)
-      {
-       last_was_cr = FALSE;
-       if (c == 0) continue;     /* Ignore NUL after CR */
-       if (c == 10) continue;    /* Ignore LF after CR */
+    if (!telnet_binary_mode_in) {
+      if (last_was_cr) {
+        last_was_cr = FALSE;
+        if (c == 0)
+          continue; /* Ignore NUL after CR */
+        if (c == 10)
+          continue; /* Ignore LF after CR */
       }
-     last_was_cr = (c == 13);
+      last_was_cr = (c == 13);
 
-     if (c == 13) c = inewline;
-    }
-   else last_was_cr = FALSE;     /* Ready for exit from binary mode */
+      if (c == 13)
+        c = inewline;
+    } else
+      last_was_cr = FALSE; /* Ready for exit from binary mode */
 
-   if (ChildPipe >= 0)
-    {
-     if (c == inewline) c = 10;
-     tio_display_string(&c, 1, TRUE, FALSE);
-     write(ChildPipe, &c, 1);
-    }
-   else
-    {
-     /* Pop this character into the ring buffer */
+    if (ChildPipe >= 0) {
+      if (c == inewline)
+        c = 10;
+      tio_display_string(&c, 1, TRUE, FALSE);
+      write(ChildPipe, &c, 1);
+    } else {
+      /* Pop this character into the ring buffer */
 
-     ring_buff[ring_in] = c;
-     ring_in = (ring_in + 1) % RING_SIZE;
+      ring_buff[ring_in] = c;
+      ring_in = (ring_in + 1) % RING_SIZE;
     }
   }
 }
@@ -599,184 +569,166 @@ again:
 /* ======================================================================
    inblk()  -  Input a block from the ring buffer                         */
 
-STRING_CHUNK * inblk(int max_bytes)
-{
- int n;
- short int actual_size;
- STRING_CHUNK * str = NULL;
- char * p;
- int bytes;
+STRING_CHUNK* inblk(int max_bytes) {
+  int n;
+  short int actual_size;
+  STRING_CHUNK* str = NULL;
+  char* p;
+  int bytes;
 
- n = (ring_in + RING_SIZE - ring_out) % RING_SIZE;  /* Bytes in buffer */
- if (n > max_bytes) n = max_bytes;
+  n = (ring_in + RING_SIZE - ring_out) % RING_SIZE; /* Bytes in buffer */
+  if (n > max_bytes)
+    n = max_bytes;
 
- if (n != 0)
-  {
-   str = s_alloc(n, &actual_size);  /* Will never be smaller than n */
-   str->ref_ct = 1;
-   str->string_len = n;
-   str->bytes = n;
+  if (n != 0) {
+    str = s_alloc(n, &actual_size); /* Will never be smaller than n */
+    str->ref_ct = 1;
+    str->string_len = n;
+    str->bytes = n;
 
-   bytes = min(RING_SIZE - ring_out, n); /* Portion up to end of ring buffer */
-   p = str->data;
-   memcpy(p, ((char *)ring_buff) + ring_out, bytes);
-   ring_out = (ring_out + bytes) % RING_SIZE;
-   n -= bytes;
+    bytes = min(RING_SIZE - ring_out, n); /* Portion up to end of ring buffer */
+    p = str->data;
+    memcpy(p, ((char*)ring_buff) + ring_out, bytes);
+    ring_out = (ring_out + bytes) % RING_SIZE;
+    n -= bytes;
 
-   if (n)   /* More at start of buffer */
+    if (n) /* More at start of buffer */
     {
-     p += bytes;
-     memcpy(p, (char *)ring_buff, n);
-     ring_out = n;
+      p += bytes;
+      memcpy(p, (char*)ring_buff, n);
+      ring_out = n;
     }
   }
 
- return str;
+  return str;
 }
 
 /* ======================================================================
    save_screen()  -  Save screen image                                    */
 
-bool save_screen(scrn, x, y, w, h)
-   SCREEN_IMAGE * scrn;
-   short int x;
-   short int y;
-   short int w;
-   short int h;
+bool save_screen(scrn, x, y, w, h) SCREEN_IMAGE* scrn;
+short int x;
+short int y;
+short int w;
+short int h;
 {
- char * p;
- char * q;
- static long int image_id = 0;
- int n;
+  char* p;
+  char* q;
+  static long int image_id = 0;
+  int n;
 
- if (connection_type == CN_SOCKET)
-  {
-   scrn->id = image_id++;
-   p = qmtgetstr("sreg");
-   if (p != NULL)
-    {
-     q = tparm(&n, p, (int)(scrn->id), (int)x, (int)y, (int)w, (int)h);
-     write_socket(q, n, TRUE);
+  if (connection_type == CN_SOCKET) {
+    scrn->id = image_id++;
+    p = qmtgetstr("sreg");
+    if (p != NULL) {
+      q = tparm(&n, p, (int)(scrn->id), (int)x, (int)y, (int)w, (int)h);
+      write_socket(q, n, TRUE);
     }
   }
 
- return TRUE;
+  return TRUE;
 }
 
 /* ====================================================================== */
 
-void restore_screen(scrn, restore_cursor)
-   SCREEN_IMAGE * scrn;
-   bool restore_cursor;
+void restore_screen(scrn, restore_cursor) SCREEN_IMAGE* scrn;
+bool restore_cursor;
 {
- char * p;
- char * q;
- int n;
+  char* p;
+  char* q;
+  int n;
 
- if (connection_type == CN_SOCKET)
-  {
-   p = qmtgetstr("rreg");
-   if (p != NULL)
-    {
-     q = tparm(&n, p, (int)(scrn->id), (int)(scrn->x), (int)(scrn->y), (int)restore_cursor);
-     write_socket(q, n, TRUE);
+  if (connection_type == CN_SOCKET) {
+    p = qmtgetstr("rreg");
+    if (p != NULL) {
+      q = tparm(&n, p, (int)(scrn->id), (int)(scrn->x), (int)(scrn->y),
+                (int)restore_cursor);
+      write_socket(q, n, TRUE);
     }
   }
 }
 
-
-
 /* Interludes to map onto Windows style interfaces */
 
-bool read_socket(str, bytes)
-   char * str;
-   int bytes;
+bool read_socket(str, bytes) char* str;
+int bytes;
 {
- while(bytes--) *(str++) = (char)keyin(0);
- return 1;
+  while (bytes--)
+    *(str++) = (char)keyin(0);
+  return 1;
 }
 
-char socket_byte()
-{
- char c;
+char socket_byte() {
+  char c;
 
- read(0, &c, 1);
+  read(0, &c, 1);
 
- return c;
+  return c;
 }
 
 /* ======================================================================
    login_user()  -  Perform checks and login as specified user            */
 
-bool login_user(username, password)
-   char * username;
-   char * password;
+bool login_user(username, password) char* username;
+char* password;
 {
- FILE * fu;
- struct passwd * pwd;
- char pw_rec[200+1];
- short int len;
- char * p = NULL;
- char * q;
+  FILE* fu;
+  struct passwd* pwd;
+  char pw_rec[200 + 1];
+  short int len;
+  char* p = NULL;
+  char* q;
 
- if ((fu = fopen(PASSWD_FILE_NAME, "r")) == NULL)
-  {
-   tio_printf("%s\n", sysmsg(1007));
-   return FALSE;
+  if ((fu = fopen(PASSWD_FILE_NAME, "r")) == NULL) {
+    tio_printf("%s\n", sysmsg(1007));
+    return FALSE;
   }
 
- len = strlen(username);
+  len = strlen(username);
 
-
- while(fgets(pw_rec, sizeof(pw_rec), fu) > 0)
-  {
-   if ((pw_rec[len] == ':') && (memcmp(pw_rec, username, len) == 0))
-    {
-     p = pw_rec + len + 1;
-     break;
+  while (fgets(pw_rec, sizeof(pw_rec), fu) > 0) {
+    if ((pw_rec[len] == ':') && (memcmp(pw_rec, username, len) == 0)) {
+      p = pw_rec + len + 1;
+      break;
     }
   }
- fclose(fu);
+  fclose(fu);
 
- if (p != NULL)
-  {
-   if (memcmp(p, "$1$", 3) == 0)    /* MD5 algorithm */
+  if (p != NULL) {
+    if (memcmp(p, "$1$", 3) == 0) /* MD5 algorithm */
     {
-     if ((q = strchr(p, ':')) != NULL) *q = '\0';
-     if (strcmp((char *)crypt(password, p), p) == 0)
-      {
-       if (((pwd = getpwnam(username)) != NULL)
-        && (setgid(pwd->pw_gid) == 0) && (setuid(pwd->pw_uid) == 0))
-        {
-//         set_groups();
-         return TRUE;
+      if ((q = strchr(p, ':')) != NULL)
+        *q = '\0';
+      if (strcmp((char*)crypt(password, p), p) == 0) {
+        if (((pwd = getpwnam(username)) != NULL) &&
+            (setgid(pwd->pw_gid) == 0) && (setuid(pwd->pw_uid) == 0)) {
+          //         set_groups();
+          return TRUE;
         }
       }
     }
   }
 
- return FALSE;
+  return FALSE;
 }
-
 
 /* ======================================================================
    Signal handler                                                         */
 
-void signal_handler(signum)
-   int signum;
+void signal_handler(signum) int signum;
 {
- switch(signum)
-  {
-   case SIGINT:
+  switch (signum) {
+    case SIGINT:
       break_key();
       break;
 
-   case SIGHUP:
-   case SIGTERM:
+    case SIGHUP:
+    case SIGTERM:
       signal(SIGHUP, SIG_IGN);
       signal(SIGTERM, SIG_IGN);
       log_printf("Received termination signal %d\n", signum);
-      if (my_uptr != NULL) my_uptr->events |= EVT_TERMINATE;  /* 0393 */
+      if (my_uptr != NULL)
+        my_uptr->events |= EVT_TERMINATE; /* 0393 */
       break;
   }
 }
@@ -784,37 +736,35 @@ void signal_handler(signum)
 /* ======================================================================
    flush_outbuf()  -  Flush socket output buffer                          */
 
-bool flush_outbuf()
-{
- if (outbuf_bytes)
-  {
-   if (!write_console(outbuf, outbuf_bytes)) return FALSE;
-   outbuf_bytes = 0;
+bool flush_outbuf() {
+  if (outbuf_bytes) {
+    if (!write_console(outbuf, outbuf_bytes))
+      return FALSE;
+    outbuf_bytes = 0;
   }
 
- return TRUE;
+  return TRUE;
 }
 
 /* ====================================================================== */
 
-int qmpoll(int fd, int timeout)
-{
+int qmpoll(int fd, int timeout) {
 #ifdef DO_NOT_USE_POLL
- fd_set fds;
- struct timeval tv;
+  fd_set fds;
+  struct timeval tv;
 
- FD_ZERO(&fds);
- FD_SET(fd, &fds);
- tv.tv_sec = timeout / 1000;
- tv.tv_usec = (timeout % 1000) * 1000;
- return select(1, &fds, NULL, NULL, &tv);
+  FD_ZERO(&fds);
+  FD_SET(fd, &fds);
+  tv.tv_sec = timeout / 1000;
+  tv.tv_usec = (timeout % 1000) * 1000;
+  return select(1, &fds, NULL, NULL, &tv);
 #else
- struct pollfd fds[1];
+  struct pollfd fds[1];
 
- fds[0].fd = fd;
- fds[0].events = POLLIN;
+  fds[0].fd = fd;
+  fds[0].events = POLLIN;
 
- return poll(fds, 1, timeout);
+  return poll(fds, 1, timeout);
 #endif
 }
 

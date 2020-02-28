@@ -33,7 +33,7 @@
  * START-CODE
  */
 
-#include <dh_fmt.h>
+#include "dh_fmt.h"
 
 /* Chain of fully open DH files */
 

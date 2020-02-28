@@ -42,7 +42,7 @@
 
 #define MAX_GROUP_SIZE   8
 
-#include <dh_stat.h>
+#include "dh_stat.h"
 
 /* ========================= FILE_ENTRY ========================= */
 
