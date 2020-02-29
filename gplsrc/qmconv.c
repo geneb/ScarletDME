@@ -21,9 +21,12 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ *
  * 24Feb20 gwb Fixed a variable set but never used warning.
  * START-HISTORY (OpenQM):
- * 24 May 06  2.4-5 0491 AK used_bytes field was being converted as a long int.
+ * 24 May 06  2.4-5 0491 AK used_bytes field was being converted as a int32_t.
  * 17 Mar 06  2.3-8 Convert record count.
  * 20 Sep 05  2.2-11 Use static buffer to minimise stack space.
  * 10 May 05  2.1-13 Changes for large file support.
@@ -72,8 +75,8 @@ static bool file_found = FALSE;
 static int fu[MAX_SUBFILES];   /* File variables */
 static DH_HEADER header;       /* Primary subfile header */
 static DH_HEADER oheader;      /* Overflow subfile header */
-static short int header_bytes; /* Offset of group 1 */
-static short int ak_header_size;
+static int16_t header_bytes; /* Offset of group 1 */
+static int16_t ak_header_size;
 
 static union {
   DH_BLOCK dh_block;
@@ -90,7 +93,7 @@ static union {
 #define TO_CURRENT 0
 #define TO_BIG 1
 #define TO_LITTLE 2
-static short int mode = TO_CURRENT;
+static int16_t mode = TO_CURRENT;
 static bool converting_to_inverse; /* Are we going away from this system? */
 
 static bool debug = FALSE;
@@ -100,12 +103,12 @@ bool is_dh_file(char* fn);
 bool is_object_file(char* fn);
 int process_file(char* fn);
 int process_object_file(char* fn);
-bool open_subfile(char* fn, short int sf);
-bool read_block(short int subfile, int64 offset, short int bytes, char* buff);
-bool write_block(short int subfile, int64 offset, short int bytes, char* buff);
+bool open_subfile(char* fn, int16_t sf);
+bool read_block(int16_t subfile, int64 offset, int16_t bytes, char* buff);
+bool write_block(int16_t subfile, int64 offset, int16_t bytes, char* buff);
 bool write_header(void);
-short int swap2(short int data);
-long int swap4(long int data);
+int16_t swap2(int16_t data);
+int32_t swap4(int32_t data);
 bool convert_object(OBJECT_HEADER* obj, int bytes, bool skip_fields);
 void convert_primary_header(void);
 
@@ -298,24 +301,24 @@ exit_is_object_file:
 
 int process_file(char* filename) {
   int status = 1;
-  short int tgt_magic;
-  short int otgt_magic;
-  short int sf;     /* Subfile index */
-  long int grp;     /* Group number... */
+  int16_t tgt_magic;
+  int16_t otgt_magic;
+  int16_t sf;     /* Subfile index */
+  int32_t grp;     /* Group number... */
   int64 grp_offset; /* ...and file offset */
-  short int group_bytes;
-  short int rec_offset;
+  int16_t group_bytes;
+  int16_t rec_offset;
   DH_RECORD* rec_ptr;
-  long int ak_itype_ptr = 0;
-  long int ak_itype_len;
-  short int ak_fno;
+  int32_t ak_itype_ptr = 0;
+  int32_t ak_itype_len;
+  int16_t ak_fno;
   u_char* itype_object;
-  unsigned long int bytes_remaining;
-  short int next;
-  short int used_bytes;
-  long int next_node;
-  short int i;
-  long int n;
+  u_int32_t bytes_remaining;
+  int16_t next;
+  int16_t used_bytes;
+  int32_t next_node;
+  int16_t i;
+  int32_t n;
   u_char* p;
 
   printf("Processing %s\n", filename);
@@ -721,7 +724,7 @@ exit_process_file:
 /* ======================================================================
    open_subfile()  -  Open a subfile                                      */
 
-bool open_subfile(char* filename, short int sf) {
+bool open_subfile(char* filename, int16_t sf) {
   char path[160 + 1];
 
   sprintf(path, "%s%c~%d", filename, DS, (int)sf);
@@ -732,7 +735,7 @@ bool open_subfile(char* filename, short int sf) {
 /* ======================================================================
    read_block()  -  Read a data block                                     */
 
-bool read_block(short int sf, int64 offset, short int bytes, char* buff) {
+bool read_block(int16_t sf, int64 offset, int16_t bytes, char* buff) {
   if (Seek(fu[sf], offset, SEEK_SET) < 0) {
     return FALSE;
   }
@@ -747,7 +750,7 @@ bool read_block(short int sf, int64 offset, short int bytes, char* buff) {
 /* ======================================================================
    write_block()  -  Write a data block                                   */
 
-bool write_block(short int sf, int64 offset, short int bytes, char* buff) {
+bool write_block(int16_t sf, int64 offset, int16_t bytes, char* buff) {
   if (Seek(fu[sf], offset, SEEK_SET) < 0) {
     return FALSE;
   }
@@ -824,9 +827,9 @@ exit_process_object_file:
 /* ======================================================================
    swap2()                                                                */
 
-short int swap2(short int data) {
+int16_t swap2(int16_t data) {
   union {
-    short int val;
+    int16_t val;
     unsigned char chr[2];
   } in, out;
 
@@ -839,9 +842,9 @@ short int swap2(short int data) {
 /* ======================================================================
    swap4()                                                                */
 
-long int swap4(long int data) {
+int32_t swap4(int32_t data) {
   union {
-    long int val;
+    int32_t val;
     unsigned char chr[4];
   } in, out;
 
@@ -856,7 +859,7 @@ long int swap4(long int data) {
 /* ======================================================================
    swap8()                                                                */
 
-long int swap8(int64 data) {
+int32_t swap8(int64 data) {
   union {
     int64 val;
     unsigned char chr[8];
@@ -880,7 +883,7 @@ long int swap8(int64 data) {
 bool convert_object(OBJECT_HEADER* obj, int bytes, bool skip_fields) {
   u_char tgt_magic;
   u_char expected_magic;
-  short int i;
+  int16_t i;
   u_char* p;
 
   if (skip_fields) /* AK has dictionary fields on front of object code */

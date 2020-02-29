@@ -18,7 +18,13 @@
  * 
  * Ladybridge Systems can be contacted via the www.openqm.com web site.
  * 
- * START-HISTORY:
+ * ScarletDME Wiki: https://scarlet.deltasoft.com
+ * 
+ * START-HISTORY (ScarletDME):
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ * 
+ * START-HISTORY (OpenQM):
  * 01 Jul 07  2.5-7 Extensive changes for PDA merge.
  * 24 Jul 06  2.4-10 0505 Closing message file after failed login tried to
  *                   access user file map table.
@@ -41,92 +47,86 @@
 
 /* ====================================================================== */
 
-bool dh_close(DH_FILE * dh_file)
-{
- DH_FILE * p;
- DH_FILE * prev;
- FILE_ENTRY * fptr;
+bool dh_close(DH_FILE* dh_file) {
+  DH_FILE* p;
+  DH_FILE* prev;
+  FILE_ENTRY* fptr;
 
- dh_err = 0;
- process.os_error = 0;
+  dh_err = 0;
+  process.os_error = 0;
 
+  (void)dh_flush_header(dh_file);
 
- (void)dh_flush_header(dh_file);
+  if (--(dh_file->open_count) == 0) {
+    dh_end_select_file(dh_file); /* Clear down partially completed selects */
 
- if (--(dh_file->open_count) == 0)
-  {
-   dh_end_select_file(dh_file);   /* Clear down partially completed selects */
+    StartExclusive(FILE_TABLE_LOCK, 42);
+    fptr = FPtr(dh_file->file_id);
+    (fptr->ref_ct)--;
+    if (my_uptr != NULL)
+      (*UFMPtr(my_uptr, dh_file->file_id))--; /* 0505 */
+    EndExclusive(FILE_TABLE_LOCK);
 
-   StartExclusive(FILE_TABLE_LOCK, 42);
-   fptr = FPtr(dh_file->file_id);
-   (fptr->ref_ct)--;
-   if (my_uptr != NULL) (*UFMPtr(my_uptr, dh_file->file_id))--;  /* 0505 */
-   EndExclusive(FILE_TABLE_LOCK);
+    /* Remove from DH_FILE chain */
 
-   /* Remove from DH_FILE chain */
-
-   prev = NULL;
-   for (p = dh_file_head; p != NULL; p = p->next_file)
-    {
-     if (p == dh_file)
-      {
-       if (prev == NULL) /* Removing at head */
+    prev = NULL;
+    for (p = dh_file_head; p != NULL; p = p->next_file) {
+      if (p == dh_file) {
+        if (prev == NULL) /* Removing at head */
         {
-         dh_file_head = p->next_file;
+          dh_file_head = p->next_file;
+        } else {
+          prev->next_file = p->next_file;
         }
-       else
-        {
-         prev->next_file = p->next_file;
-        }
-       break;
+        break;
       }
-     prev = p;
+      prev = p;
     }
 
-   deallocate_dh_file(dh_file);
+    deallocate_dh_file(dh_file);
   }
 
- return (dh_err == 0);
+  return (dh_err == 0);
 }
 
 /* ======================================================================
    deallocate_dh_file()  -  Release DH_FILE and sub-structures            */
 
-void deallocate_dh_file(DH_FILE* dh_file)
-{
- short int i;
+void deallocate_dh_file(DH_FILE* dh_file) {
+  int16_t i;
 
- /* Close subfiles */
+  /* Close subfiles */
 
- for (i = 0; i < dh_file->no_of_subfiles; i++)
-  {
-   if (ValidFileHandle(dh_file->sf[i].fu)) dh_close_subfile(dh_file, i);
+  for (i = 0; i < dh_file->no_of_subfiles; i++) {
+    if (ValidFileHandle(dh_file->sf[i].fu))
+      dh_close_subfile(dh_file, i);
   }
 
- /* Remove AK data array */
+  /* Remove AK data array */
 
- if (dh_file->ak_data != NULL) free_array(dh_file->ak_data);
+  if (dh_file->ak_data != NULL)
+    free_array(dh_file->ak_data);
 
- /* Release trigger function name */
+  /* Release trigger function name */
 
- if (dh_file->trigger_name != NULL) k_free(dh_file->trigger_name);
+  if (dh_file->trigger_name != NULL)
+    k_free(dh_file->trigger_name);
 
- /* Decrement reference count on trigger function */
+  /* Decrement reference count on trigger function */
 
- if (dh_file->trigger != NULL)
-  {
-   --(((OBJECT_HEADER *)(dh_file->trigger))->ext_hdr.prog.refs);
-   dh_file->trigger = NULL;
+  if (dh_file->trigger != NULL) {
+    --(((OBJECT_HEADER*)(dh_file->trigger))->ext_hdr.prog.refs);
+    dh_file->trigger = NULL;
   }
 
- /* Release akpath */
+  /* Release akpath */
 
- if (dh_file->akpath != NULL) k_free(dh_file->akpath);
+  if (dh_file->akpath != NULL)
+    k_free(dh_file->akpath);
 
+  /* Release memory */
 
- /* Release memory */
-
- k_free(dh_file);
+  k_free(dh_file);
 }
 
 /* END-CODE */

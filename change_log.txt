@@ -1,4 +1,75 @@
+28Feb20, 29Feb20 -gwb
+---------------------
+ScarletDME now builds as a 64 bit application without error and will properly
+start.  I'm currently chasing down compiler warnings that point out issues that
+keep the db from operating fully.  
+
+Converting to architecture independent variable types is only half the battle.
+Any instances of things like LONG_MAX also have to be changed to their 
+architecture independant equivalents like INT32_MAX.
+
+Note that as of right now, the code will compile completely for the most part, 
+but you will NOT have a fully functional system.
+
+Issues I've hit:
+The QMBasic compiler throwing errors on things that are most certainly NOT 
+errors ("Duplicate label" - there's no labels in the test program!
+
+QMBasic compiler throwing a "Numeric overflow" error during the compile of 
+the test program.  The error is being thrown in the k_get_int() function in 
+k_funcs.c.  It's happening in the "FLOATNUM" case where the absolute value of 
+p->data.float_number is being checked to see if it's greater than INT32_MAX.
+The problem is that data.float_number is some how being assigned to what
+amounts to UINT32_MAX, so the test fails and an error is generated.
+This test originally compared to LONG_MAX, but LONG_MAX becomes a 64 bit value
+when you compile as a 64 bit application.
+
+Disk accesses via reads will eventually cause a group lock that is never
+unlocked.  The session will hang.  If you run "qm -dump", the bottom section
+shows group locks:
+
+=== GROUP LOCK TABLE ===
+Max locks = 30, Count = 1474, Wait = 1, Retry = 57154, Scan = 1.0
+GLid  Ct Hash User Fno Tp Group    GrpCt
+  1  69   0   1   1 GR 00000001     0
+
+The Retry field will continue to increase until you finally kill the process.
+I had originally thought this issue was related to the LONG_MAX vs INT32_MAX
+problem, but the eventual group lock hang continues to happen.  Prior to
+the LONG_MAX change it would happen fairly quickly into the session.  After 
+the group lock hang may happen early into the session or some minutes into it.
+It took me quite a while to get it to hang so I could provide the above output
+example.
+
+I had to turn off the -Wformat warning in the build due to the compiler warnings
+that were being thrown due to the conversion to int??_t & u_int??_t types.
+These only appear in various sprintf(), printf(), fprintf(), and snprintf()
+calls.  I have not done the research required to know wether or not these
+warnings can continue to be ignored.
+
+When building as a 64 bit application (comment out "-m32" in the makefile) you
+will see some pointer cast warnings.  They're not triggered in the 32 bit build
+and my C-fu isn't quite up to properly resolving them yet.
+
+There is also an issue regarding terminal emulation - with my CentOS 8 system,
+I can start ScarletDME and enter "TERM LINUX" and it sets up properly.
+However, on My Raspberry Pi 3 (Current Raspbian) and my CentOS 7 system,
+"TERM LINUX" results in "Unrecognized terminal name".  Not sure why yet, but 
+it's something you should be aware of.
+
+===============================================================================
+27Feb20 - gwb
+-------------
+Did a bit of "rebranding" work.  A few instances of "QM" have been changed to
+"ScarletDME" in the program source code.
+Messages 1758, 3516, 5009, 5163, 6090, PL1758, PL3516, PL5009, PL5163, and
+PL6090 were edited to change "QM" to "ScarletDME".
+
+Notes added for Raspberry Pi users.
+===============================================================================
+
 26Feb20 - gwb
+-------------
 Eight. Years. Later....
 
 The entire codebase was sifted through and all compiler warnings have been resolved.
@@ -23,6 +94,8 @@ README.md file on guidelines for that.
 A bug was found in op_config.c that would have prevented the successful parsing of the
 "SH" and "SH1" configuration options.  See op_config.c for more info.
 
+===============================================================================
+
 20Jun12 - gwb
 -------------
 Fixed a compiler warning in k_error() - caused by an sprintf() call missing a format specifier.
@@ -33,12 +106,16 @@ The install target will copy the results of the build action to $(INSTROOT)/bin 
 The datafiles target will copy the system data files to $(INSTROOT) and set permissions on the required
 files.  THIS WILL WIPE OUT AN EXISTING INSTALLATION!	
 
+===============================================================================
+
 07Aug09 - dat
 -------------
 Rewrote messages.c : sysmesg() to utilise a directory file version of MESSAGES instead of
 a Dynamic file version. Fairly substantial changes in code, but the logic was
 duplicated.
 Also, obviously, changed MESSAGES into a directory file.
+
+===============================================================================
 
 06Aug09 - dat
 -------------
@@ -48,15 +125,21 @@ to
   Error %d (o/s %d) writing record (Possible full disk?)
 To provide a useful hint in the event the disk fills up.
 
+===============================================================================
+
 23Apr09 - gcb
 -------------
 Rewrote the DICT.TOOLS.CLS to cache dictionary and item data for efficiency.
 Added a non-sort dictionary list get method and renamed the sorted list method.
 Renamed the filename method to set.file.name and itemid to set.item.id.
 
+===============================================================================
+
 22Apr09 - gcb
 -------------
 Added GPL.BP DICT.TOOLS.CLS QMOO class for reading data from a file using dictionaries. There are also methods for getting the dict list, dict count, item-sselect, and item-sselect count. This is preliminary code and needs more work to be more stable and fully featured.
+
+===============================================================================
 
 14Apr09 - gcb
 -------------

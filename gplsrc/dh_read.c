@@ -18,7 +18,13 @@
  * 
  * Ladybridge Systems can be contacted via the www.openqm.com web site.
  * 
- * START-HISTORY:
+ * ScarletDME Wiki: https://scarlet.deltasoft.com
+ * 
+ * START-HISTORY (ScarletDME):
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ * 
+ * START-HISTORY (OpenQM):
  * 01 Jul 07  2.5-7 Extensive change for PDA merge.
  * 14 Apr 06  2.4-1 Replaced use of the ts_xxx routines with an internal string
  *                  assembly subroutine. Previously, calls to dh_read() while
@@ -47,220 +53,205 @@
 #include "dh_int.h"
 #include "config.h"
 
-
-Private void copy(char * data, short int bytes, STRING_CHUNK ** head, STRING_CHUNK ** tail);
+Private void copy(char* data,
+                  int16_t bytes,
+                  STRING_CHUNK** head,
+                  STRING_CHUNK** tail);
 
 /* ====================================================================== */
 
-STRING_CHUNK * dh_read(
-   DH_FILE * dh_file, /* File descriptor */
-   char id[],         /* Record id */
-   short int id_len,  /* Record id length */
-   char * actual_id)  /* Returned. Casing may differ from id. May be NULL */
+STRING_CHUNK* dh_read(
+    DH_FILE* dh_file, /* File descriptor */
+    char id[],        /* Record id */
+    int16_t id_len, /* Record id length */
+    char* actual_id)  /* Returned. Casing may differ from id. May be NULL */
 {
- long int group;
- short int group_bytes;
- short int lock_slot = 0;
- DH_BLOCK * buff;
- DH_RECORD * rec_ptr;
- STRING_CHUNK * head = NULL;
- short int fno;
- FILE_ENTRY * fptr;
- short int subfile;
- short int rec_offset;
- short int used_bytes;
- long int grp;
+  int32_t group;
+  int16_t group_bytes;
+  int16_t lock_slot = 0;
+  DH_BLOCK* buff;
+  DH_RECORD* rec_ptr;
+  STRING_CHUNK* head = NULL;
+  int16_t fno;
+  FILE_ENTRY* fptr;
+  int16_t subfile;
+  int16_t rec_offset;
+  int16_t used_bytes;
+  int32_t grp;
 
+  dh_err = DHE_RECORD_NOT_FOUND;
+  process.os_error = 0;
 
- dh_err = DHE_RECORD_NOT_FOUND;
- process.os_error = 0;
+  buff = (DH_BLOCK*)(&dh_buffer);
 
- buff = (DH_BLOCK *)(&dh_buffer);
+  fno = dh_file->file_id;
+  fptr = FPtr(fno);
+  while (fptr->file_lock < 0)
+    Sleep(1000); /* Clearfile in progress */
 
- fno = dh_file->file_id;
- fptr = FPtr(fno);
- while(fptr->file_lock < 0) Sleep(1000); /* Clearfile in progress */
+  /* Lock group */
 
- /* Lock group */
+  StartExclusive(FILE_TABLE_LOCK, 11);
+  group = dh_hash_group(fptr, id, id_len);
+  lock_slot = GetGroupReadLock(dh_file, group);
+  fptr->stats.reads++;
+  sysseg->global_stats.reads++;
+  EndExclusive(FILE_TABLE_LOCK);
 
- StartExclusive(FILE_TABLE_LOCK, 11);
- group = dh_hash_group(fptr, id, id_len);
- lock_slot = GetGroupReadLock(dh_file, group);
- fptr->stats.reads++;
- sysseg->global_stats.reads++;
- EndExclusive(FILE_TABLE_LOCK);
-
- if ((pcfg.reccache != 0) && scan_record_cache(fno, id_len, id, &head))
-  {
-   FreeGroupReadLock(lock_slot);
-   dh_err = 0;
-   return head;
+  if ((pcfg.reccache != 0) && scan_record_cache(fno, id_len, id, &head)) {
+    FreeGroupReadLock(lock_slot);
+    dh_err = 0;
+    return head;
   }
 
- group_bytes = (short int)(dh_file->group_size);
+  group_bytes = (int16_t)(dh_file->group_size);
 
- subfile = PRIMARY_SUBFILE;
- grp = group;
+  subfile = PRIMARY_SUBFILE;
+  grp = group;
 
- do {
-     /* Read group */
+  do {
+    /* Read group */
 
-     if (!dh_read_group(dh_file, subfile, grp, (char *)buff, group_bytes))
-      {
-       goto exit_dh_read;
-      }
+    if (!dh_read_group(dh_file, subfile, grp, (char*)buff, group_bytes)) {
+      goto exit_dh_read;
+    }
 
-     /* Scan group buffer for record */
+    /* Scan group buffer for record */
 
-     used_bytes = buff->used_bytes;
-     if ((used_bytes == 0) || (used_bytes > group_bytes))
-      {
-       log_printf("DH_READ: Invalid byte count (x%04X) in subfile %d, group %ld\nof file %s\n",
-                  used_bytes, (int)subfile, grp, fptr->pathname);
-       dh_err = DHE_POINTER_ERROR;
-       goto exit_dh_read;
-      }
+    used_bytes = buff->used_bytes;
+    if ((used_bytes == 0) || (used_bytes > group_bytes)) {
+      log_printf(
+          "DH_READ: Invalid byte count (x%04X) in subfile %d, group %ld\nof "
+          "file %s\n",
+          used_bytes, (int)subfile, grp, fptr->pathname);
+      dh_err = DHE_POINTER_ERROR;
+      goto exit_dh_read;
+    }
 
-     rec_offset = offsetof(DH_BLOCK, record);
-     while(rec_offset < used_bytes)
-      {
-       rec_ptr = (DH_RECORD *)(((char *)buff) + rec_offset);
+    rec_offset = offsetof(DH_BLOCK, record);
+    while (rec_offset < used_bytes) {
+      rec_ptr = (DH_RECORD*)(((char*)buff) + rec_offset);
 
-       if (id_len == rec_ptr->id_len)
-        {
-         if (fptr->flags & DHF_NOCASE)
-          {
-           if (!MemCompareNoCase(id, rec_ptr->id, id_len)) goto found;
-          }
-         else
-          {
-           if (!memcmp(id, rec_ptr->id, id_len)) goto found;
-          }
+      if (id_len == rec_ptr->id_len) {
+        if (fptr->flags & DHF_NOCASE) {
+          if (!MemCompareNoCase(id, rec_ptr->id, id_len))
+            goto found;
+        } else {
+          if (!memcmp(id, rec_ptr->id, id_len))
+            goto found;
         }
+      }
 
-        rec_offset += rec_ptr->next;
-       }
+      rec_offset += rec_ptr->next;
+    }
 
-     /* Move to next group buffer */
+    /* Move to next group buffer */
 
-     subfile = OVERFLOW_SUBFILE;
-     grp = GetFwdLink(dh_file, buff->next);
-    } while(grp != 0);
+    subfile = OVERFLOW_SUBFILE;
+    grp = GetFwdLink(dh_file, buff->next);
+  } while (grp != 0);
 
- goto exit_dh_read;  /* Record not found */
+  goto exit_dh_read; /* Record not found */
 
-
-/* Record found */
+  /* Record found */
 
 found:
- if (actual_id != NULL) memcpy(actual_id, rec_ptr->id, id_len);
- dh_err = 0;
+  if (actual_id != NULL)
+    memcpy(actual_id, rec_ptr->id, id_len);
+  dh_err = 0;
 
- head = dh_read_record(dh_file, rec_ptr);
+  head = dh_read_record(dh_file, rec_ptr);
 
 exit_dh_read:
- if (lock_slot != 0) FreeGroupReadLock(lock_slot);
+  if (lock_slot != 0)
+    FreeGroupReadLock(lock_slot);
 
- if (dh_err)
-  {
-   if (head != NULL)
-    {
-     s_free(head);
-     head = NULL;
+  if (dh_err) {
+    if (head != NULL) {
+      s_free(head);
+      head = NULL;
     }
-  }
- else
-  {
-   if (pcfg.reccache != 0) cache_record(fno, id_len, id, head);
+  } else {
+    if (pcfg.reccache != 0)
+      cache_record(fno, id_len, id, head);
   }
 
-
- return head;
+  return head;
 }
 
 /* ====================================================================== */
 
-STRING_CHUNK * dh_read_record(
-   DH_FILE * dh_file,
-   DH_RECORD * rec_ptr)
-{
- STRING_CHUNK * str = NULL;
- STRING_CHUNK * tail = NULL;
- short int group_bytes;
- long int data_len;
- short int n;
- char * buff = NULL;
- long int grp;
+STRING_CHUNK* dh_read_record(DH_FILE* dh_file, DH_RECORD* rec_ptr) {
+  STRING_CHUNK* str = NULL;
+  STRING_CHUNK* tail = NULL;
+  int16_t group_bytes;
+  int32_t data_len;
+  int16_t n;
+  char* buff = NULL;
+  int32_t grp;
 
- if (rec_ptr->flags & DH_BIG_REC)  /* Found a large record */
+  if (rec_ptr->flags & DH_BIG_REC) /* Found a large record */
   {
-   group_bytes = (short int)(dh_file->group_size);
-   buff = (char *)k_alloc(60, group_bytes);
+    group_bytes = (int16_t)(dh_file->group_size);
+    buff = (char*)k_alloc(60, group_bytes);
 
-   grp = GetFwdLink(dh_file, rec_ptr->data.big_rec);
-   while(grp != 0)
-    {
-     if (!dh_read_group(dh_file, OVERFLOW_SUBFILE, grp, buff, group_bytes))
-      {
-       goto exit_dh_read_record;
+    grp = GetFwdLink(dh_file, rec_ptr->data.big_rec);
+    while (grp != 0) {
+      if (!dh_read_group(dh_file, OVERFLOW_SUBFILE, grp, buff, group_bytes)) {
+        goto exit_dh_read_record;
       }
 
-     if (str == NULL)    /* First block */
+      if (str == NULL) /* First block */
       {
-       data_len = ((DH_BIG_BLOCK *)buff)->data_len;
+        data_len = ((DH_BIG_BLOCK*)buff)->data_len;
       }
 
-     n = (short int)min(group_bytes - DH_BIG_BLOCK_SIZE, data_len);
-     data_len -= n;
+      n = (int16_t)min(group_bytes - DH_BIG_BLOCK_SIZE, data_len);
+      data_len -= n;
 
-     copy(((DH_BIG_BLOCK *)buff)->data, n, &str, &tail);
+      copy(((DH_BIG_BLOCK*)buff)->data, n, &str, &tail);
 
-     grp = GetFwdLink(dh_file, ((DH_BIG_BLOCK *)buff)->next);
+      grp = GetFwdLink(dh_file, ((DH_BIG_BLOCK*)buff)->next);
     }
-  }
- else   /* Not a large record */
+  } else /* Not a large record */
   {
-   data_len = rec_ptr->data.data_len;
-   if (data_len != 0)
-    {
-     copy(rec_ptr->id + rec_ptr->id_len, (short int)data_len, &str, &tail);
+    data_len = rec_ptr->data.data_len;
+    if (data_len != 0) {
+      copy(rec_ptr->id + rec_ptr->id_len, (int16_t)data_len, &str, &tail);
     }
   }
 
 exit_dh_read_record:
- if (buff != NULL) k_free(buff);
+  if (buff != NULL)
+    k_free(buff);
 
- return str;
+  return str;
 }
 
 /* ====================================================================== */
 
-Private void copy(
-   char * data,
-   short int bytes,
-   STRING_CHUNK ** head,
-   STRING_CHUNK ** tail)
-{
- STRING_CHUNK * str;
- short int actual;
+Private void copy(char* data,
+                  int16_t bytes,
+                  STRING_CHUNK** head,
+                  STRING_CHUNK** tail) {
+  STRING_CHUNK* str;
+  int16_t actual;
 
- str = s_alloc(bytes, &actual);
- if (*head == NULL)  /* First chunk */
+  str = s_alloc(bytes, &actual);
+  if (*head == NULL) /* First chunk */
   {
-   *head = str;
-   *tail = str;
-   str->ref_ct = 1;
-   str->string_len = 0;
-  }
- else
-  {
-   (*tail)->next = str;
-   *tail = str;
+    *head = str;
+    *tail = str;
+    str->ref_ct = 1;
+    str->string_len = 0;
+  } else {
+    (*tail)->next = str;
+    *tail = str;
   }
 
- memcpy(str->data, data, bytes);
- str->bytes = bytes;
- (*head)->string_len += bytes;
+  memcpy(str->data, data, bytes);
+  str->bytes = bytes;
+  (*head)->string_len += bytes;
 }
 
 /* END-CODE */

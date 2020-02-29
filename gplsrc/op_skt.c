@@ -18,7 +18,11 @@
  * 
  * Ladybridge Systems can be contacted via the www.openqm.com web site.
  * 
- * START-HISTORY:
+ * ScarletDME Wiki: https://scarlet.deltasoft.com
+ * 
+ * START-HISTORY (ScarletDME):
+ *
+ * START-HISTORY (OpenQM):
  * 10 Apr 09 gcb Added SO_REUSEADDR socket option to op_srvrskt() so that the
  *               network subsystem will allow rebinding during TIME_WAIT. 
  *
@@ -129,60 +133,57 @@
 
 #define SOCKET_DEBUG
 
-Private char * skt_buff = NULL;
+Private char* skt_buff = NULL;
 Private int skt_buff_size = 0;
 
 bool socket_wait(SOCKET socket, bool read, int timeout);
 
 int translate_sockerr(int errval) {
-    /* simply translates Posix error constants to OpenQM error
+  /* simply translates Posix error constants to OpenQM error
      * constants.
      */
 
-    int retval = 0;
-    
-    switch(errval) {
-        case EAI_AGAIN:
-            retval = ERAI_AGAIN;
-            break;
-        case EAI_BADFLAGS:
-            retval = ERAI_BADFLAGS;
-            break;
-        case EAI_FAIL:
-            retval = ERAI_FAIL;
-            break;
-        case EAI_FAMILY:
-            retval = ERAI_FAMILY;
-            break;
-        case EAI_MEMORY:
-            retval = ERAI_MEMORY;
-            break;
-        case EAI_NONAME:
-            retval = ERAI_NONAME;
-            break;
-        case EAI_SERVICE:
-            retval = ERAI_SERVICE;
-            break;
-        case EAI_SOCKTYPE:
-            retval = ERAI_SOCKTYPE;
-            break;
-        case EAI_SYSTEM:
-            retval = ERAI_SYSTEM;
-            break;
-        default:
-            retval = ER_RESOLVE; /* for lack of anything better to use here... */
-    }
-    return retval;
+  int retval = 0;
 
+  switch (errval) {
+    case EAI_AGAIN:
+      retval = ERAI_AGAIN;
+      break;
+    case EAI_BADFLAGS:
+      retval = ERAI_BADFLAGS;
+      break;
+    case EAI_FAIL:
+      retval = ERAI_FAIL;
+      break;
+    case EAI_FAMILY:
+      retval = ERAI_FAMILY;
+      break;
+    case EAI_MEMORY:
+      retval = ERAI_MEMORY;
+      break;
+    case EAI_NONAME:
+      retval = ERAI_NONAME;
+      break;
+    case EAI_SERVICE:
+      retval = ERAI_SERVICE;
+      break;
+    case EAI_SOCKTYPE:
+      retval = ERAI_SOCKTYPE;
+      break;
+    case EAI_SYSTEM:
+      retval = ERAI_SYSTEM;
+      break;
+    default:
+      retval = ER_RESOLVE; /* for lack of anything better to use here... */
+  }
+  return retval;
 }
-
 
 /* ======================================================================
    op_accptskt()  -  ACCEPT.SOCKET.CONNECTION                             */
 
-void op_accptskt()
-{
- /* Stack:
+void op_accptskt() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -193,96 +194,97 @@ void op_accptskt()
      |=============================|=============================|
  */
 
-    DESCRIPTOR * descr;
-    int timeout;
-    SOCKET srvr_skt;
-    SOCKET skt;
-    SOCKVAR * sockvar;
-    DESCRIPTOR result_descr;
-    SOCKVAR * sock;
-    socklen_t socklen;
-    struct sockaddr_storage sinRemote;
+  DESCRIPTOR* descr;
+  int timeout;
+  SOCKET srvr_skt;
+  SOCKET skt;
+  SOCKVAR* sockvar;
+  DESCRIPTOR result_descr;
+  SOCKVAR* sock;
+  socklen_t socklen;
+  struct sockaddr_storage sinRemote;
 
-    process.status = 0;
+  process.status = 0;
 
-    InitDescr(&result_descr, INTEGER);
-    result_descr.data.value = 0;
+  InitDescr(&result_descr, INTEGER);
+  result_descr.data.value = 0;
 
- /* Get timeout */
+  /* Get timeout */
 
-    descr = e_stack - 1;
-    GetInt(descr);
-    timeout = descr->data.value;
-    if (timeout == 0) 
-        timeout = -1;
+  descr = e_stack - 1;
+  GetInt(descr);
+  timeout = descr->data.value;
+  if (timeout == 0)
+    timeout = -1;
 
- /* Get socket reference */
+  /* Get socket reference */
 
-    descr = e_stack - 2;
-    while(descr->type == ADDR) 
-        descr = descr->data.d_addr;
+  descr = e_stack - 2;
+  while (descr->type == ADDR)
+    descr = descr->data.d_addr;
 
-    if (descr->type != SOCK) 
-        k_not_socket(descr);
+  if (descr->type != SOCK)
+    k_not_socket(descr);
 
-    sockvar = descr->data.sock;
-    srvr_skt = sockvar->socket_handle;
+  sockvar = descr->data.sock;
+  srvr_skt = sockvar->socket_handle;
 
- /* Wait for connection */
+  /* Wait for connection */
 
-    if (!socket_wait(srvr_skt, TRUE, timeout)) 
-       goto exit_op_accptskt;
- 
-    socklen = sizeof sinRemote;
+  if (!socket_wait(srvr_skt, TRUE, timeout))
+    goto exit_op_accptskt;
 
-    skt = accept(srvr_skt, (struct sockaddr *)&sinRemote, &socklen);
+  socklen = sizeof sinRemote;
 
- /* Create socket descriptor and SOCKVAR structure */
+  skt = accept(srvr_skt, (struct sockaddr*)&sinRemote, &socklen);
 
-    sock = (SOCKVAR *)k_alloc(100, sizeof(SOCKVAR));
-    sock->ref_ct = 1;
-    sock->socket_handle = (int)skt;
-    sock->flags = SKT_INCOMING;
-    sock->family = sockvar->family;
+  /* Create socket descriptor and SOCKVAR structure */
 
-    switch(sock->family) {
-        case PF_INET:
-            socklen = sizeof(sinRemote);
-            getpeername(skt, (struct sockaddr *)&sinRemote, &socklen);
-            struct sockaddr_in *s = (struct sockaddr_in *)&sinRemote;
-            sock->port = ntohs(s->sin_port);
-            if (inet_ntop(AF_INET, &s->sin_addr, sock->ip_addr, INET_ADDRSTRLEN) == NULL) {
-                process.status = ER_BADADDR;
-            }
-            break;
-        case PF_INET6:
-            socklen = sizeof(sinRemote);
-            getpeername(skt, (struct sockaddr *)&sinRemote, &socklen);
-            struct sockaddr_in6 *s6 = (struct sockaddr_in6 *)&sinRemote;
-            sock->port = ntohs(s6->sin6_port);
-            if (inet_ntop(AF_INET6, &s6->sin6_addr, sock->ip_addr, INET6_ADDRSTRLEN) == NULL) {
-                process.status = ER_BADADDR;
-            }
-            break;
-    }
-    if (process.status == 0) {
-        InitDescr(&result_descr, SOCK);
-        result_descr.data.sock = sock;
-    }
+  sock = (SOCKVAR*)k_alloc(100, sizeof(SOCKVAR));
+  sock->ref_ct = 1;
+  sock->socket_handle = (int)skt;
+  sock->flags = SKT_INCOMING;
+  sock->family = sockvar->family;
+
+  switch (sock->family) {
+    case PF_INET:
+      socklen = sizeof(sinRemote);
+      getpeername(skt, (struct sockaddr*)&sinRemote, &socklen);
+      struct sockaddr_in* s = (struct sockaddr_in*)&sinRemote;
+      sock->port = ntohs(s->sin_port);
+      if (inet_ntop(AF_INET, &s->sin_addr, sock->ip_addr, INET_ADDRSTRLEN) ==
+          NULL) {
+        process.status = ER_BADADDR;
+      }
+      break;
+    case PF_INET6:
+      socklen = sizeof(sinRemote);
+      getpeername(skt, (struct sockaddr*)&sinRemote, &socklen);
+      struct sockaddr_in6* s6 = (struct sockaddr_in6*)&sinRemote;
+      sock->port = ntohs(s6->sin6_port);
+      if (inet_ntop(AF_INET6, &s6->sin6_addr, sock->ip_addr,
+                    INET6_ADDRSTRLEN) == NULL) {
+        process.status = ER_BADADDR;
+      }
+      break;
+  }
+  if (process.status == 0) {
+    InitDescr(&result_descr, SOCK);
+    result_descr.data.sock = sock;
+  }
 
 exit_op_accptskt:
-    k_pop(1);
-    k_dismiss();
+  k_pop(1);
+  k_dismiss();
 
-    *(e_stack++) = result_descr;
+  *(e_stack++) = result_descr;
 }
 
 /* ======================================================================
    op_closeskt()  -  CLOSE.SOCKET                                         */
 
-void op_closeskt()
-{
- /* Stack:
+void op_closeskt() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -291,25 +293,24 @@ void op_closeskt()
      |=============================|=============================|
  */
 
-    DESCRIPTOR * descr;
+  DESCRIPTOR* descr;
 
-    descr = e_stack - 1;
-    while(descr->type == ADDR) 
-        descr = descr->data.d_addr;
+  descr = e_stack - 1;
+  while (descr->type == ADDR)
+    descr = descr->data.d_addr;
 
-    if (descr->type != SOCK) 
-        k_not_socket(descr);
+  if (descr->type != SOCK)
+    k_not_socket(descr);
 
-    k_release(descr);                /* This will close the socket */
-    k_pop(1);
+  k_release(descr); /* This will close the socket */
+  k_pop(1);
 }
 
 /* ======================================================================
    op_openskt()  -  OPEN.SOCKET                                           */
 
-void op_openskt()
-{
- /* Stack:
+void op_openskt() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -327,200 +328,201 @@ void op_openskt()
  Caller can test with socket variable or check STATUS() value
  */
 
-    DESCRIPTOR * descr;
-    int flags;
-    int port;
-    char server[80+1];
-    char server_addr[80];
+  DESCRIPTOR* descr;
+  int flags;
+  int port;
+  char server[80 + 1];
+  char server_addr[80];
 
-    SOCKET skt;
-    DESCRIPTOR result_descr;
-    SOCKVAR * sock;
+  SOCKET skt;
+  DESCRIPTOR result_descr;
+  SOCKVAR* sock;
 
-    struct addrinfo hint, *res;
-    char port_name[30];
-    int err_info = 0;
+  struct addrinfo hint, *res;
+  char port_name[30];
+  int err_info = 0;
 
-    process.status = 0;
-    InitDescr(&result_descr, INTEGER);
-    result_descr.data.value = 0;
-    
+  process.status = 0;
+  InitDescr(&result_descr, INTEGER);
+  result_descr.data.value = 0;
 
- /* Get flags */
+  /* Get flags */
 
-    descr = e_stack - 2;
-    GetInt(descr);
-    flags = descr->data.value;
+  descr = e_stack - 2;
+  GetInt(descr);
+  flags = descr->data.value;
 
- /* Get port */
+  /* Get port */
 
-    descr = e_stack - 3;
-    GetInt(descr);
-    port = descr->data.value;
+  descr = e_stack - 3;
+  GetInt(descr);
+  port = descr->data.value;
 
- /* Get server address */
+  /* Get server address */
 
-    descr = e_stack - 4;
-    if (k_get_c_string(descr, server, 80) <= 0) {
-        process.status = ER_BAD_NAME;
+  descr = e_stack - 4;
+  if (k_get_c_string(descr, server, 80) <= 0) {
+    process.status = ER_BAD_NAME;
+  }
+
+  if (process.status == 0) {
+    hint.ai_flags = 0; /* we're using connect(), not bind() */
+
+    memset(&hint, 0, sizeof(hint));
+    memset(&port_name, 0, sizeof(port_name));
+    memset(&server_addr, 0, sizeof(server_addr));
+    char tempserver[80] = "";
+    if (inet_pton(AF_INET, server, &tempserver) == 1) {
+      hint.ai_family = AF_INET;
+      hint.ai_flags |= AI_NUMERICHOST;
+    } else {
+      if (inet_pton(AF_INET6, server, &tempserver) == 1) {
+        hint.ai_family = AF_INET6;
+        hint.ai_flags |= AI_NUMERICHOST;
+      } else {
+        /* might be a hostname */
+        hint.ai_family = AF_UNSPEC;
+      }
     }
 
-    if (process.status == 0) {
-        hint.ai_flags = 0;  /* we're using connect(), not bind() */
+    snprintf(port_name, sizeof(port_name), "%u", port);
 
-        memset(&hint, 0, sizeof(hint));
-        memset(&port_name, 0, sizeof(port_name));
-        memset(&server_addr, 0, sizeof(server_addr));
-        char tempserver[80] = "";
-        if (inet_pton(AF_INET, server, &tempserver) == 1) {
-            hint.ai_family = AF_INET; 
-            hint.ai_flags |= AI_NUMERICHOST;
-        } else {
-            if (inet_pton(AF_INET6, server, &tempserver) == 1) {
-                hint.ai_family = AF_INET6;
-                hint.ai_flags |= AI_NUMERICHOST;
-            } else {
-                /* might be a hostname */
-                hint.ai_family = AF_UNSPEC;
-            }
-        }
+    /* if anyone knows of a better way to handle this, I'm game... */
 
-        snprintf(port_name, sizeof(port_name), "%u", port);
-  
-        /* if anyone knows of a better way to handle this, I'm game... */
-      
-        if (flags == 0) {  /* SKT$STREAM + SKT$TCP */
-            hint.ai_socktype = SOCK_STREAM;
-            hint.ai_protocol = IPPROTO_TCP;
-        }
-     
-        if (flags & SKT_UDP) {
-            hint.ai_socktype = SOCK_DGRAM;
-            hint.ai_protocol = IPPROTO_UDP;
-        }
-        if (flags & SKT_RAW) {
-            hint.ai_socktype = SOCK_RAW;
-        }
-        if (flags & SKT_ICMP) {
-            hint.ai_socktype = SOCK_RAW;
-            hint.ai_protocol = 0;
-        } 
-        if ((flags & SKT_STREAM) && (flags & SKT_UDP)) {
-            process.status =  ER_INCOMP_PROTO;
-        }
-        if ((flags & SKT_DGRM) && (flags & SKT_TCP)) {
-            process.status = ER_INCOMP_PROTO;
-        }
+    if (flags == 0) { /* SKT$STREAM + SKT$TCP */
+      hint.ai_socktype = SOCK_STREAM;
+      hint.ai_protocol = IPPROTO_TCP;
     }
-    if (process.status == 0) {
-        err_info = getaddrinfo(server, port_name, &hint, &res);
-        if (err_info) {
-            process.status = translate_sockerr(err_info);
+
+    if (flags & SKT_UDP) {
+      hint.ai_socktype = SOCK_DGRAM;
+      hint.ai_protocol = IPPROTO_UDP;
+    }
+    if (flags & SKT_RAW) {
+      hint.ai_socktype = SOCK_RAW;
+    }
+    if (flags & SKT_ICMP) {
+      hint.ai_socktype = SOCK_RAW;
+      hint.ai_protocol = 0;
+    }
+    if ((flags & SKT_STREAM) && (flags & SKT_UDP)) {
+      process.status = ER_INCOMP_PROTO;
+    }
+    if ((flags & SKT_DGRM) && (flags & SKT_TCP)) {
+      process.status = ER_INCOMP_PROTO;
+    }
+  }
+  if (process.status == 0) {
+    err_info = getaddrinfo(server, port_name, &hint, &res);
+    if (err_info) {
+      process.status = translate_sockerr(err_info);
+      process.os_error = NetError;
+    }
+  }
+  if (process.status == 0) {
+    skt = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    if (skt < 0) {
+      process.status = ER_NOSOCKET;
+      process.os_error = NetError;
+    } else {
+      if (flags & SKT_NON_BLOCKING) {
+        if (fcntl(skt, F_SETFL, O_NONBLOCK) == -1) {
+          process.status = ER_NONBLOCK_FAIL;
+          process.os_error = NetError;
+        }
+      }
+    }
+  }
+  if (process.status == 0) {
+    if (connect(skt, res->ai_addr, res->ai_addrlen) == -1) {
+      if (errno == EINPROGRESS) {
+        struct timeval tv;
+        fd_set writefds;
+        tv.tv_sec = DEFAULT_CONNECT_TIMEOUT;
+        tv.tv_usec = 0;
+        FD_ZERO(&writefds);
+        FD_SET(skt, &writefds);
+        if (select(skt + 1, NULL, &writefds, NULL, &tv) != -1) {
+          if (connect(skt, res->ai_addr, res->ai_addrlen) == -1) {
+            process.status = ER_CONNECT;
+#ifdef SOCKET_DEBUG
+            k_error("!Failed to connect: %s\n", strerror(NetError));
+#endif
             process.os_error = NetError;
-        }
-    }
-    if (process.status == 0) {
-        skt = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-        if (skt < 0) {
-            process.status = ER_NOSOCKET;
-            process.os_error = NetError;
+          }
         } else {
-            if (flags & SKT_NON_BLOCKING) {
-                if (fcntl(skt, F_SETFL, O_NONBLOCK) == -1) {
-                    process.status = ER_NONBLOCK_FAIL;
-                    process.os_error = NetError;
-                }
-            }
+          process.status = ER_CONNECT;
+#ifdef SOCKET_DEBUG
+          k_error("!Failed to connect after select() delay: %s\n",
+                  strerror(NetError));
+#endif
+          process.os_error = NetError;
         }
+      } else {
+        process.status = ER_CONNECT;
+#ifdef SOCKET_DEBUG
+        k_error("!Failed to connect: %d: %s\n", NetError, strerror(NetError));
+#endif
+        process.os_error = NetError;
+      }
     }
+  }
+
+  /* Create socket descriptor and SOCKVAR structure */
+
+  if (process.status == 0) {
+    sock = (SOCKVAR*)k_alloc(97, sizeof(SOCKVAR));
+    sock->ref_ct = 1;
+    sock->socket_handle = (unsigned int)skt;
+    sock->family = res->ai_family;
+    sock->flags = flags & SKT_USER_MASK;
+    struct sockaddr_in const* sin;
+    struct sockaddr_in6 const* sin6;
+    switch (res->ai_family) {
+      case PF_INET:
+        sin = (struct sockaddr_in*)res->ai_addr;
+        if (inet_ntop(AF_INET, &sin->sin_addr, server_addr, INET_ADDRSTRLEN) ==
+            NULL) {
+          process.status = ER_BADADDR;
+        }
+        break;
+
+      case PF_INET6:
+        sin6 = (struct sockaddr_in6*)res->ai_addr;
+        if (inet_ntop(AF_INET6, &sin6->sin6_addr, server_addr,
+                      INET6_ADDRSTRLEN) == NULL) {
+          process.status = ER_BADADDR;
+        }
+        break;
+
+      default:
+        strcpy(server_addr, "Unknown Address Family!");
+    }
+
     if (process.status == 0) {
-        if (connect(skt, res->ai_addr, res->ai_addrlen) == -1) {
-            if (errno == EINPROGRESS) {
-                struct timeval tv;
-                fd_set writefds;
-                tv.tv_sec = DEFAULT_CONNECT_TIMEOUT;
-                tv.tv_usec = 0;
-                FD_ZERO(&writefds);
-                FD_SET(skt, &writefds);
-                if (select(skt+1, NULL, &writefds, NULL, &tv) != -1) {
-                    if (connect(skt, res->ai_addr, res->ai_addrlen) == -1) {           
-                        process.status = ER_CONNECT;
-                        #ifdef SOCKET_DEBUG
-                          k_error("!Failed to connect: %s\n", strerror(NetError));
-                        #endif
-                        process.os_error = NetError;
-                    }
-                } else {
-                     process.status = ER_CONNECT;
-                     #ifdef SOCKET_DEBUG
-                       k_error("!Failed to connect after select() delay: %s\n", strerror(NetError));
-                     #endif
-                     process.os_error = NetError;
-                }
-            } else {
-                process.status = ER_CONNECT;
-                #ifdef SOCKET_DEBUG
-                  k_error("!Failed to connect: %d: %s\n", NetError, strerror(NetError));
-                #endif
-                process.os_error = NetError;
-            }
-        }
+      strcpy(sock->ip_addr, server_addr);
+      sock->port = port;
+      InitDescr(&result_descr, SOCK);
+      result_descr.data.sock = sock;
     }
+  }
 
- /* Create socket descriptor and SOCKVAR structure */
+  if (process.status == 0)
+    freeaddrinfo(res);
 
-    if (process.status == 0) { 
-        sock = (SOCKVAR *)k_alloc(97, sizeof(SOCKVAR));
-        sock->ref_ct = 1;
-        sock->socket_handle = (unsigned int)skt;
-        sock->family = res->ai_family;
-        sock->flags = flags & SKT_USER_MASK;
-        struct sockaddr_in const *sin;
-        struct sockaddr_in6 const *sin6;
-        switch(res->ai_family) {
-            case PF_INET:
-                sin = (struct sockaddr_in *)res->ai_addr;
-                if (inet_ntop(AF_INET, &sin->sin_addr, server_addr, INET_ADDRSTRLEN) == NULL) {
-                    process.status = ER_BADADDR;
-                }
-                break;
-          
-            case PF_INET6:
-                sin6 = (struct sockaddr_in6 *)res->ai_addr;
-                if (inet_ntop(AF_INET6, &sin6->sin6_addr, server_addr, INET6_ADDRSTRLEN) == NULL) {
-                    process.status = ER_BADADDR;
-                }
-                break;
-    
-            default:
-                strcpy(server_addr, "Unknown Address Family!");
-        }
-    
-        if (process.status == 0) {
-            strcpy(sock->ip_addr, server_addr);
-            sock->port = port;
-            InitDescr(&result_descr, SOCK);
-            result_descr.data.sock = sock;
-        }
-    }
+  // exit_open_socket:
+  k_dismiss();
+  k_pop(2);
+  k_dismiss();
 
-    if (process.status == 0)
-        freeaddrinfo(res);
-
-// exit_open_socket:
-    k_dismiss();
-    k_pop(2);
-    k_dismiss();
-
-    *(e_stack++) = result_descr;
+  *(e_stack++) = result_descr;
 }
 
 /* ======================================================================
    op_readskt()  -  READ.SOCKET                                           */
 
-void op_readskt()
-{
- /* Stack:
+void op_readskt() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -536,105 +538,106 @@ void op_readskt()
 
  */
 
- DESCRIPTOR * descr;
- int timeout;
- int max_len;
- int flags;
- SOCKVAR * sock;
- bool blocking;
- int bytes;
- int rcvd_bytes;
- STRING_CHUNK * head = NULL;
- SOCKET skt;
+  DESCRIPTOR* descr;
+  int timeout;
+  int max_len;
+  int flags;
+  SOCKVAR* sock;
+  bool blocking;
+  int bytes;
+  int rcvd_bytes;
+  STRING_CHUNK* head = NULL;
+  SOCKET skt;
 
+  process.status = 0;
 
- process.status = 0;
+  /* Get timeout period */
 
- /* Get timeout period */
+  descr = e_stack - 1;
+  GetInt(descr);
+  timeout = descr->data.value;
+  if (timeout == 0)
+    timeout = -1;
 
- descr = e_stack - 1;
- GetInt(descr);
- timeout = descr->data.value;
- if (timeout == 0) timeout = -1;
+  /* Get flags */
 
- /* Get flags */
+  descr = e_stack - 2;
+  GetInt(descr);
+  flags = descr->data.value;
 
- descr = e_stack - 2;
- GetInt(descr);
- flags = descr->data.value;
+  /* Get max len */
 
- /* Get max len */
+  descr = e_stack - 3;
+  GetInt(descr);
+  max_len = descr->data.value;
 
- descr = e_stack - 3;
- GetInt(descr);
- max_len = descr->data.value;
-
- if (skt_buff_size < max_len)
-  {
-   bytes = (max_len + 1023) & ~1023;  /* Round up to 1k multiple */
-   if (skt_buff != NULL)
-    {
-     k_free(skt_buff);
-     skt_buff_size = 0;
+  if (skt_buff_size < max_len) {
+    bytes = (max_len + 1023) & ~1023; /* Round up to 1k multiple */
+    if (skt_buff != NULL) {
+      k_free(skt_buff);
+      skt_buff_size = 0;
     }
 
-   skt_buff = (char *)k_alloc(98, bytes);
-   if (skt_buff == NULL)
-    {
-     process.status = ER_MEM;
-     goto exit_op_readskt;
+    skt_buff = (char*)k_alloc(98, bytes);
+    if (skt_buff == NULL) {
+      process.status = ER_MEM;
+      goto exit_op_readskt;
     }
 
-   skt_buff_size = bytes;
+    skt_buff_size = bytes;
   }
 
- /* Get socket */
+  /* Get socket */
 
- descr = e_stack - 4;
- k_get_value(descr);
- if (descr->type != SOCK) k_not_socket(descr);
- sock = descr->data.sock;
- skt = sock->socket_handle;
+  descr = e_stack - 4;
+  k_get_value(descr);
+  if (descr->type != SOCK)
+    k_not_socket(descr);
+  sock = descr->data.sock;
+  skt = sock->socket_handle;
 
- /* Determine blocking mode for this read */
+  /* Determine blocking mode for this read */
 
- if (flags & SKT_BLOCKING) blocking = TRUE;
- else if (flags & SKT_NON_BLOCKING) blocking = FALSE;
- else blocking = ((sock->flags & SKT_BLOCKING) != 0);
+  if (flags & SKT_BLOCKING)
+    blocking = TRUE;
+  else if (flags & SKT_NON_BLOCKING)
+    blocking = FALSE;
+  else
+    blocking = ((sock->flags & SKT_BLOCKING) != 0);
 
- /* Wait for data to arrive */
+  /* Wait for data to arrive */
 
- if (!socket_wait(skt, TRUE, (blocking)?timeout:0)) goto exit_op_readskt;
+  if (!socket_wait(skt, TRUE, (blocking) ? timeout : 0))
+    goto exit_op_readskt;
 
- /* Read the data */
+  /* Read the data */
 
- ts_init(&head, max_len);
+  ts_init(&head, max_len);
 
- rcvd_bytes = recv(skt, skt_buff, max_len, 0);
- if (rcvd_bytes <= 0)  /* Lost connection */
+  rcvd_bytes = recv(skt, skt_buff, max_len, 0);
+  if (rcvd_bytes <= 0) /* Lost connection */
   {
-   process.status = (rcvd_bytes == 0)?ER_SKT_CLOSED:ER_FAILED;
-   process.os_error = NetError;
-   goto exit_op_readskt;
+    process.status = (rcvd_bytes == 0) ? ER_SKT_CLOSED : ER_FAILED;
+    process.os_error = NetError;
+    goto exit_op_readskt;
   }
 
- ts_copy(skt_buff, rcvd_bytes);
- ts_terminate();
+  ts_copy(skt_buff, rcvd_bytes);
+  ts_terminate();
 
 exit_op_readskt:
- k_pop(3);
- k_dismiss();
+  k_pop(3);
+  k_dismiss();
 
- InitDescr(e_stack, STRING);
- (e_stack++)->data.str.saddr = head;
+  InitDescr(e_stack, STRING);
+  (e_stack++)->data.str.saddr = head;
 }
 
 /* ======================================================================
    op_setskt()  -  SET.SOCKET.MODE()                                      */
 
-void op_setskt()
-{
- /* Stack:
+void op_setskt() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -647,70 +650,72 @@ void op_setskt()
      |=============================|=============================|
  */
 
- DESCRIPTOR * descr;
- SOCKVAR * sockvar;
- int key;
- int n;
+  DESCRIPTOR* descr;
+  SOCKVAR* sockvar;
+  int key;
+  int n;
 
- process.status = 0;
+  process.status = 0;
 
- /* Get action key */
+  /* Get action key */
 
- descr = e_stack - 2;
- GetInt(descr);
- key = descr->data.value;
+  descr = e_stack - 2;
+  GetInt(descr);
+  key = descr->data.value;
 
- /* Get socket reference */
+  /* Get socket reference */
 
- descr = e_stack - 3;
- while(descr->type == ADDR) descr = descr->data.d_addr;
- if (descr->type != SOCK) k_not_socket(descr);
- sockvar = descr->data.sock;
+  descr = e_stack - 3;
+  while (descr->type == ADDR)
+    descr = descr->data.d_addr;
+  if (descr->type != SOCK)
+    k_not_socket(descr);
+  sockvar = descr->data.sock;
 
- descr = e_stack - 1;   /* Qualifier */
+  descr = e_stack - 1; /* Qualifier */
 
- switch(key)
-  {
-   case SKT_INFO_BLOCKING:
+  switch (key) {
+    case SKT_INFO_BLOCKING:
       GetInt(descr);
-      if (descr->data.value) sockvar->flags |= SKT_BLOCKING;
-      else sockvar->flags &= ~SKT_BLOCKING;
+      if (descr->data.value)
+        sockvar->flags |= SKT_BLOCKING;
+      else
+        sockvar->flags &= ~SKT_BLOCKING;
       break;
 
-   case SKT_INFO_NO_DELAY:
-     GetInt(descr);
-     n = (descr->data.value != 0);
-     setsockopt(sockvar->socket_handle, IPPROTO_TCP, TCP_NODELAY,
-                (char *)&n, sizeof(int));
-     break;
+    case SKT_INFO_NO_DELAY:
+      GetInt(descr);
+      n = (descr->data.value != 0);
+      setsockopt(sockvar->socket_handle, IPPROTO_TCP, TCP_NODELAY, (char*)&n,
+                 sizeof(int));
+      break;
 
-   case SKT_INFO_KEEP_ALIVE:
-     GetInt(descr);
-     n = (descr->data.value != 0);
-     n = TRUE;
-     setsockopt(sockvar->socket_handle, SOL_SOCKET, SO_KEEPALIVE,
-                (char *)&n, sizeof(int));
-     break;
+    case SKT_INFO_KEEP_ALIVE:
+      GetInt(descr);
+      n = (descr->data.value != 0);
+      n = TRUE;
+      setsockopt(sockvar->socket_handle, SOL_SOCKET, SO_KEEPALIVE, (char*)&n,
+                 sizeof(int));
+      break;
 
-   default:
+    default:
       process.status = ER_BAD_KEY;
       break;
   }
 
- k_dismiss();
- k_dismiss();
- k_dismiss();
+  k_dismiss();
+  k_dismiss();
+  k_dismiss();
 
- InitDescr(e_stack, INTEGER);
- (e_stack++)->data.value = (process.status == 0);
+  InitDescr(e_stack, INTEGER);
+  (e_stack++)->data.value = (process.status == 0);
 }
 
 /* ======================================================================
    op_sktinfo()  -  SOCKET.INFO()                                         */
 
-void op_sktinfo()
-{
- /* Stack:
+void op_sktinfo() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -721,92 +726,95 @@ void op_sktinfo()
      |=============================|=============================|
  */
 
- DESCRIPTOR * descr;
- SOCKVAR * sockvar;
- DESCRIPTOR result_descr;
- int key;
- int n;
- socklen_t socklen;
+  DESCRIPTOR* descr;
+  SOCKVAR* sockvar;
+  DESCRIPTOR result_descr;
+  int key;
+  int n;
+  socklen_t socklen;
 
- InitDescr(&result_descr, INTEGER);
- result_descr.data.value = 0;
+  InitDescr(&result_descr, INTEGER);
+  result_descr.data.value = 0;
 
- /* Get action key */
+  /* Get action key */
 
- descr = e_stack - 1;
- GetInt(descr);
- key = descr->data.value;
+  descr = e_stack - 1;
+  GetInt(descr);
+  key = descr->data.value;
 
- /* Get socket reference */
+  /* Get socket reference */
 
- descr = e_stack - 2;
- while(descr->type == ADDR) descr = descr->data.d_addr;
- if ((descr->type != SOCK) && (key != SKT_INFO_OPEN)) k_not_socket(descr);
- sockvar = descr->data.sock;
+  descr = e_stack - 2;
+  while (descr->type == ADDR)
+    descr = descr->data.d_addr;
+  if ((descr->type != SOCK) && (key != SKT_INFO_OPEN))
+    k_not_socket(descr);
+  sockvar = descr->data.sock;
 
- switch(key)
-  {
-   case SKT_INFO_OPEN:
+  switch (key) {
+    case SKT_INFO_OPEN:
       result_descr.data.value = (descr->type == SOCK);
       break;
 
-   case SKT_INFO_TYPE:
-      if (sockvar->flags & SKT_SERVER) result_descr.data.value = SKT_INFO_TYPE_SERVER;
-      else if (sockvar->flags & SKT_INCOMING) result_descr.data.value = SKT_INFO_TYPE_INCOMING;
-      else result_descr.data.value = SKT_INFO_TYPE_OUTGOING;
+    case SKT_INFO_TYPE:
+      if (sockvar->flags & SKT_SERVER)
+        result_descr.data.value = SKT_INFO_TYPE_SERVER;
+      else if (sockvar->flags & SKT_INCOMING)
+        result_descr.data.value = SKT_INFO_TYPE_INCOMING;
+      else
+        result_descr.data.value = SKT_INFO_TYPE_OUTGOING;
       break;
 
-   case SKT_INFO_PORT:
+    case SKT_INFO_PORT:
       result_descr.data.value = sockvar->port;
       break;
 
-   case SKT_INFO_IP_ADDR:
+    case SKT_INFO_IP_ADDR:
       k_put_c_string(sockvar->ip_addr, &result_descr);
       break;
 
-   case SKT_INFO_BLOCKING:
+    case SKT_INFO_BLOCKING:
       result_descr.data.value = ((sockvar->flags & SKT_BLOCKING) != 0);
       break;
 
-   case SKT_INFO_NO_DELAY:
+    case SKT_INFO_NO_DELAY:
       n = 0;
       socklen = sizeof(int);
-      getsockopt(sockvar->socket_handle, IPPROTO_TCP, TCP_NODELAY,
-                 (char *)&n, &socklen);
+      getsockopt(sockvar->socket_handle, IPPROTO_TCP, TCP_NODELAY, (char*)&n,
+                 &socklen);
       result_descr.data.value = (n != 0);
       break;
 
-   case SKT_INFO_KEEP_ALIVE:
+    case SKT_INFO_KEEP_ALIVE:
       n = 0;
       socklen = sizeof(int);
-      getsockopt(sockvar->socket_handle, SOL_SOCKET, SO_KEEPALIVE,
-                 (char *)&n, &socklen);
+      getsockopt(sockvar->socket_handle, SOL_SOCKET, SO_KEEPALIVE, (char*)&n,
+                 &socklen);
       result_descr.data.value = (n != 0);
       break;
 
-   case SKT_INFO_FAMILY:
-      switch (sockvar->family) { 
+    case SKT_INFO_FAMILY:
+      switch (sockvar->family) {
         case PF_INET:
-            result_descr.data.value = SKT_INFO_FAMILY_IPV4;
-            break; 
+          result_descr.data.value = SKT_INFO_FAMILY_IPV4;
+          break;
         case PF_INET6:
-            result_descr.data.value = SKT_INFO_FAMILY_IPV6;
-            break;
-      } 
+          result_descr.data.value = SKT_INFO_FAMILY_IPV6;
+          break;
+      }
   }
 
- k_pop(1);
- k_dismiss();
+  k_pop(1);
+  k_dismiss();
 
- *(e_stack++) = result_descr;
+  *(e_stack++) = result_descr;
 }
 
 /* ======================================================================
    op_srvraddr()  -  SERVER.ADDR()                                        */
 
-void op_srvraddr()
-{
- /* Stack:
+void op_srvraddr() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -816,58 +824,60 @@ void op_srvraddr()
 
  */
 
-    DESCRIPTOR * descr;
-    char hostname[64+1];
-    char ip_addr[40] = "";
+  DESCRIPTOR* descr;
+  char hostname[64 + 1];
+  char ip_addr[40] = "";
 
-    struct addrinfo hint, *res;
-    
-    process.status = 0;
+  struct addrinfo hint, *res;
 
-    descr = e_stack - 1;
-    if (k_get_c_string(descr, hostname, 64) <= 0) {
-        process.status = ER_BAD_NAME;
+  process.status = 0;
+
+  descr = e_stack - 1;
+  if (k_get_c_string(descr, hostname, 64) <= 0) {
+    process.status = ER_BAD_NAME;
+  }
+
+  if (process.status == 0) {
+    memset(&hint, 0, sizeof(hint));
+    hint.ai_family = AF_UNSPEC;
+
+    if (getaddrinfo(hostname, "", &hint, &res)) {
+      process.status = ER_SERVER;
+    } else {
+      struct sockaddr_in* sin;
+      struct sockaddr_in6* sin6;
+      switch (res->ai_family) {
+        case PF_INET:
+          sin = (struct sockaddr_in*)res->ai_addr;
+          if (inet_ntop(AF_INET, &sin->sin_addr, ip_addr, INET_ADDRSTRLEN) ==
+              NULL) {
+            process.status = ER_BADADDR;
+          }
+          break;
+        case PF_INET6:
+          sin6 = (struct sockaddr_in6*)res->ai_addr;
+          if (inet_ntop(AF_INET6, &sin6->sin6_addr, ip_addr,
+                        INET6_ADDRSTRLEN) == NULL) {
+            process.status = ER_BADADDR;
+          }
+          break;
+        default:
+          strcpy(ip_addr, "Unknown Address Family!");
+      }
     }
 
-    if(process.status == 0) {
-        memset(&hint, 0, sizeof(hint));
-        hint.ai_family = AF_UNSPEC;
- 
-        if (getaddrinfo(hostname, "", &hint, &res)) {
-            process.status = ER_SERVER;
-        } else {
-            struct sockaddr_in *sin;
-            struct sockaddr_in6 *sin6;
-            switch(res->ai_family) {
-                case PF_INET:
-                    sin = (struct sockaddr_in *)res->ai_addr;
-                    if (inet_ntop(AF_INET, &sin->sin_addr, ip_addr, INET_ADDRSTRLEN) == NULL) {
-                        process.status = ER_BADADDR;
-                    }
-                    break;
-                case PF_INET6:
-                    sin6 = (struct sockaddr_in6 *)res->ai_addr;
-                    if (inet_ntop(AF_INET6, &sin6->sin6_addr, ip_addr, INET6_ADDRSTRLEN) == NULL) {
-                        process.status = ER_BADADDR;
-                    }
-                    break;
-                default:
-                    strcpy(ip_addr, "Unknown Address Family!");
-            }
-        }
-        
-        freeaddrinfo(res);
-    }
+    freeaddrinfo(res);
+  }
 
-    k_dismiss();
-    k_put_c_string(ip_addr, e_stack++);
+  k_dismiss();
+  k_put_c_string(ip_addr, e_stack++);
 }
 
 /* ======================================================================
    op_srvrskt()  -  CREATE.SERVER.SOCKET                                  */
 
 void op_srvrskt() {
- /* Stack:
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -908,178 +918,181 @@ void op_srvrskt() {
     
  */
 
-    DESCRIPTOR * descr;
-    SOCKVAR * sock;
-    SOCKET skt;
-    int port;
-    int flags;
-    int optval;
+  DESCRIPTOR* descr;
+  SOCKVAR* sock;
+  SOCKET skt;
+  int port;
+  int flags;
+  int optval;
 
-    char server[80+1];
-    char server_addr[80];
+  char server[80 + 1];
+  char server_addr[80];
 
-    DESCRIPTOR result_descr;
+  DESCRIPTOR result_descr;
 
-    /* for getaddrinfo() call... */
-    struct addrinfo hint, *res;
-    char port_name[30];
-    int err_info = 0;
+  /* for getaddrinfo() call... */
+  struct addrinfo hint, *res;
+  char port_name[30];
+  int err_info = 0;
 
-    process.status = 0;
+  process.status = 0;
 
-    InitDescr(&result_descr, INTEGER);
-    result_descr.data.value = 0;
+  InitDescr(&result_descr, INTEGER);
+  result_descr.data.value = 0;
 
+  /* Get flags */
 
-    /* Get flags */
+  descr = e_stack - 2;
+  GetInt(descr);
+  flags = descr->data.value;
 
-    descr = e_stack - 2;
-    GetInt(descr);
-    flags = descr->data.value;
+  /* Get port */
 
-    /* Get port */
+  descr = e_stack - 3;
+  GetInt(descr);
+  port = descr->data.value;
 
-    descr = e_stack - 3;
-    GetInt(descr);
-    port = descr->data.value;
+  /* get server address */
+  descr = e_stack - 4;
+  if (k_get_c_string(descr, server, 80) < 0) {
+    process.status = ER_BAD_NAME;
+    goto exit_srvrskt;
+  }
 
-    /* get server address */
-    descr = e_stack - 4;
-    if (k_get_c_string(descr, server, 80) < 0) {
-        process.status = ER_BAD_NAME;
-        goto exit_srvrskt;
-    }
+  memset(&hint, 0, sizeof(hint));
+  memset(&port_name, 0, sizeof(port_name));
+  memset(&server_addr, 0, sizeof(server_addr));
 
-    memset(&hint, 0, sizeof(hint));
-    memset(&port_name,0, sizeof(port_name));
-    memset(&server_addr, 0, sizeof(server_addr));
+  hint.ai_flags = AI_PASSIVE; /* we're going to bind a socket... */
 
-    hint.ai_flags = AI_PASSIVE;  /* we're going to bind a socket... */
-
-    char tempserver[80] = "";
-    if (inet_pton(AF_INET, server, &tempserver) == 1) {
-        hint.ai_family = AF_INET;
-        hint.ai_flags |= AI_NUMERICHOST;
+  char tempserver[80] = "";
+  if (inet_pton(AF_INET, server, &tempserver) == 1) {
+    hint.ai_family = AF_INET;
+    hint.ai_flags |= AI_NUMERICHOST;
+  } else {
+    if (inet_pton(AF_INET6, server, &tempserver) == 1) {
+      hint.ai_family = AF_INET6;
+      hint.ai_flags |= AI_NUMERICHOST;
     } else {
-        if (inet_pton(AF_INET6, server, &tempserver) == 1) {
-            hint.ai_family = AF_INET6;
-            hint.ai_flags |= AI_NUMERICHOST;
-        } else {
-            /* might be a hostname */
-            hint.ai_family = AF_UNSPEC;
-        }
+      /* might be a hostname */
+      hint.ai_family = AF_UNSPEC;
     }
+  }
 
-    snprintf(port_name, sizeof(port_name), "%u", port);
-    if (flags == 0) {   /* SKT$TCP */
-        hint.ai_socktype = SOCK_STREAM;
-    }
+  snprintf(port_name, sizeof(port_name), "%u", port);
+  if (flags == 0) { /* SKT$TCP */
+    hint.ai_socktype = SOCK_STREAM;
+  }
 
-    if (flags & SKT_UDP) {  /* SKT$UDP */
-        hint.ai_socktype = SOCK_DGRAM;   /* for the moment we're going to force datagram for UDP sockets... */
-    } 
+  if (flags & SKT_UDP) { /* SKT$UDP */
+    hint.ai_socktype =
+        SOCK_DGRAM; /* for the moment we're going to force datagram for UDP sockets... */
+  }
 
-    if (flags & SKT_ICMP) {
-        hint.ai_socktype = SOCK_RAW;   /* for the moment we're going to force raw sockets for ICMP sockets... */
-    }
- 
-    /* the getaddrinfo() call sets the address family member (res->ai_family) 
+  if (flags & SKT_ICMP) {
+    hint.ai_socktype =
+        SOCK_RAW; /* for the moment we're going to force raw sockets for ICMP sockets... */
+  }
+
+  /* the getaddrinfo() call sets the address family member (res->ai_family) 
      * so we don't need to tell the system beforehand that we're using IPv4 or
      * IPv6.  It'll figure it out based on the ip address or name resolution that
      * it does.
      */
- 
-    err_info = getaddrinfo(server, port_name, &hint, &res);
 
-    if (err_info != 0) {
-        /* we failed.. */
-	process.status = translate_sockerr(err_info);
-        process.os_error = NetError;
-    }
+  err_info = getaddrinfo(server, port_name, &hint, &res);
 
-    if (process.status == 0) {
-        skt = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+  if (err_info != 0) {
+    /* we failed.. */
+    process.status = translate_sockerr(err_info);
+    process.os_error = NetError;
+  }
 
-     /* Enable address reuse to avoid re-binding issues - gcb Mar 10 2009 */  
-        optval = 1;
-        setsockopt(skt, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
-     //
+  if (process.status == 0) {
+    skt = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
 
-        if (skt < 0) {
-	    process.status = ER_NOSOCKET;
-	    process.os_error = NetError;
-        } else {
-            if (flags & SKT_NON_BLOCKING) {
-                if (fcntl(skt, F_SETFL, O_NONBLOCK) == -1) {
-                    process.status = ER_NONBLOCK_FAIL;
-                    process.os_error = NetError;
-                }
-            }
+    /* Enable address reuse to avoid re-binding issues - gcb Mar 10 2009 */
+    optval = 1;
+    setsockopt(skt, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
+    //
+
+    if (skt < 0) {
+      process.status = ER_NOSOCKET;
+      process.os_error = NetError;
+    } else {
+      if (flags & SKT_NON_BLOCKING) {
+        if (fcntl(skt, F_SETFL, O_NONBLOCK) == -1) {
+          process.status = ER_NONBLOCK_FAIL;
+          process.os_error = NetError;
         }
+      }
     }
-    if (process.status == 0) {
-        int bind_result = 0;
-        bind_result = bind(skt, res->ai_addr, res->ai_addrlen);
-        if (bind_result < 0) {
-            process.status = ER_BIND;
-            process.os_error = NetError;
-        } else {
-            listen(skt, SOMAXCONN);
-             /* Create socket descriptor and SOCKVAR structure */
+  }
+  if (process.status == 0) {
+    int bind_result = 0;
+    bind_result = bind(skt, res->ai_addr, res->ai_addrlen);
+    if (bind_result < 0) {
+      process.status = ER_BIND;
+      process.os_error = NetError;
+    } else {
+      listen(skt, SOMAXCONN);
+      /* Create socket descriptor and SOCKVAR structure */
 
-            sock = (SOCKVAR *)k_alloc(99, sizeof(SOCKVAR));
-            sock->ref_ct = 1;
-            sock->socket_handle = (int)skt;
-            sock->family = res->ai_family;
-            sock->flags = SKT_SERVER;
+      sock = (SOCKVAR*)k_alloc(99, sizeof(SOCKVAR));
+      sock->ref_ct = 1;
+      sock->socket_handle = (int)skt;
+      sock->family = res->ai_family;
+      sock->flags = SKT_SERVER;
 
-            struct sockaddr_in const *sin;
-            struct sockaddr_in6 const *sin6;
+      struct sockaddr_in const* sin;
+      struct sockaddr_in6 const* sin6;
 
-            switch(res->ai_family) {
-                case PF_INET: 
-                    sin = (struct sockaddr_in *)res->ai_addr;
-                    if (inet_ntop(AF_INET, &sin->sin_addr, server_addr, INET_ADDRSTRLEN) == NULL) {
-                        process.status = ER_BADADDR;
-                    }
-                    break;
-                case PF_INET6:
-                    sin6 = (struct sockaddr_in6 *)res->ai_addr;
-                    if (inet_ntop(AF_INET6, &sin6->sin6_addr, server_addr, INET6_ADDRSTRLEN) == NULL) {
-                        process.status = ER_BADADDR;
-                    }
-                    break;
-                default:
-                    strcpy(server_addr, "Unknown Address Family!");
-            }
-            if (process.status == 0) {
-                strcpy(sock->ip_addr, server_addr);
-                sock->port = port;
-                InitDescr(&result_descr, SOCK);
-                result_descr.data.sock = sock;
-            }
-        }
+      switch (res->ai_family) {
+        case PF_INET:
+          sin = (struct sockaddr_in*)res->ai_addr;
+          if (inet_ntop(AF_INET, &sin->sin_addr, server_addr,
+                        INET_ADDRSTRLEN) == NULL) {
+            process.status = ER_BADADDR;
+          }
+          break;
+        case PF_INET6:
+          sin6 = (struct sockaddr_in6*)res->ai_addr;
+          if (inet_ntop(AF_INET6, &sin6->sin6_addr, server_addr,
+                        INET6_ADDRSTRLEN) == NULL) {
+            process.status = ER_BADADDR;
+          }
+          break;
+        default:
+          strcpy(server_addr, "Unknown Address Family!");
+      }
+      if (process.status == 0) {
+        strcpy(sock->ip_addr, server_addr);
+        sock->port = port;
+        InitDescr(&result_descr, SOCK);
+        result_descr.data.sock = sock;
+      }
     }
+  }
 
-    if (process.status == 0)  
-        freeaddrinfo(res);
+  if (process.status == 0)
+    freeaddrinfo(res);
 
 exit_srvrskt:
 
-    k_dismiss();
-    k_pop(2);  /* this was set to 1 for the old routine.  I'm still not quite sure how these work,
+  k_dismiss();
+  k_pop(
+      2); /* this was set to 1 for the old routine.  I'm still not quite sure how these work,
                   but I'm getting there....*/
-    k_dismiss();
+  k_dismiss();
 
-    *(e_stack++) = result_descr;
+  *(e_stack++) = result_descr;
 }
 
 /* ======================================================================
    op_writeskt()  -  WRITE.SOCKET                                         */
 
-void op_writeskt()
-{
- /* Stack:
+void op_writeskt() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -1095,168 +1108,165 @@ void op_writeskt()
 
  */
 
- DESCRIPTOR * descr;
- int timeout;
- int flags;
- SOCKVAR * sock;
- bool blocking;
- int bytes;
- int bytes_sent;
- int total_bytes = 0;
- STRING_CHUNK * str;
- SOCKET skt;
- char * p;
+  DESCRIPTOR* descr;
+  int timeout;
+  int flags;
+  SOCKVAR* sock;
+  bool blocking;
+  int bytes;
+  int bytes_sent;
+  int total_bytes = 0;
+  STRING_CHUNK* str;
+  SOCKET skt;
+  char* p;
 
- process.status = 0;
+  process.status = 0;
 
- /* Get timeout period */
+  /* Get timeout period */
 
- descr = e_stack - 1;
- GetInt(descr);
- timeout = descr->data.value;
- if (timeout == 0) timeout = -1;
+  descr = e_stack - 1;
+  GetInt(descr);
+  timeout = descr->data.value;
+  if (timeout == 0)
+    timeout = -1;
 
- /* Get flags */
+  /* Get flags */
 
- descr = e_stack - 2;
- GetInt(descr);
- flags = descr->data.value;
+  descr = e_stack - 2;
+  GetInt(descr);
+  flags = descr->data.value;
 
- /* Get data to write */
+  /* Get data to write */
 
- descr = e_stack - 3;
- GetString(descr);
- str = descr->data.str.saddr;
+  descr = e_stack - 3;
+  GetString(descr);
+  str = descr->data.str.saddr;
 
- /* Get socket */
+  /* Get socket */
 
- descr = e_stack - 4;
- k_get_value(descr);
- if (descr->type != SOCK) k_not_socket(descr);
- sock = descr->data.sock;
- skt = sock->socket_handle;
+  descr = e_stack - 4;
+  k_get_value(descr);
+  if (descr->type != SOCK)
+    k_not_socket(descr);
+  sock = descr->data.sock;
+  skt = sock->socket_handle;
 
- if (str == NULL) goto exit_op_writeskt;
+  if (str == NULL)
+    goto exit_op_writeskt;
 
+  /* Determine blocking mode for this write */
 
- /* Determine blocking mode for this write */
+  if (flags & SKT_BLOCKING)
+    blocking = TRUE;
+  else if (flags & SKT_NON_BLOCKING)
+    blocking = FALSE;
+  else
+    blocking = ((sock->flags & SKT_BLOCKING) != 0);
 
- if (flags & SKT_BLOCKING) blocking = TRUE;
- else if (flags & SKT_NON_BLOCKING) blocking = FALSE;
- else blocking = ((sock->flags & SKT_BLOCKING) != 0);
+  /* Write the data */
 
+  while (str != NULL) {
+    p = str->data;
+    bytes = str->bytes;
+    do {
+      if (!socket_wait(skt, FALSE, (blocking) ? timeout : 0))
+        goto exit_op_writeskt;
 
- /* Write the data */
+      bytes_sent = send(skt, p, bytes, 0);
+      if (bytes_sent < 0) /* Lost connection */
+      {
+        process.status = ER_FAILED;
+        process.os_error = NetError;
+        goto exit_op_writeskt;
+      }
 
- while(str != NULL)
-  {
-   p = str->data;
-   bytes = str->bytes;   
-   do {
-       if (!socket_wait(skt, FALSE, (blocking)?timeout:0)) goto exit_op_writeskt;
-
-       bytes_sent = send(skt, p, bytes, 0);
-       if (bytes_sent < 0)  /* Lost connection */
-        {
-         process.status = ER_FAILED;
-         process.os_error = NetError;
-         goto exit_op_writeskt;
-        }
-
-       bytes -= bytes_sent;
-       total_bytes += bytes_sent;
-       p += bytes_sent;
-      } while(bytes);
-   str = str->next;
+      bytes -= bytes_sent;
+      total_bytes += bytes_sent;
+      p += bytes_sent;
+    } while (bytes);
+    str = str->next;
   }
 
 exit_op_writeskt:
- k_pop(2);
- k_dismiss();
- k_dismiss();
+  k_pop(2);
+  k_dismiss();
+  k_dismiss();
 
- InitDescr(e_stack, INTEGER);
- (e_stack++)->data.value = total_bytes;
+  InitDescr(e_stack, INTEGER);
+  (e_stack++)->data.value = total_bytes;
 }
 
 /* ====================================================================== */
 
-void close_skt(SOCKVAR * sock)
-{
- closesocket((SOCKET)(sock->socket_handle));
+void close_skt(SOCKVAR* sock) {
+  closesocket((SOCKET)(sock->socket_handle));
 }
 
 /* ======================================================================
    socket_wait()                                                          */
 
-bool socket_wait(
-   SOCKET skt,
-   bool read,     /* Read mode? */
-   int timeout)
-{
- fd_set socket_set;
- fd_set wait_set;
- struct timeval tm;
- sigset_t sigset;
+bool socket_wait(SOCKET skt,
+                 bool read, /* Read mode? */
+                 int timeout) {
+  fd_set socket_set;
+  fd_set wait_set;
+  struct timeval tm;
+  sigset_t sigset;
 
- /* The select() call on Linux systems hangs if the SIGINT signal is
+  /* The select() call on Linux systems hangs if the SIGINT signal is
     received while in the function. Set up a mask to allow blocking
     of this signal during the select().                              */
 
- sigemptyset(&sigset);
- sigaddset(&sigset, SIGINT);
+  sigemptyset(&sigset);
+  sigaddset(&sigset, SIGINT);
 
- /* If timeout < 0 (infinite wait), we actually wait in one second
+  /* If timeout < 0 (infinite wait), we actually wait in one second
     steps, looking for events each time we wake up.                   */
 
- if (timeout >= 0)
-  {
-   tm.tv_usec = (timeout % 1000) * 1000;  /* Fractional seconds and... */
-   timeout /= 1000;                       /* ...whole seconds */
-   tm.tv_sec = (timeout > 0);
-  }
- else
-  {
-   timeout = 2147482647;                  /* A long time! */
-   tm.tv_sec = 1;
-   tm.tv_usec = 0;
+  if (timeout >= 0) {
+    tm.tv_usec = (timeout % 1000) * 1000; /* Fractional seconds and... */
+    timeout /= 1000;                      /* ...whole seconds */
+    tm.tv_sec = (timeout > 0);
+  } else {
+    timeout = 2147482647; /* A long time! */
+    tm.tv_sec = 1;
+    tm.tv_usec = 0;
   }
 
- FD_ZERO(&socket_set);
- FD_SET(skt, &socket_set);
+  FD_ZERO(&socket_set);
+  FD_SET(skt, &socket_set);
 
- while(1)
-  {
-   wait_set = socket_set;
+  while (1) {
+    wait_set = socket_set;
 
-   sigprocmask(SIG_BLOCK, &sigset, NULL);
+    sigprocmask(SIG_BLOCK, &sigset, NULL);
 
-   if (select(FD_SETSIZE, (read)?(&wait_set):NULL, (read)?NULL:(&wait_set),
-              NULL, &tm) != 0) break;
+    if (select(FD_SETSIZE, (read) ? (&wait_set) : NULL,
+               (read) ? NULL : (&wait_set), NULL, &tm) != 0)
+      break;
 
-   sigprocmask(SIG_UNBLOCK, &sigset, NULL);
+    sigprocmask(SIG_UNBLOCK, &sigset, NULL);
 
-   if (--timeout <= 0)
-    {
-     process.status = ER_TIMEOUT;
-     return FALSE;
+    if (--timeout <= 0) {
+      process.status = ER_TIMEOUT;
+      return FALSE;
     }
 
-   /* Check for events that must be processed in this loop */
+    /* Check for events that must be processed in this loop */
 
-   if (my_uptr->events) process_events();
+    if (my_uptr->events)
+      process_events();
 
-   if (((k_exit_cause == K_QUIT) && !tio_handle_break())
-      || (k_exit_cause == K_TERMINATE))
-    {
-     return FALSE;
+    if (((k_exit_cause == K_QUIT) && !tio_handle_break()) ||
+        (k_exit_cause == K_TERMINATE)) {
+      return FALSE;
     }
 
-   tm.tv_sec = 1;
-   tm.tv_usec = 0;
+    tm.tv_sec = 1;
+    tm.tv_usec = 0;
   }
 
- return TRUE;
+  return TRUE;
 }
 
 /* END-CODE */

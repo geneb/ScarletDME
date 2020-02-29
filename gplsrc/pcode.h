@@ -18,7 +18,11 @@
  * 
  * Ladybridge Systems can be contacted via the www.openqm.com web site.
  * 
- * START-HISTORY:
+ * ScarletDME Wiki: https://scarlet.deltasoft.com
+ * 
+ * START-HISTORY (ScarletDME):
+ * 
+ * START-HISTORY (OpenQM):
  * 04 Mar 07  2.5-1 Added EXTENDLIST.
  * 17 Mar 06  2.3-8 Added IN.
  * 22 Sep 05  2.2-12 Added CHAIN.

@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
  * 22Feb20 gwb Changed printed references of QM to ScarletDME.
  *             Cleared a warning regarding an unused variable.
  * 
@@ -68,9 +70,9 @@ Private void remove_user(USER_ENTRY* uptr);
 bool recover_users() {
   bool status = FALSE;
   USER_ENTRY* uptr;
-  long int pid;
-  short int u;
-  short int user_no;
+  int32_t pid;
+  int16_t u;
+  int16_t user_no;
 
   /* Be brutal - Lock everything in sight */
 
@@ -145,9 +147,9 @@ void show_users() {
 
 void kill_user(char* user) {
   USER_ENTRY* uptr;
-  short int u;
+  int16_t u;
   char errmsg[80 + 1];
-  short int uid;
+  int16_t uid;
   char* p;
 
   if (!attach_shared_memory()) {
@@ -214,7 +216,7 @@ void kill_user(char* user) {
    kill_process()  -  Kill a ScarletDME process */
 
 Private void kill_process(USER_ENTRY* uptr) {
-  short int user_no;
+  int16_t user_no;
   int pid;
 
   user_no = uptr->uid;
@@ -236,8 +238,8 @@ Private void kill_process(USER_ENTRY* uptr) {
 
 void cleanup() {
   USER_ENTRY* uptr;
-  short int u;
-  short int user_no;
+  int16_t u;
+  int16_t user_no;
   int pid;
   char username[MAX_USERNAME_LEN + 1]; /* Login user name */
   char errmsg[80 + 1];
@@ -305,13 +307,13 @@ Private bool process_exists(int pid) {
 /* ====================================================================== */
 
 Private void remove_user(USER_ENTRY* uptr) {
-  short int i;
-  short int user_no;
-  /* long int pid; value set but never used. */
+  int16_t i;
+  int16_t user_no;
+  /* int32_t pid; value set but never used. */
   FILE_ENTRY* fptr;
   RLOCK_ENTRY* lptr;
   GLOCK_ENTRY* gptr;
-  unsigned short int* ufm;
+  u_int16_t* ufm;
 
   user_no = uptr->uid;
   /* pid = uptr->pid; value set but never used. */

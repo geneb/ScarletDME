@@ -20,8 +20,12 @@
  * 
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
- * START-HISTORY:
-  * 05 Nov 07  2.6-5 0566 Applied casts to handle keyin() correctly.
+ * START-HISTORY (ScarletDME):
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ *
+ * START-HISTORY (OpenQM):
+ * 05 Nov 07  2.6-5 0566 Applied casts to handle keyin() correctly.
  * 13 Sep 07  2.6-3 0562 Need to inhibit input_handler() when doing SH command.
  * 03 Sep 07  2.6-3 Disable OPOST output mode so that LF is not mapped to CRLF.
  * 14 Aug 07  2.6-0 Enable asyncio for console mode too.
@@ -97,8 +101,8 @@ Public bool in_sh; /* 0562 Doing SH command? */
 
 #define RING_SIZE 1024
 Private volatile char ring_buff[RING_SIZE];
-Private volatile short int ring_in = 0;
-Private volatile short int ring_out = 0;
+Private volatile int16_t ring_in = 0;
+Private volatile int16_t ring_out = 0;
 
 Private void io_handler(int sig);
 Private int stdin_modes;
@@ -113,7 +117,7 @@ Private int ttyin = 0;
 Private struct termios old_tty_settings;
 Private struct termios new_tty_settings;
 Private bool tty_modes_saved = FALSE;
-Private short int type_ahead = -1;
+Private int16_t type_ahead = -1;
 
 Private void signal_handler(int signum);
 
@@ -373,7 +377,7 @@ bool keyready() {
   return TRUE;
 }
 
-short int keyin(timeout) int timeout; /* Milliseconds */
+int16_t keyin(timeout) int timeout; /* Milliseconds */
 {
   char c;
   struct timeval tv;
@@ -487,7 +491,7 @@ exit_keyin:
      moments before it was re-enabled will be picked up later.         */
 
   input_handler_enabled = TRUE;
-  return (short int)((u_char)c);
+  return (int16_t)((u_char)c);
 }
 
 void io_handler(int sig) {
@@ -500,7 +504,7 @@ void io_handler(int sig) {
 
 Private void do_input() {
   char c;
-  short int n;
+  int16_t n;
   static bool last_was_cr = TRUE; /* May need to skip leading NUL/LF */
 
 again:
@@ -571,7 +575,7 @@ again:
 
 STRING_CHUNK* inblk(int max_bytes) {
   int n;
-  short int actual_size;
+  int16_t actual_size;
   STRING_CHUNK* str = NULL;
   char* p;
   int bytes;
@@ -607,14 +611,14 @@ STRING_CHUNK* inblk(int max_bytes) {
    save_screen()  -  Save screen image                                    */
 
 bool save_screen(scrn, x, y, w, h) SCREEN_IMAGE* scrn;
-short int x;
-short int y;
-short int w;
-short int h;
+int16_t x;
+int16_t y;
+int16_t w;
+int16_t h;
 {
   char* p;
   char* q;
-  static long int image_id = 0;
+  static int32_t image_id = 0;
   int n;
 
   if (connection_type == CN_SOCKET) {
@@ -675,7 +679,7 @@ char* password;
   FILE* fu;
   struct passwd* pwd;
   char pw_rec[200 + 1];
-  short int len;
+  int16_t len;
   char* p = NULL;
   char* q;
 

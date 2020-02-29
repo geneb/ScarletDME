@@ -18,7 +18,13 @@
  * 
  * Ladybridge Systems can be contacted via the www.openqm.com web site.
  * 
- * START-HISTORY:
+ * ScarletDME Wiki: https://scarlet.deltasoft.com
+ * 
+ * START-HISTORY (ScarletDME):
+ * 27Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ * 
+ * START-HISTORY (OpenQM):
  * 01 Jul 07  2.5-7 Extensive change for PDA merge.
  * 08 Dec 04  2.1-0 Added HDR_CTYPE.
  * 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
@@ -45,15 +51,15 @@ typedef struct OBJECT_HEADER OBJECT_HEADER;
 struct OBJECT_HEADER {
         u_char magic;
         u_char rev;
-        long int id;               /* Object id of loaded object */
-        long int start_offset;     /* Execution begins here */
-        short int args;            /* No of arguments */
-        short int no_vars;         /* No of variables */
-        short int stack_depth;     /* Maximum stack requirements */
-        long int sym_tab_offset;   /* Symbol table offset or zero */
-        long int line_tab_offset;  /* Line table offset or zero */
-        long int object_size;      /* Total bytes including symbol & x-ref */
-        unsigned short int flags;  /* Flag bits */
+        int32_t id;               /* Object id of loaded object */
+        int32_t start_offset;     /* Execution begins here */
+        int16_t args;            /* No of arguments */
+        int16_t no_vars;         /* No of variables */
+        int16_t stack_depth;     /* Maximum stack requirements */
+        int32_t sym_tab_offset;   /* Symbol table offset or zero */
+        int32_t line_tab_offset;  /* Line table offset or zero */
+        int32_t object_size;      /* Total bytes including symbol & x-ref */
+        u_int16_t flags;  /* Flag bits */
 #define HDR_IS_CPROC         0x0001  /* CPROC command processor */
 #define HDR_INTERNAL         0x0002  /* Compiled in internal mode */
 #define HDR_DEBUG            0x0004  /* Compiled in debug mode */
@@ -71,11 +77,11 @@ struct OBJECT_HEADER {
 #define HDR_CTYPE            0x4000  /* Is a C-type */
 #define HDR_IS_CLASS         0x8000  /* Is CLASS module */
 
-        long int compile_time;     /* Date * 86400 + time */
+        int32_t compile_time;     /* Date * 86400 + time */
 /* Extended header : Items differ depending on object type */
         union {
                struct {
-                       short int refs;   /* Reference count of loaded object */
+                       int16_t refs;   /* Reference count of loaded object */
                        char program_name[MAX_PROGRAM_NAME_LEN+1];
                       } prog;
                struct {

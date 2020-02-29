@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  *
  * START-HISTORY (Scarlet DME):
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
  * 22Feb20 gwb Turned off a warning via #pragma in delete_ak().
  *             Based on context, the code appears to be correct.
  *             See the comment near the #pragma for more information.
@@ -96,104 +98,104 @@ Private NODE* tail;
 
 struct NODE {
   NODE* prev;           /* Previous buffer pointer */
-  long int node_num;    /* Node number */
-  short int ci;         /* Child index of next level... */
-  short int key_offset; /* ...and offset in node of its key */
+  int32_t node_num;    /* Node number */
+  int16_t ci;         /* Child index of next level... */
+  int16_t key_offset; /* ...and offset in node of its key */
   union AKBUFF node;    /* The node buffer */
 };
 
-Private long unsigned int ak_upd; /* File's ak_upd at time of ak_read */
-Private long int ak_node_num;
-Private short int ak_rec_offset;
+Private u_int32_t ak_upd; /* File's ak_upd at time of ak_read */
+Private int32_t ak_node_num;
+Private int16_t ak_rec_offset;
 Private u_char ak_flags;
-Private short int ak_lock_slot = 0; /* Pseudo record lock position */
+Private int16_t ak_lock_slot = 0; /* Pseudo record lock position */
 
 /* Internal functions */
 
-Private short int find_ak_by_name(DESCRIPTOR* descr, DH_FILE* dh_file);
+Private int16_t find_ak_by_name(DESCRIPTOR* descr, DH_FILE* dh_file);
 
 Private void setakpos(bool right);
 
 Private void akscan(bool right);
 
-Private short int create_ak(char* data_path,
+Private int16_t create_ak(char* data_path,
                             char* ak_path,
                             char* ak_name,
-                            short int fno,
-                            unsigned short int flags,
+                            int16_t fno,
+                            u_int16_t flags,
                             STRING_CHUNK* dict_rec,
                             char* collation_map_name,
                             char* collation_map);
 
-Private bool delete_ak(char* pathname, short int akno);
+Private bool delete_ak(char* pathname, int16_t akno);
 
 Private void ak_delete(DH_FILE* dh_file,
-                       short int akno,
+                       int16_t akno,
                        char id[],
-                       short int id_len);
+                       int16_t id_len);
 
 Private STRING_CHUNK* ak_read(DH_FILE* dh_file,
-                              short int akno,
+                              int16_t akno,
                               char id[],
-                              short int id_len,
+                              int16_t id_len,
                               bool read_data);
 
 Private bool ak_write(DH_FILE* dh_file,
-                      short int akno,
+                      int16_t akno,
                       char id[],
-                      short int id_len,
+                      int16_t id_len,
                       STRING_CHUNK* rec);
 
 Private DH_RECORD* rightmost(DH_TERM_NODE* node);
 
 Private void copy_ak_record(DH_FILE* dh_file,
                             DH_RECORD* rec_ptr,
-                            short int base_size,
+                            int16_t base_size,
                             char* id,
-                            short int id_len,
-                            long int big_rec_head,
-                            long int data_len,
+                            int16_t id_len,
+                            int32_t big_rec_head,
+                            int32_t data_len,
                             STRING_CHUNK* str,
-                            short int pad_bytes);
+                            int16_t pad_bytes);
 
-Private long int get_ak_node(DH_FILE* dh_file, short int subfile);
+Private int32_t get_ak_node(DH_FILE* dh_file, int16_t subfile);
 
 Private bool free_ak_node(DH_FILE* dh_file,
-                          short int subfile,
-                          long int node_num);
+                          int16_t subfile,
+                          int32_t node_num);
 
-Private short int compare(char* s1,
-                          short int s1_len,
+Private int16_t compare(char* s1,
+                          int16_t s1_len,
                           char* s2,
-                          short int s2_len,
+                          int16_t s2_len,
                           bool right_justified,
                           bool nocase);
 
 Private bool update_internal_node(DH_FILE* dh_file,
-                                  short int subfile,
+                                  int16_t subfile,
                                   NODE* node_ptr,
                                   char* id1,
-                                  short int id1_len,
-                                  long int offset1,
+                                  int16_t id1_len,
+                                  int32_t offset1,
                                   char* id2,
-                                  short int id2_len,
-                                  long int offset2,
+                                  int16_t id2_len,
+                                  int32_t offset2,
                                   char* id3,
-                                  short int id3_len,
-                                  long int offset3);
+                                  int16_t id3_len,
+                                  int32_t offset3);
 
 Private STRING_CHUNK* ak_read_record(DH_FILE* dh_file,
-                                     short int subfile,
+                                     int16_t subfile,
                                      DH_RECORD* rec_ptr);
 
-Private long int write_ak_big_rec(DH_FILE* dh_file,
-                                  short int subfile,
+Private int32_t write_ak_big_rec(DH_FILE* dh_file,
+                                  int16_t subfile,
                                   STRING_CHUNK* rec,
-                                  long int data_len);
+                                  int32_t data_len);
 
 Private bool free_ak_big_rec(DH_FILE* dh_file,
-                             short int subfile,
-                             long int head);
+                             int16_t subfile,
+                             int32_t head);
 
 /* ======================================================================
    op_akdelete()  -  AKDELETE                                             */
@@ -217,9 +219,9 @@ void op_akdelete() {
   */
 
   DESCRIPTOR* descr;
-  short int akno;
+  int16_t akno;
   char id[MAX_KEY_LEN + 1];
-  short int id_len;
+  int16_t id_len;
 
   process.status = 0;
 
@@ -232,7 +234,7 @@ void op_akdelete() {
 
   descr = e_stack - 2;
   GetInt(descr);
-  akno = (short int)(descr->data.value);
+  akno = (int16_t)(descr->data.value);
 
   /* Get file */
 
@@ -315,11 +317,11 @@ void op_akread() {
   */
 
   DESCRIPTOR* descr;
-  short int akno;
+  int16_t akno;
   char id[MAX_KEY_LEN + 1];
-  short int id_len;
-  unsigned short int key;
-  short int i;
+  int16_t id_len;
+  u_int16_t key;
+  int16_t i;
 
   process.status = 0;
 
@@ -332,7 +334,7 @@ void op_akread() {
 
   descr = e_stack - 2;
   GetInt(descr);
-  akno = (short int)(descr->data.value);
+  akno = (int16_t)(descr->data.value);
 
   /* Get file */
 
@@ -364,7 +366,7 @@ void op_akread() {
 
     key = 0;
     for (i = 0; i < id_len; i += 2) {
-      key ^= *((unsigned short int*)(id + i));
+      key ^= *((u_int16_t*)(id + i));
     }
 
     /* Lock the AK record */
@@ -412,8 +414,8 @@ void op_akwrite() {
 
   DESCRIPTOR* descr;
   char id[MAX_KEY_LEN + 1];
-  short int id_len;
-  short int akno;
+  int16_t id_len;
+  int16_t akno;
 
   process.status = 0;
 
@@ -428,7 +430,7 @@ void op_akwrite() {
 
   descr = e_stack - 2;
   GetInt(descr);
-  akno = (short int)(descr->data.value);
+  akno = (int16_t)(descr->data.value);
 
   /* Get file */
 
@@ -496,7 +498,7 @@ void op_akclear() {
   */
 
   DESCRIPTOR* descr;
-  short int akno;
+  int16_t akno;
   FILE_VAR* fvar;
   DH_FILE* dh_file;
 
@@ -504,7 +506,7 @@ void op_akclear() {
 
   descr = e_stack - 1;
   GetInt(descr);
-  akno = (short int)(descr->data.value);
+  akno = (int16_t)(descr->data.value);
 
   /* File */
 
@@ -541,17 +543,17 @@ void op_akenable() {
   */
 
   DESCRIPTOR* descr;
-  short int akno;
+  int16_t akno;
   FILE_VAR* fvar;
   DH_FILE* dh_file;
   DH_AK_HEADER ak_hdr;
-  short int subfile;
+  int16_t subfile;
 
   /* AK number */
 
   descr = e_stack - 1;
   GetInt(descr);
-  akno = (short int)(descr->data.value);
+  akno = (int16_t)(descr->data.value);
 
   /* File */
 
@@ -604,7 +606,7 @@ void op_akmap() {
   DESCRIPTOR* descr;
   FILE_VAR* fvar;
   DH_FILE* dh_file;
-  short int akno = -1;
+  int16_t akno = -1;
   STRING_CHUNK* str;
 
   /* Find file variable */
@@ -668,8 +670,8 @@ void op_createak() {
   */
 
   DESCRIPTOR* descr;
-  short int fno; /* Field number */
-  unsigned short int flags;
+  int16_t fno; /* Field number */
+  u_int16_t flags;
   STRING_CHUNK* dict_rec;
   char data_path[MAX_PATHNAME_LEN + 1];
   char ak_path[MAX_PATHNAME_LEN + 1];
@@ -697,13 +699,13 @@ void op_createak() {
 
   descr = e_stack - 4;
   GetInt(descr);
-  fno = (short int)(descr->data.value);
+  fno = (int16_t)(descr->data.value);
 
   /* Flags */
 
   descr = e_stack - 5;
   GetInt(descr);
-  flags = (short int)(descr->data.value);
+  flags = (int16_t)(descr->data.value);
 
   /* AK name */
 
@@ -763,7 +765,7 @@ void op_deleteak() {
   */
 
   DESCRIPTOR* descr;
-  short int akno;
+  int16_t akno;
   char pathname[MAX_PATHNAME_LEN + 1];
 
   process.status = 0;
@@ -772,7 +774,7 @@ void op_deleteak() {
 
   descr = e_stack - 1;
   GetInt(descr);
-  akno = (short int)(descr->data.value);
+  akno = (int16_t)(descr->data.value);
 
   /* Pathname */
 
@@ -813,8 +815,8 @@ void op_indices1() {
   FILE_VAR* fvar;
   DH_FILE* dh_file;
   ARRAY_HEADER* ak_data;
-  short int num_aks;
-  short int akno;
+  int16_t num_aks;
+  int16_t akno;
   STRING_CHUNK* str;
   STRING_CHUNK* tgt = NULL;
 
@@ -834,7 +836,7 @@ void op_indices1() {
       if ((ak_data = dh_file->ak_data) != NULL) {
         ts_init(&tgt, 128);
 
-        num_aks = (short int)(ak_data->rows);
+        num_aks = (int16_t)(ak_data->rows);
         for (akno = 0; akno < num_aks; akno++) {
           descr = Element(ak_data, (akno * AKD_COLS) + AKD_NAME);
           if ((str = descr->data.str.saddr) != NULL) {
@@ -880,7 +882,7 @@ void op_indices2() {
   DESCRIPTOR* descr;
   FILE_VAR* fvar;
   DH_FILE* dh_file;
-  short int akno;
+  int16_t akno;
   char index_name[MAX_AK_NAME_LEN + 1];
 
   /* Find file variable */
@@ -952,17 +954,17 @@ void op_selindx() {
   */
 
   DESCRIPTOR* descr;
-  short int list_no;
+  int16_t list_no;
   FILE_VAR* fvar;
   DH_FILE* dh_file;
-  short int akno;
-  short int subfile;
-  short int lock_slot = 0; /* Group lock table index */
-  long int record_count = 0;
+  int16_t akno;
+  int16_t subfile;
+  int16_t lock_slot = 0; /* Group lock table index */
+  int32_t record_count = 0;
   char* buff = NULL;
-  long int node_num;
-  short int used_bytes;
-  short int rec_offset;
+  int32_t node_num;
+  int16_t used_bytes;
+  int16_t rec_offset;
   DH_RECORD* rec_ptr;
   char index_name[MAX_AK_NAME_LEN + 1];
   DESCRIPTOR* list_descr;
@@ -975,7 +977,7 @@ void op_selindx() {
 
   descr = e_stack - 1;
   GetInt(descr);
-  list_no = (short int)(descr->data.value);
+  list_no = (int16_t)(descr->data.value);
   if (InvalidSelectListNo(list_no))
     k_select_range_error();
 
@@ -1116,18 +1118,18 @@ void op_selindxv() {
   */
 
   DESCRIPTOR* descr;
-  short int list_no;
+  int16_t list_no;
   FILE_VAR* fvar;
   DH_FILE* dh_file;
   AK_CTRL* ak_ctrl;
   char indexed_value[MAX_KEY_LEN + 1];
-  short int indexed_value_len;
-  short int akno;
-  long int record_count = 0;
+  int16_t indexed_value_len;
+  int16_t akno;
+  int32_t record_count = 0;
   STRING_CHUNK* str;
   char* p;
   char* q;
-  short int bytes;
+  int16_t bytes;
   char index_name[MAX_AK_NAME_LEN + 1];
   DESCRIPTOR* list_descr;
   DESCRIPTOR* count_descr;
@@ -1139,7 +1141,7 @@ void op_selindxv() {
 
   descr = e_stack - 1;
   GetInt(descr);
-  list_no = (short int)(descr->data.value);
+  list_no = (int16_t)(descr->data.value);
   if (InvalidSelectListNo(list_no))
     k_select_range_error();
 
@@ -1272,21 +1274,21 @@ Private void akscan(bool right) {
 
   DESCRIPTOR* descr;
   DESCRIPTOR* key_descr;
-  short int list_no;
+  int16_t list_no;
   FILE_VAR* fvar;
   DH_FILE* dh_file;
-  short int subfile;
+  int16_t subfile;
   DH_RECORD* rec_ptr;
   AK_CTRL* ak_ctrl;
-  short int lock_slot = 0;
+  int16_t lock_slot = 0;
   union AKBUFF* node = NULL;
-  short int akno;
-  long int record_count = 0;
+  int16_t akno;
+  int32_t record_count = 0;
   STRING_CHUNK* str;
   char* p;
   char* q;
-  short int bytes;
-  short int n;
+  int16_t bytes;
+  int16_t n;
   bool found;
   bool return_key = FALSE; /* Return key value? (SETTING clause) */
   u_char old_flags;
@@ -1299,7 +1301,7 @@ Private void akscan(bool right) {
 
   descr = e_stack - 1;
   GetInt(descr);
-  list_no = (short int)(descr->data.value);
+  list_no = (int16_t)(descr->data.value);
   if (InvalidSelectListNo(list_no))
     k_select_range_error();
 
@@ -1627,12 +1629,12 @@ Private void setakpos(bool right) {
   FILE_VAR* fvar;
   DH_FILE* dh_file;
   AK_CTRL* ak_ctrl;
-  short int akno;
+  int16_t akno;
   char* buff = NULL;
-  short int lock_slot = 0; /* Group lock table index */
-  short int subfile;
-  long int node_num;
-  short int rec_offset;
+  int16_t lock_slot = 0; /* Group lock table index */
+  int16_t subfile;
+  int32_t node_num;
+  int16_t rec_offset;
   DH_RECORD* rec_ptr;
   DH_INT_NODE* node_ptr;
   char akname[MAX_AK_NAME_LEN + 1];
@@ -1744,32 +1746,32 @@ exit_setakpos:
 /* ======================================================================
    create_ak() - Create an AK subfile                                     */
 
-Private short int create_ak(
+Private int16_t create_ak(
     char* data_path,          /* Data file path name */
     char* ak_path,            /* AK directory path, null if to use data path */
     char* ak_name,            /* AK field name */
-    short int fno,            /* Field number, -ve if I-type index */
-    unsigned short int flags, /* AK flags */
+    int16_t fno,            /* Field number, -ve if I-type index */
+    u_int16_t flags, /* AK flags */
     STRING_CHUNK* dict_rec,   /* Dictionary record */
     char* collation_map_name, /* Collation map name (null if none)... */
     char* collation_map)      /* ...and the actual map (null if none) */
 {
-  short int subfile = 0;
+  int16_t subfile = 0;
   char path[MAX_PATHNAME_LEN + 1];
   OSFILE fu = INVALID_FILE_HANDLE;
   OSFILE akfu = INVALID_FILE_HANDLE;
   DH_HEADER header;
   DH_AK_HEADER ak_header;
-  unsigned long int ak_map;
+  u_int32_t ak_map;
   char* buff = NULL;
-  short int i;
+  int16_t i;
   STRING_CHUNK* str;
-  long int dict_rec_len;
+  int32_t dict_rec_len;
   bool big_dict_rec = FALSE;
-  long int node_num;
-  short int bytes;
-  short int n;
-  short int x;
+  int32_t node_num;
+  int16_t bytes;
+  int16_t n;
+  int16_t x;
   char* p;
   char* q;
   int ak_header_size;
@@ -1907,7 +1909,7 @@ Private short int create_ak(
 
       /* Calculate number of bytes to write into this node */
 
-      n = (short int)min(dict_rec_len,
+      n = (int16_t)min(dict_rec_len,
                          DH_AK_NODE_SIZE - DH_ITYPE_NODE_DATA_OFFSET);
       ((DH_ITYPE_NODE*)buff)->used_bytes = n + DH_ITYPE_NODE_DATA_OFFSET;
 
@@ -1969,7 +1971,7 @@ exit_create_ak:
    delete_ak() - Delete an AK subfile                                     */
 
 Private bool delete_ak(char* pathname, /* File path name */
-                       short int akno) /* AK number */
+                       int16_t akno) /* AK number */
 {
   char path[MAX_PATHNAME_LEN + 1];
   bool relocated;
@@ -2054,52 +2056,52 @@ exit_delete_ak:
    Unlike a DH file, an AK subfile must accept a null record id.          */
 
 Private bool ak_write(DH_FILE* dh_file, /* File descriptor */
-                      short int akno,   /* AK index number */
+                      int16_t akno,   /* AK index number */
                       char id[],        /* Record id... */
-                      short int id_len, /* ...and length */
+                      int16_t id_len, /* ...and length */
                       STRING_CHUNK* rec) {
   FILE_ENTRY* fptr;          /* File table entry pointer */
-  long int data_len;         /* Data length */
+  int32_t data_len;         /* Data length */
   bool big_rec;              /* Stored as big record? */
-  short int subfile;         /* Subfile number */
-  short int lock_slot = 0;   /* Group lock table index */
-  short int header_lock = 0; /* File header group lock table index */
-  long int node_num;
-  short int flags;    /* AK flags from ak.data matrix */
+  int16_t subfile;         /* Subfile number */
+  int16_t lock_slot = 0;   /* Group lock table index */
+  int16_t header_lock = 0; /* File header group lock table index */
+  int32_t node_num;
+  int16_t flags;    /* AK flags from ak.data matrix */
   bool rj;            /* Right justified? */
   bool nocase;        /* Case insensitive? */
-  short int child_ct; /* Child node count */
-  short int ci;       /* Child index for node scan */
+  int16_t child_ct; /* Child node count */
+  int16_t ci;       /* Child index for node scan */
   bool status = FALSE;
-  short int rec_offset; /* Offset of current record... */
+  int16_t rec_offset; /* Offset of current record... */
   DH_RECORD* rec_ptr;   /* ...its DH_RECORD pointer... */
-  short int rec_size;   /* ...and its size */
+  int16_t rec_size;   /* ...and its size */
   NODE* node_ptr;
   bool found;
-  long int new_big_rec_head = 0;
-  long int base_size;  /* Bytes required excluding big_rec chain */
-  short int pad_bytes; /* Padding bytes to bring to multiple of 4 bytes */
+  int32_t new_big_rec_head = 0;
+  int32_t base_size;  /* Bytes required excluding big_rec chain */
+  int16_t pad_bytes; /* Padding bytes to bring to multiple of 4 bytes */
   char* key;           /* Key being examined in tree scan... */
-  short int key_len;   /* ...and its length */
-  short int used_bytes;
-  long int old_big_rec_head = 0; /* Head of old big record chain */
-  short int gap_required;
-  short int next_offset; /* Offset of next record after insert/replace */
+  int16_t key_len;   /* ...and its length */
+  int16_t used_bytes;
+  int32_t old_big_rec_head = 0; /* Head of old big record chain */
+  int16_t gap_required;
+  int16_t next_offset; /* Offset of next record after insert/replace */
   DH_TERM_NODE* new_node1 = NULL;
   DH_TERM_NODE* new_node2 = NULL;
   DH_TERM_NODE* new_node3 = NULL;
-  long int new_node1_num;
-  long int new_node2_num;
-  long int new_node3_num;
+  int32_t new_node1_num;
+  int32_t new_node2_num;
+  int32_t new_node3_num;
   DH_TERM_NODE* link_node = NULL;
   DH_TERM_NODE* link_node_ptr;
   char* key1;
   char* key2;
   char* key3;
-  short int key1_len;
-  short int key2_len;
-  short int key3_len;
-  short int x;
+  int16_t key1_len;
+  int16_t key2_len;
+  int16_t key3_len;
+  int16_t x;
   char* p;
   int n;
 
@@ -2109,7 +2111,7 @@ Private bool ak_write(DH_FILE* dh_file, /* File descriptor */
 
   fptr = FPtr(dh_file->file_id);
   subfile = AK_BASE_SUBFILE + akno;
-  flags = (short int)(AKData(dh_file, akno, AKD_FLGS)->data.value);
+  flags = (int16_t)(AKData(dh_file, akno, AKD_FLGS)->data.value);
   rj = (flags & AK_RIGHT) != 0;
   nocase = (flags & AK_NOCASE) != 0;
   fptr->stats.ak_writes++;
@@ -2138,7 +2140,7 @@ Private bool ak_write(DH_FILE* dh_file, /* File descriptor */
 
   if (!big_rec)
     base_size += data_len;
-  pad_bytes = (short int)((4 - (base_size & 3)) & 3);
+  pad_bytes = (int16_t)((4 - (base_size & 3)) & 3);
   base_size += pad_bytes; /* Round to four byte boundary */
 
   /* Find the position for this record.
@@ -2239,12 +2241,12 @@ Private bool ak_write(DH_FILE* dh_file, /* File descriptor */
         }
 
         gap_required =
-            (short int)(base_size - rec_size); /* Adjust space to overwrite */
+            (int16_t)(base_size - rec_size); /* Adjust space to overwrite */
         next_offset = rec_offset + rec_size;
       } else /* Gone past key value */
       {
         gap_required =
-            (short int)base_size; /* Open a gap to hold this record */
+            (int16_t)base_size; /* Open a gap to hold this record */
         next_offset = rec_offset;
       }
 
@@ -2265,7 +2267,7 @@ Private bool ak_write(DH_FILE* dh_file, /* File descriptor */
     rec_offset = used_bytes;
     next_offset = used_bytes; /* Just to keep everything happy later */
     rec_ptr = (DH_RECORD*)(((char*)&(tail->node.term_node)) + rec_offset);
-    gap_required = (short int)base_size;
+    gap_required = (int16_t)base_size;
   }
 
   /* Adjust the gap size as appropriate */
@@ -2291,7 +2293,7 @@ Private bool ak_write(DH_FILE* dh_file, /* File descriptor */
 
     /* Add the new record at rec_ptr */
 
-    copy_ak_record(dh_file, rec_ptr, (short int)base_size, id, id_len,
+    copy_ak_record(dh_file, rec_ptr, (int16_t)base_size, id, id_len,
                    new_big_rec_head, data_len, rec, pad_bytes);
 
     /* Rewrite this terminal node */
@@ -2336,7 +2338,7 @@ Private bool ak_write(DH_FILE* dh_file, /* File descriptor */
 
     /* Add the new record at rec_ptr */
 
-    copy_ak_record(dh_file, rec_ptr, (short int)base_size, id, id_len,
+    copy_ak_record(dh_file, rec_ptr, (int16_t)base_size, id, id_len,
                    new_big_rec_head, data_len, rec, pad_bytes);
 
     /* Rewrite this terminal node */
@@ -2455,15 +2457,15 @@ Private bool ak_write(DH_FILE* dh_file, /* File descriptor */
   if (new_node1->used_bytes + base_size <= DH_AK_NODE_SIZE) /* Yes */
   {
     rec_ptr = (DH_RECORD*)(((char*)new_node1) + rec_offset);
-    copy_ak_record(dh_file, rec_ptr, (short int)base_size, id, id_len,
+    copy_ak_record(dh_file, rec_ptr, (int16_t)base_size, id, id_len,
                    new_big_rec_head, data_len, rec, pad_bytes);
-    new_node1->used_bytes += (short int)base_size;
+    new_node1->used_bytes += (int16_t)base_size;
   } else /* No. Must put new record in right node */
   {
     rec_ptr = &(new_node2->record);
-    copy_ak_record(dh_file, rec_ptr, (short int)base_size, id, id_len,
+    copy_ak_record(dh_file, rec_ptr, (int16_t)base_size, id, id_len,
                    new_big_rec_head, data_len, rec, pad_bytes);
-    new_node2->used_bytes += (short int)base_size;
+    new_node2->used_bytes += (int16_t)base_size;
   }
 
   /* Record P will be in the MO node if it will fit. Here we show it in
@@ -2799,8 +2801,8 @@ exit_ak_write:
    rightmost  - Return pointer to rightmost record in a terminal AK node  */
 
 Private DH_RECORD* rightmost(DH_TERM_NODE* node) {
-  short int rec_offset;
-  short int used_bytes;
+  int16_t rec_offset;
+  int16_t used_bytes;
   DH_RECORD* rec_ptr;
 
   used_bytes = node->used_bytes;
@@ -2822,13 +2824,13 @@ Private DH_RECORD* rightmost(DH_TERM_NODE* node) {
 Private void copy_ak_record(
     DH_FILE* dh_file,
     DH_RECORD* rec_ptr,
-    short int base_size,
+    int16_t base_size,
     char* id,
-    short int id_len,
-    long int big_rec_head, /* Head of big record chain or zero if not big */
-    long int data_len,     /* Data bytes */
+    int16_t id_len,
+    int32_t big_rec_head, /* Head of big record chain or zero if not big */
+    int32_t data_len,     /* Data bytes */
     STRING_CHUNK* str,     /* Record data string chunk head */
-    short int pad_bytes) {
+    int16_t pad_bytes) {
   char* data_ptr; /* Data */
 
   rec_ptr->next = base_size;
@@ -2857,8 +2859,8 @@ Private void copy_ak_record(
 /* ======================================================================
    Read AK header to get free chain and create new node                   */
 
-Private long int get_ak_node(DH_FILE* dh_file, short int subfile) {
-  long int new_node_num = 0;
+Private int32_t get_ak_node(DH_FILE* dh_file, int16_t subfile) {
+  int32_t new_node_num = 0;
   DH_AK_HEADER* ak_header = NULL;
   DH_FREE_NODE ak_node;
   int64 file_bytes;
@@ -2873,7 +2875,7 @@ Private long int get_ak_node(DH_FILE* dh_file, short int subfile) {
   if (ak_header->free_chain == 0) {
     file_bytes = filelength64(dh_file->sf[subfile].fu);
     new_node_num =
-        (long int)((file_bytes - dh_file->ak_header_bytes) / DH_AK_NODE_SIZE +
+        (int32_t)((file_bytes - dh_file->ak_header_bytes) / DH_AK_NODE_SIZE +
                    1);
 
     chsize64(dh_file->sf[subfile].fu, file_bytes + DH_AK_NODE_SIZE);
@@ -2903,8 +2905,8 @@ exit_get_ak_node:
    Free an AK node                                                        */
 
 Private bool free_ak_node(DH_FILE* dh_file,
-                          short int subfile,
-                          long int node_num) {
+                          int16_t subfile,
+                          int32_t node_num) {
   bool status = FALSE;
   DH_AK_HEADER* ak_header = NULL;
   DH_FREE_NODE ak_node;
@@ -2946,34 +2948,34 @@ exit_free_ak_node:
    ak_delete()  -  Delete a record from an AK subfile                     */
 
 Private void ak_delete(DH_FILE* dh_file, /* File descriptor */
-                       short int akno,   /* AK index number */
+                       int16_t akno,   /* AK index number */
                        char id[],        /* Record id... */
-                       short int id_len) /* ...and length */
+                       int16_t id_len) /* ...and length */
 {
   FILE_ENTRY* fptr;          /* File table entry pointer */
-  short int subfile;         /* Subfile number */
-  short int lock_slot = 0;   /* Group lock table index */
-  short int header_lock = 0; /* File header group lock table index */
-  long int node_num;
-  long int sibling_node_num;
-  short int flags;      /* AK flags from ak.data matrix */
+  int16_t subfile;         /* Subfile number */
+  int16_t lock_slot = 0;   /* Group lock table index */
+  int16_t header_lock = 0; /* File header group lock table index */
+  int32_t node_num;
+  int32_t sibling_node_num;
+  int16_t flags;      /* AK flags from ak.data matrix */
   bool rj;              /* Right justified? */
   bool nocase;          /* Case insensitive? */
-  short int child_ct;   /* Child node count */
-  short int ci;         /* Child index for node scan */
-  short int rec_offset; /* Offset of current record... */
+  int16_t child_ct;   /* Child node count */
+  int16_t ci;         /* Child index for node scan */
+  int16_t rec_offset; /* Offset of current record... */
   DH_RECORD* rec_ptr;   /* ...its DH_RECORD pointer... */
-  short int rec_size;   /* ...and its size */
+  int16_t rec_size;   /* ...and its size */
   NODE* node_ptr;
   bool found;
-  short int x;
+  int16_t x;
   int n;
   char* key;         /* Key being examined in tree scan... */
-  short int key_len; /* ...and its length */
-  short int used_bytes;
-  long int old_big_rec_head = 0; /* Head of old big record chain */
+  int16_t key_len; /* ...and its length */
+  int16_t used_bytes;
+  int32_t old_big_rec_head = 0; /* Head of old big record chain */
   char* prev_key;
-  short int prev_len;
+  int16_t prev_len;
   DH_TERM_NODE* sibling = NULL;
   bool rightmost_record;
 
@@ -2983,7 +2985,7 @@ Private void ak_delete(DH_FILE* dh_file, /* File descriptor */
 
   fptr = FPtr(dh_file->file_id);
   subfile = AK_BASE_SUBFILE + akno;
-  flags = (short int)AKData(dh_file, akno, AKD_FLGS)->data.value;
+  flags = (int16_t)AKData(dh_file, akno, AKD_FLGS)->data.value;
   rj = (flags & AK_RIGHT) != 0;
   nocase = (flags & AK_NOCASE) != 0;
   fptr->stats.ak_deletes++;
@@ -3224,34 +3226,34 @@ exit_ak_delete:
 
 Private STRING_CHUNK* ak_read(
     DH_FILE* dh_file, /* File descriptor */
-    short int akno,   /* AK index number */
+    int16_t akno,   /* AK index number */
     char id[],        /* Record id... */
-    short int id_len, /* ...and length */
+    int16_t id_len, /* ...and length */
     bool read_data)   /* Read data record? If false, returns NULL if
                          record does not exist, non-NULL if it does.  */
 {
   FILE_ENTRY* fptr;        /* File table entry pointer */
-  long int data_len;       /* Data length */
-  short int subfile;       /* Subfile number */
-  short int lock_slot = 0; /* Group lock table index */
-  long int node_num;
-  long int big_node_num; /* 0556 */
-  short int flags;       /* AK flags from ak.data matrix */
+  int32_t data_len;       /* Data length */
+  int16_t subfile;       /* Subfile number */
+  int16_t lock_slot = 0; /* Group lock table index */
+  int32_t node_num;
+  int32_t big_node_num; /* 0556 */
+  int16_t flags;       /* AK flags from ak.data matrix */
   bool rj;               /* Right justified? */
   bool nocase;           /* Case insensitive? */
-  short int child_ct;    /* Child node count */
-  short int ci;          /* Child index for node scan */
-  short int rec_offset;  /* Offset of current record and... */
+  int16_t child_ct;    /* Child node count */
+  int16_t ci;          /* Child index for node scan */
+  int16_t rec_offset;  /* Offset of current record and... */
   DH_RECORD* rec_ptr;    /* ...its DH_RECORD pointer */
   union AKBUFF* node = NULL;
   bool found;
   STRING_CHUNK* str = NULL;
-  short int x;
+  int16_t x;
   int n;
   char* key;         /* Key being examined in tree scan... */
-  short int key_len; /* ...and its length */
-  short int used_bytes;
-  long int child_node;
+  int16_t key_len; /* ...and its length */
+  int16_t used_bytes;
+  int32_t child_node;
 
   ak_flags = 0;
 
@@ -3263,7 +3265,7 @@ Private STRING_CHUNK* ak_read(
 
   fptr = FPtr(dh_file->file_id);
   subfile = AK_BASE_SUBFILE + akno;
-  flags = (short int)(AKData(dh_file, akno, AKD_FLGS)->data.value);
+  flags = (int16_t)(AKData(dh_file, akno, AKD_FLGS)->data.value);
   rj = (flags & AK_RIGHT) != 0;
   nocase = (flags & AK_NOCASE) != 0;
   ak_upd = fptr->ak_upd;
@@ -3452,16 +3454,16 @@ exit_ak_read:
             0   Strings are equal
             1   s1 > s2                                                   */
 
-Private short int compare(char* s1,
-                          short int s1_len,
+Private int16_t compare(char* s1,
+                          int16_t s1_len,
                           char* s2,
-                          short int s2_len,
+                          int16_t s2_len,
                           bool right_justified,
                           bool nocase) {
-  short int n;
-  short int d = 0;
-  long int value1;
-  long int value2;
+  int16_t n;
+  int16_t d = 0;
+  int32_t value1;
+  int32_t value2;
 
   if (right_justified) {
     if (strnint(s1, s1_len, &value1) && strnint(s2, s2_len, &value2)) {
@@ -3481,14 +3483,14 @@ Private short int compare(char* s1,
         n = s1_len - s2_len;
         s1_len -= n;
         while (n--) {
-          if ((d = (((short int)*((u_char*)s1++)) - ' ')) != 0)
+          if ((d = (((int16_t)*((u_char*)s1++)) - ' ')) != 0)
             goto mismatch;
         }
       } else {
         n = s2_len - s1_len;
         s2_len -= n;
         while (n--) {
-          if ((d = (' ' - ((short int)*((u_char*)s2++)))) != 0)
+          if ((d = (' ' - ((int16_t)*((u_char*)s2++)))) != 0)
             goto mismatch;
         }
       }
@@ -3499,10 +3501,10 @@ Private short int compare(char* s1,
 
   while (s1_len && s2_len) {
     if (nocase) {
-      if ((d = (((short int)(UpperCase(*(s1++)))) - UpperCase(*(s2++)))) != 0)
+      if ((d = (((int16_t)(UpperCase(*(s1++)))) - UpperCase(*(s2++)))) != 0)
         goto mismatch;
     } else {
-      if ((d = (((short int)(*((u_char*)s1++))) - *((u_char*)s2++))) != 0)
+      if ((d = (((int16_t)(*((u_char*)s1++))) - *((u_char*)s2++))) != 0)
         goto mismatch;
     }
 
@@ -3533,37 +3535,37 @@ exit_compare:
 
 Private bool update_internal_node(
     DH_FILE* dh_file,   /* DH file affected and... */
-    short int subfile,  /* ...subfile number */
+    int16_t subfile,  /* ...subfile number */
     NODE* node_ptr,     /* Node structure for change */
     char* id1,          /* Key for child 1 */
-    short int id1_len,  /* Length of key for child 1 */
-    long int node_num1, /* Child node pointer for child 1 */
+    int16_t id1_len,  /* Length of key for child 1 */
+    int32_t node_num1, /* Child node pointer for child 1 */
     char* id2,          /* Key for child 2 (May be NULL) */
-    short int id2_len,  /* Length of key for child 2 */
-    long int node_num2, /* Child node pointer for child 2 */
+    int16_t id2_len,  /* Length of key for child 2 */
+    int32_t node_num2, /* Child node pointer for child 2 */
     char* id3,          /* Key for child 3 (May be NULL) */
-    short int id3_len,  /* Length of key for child 3 */
-    long int node_num3) /* Child node pointer for child 3 */
+    int16_t id3_len,  /* Length of key for child 3 */
+    int32_t node_num3) /* Child node pointer for child 3 */
 {
   bool status = FALSE;
-  short int num_child;          /* Number of child nodes required */
-  short int key_len;            /* Space required for key data */
-  short int key_diff;           /* Difference from previous space requirement */
-  long int new_node_num;        /* Offset of new node if we split */
+  int16_t num_child;          /* Number of child nodes required */
+  int16_t key_len;            /* Space required for key data */
+  int16_t key_diff;           /* Difference from previous space requirement */
+  int32_t new_node_num;        /* Offset of new node if we split */
   DH_INT_NODE* new_node = NULL; /* Pointer to new node buffer */
   NODE* root_node;              /* Pointer to new root NODE structure */
-  short int moved_children;
-  short int remaining_children;
-  short int uncopied_bytes;
+  int16_t moved_children;
+  int16_t remaining_children;
+  int16_t uncopied_bytes;
   char* last_key_in_left_node;
   char* last_key_in_right_node;
   char* pkey;         /* Parent key */
-  short int pkey_len; /* Parent key length */
+  int16_t pkey_len; /* Parent key length */
   bool update_parent;
-  long int node_num;
-  short int i;
-  short int j;
-  short int n;
+  int32_t node_num;
+  int16_t i;
+  int16_t j;
+  int16_t n;
   char* p;
   char* q;
   NODE* r;
@@ -3876,10 +3878,10 @@ exit_update_internal_node:
 /* ======================================================================
    Clear an AK index                                                      */
 
-bool ak_clear(DH_FILE* dh_file, short int subfile) {
+bool ak_clear(DH_FILE* dh_file, int16_t subfile) {
   bool status = FALSE;
   int64 eof;
-  long int node_num;
+  int32_t node_num;
   char* buff = NULL;
 
   buff = (char*)k_alloc(59, DH_AK_NODE_SIZE);
@@ -3939,11 +3941,11 @@ exit_ak_clear:
    find_ak_by_name()  -  Find AK number from its name
    Returns -1 if no such AK                                               */
 
-Private short int find_ak_by_name(DESCRIPTOR* name_descr, DH_FILE* dh_file) {
+Private int16_t find_ak_by_name(DESCRIPTOR* name_descr, DH_FILE* dh_file) {
   char name[MAX_AK_NAME_LEN + 1];
-  short int name_len;
-  short int num_aks;
-  short int akno;
+  int16_t name_len;
+  int16_t num_aks;
+  int16_t akno;
   DESCRIPTOR* descr;
   ARRAY_HEADER* ak_data;
   STRING_CHUNK* str;
@@ -3951,7 +3953,7 @@ Private short int find_ak_by_name(DESCRIPTOR* name_descr, DH_FILE* dh_file) {
   name_len = k_get_c_string(name_descr, name, MAX_AK_NAME_LEN);
   if (name_len > 0) {
     if ((ak_data = dh_file->ak_data) != NULL) {
-      num_aks = (short int)(ak_data->rows);
+      num_aks = (int16_t)(ak_data->rows);
       for (akno = 0; akno < num_aks; akno++) {
         descr = Element(ak_data, (akno * AKD_COLS) + AKD_NAME);
         if (((str = descr->data.str.saddr) != NULL) &&
@@ -3970,12 +3972,12 @@ Private short int find_ak_by_name(DESCRIPTOR* name_descr, DH_FILE* dh_file) {
 /* ====================================================================== */
 
 Private STRING_CHUNK* ak_read_record(DH_FILE* dh_file,
-                                     short int subfile,
+                                     int16_t subfile,
                                      DH_RECORD* rec_ptr) {
   STRING_CHUNK* str = NULL;
-  long int node_num;
-  long int data_len;
-  short int n;
+  int32_t node_num;
+  int32_t data_len;
+  int16_t n;
   DH_BIG_NODE* buff = NULL;
 
   if (rec_ptr->flags & DH_BIG_REC) /* Found a large record */
@@ -3994,7 +3996,7 @@ Private STRING_CHUNK* ak_read_record(DH_FILE* dh_file,
         ts_init(&str, data_len);
       }
 
-      n = (short int)min(DH_AK_NODE_SIZE - DH_AK_BIG_NODE_SIZE, data_len);
+      n = (int16_t)min(DH_AK_NODE_SIZE - DH_AK_BIG_NODE_SIZE, data_len);
       ts_copy(buff->data, n);
       data_len -= n;
 
@@ -4022,20 +4024,20 @@ exit_ak_read_record:
 /* ======================================================================
    write_ak_big_rec()  -  Write big record blocks                         */
 
-Private long int write_ak_big_rec(DH_FILE* dh_file,
-                                  short int subfile,
+Private int32_t write_ak_big_rec(DH_FILE* dh_file,
+                                  int16_t subfile,
                                   STRING_CHUNK* rec,
-                                  long int data_len) {
-  long int head;            /* Head of new big record chain */
+                                  int32_t data_len) {
+  int32_t head;            /* Head of new big record chain */
   DH_BIG_NODE* buff = NULL; /* Buffer */
-  long node_num;            /* Node being processed */
-  long next_node_num;       /* Next node to write */
+  int32_t node_num;            /* Node being processed */
+  int32_t next_node_num;       /* Next node to write */
   STRING_CHUNK* str;
-  short int bytes;
+  int16_t bytes;
   int n;
   char* p;
   char* q;
-  short int x;
+  int16_t x;
 
   /* Allocate overflow buffer */
 
@@ -4109,12 +4111,12 @@ exit_write_ak_big_rec:
    free_ak_big_rec()  -  Release space from a big record                  */
 
 Private bool free_ak_big_rec(DH_FILE* dh_file,
-                             short int subfile,
-                             long int head) {
+                             int16_t subfile,
+                             int32_t head) {
   bool status = FALSE;
   DH_BIG_NODE* buff = NULL;
-  long int next_node_num;
-  long int node_num;
+  int32_t next_node_num;
+  int32_t node_num;
 
   buff = (DH_BIG_NODE*)k_alloc(49, DH_AK_NODE_SIZE);
   if (buff == NULL) {

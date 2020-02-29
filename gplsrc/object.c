@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  *
  * START-HISTORY (ScarletDME):
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ *
  * 22Feb20 gwb Converted sprintf() to snprintf() in load_object();
  * 
  * START-HISTORY (OpenQM):
@@ -49,8 +52,8 @@
 #include "config.h"
 #include <time.h>
 
-Private long int object_total = 0;  /* Total bytes loaded */
-Private short int object_items = 0; /* Number of objects loaded */
+Private int32_t object_total = 0;  /* Total bytes loaded */
+Private int16_t object_items = 0; /* Number of objects loaded */
 
 /* Object code is on an LRU chain with the most recently used item at the
    head.                                                                  */
@@ -60,23 +63,23 @@ struct OBJECT {
   OBJECT* next; /* LRU chain */
   OBJECT* prev;
   u_int64 cp_time; /* Processor time */
-  long int calls;
-  unsigned short int flags;
+  int32_t calls;
+  u_int16_t flags;
 #define OBJ_INVALID 0x0001 /* Invalidated object */
 #define OBJ_GLOBAL 0x0002  /* Loaded from global catalogue */
-  unsigned short pad;
+  u_int16_t pad;
   struct OBJECT_HEADER code; /* Object code */
 };
 #define OBJHDRSIZE (offsetof(OBJECT, code))
 
 Private OBJECT* object_head = NULL;
 Private OBJECT* object_tail = NULL;
-Private long int next_id = 1;
+Private int32_t next_id = 1;
 
 Private OBJECT* hsm_old_obj = NULL;
 
-unsigned short SwapShort(unsigned short value) {
-  short newValue = 0;
+u_int16_t SwapShort(u_int16_t value) {
+  int16_t newValue = 0;
   char* pnewValue = (char*)&newValue;
   char* poldValue = (char*)&value;
 
@@ -87,8 +90,8 @@ unsigned short SwapShort(unsigned short value) {
 }
 #define Reverse2(a) a = SwapShort(a)
 
-unsigned long SwapLong(unsigned long value) {
-  unsigned long newValue = 0;
+u_int32_t SwapLong(u_int32_t value) {
+  u_int32_t newValue = 0;
   char* pnewValue = (char*)&newValue;
   char* poldValue = (char*)&value;
 
@@ -117,7 +120,7 @@ void* load_object(char* name, bool abort_on_error) {
   bool is_runfile = FALSE;
   char mapped_name[MAX_PATHNAME_LEN + 1];
   DESCRIPTOR pathname_descr;
-  unsigned short int flags;
+  u_int16_t flags;
 
   /* Search object chain to see if already loaded */
 
@@ -322,7 +325,7 @@ void op_loaded() {
 
   DESCRIPTOR* descr;
   OBJECT* obj;
-  long int id;
+  int32_t id;
 
   descr = e_stack - 1;
   GetInt(descr);
@@ -451,7 +454,7 @@ void invalidate_object() {
 /* ======================================================================
   find_object()  -  Find object by id number                              */
 
-void* find_object(long int id) {
+void* find_object(int32_t id) {
   OBJECT* obj;
 
   for (obj = object_head; obj != NULL; obj = obj->next) {
@@ -532,7 +535,7 @@ typedef struct HSM HSM;
 struct HSM {
   HSM* next;
   u_int64 cp_time;
-  long int calls;
+  int32_t calls;
   char name[1];
 };
 

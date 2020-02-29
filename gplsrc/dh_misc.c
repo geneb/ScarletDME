@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  *
  * START-HISTORY (ScarletDME):
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
  * 22Feb20 gwb Fixed two 'variable assigned but unused' warnings in
  *             op_fcontrol()
  * 
@@ -82,10 +84,10 @@ void op_fcontrol() {
   DESCRIPTOR result;
   DH_FILE* dh_file;
   DH_HEADER header;
-  long int modulus;
-  long int load;
+  int32_t modulus;
+  int32_t load;
   FILE_ENTRY* fptr;
-  short int header_lock;
+  int16_t header_lock;
   /* u_char ftype; variable assigned but not used */
   /* bool dynamic; variable assigned but not used */
 
@@ -261,19 +263,19 @@ void op_grpstat() {
   FILE_VAR* fvar;
   DH_FILE* dh_file;
   FILE_ENTRY* fptr;
-  long int group;
-  short int group_bytes;
-  short int used_bytes;
+  int32_t group;
+  int16_t group_bytes;
+  int16_t used_bytes;
   char result[50] = "";
-  short int lock_slot = 0;
-  short int subfile;
-  long int grp;
-  short int rec_offset;
+  int16_t lock_slot = 0;
+  int16_t subfile;
+  int32_t grp;
+  int16_t rec_offset;
   DH_RECORD* rec_ptr;
-  long int byte_count = 0;
-  short int buffer_count = 0;
-  short int record_count = 0;
-  long int large_record_count = 0;
+  int32_t byte_count = 0;
+  int16_t buffer_count = 0;
+  int16_t record_count = 0;
+  int32_t large_record_count = 0;
 
   /* Get group number */
 
@@ -301,7 +303,7 @@ void op_grpstat() {
   lock_slot = GetGroupReadLock(dh_file, group);
   EndExclusive(FILE_TABLE_LOCK);
 
-  group_bytes = (short int)(dh_file->group_size);
+  group_bytes = (int16_t)(dh_file->group_size);
 
   subfile = PRIMARY_SUBFILE;
   grp = group;
@@ -374,7 +376,7 @@ void op_settrig() {
 
   DESCRIPTOR* descr;
   char call_name[MAX_TRIGGER_NAME_LEN + 1];
-  short int name_len;
+  int16_t name_len;
   FILE_VAR* fvar;
   DH_FILE* dh_file;
   DH_HEADER header;

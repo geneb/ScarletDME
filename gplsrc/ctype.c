@@ -18,7 +18,13 @@
  * 
  * Ladybridge Systems can be contacted via the www.openqm.com web site.
  * 
- * START-HISTORY:
+ * ScarletDME Wiki: https://scarlet.deltasoft.com
+ * 
+ * START-HISTORY (ScarletDME):
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ * 
+ * START-HISTORY (OpenQM):
  * 01 Jul 07  2.5-7 Extensive changes for PDA merge.
  * 15 Jan 06  2.3-4 0449 All uses of character maps need to be via unsigned
  *                  indices.
@@ -50,140 +56,129 @@
 /* ======================================================================
    Set default_character maps                                             */
 
-void set_default_character_maps()
-{
- int i;
- int j;
- for(i = 0; i < 256; i++)
-  {
-   uc_chars[i] = (char)i;
-   lc_chars[i] = (char)i;
-   char_types[i] = 0;
+void set_default_character_maps() {
+  int i;
+  int j;
+  for (i = 0; i < 256; i++) {
+    uc_chars[i] = (char)i;
+    lc_chars[i] = (char)i;
+    char_types[i] = 0;
   }
 
- for(i = 'a', j = 'A'; i <= 'z'; i++, j++)
-  {
-   uc_chars[i] = j;
-   lc_chars[j] = i;
-   char_types[i] |= CT_ALPHA;
-   char_types[j] |= CT_ALPHA;
+  for (i = 'a', j = 'A'; i <= 'z'; i++, j++) {
+    uc_chars[i] = j;
+    lc_chars[j] = i;
+    char_types[i] |= CT_ALPHA;
+    char_types[j] |= CT_ALPHA;
   }
 
- for(i = '0'; i <= '9'; i++)
-  {
-   char_types[i] |= CT_DIGIT;
+  for (i = '0'; i <= '9'; i++) {
+    char_types[i] |= CT_DIGIT;
   }
 
- for(i = 33; i <= 126; i++)
-  {
-   char_types[i] |= CT_GRAPH;
+  for (i = 33; i <= 126; i++) {
+    char_types[i] |= CT_GRAPH;
   }
 
- char_types[U_TEXT_MARK] |= CT_MARK;
- char_types[U_SUBVALUE_MARK] |= CT_MARK | CT_DELIM;
- char_types[U_VALUE_MARK] |= CT_MARK | CT_DELIM;
- char_types[U_FIELD_MARK] |= CT_MARK | CT_DELIM;
- char_types[U_ITEM_MARK] |= CT_MARK;
+  char_types[U_TEXT_MARK] |= CT_MARK;
+  char_types[U_SUBVALUE_MARK] |= CT_MARK | CT_DELIM;
+  char_types[U_VALUE_MARK] |= CT_MARK | CT_DELIM;
+  char_types[U_FIELD_MARK] |= CT_MARK | CT_DELIM;
+  char_types[U_ITEM_MARK] |= CT_MARK;
 }
 
 /* ======================================================================
    LowerCaseString()  -  Convert string to lower case                     */
 
-char * LowerCaseString(char * s)
-{
- char * p;
+char* LowerCaseString(char* s) {
+  char* p;
 
- p = s;
- while((*(p++) = LowerCase(*p)) != '\0') {}
- return s;
+  p = s;
+  while ((*(p++) = LowerCase(*p)) != '\0') {
+  }
+  return s;
 }
 
 /* ======================================================================
    MemCompareNoCase()  -  Case insensitive variant of memcmp              */
 
-int MemCompareNoCase(char * p, char * q, short int len)
-{
- signed char c;
+int MemCompareNoCase(char* p, char* q, int16_t len) {
+  signed char c;
 
- while(len--)
-  {
-   if ((c = UpperCase(*p) - UpperCase(*q)) != 0) return c;
-   p++;
-   q++;
+  while (len--) {
+    if ((c = UpperCase(*p) - UpperCase(*q)) != 0)
+      return c;
+    p++;
+    q++;
   }
 
- return 0;
+  return 0;
 }
 
 /* ======================================================================
    memichr()  -  Case insensitive variant of memchr()                     */
 
-char * memichr(char * s, char c, int n)
-{
- c = UpperCase(c);
+char* memichr(char* s, char c, int n) {
+  c = UpperCase(c);
 
- while(n--)
-  {
-   if (UpperCase(*s) == c) return s;
-   s++;
+  while (n--) {
+    if (UpperCase(*s) == c)
+      return s;
+    s++;
   }
 
- return NULL;
+  return NULL;
 }
 
 /* ======================================================================
    memucpy()  -  Copy a specified number of bytes, converting to uppercase */
 
-void memucpy(char * tgt, char * src, short int len)
-{
- while(len--) *(tgt++) = UpperCase(*(src++));
+void memucpy(char* tgt, char* src, int16_t len) {
+  while (len--)
+    *(tgt++) = UpperCase(*(src++));
 }
-
 
 /* ======================================================================
    StringCompLenNoCase()  -  Case insensitive variant of strncmp          */
 
-int StringCompLenNoCase(char * p, char * q, short int len)
-{
- register char c;
+int StringCompLenNoCase(char* p, char* q, int16_t len) {
+  register char c;
 
- while(len--)
-  {
-   if (((c = UpperCase(*p) - UpperCase(*q)) != 0)
-     || (*p == '\0') || (*q == '\0')) return c;
-   p++;
-   q++;
+  while (len--) {
+    if (((c = UpperCase(*p) - UpperCase(*q)) != 0) || (*p == '\0') ||
+        (*q == '\0'))
+      return c;
+    p++;
+    q++;
   }
 
- return 0;
+  return 0;
 }
 
 /* ======================================================================
    UpperCaseMem()  -  Uppercase specified number of bytes                 */
 
-void UpperCaseMem(char * str, short int len)
-{
- register char c;
+void UpperCaseMem(char* str, int16_t len) {
+  register char c;
 
- while(len--)
-  {
-   c = UpperCase(*str);
-   *(str++) = c;
+  while (len--) {
+    c = UpperCase(*str);
+    *(str++) = c;
   }
 }
 
 /* ======================================================================
    UpperCaseString()  -  Convert string to upper case                     */
 
-char * UpperCaseString(char * s)
-{
- char * p;
+char* UpperCaseString(char* s) {
+  char* p;
 
- p = s;
- while((*p = UpperCase(*p)) != '\0') {p++;}
+  p = s;
+  while ((*p = UpperCase(*p)) != '\0') {
+    p++;
+  }
 
- return s;
+  return s;
 }
 
 /* END-CODE */
-

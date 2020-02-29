@@ -18,7 +18,16 @@
  * 
  * Ladybridge Systems can be contacted via the www.openqm.com web site.
  * 
- * START-HISTORY:
+ * ScarletDME Wiki: https://scarlet.deltasoft.com
+ * 
+ * START-HISTORY (ScarletDME):
+  * 27Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ *
+ * 27Feb20 gwb Changed a few instances of "QM" to "ScarletDME"
+ *             Converted K&R function defs to ANSI style.
+ * 
+ * START-HISTORY (OpenQM):
  * 01 Jul 07  2.5-7 Extensive change for PDA merge.
  * 19 Mar 07  2.5-1 Handle errors from semop() when locking semaphore.
  * 26 Jun 06  2.4-5 Extracted from kernel.c
@@ -33,120 +42,106 @@
  */
 
 #include "qm.h"
-
-
-   #include <sys/sem.h>
-
+#include <sys/sem.h>
 
 /* ======================================================================
    get_semaphores()  -  Get inter-process semaphores                      */
 
-bool get_semaphores(create, errmsg)
-   bool create;     /* Linux only - Create rather than attach to existing? */
-   char * errmsg;
-{
- short int i;
+bool get_semaphores(bool create, char* errmsg) {
+/* Linux only - Create rather than attach to existing? */
 
+  int16_t i;
 
- union semun
-  {
-   int val;                     /* Value for SETVAL */
-   struct semid_ds * buf;       /* Buffer for IPC_STAT, IPC_SET */
-   unsigned short int * array;  /* Array for GETALL, SETALL */
-   struct seminfo * __buf;      /* Buffer for IPC_INFO */
+  union semun {
+    int val;                   /* Value for SETVAL */
+    struct semid_ds* buf;      /* Buffer for IPC_STAT, IPC_SET */
+    u_int16_t* array; /* Array for GETALL, SETALL */
+    struct seminfo* __buf;     /* Buffer for IPC_INFO */
   } seminit;
 
- seminit.val = 1;
+  seminit.val = 1;
 
- if ((semid = semget(QM_SEM_KEY, 0, 0666)) != -1)
-  {
-   /* Semaphores already exist */
+  if ((semid = semget(QM_SEM_KEY, 0, 0666)) != -1) {
+    /* Semaphores already exist */
 
-   if (!create) return TRUE;
+    if (!create)
+      return TRUE;
 
-   strcpy(errmsg, "QM is already started");
-   return FALSE;
+    strcpy(errmsg, "ScarletDME is already started");
+    return FALSE;
   }
 
- if (errno != ENOENT)
-  {
-   sprintf(errmsg, "Error %d getting semaphores", errno);
-   return FALSE;
+  if (errno != ENOENT) {
+    sprintf(errmsg, "Error %d getting semaphores", errno);
+    return FALSE;
   }
 
- /* Semaphores do not already exist */
+  /* Semaphores do not already exist */
 
- if (!create)
-  {
-   strcpy(errmsg, "QM is not started");
-   return FALSE;
+  if (!create) {
+    strcpy(errmsg, "ScarletDME has not been started");
+    return FALSE;
   }
 
- /* Create new semaphores */
+  /* Create new semaphores */
 
- if ((semid = semget(QM_SEM_KEY, NUM_SEMAPHORES, IPC_CREAT | IPC_EXCL | 0666)) != -1)
-  {
-   /* Initialise the semaphores */
+  if ((semid = semget(QM_SEM_KEY, NUM_SEMAPHORES,
+                      IPC_CREAT | IPC_EXCL | 0666)) != -1) {
+    /* Initialise the semaphores */
 
-   for (i = 0; i < NUM_SEMAPHORES; i++) semctl(semid, i, SETVAL, seminit);
+    for (i = 0; i < NUM_SEMAPHORES; i++)
+      semctl(semid, i, SETVAL, seminit);
+  } else {
+    sprintf(errmsg, "Error %d allocating semaphores", errno);
+    return FALSE;
   }
- else
-  {
-   sprintf(errmsg, "Error %d allocating semaphores", errno);
-   return FALSE;
-  }
 
- return TRUE;
+  return TRUE;
 }
 
 /* ====================================================================== */
 
-void delete_semaphores()
-{
- if ((semid = semget(QM_SEM_KEY, 0, 0666)) != -1)
-  {
-   semctl(semid, 0, IPC_RMID);
+void delete_semaphores() {
+  if ((semid = semget(QM_SEM_KEY, 0, 0666)) != -1) {
+    semctl(semid, 0, IPC_RMID);
   }
 }
 
 /* ======================================================================
    Variants on StartExclusive and EndExclusive for use with no shared mem */
 
-void LockSemaphore(int semno)
-{
-
- static struct sembuf sem_lock = {0,-1,0};
- sem_lock.sem_num = semno;
- while(semop(semid, &sem_lock, 1)) {}
+void LockSemaphore(int semno) {
+  static struct sembuf sem_lock = {0, -1, 0};
+  sem_lock.sem_num = semno;
+  while (semop(semid, &sem_lock, 1)) {
+  }
 }
 
-void UnlockSemaphore(int semno)
-{
-
- static struct sembuf sem_unlock = {0,1,0};
- sem_unlock.sem_num = semno;
- semop(semid, &sem_unlock, 1);
+void UnlockSemaphore(int semno) {
+  static struct sembuf sem_unlock = {0, 1, 0};
+  sem_unlock.sem_num = semno;
+  semop(semid, &sem_unlock, 1);
 }
 
 /* ====================================================================== */
 
-void StartExclusive(int semno, short int where)
-{
- register SEMAPHORE_ENTRY * semptr;
+void StartExclusive(int semno, int16_t where) {
+  register SEMAPHORE_ENTRY* semptr;
 
- LockSemaphore(semno);
- semptr = (((SEMAPHORE_ENTRY *)(((char *)sysseg) + sysseg->semaphore_table)) + (semno));
- semptr->owner = process.user_no;
- semptr->where = where;
+  LockSemaphore(semno);
+  semptr = (((SEMAPHORE_ENTRY*)(((char*)sysseg) + sysseg->semaphore_table)) +
+            (semno));
+  semptr->owner = process.user_no;
+  semptr->where = where;
 }
 
-void EndExclusive(int semno)
-{
- register SEMAPHORE_ENTRY * semptr;
+void EndExclusive(int semno) {
+  register SEMAPHORE_ENTRY* semptr;
 
- semptr = (((SEMAPHORE_ENTRY *)(((char *)sysseg) + sysseg->semaphore_table)) + (semno));
- semptr->owner = 0;
- UnlockSemaphore(semno);
+  semptr = (((SEMAPHORE_ENTRY*)(((char*)sysseg) + sysseg->semaphore_table)) +
+            (semno));
+  semptr->owner = 0;
+  UnlockSemaphore(semno);
 }
 
 /* END-CODE */

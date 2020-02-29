@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  *
  * START-HISTORY (ScarletDME):
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ *
  * 22Feb20 gwb Cleaned up a variable not used warning in find_undefined_name_handler()
  * 
  * START-HISTORY (OpenQM):
@@ -61,17 +64,17 @@
 #include "stdarg.h"
 
 
-Private bool find_name_map_entry(short int mode,
+Private bool find_name_map_entry(int16_t mode,
                                  OBJDATA* objdata,
                                  char* name,
                                  bool dismiss_obj);
-Private bool find_undefined_name_handler(short int mode,
+Private bool find_undefined_name_handler(int16_t mode,
                                          OBJDATA* objdata,
                                          char* name,
                                          bool dismiss_obj);
 Private DESCRIPTOR* resolve_index(DESCRIPTOR* array_descr,
                                   DESCRIPTOR* indx_descr,
-                                  short int dims);
+                                  int16_t dims);
 
 /* ======================================================================
    op_disinh()  -  DISINHERIT                                             */
@@ -182,7 +185,7 @@ void op_object() {
   */
 
   DESCRIPTOR* descr;
-  short int num_args;
+  int16_t num_args;
   char call_name[MAX_PROGRAM_NAME_LEN + 1];
   OBJDATA* objdata;
   u_char* object_code;
@@ -293,10 +296,10 @@ void op_objinfo() {
 
 void op_objmap() {
   OBJDATA* objdata;
-  unsigned short int name_map_len;
+  u_int16_t name_map_len;
   objdata = process.program.objdata;
 
-  name_map_len = *pc | (((unsigned short int)*(pc + 1)) << 8);
+  name_map_len = *pc | (((u_int16_t)*(pc + 1)) << 8);
   pc += 2;
 
   objdata->name_map = (name_map_len != 0) ? ((OBJECT_NAME_MAP*)pc) : NULL;
@@ -375,15 +378,15 @@ OBJDATA* create_objdata(u_char* obj) {
 /* ======================================================================
    find_name_map_entry()                                                  */
 
-Private bool find_name_map_entry(short int mode,
+Private bool find_name_map_entry(int16_t mode,
                                  OBJDATA* objdata,
                                  char* name,
                                  bool dismiss_obj) {
   OBJDATA* scanobj;
   OBJDATA* nextobj;
   OBJECT_NAME_MAP* p;
-  short int var;
-  short int key;
+  int16_t var;
+  int16_t key;
   u_char arg_ct;
   DESCRIPTOR* var_descr;
 
@@ -456,14 +459,14 @@ Private bool find_name_map_entry(short int mode,
 /* ======================================================================
    find_undefined_name_handler()                                          */
 
-Private bool find_undefined_name_handler(short int mode,
+Private bool find_undefined_name_handler(int16_t mode,
                                          OBJDATA* objdata,
                                          char* name,
                                          bool dismiss_obj) {
   OBJDATA* scanobj;
   OBJDATA* nextobj;
   OBJECT_NAME_MAP* p;
-  short int key;
+  int16_t key;
   /* u_char arg_ct; variable set but not used */
 
   scanobj = objdata;
@@ -533,10 +536,10 @@ void op_get() {
   OBJCD descriptor will be an ADDR to that property variable.             */
 
   DESCRIPTOR* descr;
-  short int arg_ct;
-  short int obj_arg_ct;
+  int16_t arg_ct;
+  int16_t obj_arg_ct;
   int stack_depth;
-  short int i;
+  int16_t i;
   DESCRIPTOR* p;
 
   arg_ct = *(pc++);
@@ -650,9 +653,9 @@ void op_set() {
   OBJCD descriptor will be an ADDR to that property variable.             */
 
   DESCRIPTOR* descr;
-  short int arg_ct;
-  short int obj_arg_ct;
-  short int i;
+  int16_t arg_ct;
+  int16_t obj_arg_ct;
+  int16_t i;
   DESCRIPTOR* p;
 
   arg_ct = *(pc++);
@@ -737,7 +740,7 @@ void op_set() {
 
 void free_object(OBJDATA* objdata) {
   OBJECT_NAME_MAP* p;
-  short int key;
+  int16_t key;
   OBJDATA* inh;
   ARRAY_HEADER* ahdr;
 
@@ -792,14 +795,14 @@ void free_object(OBJDATA* objdata) {
 Private DESCRIPTOR* resolve_index(
     DESCRIPTOR* array_descr, /* The matrix being accessed */
     DESCRIPTOR* index_descr, /* The top index on the e-stack */
-    short int dims)          /* Expected dimensionality */
+    int16_t dims)          /* Expected dimensionality */
 {
   ARRAY_HEADER* ahdr;
-  long int rows;
-  long int cols;
-  long int row;
-  long int col;
-  long int indx;
+  int32_t rows;
+  int32_t cols;
+  int32_t row;
+  int32_t col;
+  int32_t indx;
 
   ahdr = array_descr->data.ahdr_addr;
   rows = ahdr->rows;

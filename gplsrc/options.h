@@ -18,7 +18,11 @@
  * 
  * Ladybridge Systems can be contacted via the www.openqm.com web site.
  * 
- * START-HISTORY:
+ * ScarletDME Wiki: https://scarlet.deltasoft.com
+ * 
+ * START-HISTORY (ScarletDME):
+ * 
+ * START-HISTORY (OpenQM):
  * 13 Sep 07  2.6-3 Added OptSpaceMCT.
  * 30 Aug 07  2.6-0 Added OptProcA.
  * 17 Jan 07  2.4-19 Added OptNoDateWrapping.

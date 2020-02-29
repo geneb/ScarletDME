@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ *
  * 22Feb20 gwb Cleared up a logic ambiguity in match_template().
  *             As an aside, using "not" as a variable name is a terrible
  *             idea. ;)
@@ -82,7 +85,7 @@ void op_alpha() {
   DESCRIPTOR* descr;
   bool is_alpha = FALSE;
   STRING_CHUNK* src_str;
-  short int src_bytes;
+  int16_t src_bytes;
   char* src;
 
   descr = e_stack - 1;
@@ -146,26 +149,26 @@ void op_index() {
 
   DESCRIPTOR* descr;
 
-  long int occurrence;
+  int32_t occurrence;
 
 #define MAX_SUBSTRING_LEN 256
   char substring[MAX_SUBSTRING_LEN + 1];
-  short int substring_len;
+  int16_t substring_len;
   char* substr;
 
   /* Outer loop control */
   STRING_CHUNK* src_str;
-  short int src_bytes_remaining;
+  int16_t src_bytes_remaining;
   char* src;
-  long int offset = 0;
+  int32_t offset = 0;
 
   /* Inner loop control */
   STRING_CHUNK* isrc_str;
-  short int isrc_bytes_remaining;
+  int16_t isrc_bytes_remaining;
   char* isrc;
-  long int ioffset;
+  int32_t ioffset;
   bool nocase;
-  short int i_len;
+  int16_t i_len;
   char* p;
 
   nocase = (process.program.flags & HDR_NOCASE) != 0;
@@ -326,15 +329,15 @@ void op_matbuild() {
   PMATRIX_HEADER* pm_hdr;
 
   ARRAY_HEADER* a_hdr;
-  long int num_elements;
-  long int indx;
+  int32_t num_elements;
+  int32_t indx;
   ARRAY_CHUNK* a_chunk;
 
   DESCRIPTOR src_descr;
   STRING_CHUNK* src_str;
 
-  long int start_index;
-  long int end_index;
+  int32_t start_index;
+  int32_t end_index;
 
   DESCRIPTOR tgt_descr;
 
@@ -520,22 +523,22 @@ void op_matparse() {
 
   char s[256 + 1];         /* Delimiter string from program */
   char delimiters[256];    /* Boolean map of delimiter characters */
-  short int no_delimiters; /* No of delimiters */
+  int16_t no_delimiters; /* No of delimiters */
 
   DESCRIPTOR* array_descr; /* Target array */
   ARRAY_HEADER* a_hdr;
   PMATRIX_HEADER* pm_hdr;
   int lo_index;
-  long int hi_index; /* Index of last element */
-  long int indx;     /* Current target element number */
+  int32_t hi_index; /* Index of last element */
+  int32_t indx;     /* Current target element number */
 
   STRING_CHUNK* src_str;
-  short int src_bytes_remaining;
+  int16_t src_bytes_remaining;
   char* src;
 
   DESCRIPTOR* tgt_descr; /* Target array element descriptor */
   STRING_CHUNK* tgt_str;
-  unsigned short int last_char = 256;
+  u_int16_t last_char = 256;
 
   DESCRIPTOR* com_descr;
   int rows;
@@ -544,7 +547,7 @@ void op_matparse() {
   int offset;
 
   register char c;
-  short int i;
+  int16_t i;
 
   /* Get delimiter character(s) */
 
@@ -784,13 +787,13 @@ void op_soundex() {
 
   DESCRIPTOR* descr;
   STRING_CHUNK* src_str;
-  short int src_bytes;
+  int16_t src_bytes;
   char* src;
   register u_char c;
   char last = '\0';
   char code;
   char soundex[4 + 1];
-  short int i;
+  int16_t i;
   static char soundex_value[] = "01230120022455012623010202";
   /* ABCDEFGHIJKLMNOPQRSTUVWXYZ */
   descr = e_stack - 1;
@@ -841,7 +844,7 @@ void op_trim() {
   DESCRIPTOR result;             /* Result string descriptor */
   STRING_CHUNK* src_str;         /* Current source chunk */
   char* src;                     /* Ptr to current byte */
-  short int src_bytes_remaining; /* Remaining bytes in this chunk */
+  int16_t src_bytes_remaining; /* Remaining bytes in this chunk */
 
   bool front_of_string;
   bool space_skipped;
@@ -934,9 +937,9 @@ void op_trimb() {
   DESCRIPTOR result;             /* Result string descriptor */
   STRING_CHUNK* src_str;         /* Current source chunk */
   char* src;                     /* Ptr to current byte */
-  short int src_bytes_remaining; /* Remaining bytes in this chunk */
+  int16_t src_bytes_remaining; /* Remaining bytes in this chunk */
 
-  long int space_count;
+  int32_t space_count;
 
   char c;
 
@@ -1003,7 +1006,7 @@ void op_trimf() {
   DESCRIPTOR result;             /* Result string descriptor */
   STRING_CHUNK* src_str;         /* Current source chunk */
   char* src;                     /* Ptr to current byte */
-  short int src_bytes_remaining; /* Remaining bytes in this chunk */
+  int16_t src_bytes_remaining; /* Remaining bytes in this chunk */
 
   bool front_of_string;
 
@@ -1108,7 +1111,7 @@ void op_trimx() {
   DESCRIPTOR result;             /* Result string descriptor */
   STRING_CHUNK* src_str;         /* Current source chunk */
   char* src;                     /* Ptr to current byte */
-  short int src_bytes_remaining; /* Remaining bytes in this chunk */
+  int16_t src_bytes_remaining; /* Remaining bytes in this chunk */
 
   bool front_of_string;
   bool skip_count;
@@ -1289,22 +1292,22 @@ Private void count(bool dcount) /* Doing DCOUNT? */
   DESCRIPTOR* substring_descr; /* Substring / Delimiter */
 #define MAX_SUBSTRING_LEN 256
   char substring[MAX_SUBSTRING_LEN + 1];
-  short int substring_len;
+  int16_t substring_len;
   char* substr;
 
   /* Outer loop control */
   STRING_CHUNK* src_str;
-  short int src_bytes_remaining;
+  int16_t src_bytes_remaining;
   char* src;
 
   /* Inner loop control */
   STRING_CHUNK* isrc_str;
-  short int isrc_bytes_remaining;
-  short int ilen;
+  int16_t isrc_bytes_remaining;
+  int16_t ilen;
   char* isrc;
 
   bool nocase;
-  long int ct = 0;
+  int32_t ct = 0;
   char* p;
 
   nocase = (process.program.flags & HDR_NOCASE) != 0;
@@ -1444,13 +1447,13 @@ Private void matches(bool matchfield) {
   char* src_string;
   char* p;
   char* q;
-  short int return_component; /* Component number for MATCHFIELD */
+  int16_t return_component; /* Component number for MATCHFIELD */
   bool match = FALSE;
 
   if (matchfield) {
     descr = e_stack - 1;
     GetInt(descr);
-    return_component = (short int)(descr->data.value);
+    return_component = (int16_t)(descr->data.value);
     if (return_component < 1)
       return_component = 1;
     k_pop(1);
@@ -1509,13 +1512,13 @@ Private void matches(bool matchfield) {
 bool match_template(
     char* string,
     char* template_string,
-    short int component,        /* Current component number - 1 (incremented) */
-    short int return_component) /* Required component number */
+    int16_t component,        /* Current component number - 1 (incremented) */
+    int16_t return_component) /* Required component number */
 {
   bool not;
-  short int n;
-  short int m;
-  short int z;
+  int16_t n;
+  int16_t m;
+  int16_t z;
   char* p;
   char delimiter;
   char* start;

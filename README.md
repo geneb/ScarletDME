@@ -1,3 +1,6 @@
+[Make sure to check out the change_log.txt file to see the most
+ current work being done!]
+
 Currently ScarletDME is a 32 bit-only application - you'll need to
 compile it using 32 bit libraries on your system.  This is pretty
 easy to do.
@@ -45,6 +48,9 @@ sort includes.  The settings can be found in ScarletDME/.clang-format.
 Some files have been reformatted, most have not.  However, eventually they all
 will be.  There's also instances of K&R-style function parameter declarations
 and those will be converted to ANSI-style as I discover them.
+
+[27Feb20] A Discord server is now available (basically a tarted up version of IRC) at
+          https://discord.gg/cnyvVM
 
 [26Feb20 gwb]
 

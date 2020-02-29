@@ -18,7 +18,13 @@
  * 
  * Ladybridge Systems can be contacted via the www.openqm.com web site.
  * 
- * START-HISTORY:
+ * ScarletDME Wiki: https://scarlet.deltasoft.com
+ * 
+ * START-HISTORY (ScarletDME):
+ * 27Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ * 
+ * START-HISTORY (OpenQM):
  * 01 Jul 07  2.5-7 Extensive changes for PDA merge.
  * 19 May 05  2.2-0 Added saved_os_error.
  * 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
@@ -34,15 +40,15 @@
 
 Public bool in_debugger init(FALSE);
 
-Public long int debug_status;      /* Saved process.status */
-Public long int debug_inmat;       /* Saved process.inmat */
+Public int32_t debug_status;      /* Saved process.status */
+Public int32_t debug_inmat;       /* Saved process.inmat */
 Public bool debug_suppress_como;   /* Saved tio.suppress_como */
 Public bool debug_hush;            /* Saved tio.hush */
 Public bool debug_capturing;       /* Saved capturing */
 Public char debug_prompt_char;     /* Saved tio.prompt_char */
-Public long int debug_dsp_line;    /* Saved tio.dsp.line */
+Public int32_t debug_dsp_line;    /* Saved tio.dsp.line */
 Public bool debug_dsp_paginate;    /* Saved tio.dsp.paginate */
-Public long int debug_os_error;    /* Saved process.os_error */
+Public int32_t debug_os_error;    /* Saved process.os_error */
 
 /* Event codes (additive) */
 

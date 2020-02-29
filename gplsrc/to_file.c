@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+  * 27Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
  * 22Feb20 gwb Converted sprintf() to snprintf() in start_file().
  * 
  * START-HISTORY (OpenQM):
@@ -57,22 +59,22 @@
 
 #define FILE_BUFF_SIZE 2048
 
-void to_file(PRINT_UNIT* pu, char* str, short int bytes);
+void to_file(PRINT_UNIT* pu, char* str, int16_t bytes);
 
 Private bool printing_footer = FALSE;
 
 Private void start_file(PRINT_UNIT* pu);
 Private void print_footer(PRINT_UNIT* pu);
 Private void print_header(PRINT_UNIT* pu);
-Private void emit(PRINT_UNIT* pu, char* str, short int bytes);
+Private void emit(PRINT_UNIT* pu, char* str, int16_t bytes);
 
 /* ======================================================================
    to_file  -  Send text to file                                          */
 
-void to_file(PRINT_UNIT* pu, char* str, short int bytes) {
+void to_file(PRINT_UNIT* pu, char* str, int16_t bytes) {
   char* p;
-  short int n;
-  short int mode;
+  int16_t n;
+  int16_t mode;
 #define NL 1
 #define FF 2
 #define CR 3
@@ -352,7 +354,7 @@ Private void print_footer(PRINT_UNIT* pu) {
    print_header()  -  Print page header                                   */
 
 Private void print_header(PRINT_UNIT* pu) {
-  short int i;
+  int16_t i;
 
   if (pu->flags & PU_OUTPUT) /* 0382 */
   {
@@ -382,8 +384,8 @@ Private void print_header(PRINT_UNIT* pu) {
 /* ======================================================================
    emit()  - Emit data to file buffer                                     */
 
-Private void emit(PRINT_UNIT* pu, char* str, short int bytes) {
-  short int n;
+Private void emit(PRINT_UNIT* pu, char* str, int16_t bytes) {
+  int16_t n;
 
   while (bytes) {
     if (pu->bytes == FILE_BUFF_SIZE) /* Buffer is full but more to write */

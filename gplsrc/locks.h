@@ -18,7 +18,13 @@
  * 
  * Ladybridge Systems can be contacted via the www.openqm.com web site.
  * 
- * START-HISTORY:
+ * ScarletDME Wiki: https://scarlet.deltasoft.com
+ * 
+ * START-HISTORY (ScarletDME):
+ * 27Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ * 
+ * START-HISTORY (OpenQM):
  * 15 Oct 07  2.6-5 Added local lock table structure.
  * 01 Jul 07  2.5-7 Extensive change for PDA merge.
  * 24 Feb 06  2.3-7 Padded lock table entries to be four byte multiples.
@@ -39,26 +45,28 @@
    Cyclic hash index = ((hash ^ file_id) % num_locks) + 1
 */
 
- typedef struct RLOCK_ENTRY RLOCK_ENTRY;
- struct RLOCK_ENTRY {
-    short int hash;        /* Table hash index of entry using this cell.
+typedef struct RLOCK_ENTRY RLOCK_ENTRY;
+struct RLOCK_ENTRY {
+  int16_t hash;    /* Table hash index of entry using this cell.
                               Zero if cell is free */
-    short int count;       /* Number of locks hashing to this cell */
-    short int owner;       /* User id of owner */
-    short int waiters;     /* Count of users waiting for lock. */
-    short int lock_type;
-      #define L_UPDATE   1
-      #define L_SHARED   2
-    short int file_id;     /* Index to file table */
-    long int id_hash;      /* Record's hash value */
-    long int fvar_index;   /* Cross-ref to FILE_VAR */
-    unsigned long txn_id;  /* Transaction id (0 if outside transaction) */
-    short int id_len;
-    short int pad;         /* Pad to 4 byte multiple */
-    char id[MAX_ID_LEN];
- };
+  int16_t count;   /* Number of locks hashing to this cell */
+  int16_t owner;   /* User id of owner */
+  int16_t waiters; /* Count of users waiting for lock. */
+  int16_t lock_type;
+#define L_UPDATE 1
+#define L_SHARED 2
+  int16_t file_id;    /* Index to file table */
+  int32_t id_hash;    /* Record's hash value */
+  int32_t fvar_index; /* Cross-ref to FILE_VAR */
+  u_int32_t txn_id;   /* Transaction id (0 if outside transaction) */
+  int16_t id_len;
+  int16_t pad; /* Pad to 4 byte multiple */
+  char id[MAX_ID_LEN];
+};
 
-#define RLPtr(n) ((RLOCK_ENTRY *)((((char *)sysseg) + sysseg->rlock_table) + ((n - 1) * sysseg->rlock_entry_size)))
+#define RLPtr(n)                                            \
+  ((RLOCK_ENTRY*)((((char*)sysseg) + sysseg->rlock_table) + \
+                  ((n - 1) * sysseg->rlock_entry_size)))
 
 #define RLockHash(f, h) ((((f) ^ (h)) % sysseg->numlocks) + 1)
 
@@ -74,16 +82,14 @@
    in another process by an administrator.                                */
 
 typedef struct LLT_ENTRY LLT_ENTRY;
-struct LLT_ENTRY
-{
- LLT_ENTRY * next;      /* Next local lock table entry */
- short int fno;         /* File table index */
- short int id_len;      /* Length of record id */
- long int fvar_index;   /* Links lock to specific instance of file */
- char id[1];            /* The record id */
+struct LLT_ENTRY {
+  LLT_ENTRY* next;    /* Next local lock table entry */
+  int16_t fno;        /* File table index */
+  int16_t id_len;     /* Length of record id */
+  int32_t fvar_index; /* Links lock to specific instance of file */
+  char id[1];         /* The record id */
 };
-Public LLT_ENTRY * llt_head init(NULL);
-
+Public LLT_ENTRY* llt_head init(NULL);
 
 /* ==================== GROUP LOCKS ==================== */
 
@@ -92,20 +98,20 @@ Public LLT_ENTRY * llt_head init(NULL);
    Cyclic hash index = ((group ^ file_id) % num_locks) + 1
 */
 
- typedef struct GLOCK_ENTRY GLOCK_ENTRY;
- struct GLOCK_ENTRY {
-    short int hash;          /* Table hash index of entry using this cell.
+typedef struct GLOCK_ENTRY GLOCK_ENTRY;
+struct GLOCK_ENTRY {
+  int16_t hash;      /* Table hash index of entry using this cell.
                                 Zero if cell is free */
-    short int count;         /* Number of locks hashing to this cell */
-    short int owner;         /* User id of owner */
-    short int file_id;       /* Index to file table */
-    long int group;          /* Group number. For AK subfiles, see below */
-    short int grp_count;     /* +ve = read count, -ve = write lock */
-    short int pad;           /* Pad to 4 byte multiple */
- };
+  int16_t count;     /* Number of locks hashing to this cell */
+  int16_t owner;     /* User id of owner */
+  int16_t file_id;   /* Index to file table */
+  int32_t group;     /* Group number. For AK subfiles, see below */
+  int16_t grp_count; /* +ve = read count, -ve = write lock */
+  int16_t pad;       /* Pad to 4 byte multiple */
+};
 
-#define GLPtr(n) (((GLOCK_ENTRY *)(((char *)sysseg) + sysseg->glock_table)) \
-                  + (n - 1))
+#define GLPtr(n) \
+  (((GLOCK_ENTRY*)(((char*)sysseg) + sysseg->glock_table)) + (n - 1))
 #define GLockHash(f, g) ((((f) ^ (g)) % sysseg->num_glocks) + 1)
 
 /* Pseudo group locks for AK subfile */
@@ -121,9 +127,9 @@ Public LLT_ENTRY * llt_head init(NULL);
    all byte pairs within the key, including the trailing \0 if the key is
    of odd length.                                                         */
 
-#define AKRlock(akno, key) ((((long int)akno)<<16) | key | 0x20000000L)
+#define AKRlock(akno, key) ((((int32_t)akno) << 16) | key | 0x20000000L)
 
-void clear_waiters(short int idx);
+void clear_waiters(int16_t idx);
 void clear_lockwait(void);
 
 /* END-CODE */

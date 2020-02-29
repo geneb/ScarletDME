@@ -21,6 +21,13 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 29Feb20 gwb Changed LONG_MAX to INT32_MAX.  When building for a 64 bit 
+ *             platform, the LONG_MAX constant overflows the size of the
+ *             int32_t variable type.  This change needed to be made across
+ *             the entire code base.
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ *
  * 22Feb20 gwb Converted some problematic instances of sprintf() to 
  *             snprintf().
  * 
@@ -70,13 +77,14 @@
 #include "header.h"
 
 #include <time.h>
+#include <stdint.h>
 
 Private bool valid_name(char* p);
 Private bool attach(char* path);
 Private STRING_CHUNK* get_file_status(FILE_VAR* fvar);
 
 bool make_path(char* tgt);
-bool FDS_open(DH_FILE* dh_file, short int subfile);
+bool FDS_open(DH_FILE* dh_file, int16_t subfile);
 
 /* ======================================================================
    op_fileinfo()  -  Return information about an open file                */
@@ -137,19 +145,19 @@ void op_fileinfo() {
  10005 FL_SETRDONLY    Set file as read only
  */
 
-  short int key;
+  int16_t key;
   DESCRIPTOR* descr;
   FILE_VAR* fvar;
   DH_FILE* dh_file;
   char* p = NULL;
-  long int n = 0;
+  int32_t n = 0;
   FILE_ENTRY* fptr;
   OSFILE fu;
   bool dynamic;
   bool internal;
-  long int* q;
+  int32_t* q;
   STRING_CHUNK* str;
-  short int i;
+  int16_t i;
   double floatnum;
   u_char ftype;
   int64 n64;
@@ -158,7 +166,7 @@ void op_fileinfo() {
 
   descr = e_stack - 1;
   GetInt(descr);
-  key = (short int)(descr->data.value);
+  key = (int16_t)(descr->data.value);
   k_pop(1);
 
   /* Get file variable */
@@ -265,11 +273,11 @@ void op_fileinfo() {
       case FL_LINE: /* 14  Sequential file line position */
         if (ftype == SEQ_FILE) {
           n64 = fvar->access.seq.sq_file->line;
-          if (n64 > LONG_MAX) {
+          if (n64 > INT32_MAX) {
             floatnum = (double)n64;
             goto set_float;
           }
-          n = (long)n64;
+          n = (int32_t)n64;
         }
         break;
 
@@ -320,11 +328,11 @@ void op_fileinfo() {
       case FL_SEQPOS: /* 1006  Sequential file offset */
         if (ftype == SEQ_FILE) {
           n64 = fvar->access.seq.sq_file->posn;
-          if (n64 > LONG_MAX) {
+          if (n64 > INT32_MAX) {
             floatnum = (double)n64;
             goto set_float;
           }
-          n = (long)n64;
+          n = (int32_t)n64;
         }
         break;
 
@@ -401,7 +409,7 @@ void op_fileinfo() {
         break;
 
       case FL_UPDATE: /* 1019  File update counter */
-        n = (long)(fptr->upd_ct);
+        n = (int32_t)(fptr->upd_ct);
         break;
 
       case FL_ENCRYPTED: /* 1020  File uses encryption? */
@@ -452,7 +460,7 @@ void op_fileinfo() {
 
       case FL_FLAGS: /* 10001  File flags */
         if (dynamic && internal)
-          n = (long int)(dh_file->flags);
+          n = (int32_t)(dh_file->flags);
         break;
 
       case FL_STATS_ON: /* 10002  Enable file statistics */
@@ -471,7 +479,7 @@ void op_fileinfo() {
         if (dynamic && internal) {
           str = NULL;
           ts_init(&str, 5 * FILESTATS_COUNTERS);
-          for (i = 0, q = (long int*)&(fptr->stats.reset);
+          for (i = 0, q = (int32_t*)&(fptr->stats.reset);
                i < FILESTATS_COUNTERS; i++, q++) {
             ts_printf("%ld\xfe", *q);
           }
@@ -513,8 +521,8 @@ set_string:
   return;
 
 set_float:
-  if (floatnum <= (double)LONG_MAX) {
-    n = (long)floatnum;
+  if (floatnum <= (double)INT32_MAX) {
+    n = (int32_t)floatnum;
     goto set_integer;
   }
 
@@ -578,11 +586,11 @@ void op_ospath() {
 
  */
 
-  long int status = 0;
-  short int key;
+  int32_t status = 0;
+  int16_t key;
   DESCRIPTOR* descr;
   char path[MAX_PATHNAME_LEN + 1];
-  short int path_len;
+  int16_t path_len;
   char name[MAX_PATHNAME_LEN + 1];
   char* p;
   char* q;
@@ -592,13 +600,13 @@ void op_ospath() {
   struct stat stat_buff;
   DIR* dfu;
   struct dirent* dp;
-  long int n;
+  int32_t n;
 
   /* Get action key */
 
   descr = e_stack - 1;
   GetInt(descr);
-  key = (short int)(descr->data.value);
+  key = (int16_t)(descr->data.value);
   k_pop(1);
 
   /* Get pathname */
@@ -631,7 +639,7 @@ void op_ospath() {
       break;
 
     case OS_FILENAME: /* Test if valid pathname */
-      status = (long int)valid_name(path);
+      status = (int32_t)valid_name(path);
       break;
 
     case OS_EXISTS: /* Test if file exists */
@@ -662,7 +670,7 @@ void op_ospath() {
 
     case OS_DELETE:
       flush_dh_cache();
-      status = (long int)delete_path(path);
+      status = (int32_t)delete_path(path);
       break;
 
     case OS_CWD:
@@ -794,7 +802,7 @@ void op_osrename() {
   DESCRIPTOR* descr;
   char old_path[MAX_PATHNAME_LEN + 1];
   char new_path[MAX_PATHNAME_LEN + 1];
-  short int path_len;
+  int16_t path_len;
 
   process.status = 0;
   process.os_error = 0;

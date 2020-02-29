@@ -18,6 +18,12 @@
  * 
  * Ladybridge Systems can be contacted via the www.openqm.com web site.
  * 
+ * ScarletDME Wiki: https://scarlet.deltasoft.com
+ * 
+ * START-HISTORY (ScarletDME):
+ * 27Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ * 
  * START-HISTORY:
  * 01 Jul 07  2.5-7 Extensive change for PDA merge.
  * 13 Oct 06  2.4-15 Separated printer name and file name entries in print unit.
@@ -73,16 +79,16 @@
 /* !!PU!!  Places that need changing for new items are marked this way */
 struct PRINT_UNIT {
                    struct PRINT_UNIT * next;
-                   short int unit;
-                   short int level;   /* Level at which opened */
-                   short int mode;
+                   int16_t unit;
+                   int16_t level;   /* Level at which opened */
+                   int16_t mode;
 #define PRINT_TO_DISPLAY  0
 #define PRINT_TO_PRINTER  1
 #define PRINT_TO_FILE     3
 #define PRINT_TO_STDERR   4
 #define PRINT_TO_AUX_PORT 5
 #define PRINT_AND_HOLD    6
-                   unsigned long int flags;
+                   u_int32_t flags;
 #define PU_ACTIVE        0x00000001  /* Print unit is active */
 #define PU_POSTSCRIPT    0x00000002  /* Emulated PostScript printer */
 #define PU_NFMT          0x00000004  /* NFMT SETPTR option */
@@ -104,14 +110,14 @@ struct PRINT_UNIT {
 #define PU_TEMPLATE_MASK 0x0000E07E  /* Mask for values to copy from template */
 
 /* SETPTR settings */
-                   short int width;          /* Page width */
-                   short int lines_per_page; /* Total lines per page */
-                   short int top_margin;     /* Top margin lines */
-                   short int bottom_margin;  /* Bottom margin lines */
-                   short int left_margin;    /* LEFT.MARGIN */
-                   short int cpi;            /* CPI: Chars per inch * 100 */
-                   short int lpi;            /* LPI: Lines per inch */
-                   short int paper_size;     /* PAPER.SIZE */
+                   int16_t width;          /* Page width */
+                   int16_t lines_per_page; /* Total lines per page */
+                   int16_t top_margin;     /* Top margin lines */
+                   int16_t bottom_margin;  /* Bottom margin lines */
+                   int16_t left_margin;    /* LEFT.MARGIN */
+                   int16_t cpi;            /* CPI: Chars per inch * 100 */
+                   int16_t lpi;            /* LPI: Lines per inch */
+                   int16_t paper_size;     /* PAPER.SIZE */
 #define PU_SZ_A4        1
 #define PU_SZ_LETTER    2
 #define PU_SZ_LEGAL     3
@@ -122,8 +128,8 @@ struct PRINT_UNIT {
 #define PS_SZ_DL        8
 #define PS_SZ_C5        9
 #define PS_SZ_B5       10
-                   short int copies;         /* COPIES */
-                   short int weight;         /* WEIGHT */
+                   int16_t copies;         /* COPIES */
+                   int16_t weight;         /* WEIGHT */
                    char symbol_set[7+1];     /* SYMBOL.SET */
                    char newline[2+1];        /* CR/LF/CRLF */
                    char * printer_name;
@@ -140,21 +146,21 @@ struct PRINT_UNIT {
 
 /* Items below this point reflect the dynamic state of the print job */
 
-                   short int heading_lines;       /* Derived from heading... */
-                   short int footing_lines;       /* ...and footing text */
-                   short int data_lines_per_page; /* Excluding margins, header
+                   int16_t heading_lines;       /* Derived from heading... */
+                   int16_t footing_lines;       /* ...and footing text */
+                   int16_t data_lines_per_page; /* Excluding margins, header
                                                      and footer */
-                   short int page_no; 
-                   long int line;          /* Current line number from zero
+                   int16_t page_no; 
+                   int32_t line;          /* Current line number from zero
                                               within data lines.
                                               Declared long for NFMT case.  */
-                   short int col;          /* Current column (from zero) */
+                   int16_t col;          /* Current column (from zero) */
                    char * buff;            /* Data buffer and... */
-                   short int bytes;        /* ...used byte count */
+                   int16_t bytes;        /* ...used byte count */
                   struct {
                           char * pathname;
                           OSFILE fu;
-                          long int jobno;   /* Only for mode 1 */
+                          int32_t jobno;   /* Only for mode 1 */
                          } file;
                   };
 typedef struct PRINT_UNIT PRINT_UNIT;
@@ -169,7 +175,7 @@ Public struct TIO
    bool suppress_como;     /* Temporary suppression (@() func) */
    char prompt_char;       /* Prompt character */
    char term_type[32+1];
-   short int terminfo_hpa;
+   int16_t terminfo_hpa;
    char * terminfo_colour_map;
    char break_char;        /* Break key character */
  } tio;
@@ -193,7 +199,7 @@ Public bool telnet_binary_mode_out init(FALSE);  /* Server -> client */
 Public bool telnet_negotiation init(TRUE);       /* Watch for TN_IAC */
 
 
-Public short int lock_beep_timer;
+Public int16_t lock_beep_timer;
 
 /* EXECUTE CAPTURING data */
 
@@ -206,10 +212,10 @@ Public bool trap_break_char; /* Treat break_char as a break request? */
 
 /* OP_TIO.C */
 void emit_header_footer(PRINT_UNIT * pu, bool is_heading);
-PRINT_UNIT * tio_set_printer(short int unit, short int mode,
-                             short int lines_per_page, short int width,
-                             short int top_margin, short int bottom_margin,
-                             short int left_margin);
+PRINT_UNIT * tio_set_printer(int16_t unit, int16_t mode,
+                             int16_t lines_per_page, int16_t width,
+                             int16_t top_margin, int16_t bottom_margin,
+                             int16_t left_margin);
 void copy_print_unit(PRINT_UNIT * old_pu, PRINT_UNIT * new_pu);
 void free_print_unit(PRINT_UNIT * pu);
 void stack_display_pu(void);

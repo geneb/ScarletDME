@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  *
  * START-HISTORY (ScarletDME):
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ *
  * 22Feb20 gwb Replaced a pair of sprintf() calls to snprintf() calls in
  *             open_file().
  *             Fixed a variable assigned but never used in open_file()
@@ -74,7 +77,7 @@ struct DH_CACHE {
   DH_FILE* dh_file;
 };
 Private struct DH_CACHE dh_cache[MAX_DH_CACHE_SIZE];
-Private short int dh_cache_size = 0;
+Private int16_t dh_cache_size = 0;
 
 Private void open_file(bool map_name);
 
@@ -134,23 +137,23 @@ void op_configfl() {
  */
 
   DESCRIPTOR* descr;
-  long int min_modulus;
-  long int big_rec_size;
-  short int merge_load;
-  short int split_load;
+  int32_t min_modulus;
+  int32_t big_rec_size;
+  int16_t merge_load;
+  int16_t split_load;
   FILE_VAR* fvar;
   DH_FILE* dh_file;
-  long int status;
+  int32_t status;
 
   /* Get DH file parameters */
 
   descr = e_stack - 1;
   GetInt(descr);
-  merge_load = (short int)(descr->data.value);
+  merge_load = (int16_t)(descr->data.value);
 
   descr = e_stack - 2;
   GetInt(descr);
-  split_load = (short int)(descr->data.value);
+  split_load = (int16_t)(descr->data.value);
 
   descr = e_stack - 3;
   GetInt(descr);
@@ -212,18 +215,18 @@ void op_create_dh() {
      call to CREATE_DH.
   */
 
-  unsigned short int op_flags;
+  u_int16_t op_flags;
 
   DESCRIPTOR* descr;
   char path_name[MAX_PATHNAME_LEN + 1];
-  short int name_len;
-  short int group_size;
-  long int min_modulus;
-  long int big_rec_size;
-  short int merge_load;
-  short int split_load;
-  unsigned short int creation_flags;
-  short int version;
+  int16_t name_len;
+  int16_t group_size;
+  int32_t min_modulus;
+  int32_t big_rec_size;
+  int16_t merge_load;
+  int16_t split_load;
+  u_int16_t creation_flags;
+  int16_t version;
 
   op_flags = process.op_flags;
   process.op_flags = 0;
@@ -234,13 +237,13 @@ void op_create_dh() {
 
   descr = e_stack - 1;
   GetInt(descr);
-  version = (short int)(descr->data.value);
+  version = (int16_t)(descr->data.value);
 
   /* Get file creation flags */
 
   descr = e_stack - 2;
   GetInt(descr);
-  creation_flags = (unsigned short)((descr->data.value < 0)
+  creation_flags = (u_int16_t)((descr->data.value < 0)
                                         ? 0
                                         : (descr->data.value & DHF_CREATE));
 
@@ -248,11 +251,11 @@ void op_create_dh() {
 
   descr = e_stack - 3;
   GetInt(descr);
-  merge_load = (short int)(descr->data.value);
+  merge_load = (int16_t)(descr->data.value);
 
   descr = e_stack - 4;
   GetInt(descr);
-  split_load = (short int)(descr->data.value);
+  split_load = (int16_t)(descr->data.value);
 
   descr = e_stack - 5;
   GetInt(descr);
@@ -264,7 +267,7 @@ void op_create_dh() {
 
   descr = e_stack - 7;
   GetInt(descr);
-  group_size = (short int)(descr->data.value);
+  group_size = (int16_t)(descr->data.value);
 
   k_pop(7);
 
@@ -316,11 +319,11 @@ void op_create_t1() {
      call to CREATET1.
   */
 
-  unsigned short int op_flags;
+  u_int16_t op_flags;
 
   DESCRIPTOR* descr;
   char path_name[MAX_PATHNAME_LEN + 1];
-  short int name_len;
+  int16_t name_len;
 
   op_flags = process.op_flags;
   process.op_flags = 0;
@@ -401,7 +404,7 @@ void op_openpath() {
    dio_close()  -  Close dio file                                         */
 
 void dio_close(FILE_VAR* fvar) {
-  short int fno;
+  int16_t fno;
   FILE_ENTRY* fptr;
   DH_FILE* dh_file;
 
@@ -537,22 +540,22 @@ Private void open_file(bool map_name) /* Map file name via VOC entry */
   char voc_name[MAX_ID_LEN + 1];
   char mapped_name[MAX_PATHNAME_LEN + 1];
   char pathname[MAX_PATHNAME_LEN + 1];
-  short int name_len;
+  int16_t name_len;
   FILE_VAR* fvar = NULL;
   FILE_VAR* cached_fvar;
   DH_FILE* dh_file;
   /* FILE_ENTRY* fptr; variable set but never used */
-  unsigned short int op_flags;
+  u_int16_t op_flags;
   char s[MAX_PATHNAME_LEN + 1];
-  short int i;
+  int16_t i;
   struct DH_CACHE cache_copy;
   AK_CTRL* ak_ctrl;
-  unsigned long int ak_map;
+  u_int32_t ak_map;
   struct stat statbuf;
   char* server;
   char* remote_file;
-  unsigned long int device = 0;
-  unsigned long int inode = 0;
+  u_int32_t device = 0;
+  u_int32_t inode = 0;
 
   op_flags = process.op_flags;
   process.op_flags = 0;

@@ -21,12 +21,15 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 27Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ * 
  * 24Feb20 gwb Changed a number of sprintf() to snprintf() and converted
  *             any K&R function declarations to ANSI.
  *             The K&R conversion exposed a bug where the function prototype
  *             for delete_subfile() had the parameter declared as an int, but
- *             the actual function used a short int.  Based on how it was called,
- *             the short int version was deemed to be the correct one.
+ *             the actual function used a int16_t.  Based on how it was called,
+ *             the int16_t version was deemed to be the correct one.
  * START-HISTORY (OpenQM):
  * 07 Nov 07  2.6-5 Extended to handle intermediate unused groups when doing
  *                  rebuild operation.
@@ -138,12 +141,12 @@
 
 /* GetAKNodeNum() - Get node number from version dependent file link */
 #define GetAKNodeNum(x)                                 \
-  ((long int)(((x) != 0) && (header.file_version >= 2)) \
+  ((int32_t)(((x) != 0) && (header.file_version >= 2)) \
        ? (x)                                            \
        : (((x)-ak_header_size) / DH_AK_NODE_SIZE + 1))
 
 /* OffsetToNode() - Translate node offset to node number */
-#define OffsetToNode(x) ((long int)(((x)-ak_header_size) / DH_AK_NODE_SIZE + 1))
+#define OffsetToNode(x) ((int32_t)(((x)-ak_header_size) / DH_AK_NODE_SIZE + 1))
 
 static u_char cfg_debug = 0; /* DEBUG config parameter */
 
@@ -151,7 +154,7 @@ static bool suppress_bar = FALSE; /* -B */
 static bool check = FALSE;        /* -C */
 static bool interactive = FALSE;  /* -I */
 static bool logging = FALSE;      /* -L */
-static short int fix_level = 0;   /* 1 = -Q, 2 = -F */
+static int16_t fix_level = 0;   /* 1 = -Q, 2 = -F */
 static bool recover = FALSE;      /* -R */
 static bool verbose = FALSE;      /* -V */
 
@@ -160,19 +163,19 @@ static FILE* log = NULL;
 static bool file_found = FALSE;
 static char filename[MAX_PATHNAME_LEN + 1] = ""; /* File being processed */
 static int fu[MAX_SUBFILES];                     /* File variables */
-static short int subfile = 0;  /* Currently selected subfile */
+static int16_t subfile = 0;  /* Currently selected subfile */
 static DH_HEADER header;       /* Primary subfile header */
 static DH_HEADER oheader;      /* Overflow subfile header */
-static short int header_bytes; /* Offset of group 1 */
-static short int ak_header_size;
-static short int group_bytes;
+static int16_t header_bytes; /* Offset of group 1 */
+static int16_t ak_header_size;
+static int16_t group_bytes;
 static int64 load_bytes;
 
-short int display_lines; /* Available lines for display */
-short int emitted_lines; /* Lines emitted */
+int16_t display_lines; /* Available lines for display */
+int16_t emitted_lines; /* Lines emitted */
 static jmp_buf quit_command;
 static int64 display_addr = 0; /* Display address */
-short int window_size = 256;
+int16_t window_size = 256;
 static bool quit = FALSE;
 static bool bar_displayed = FALSE;
 
@@ -180,20 +183,20 @@ static bool bar_displayed = FALSE;
 
 /* Automatic group dump and reload */
 #define MAX_GROUPS_TO_DUMP 50
-short int num_groups_to_dump = 0;
-long int groups_to_dump[MAX_GROUPS_TO_DUMP];
+int16_t num_groups_to_dump = 0;
+int32_t groups_to_dump[MAX_GROUPS_TO_DUMP];
 char dump_file_name[20];
 int dump_fu;
 
-long int* map = NULL;
-long int map_offset = 0;
-long int num_overflow_blocks; /* Size of map */
+int32_t* map = NULL;
+int32_t map_offset = 0;
+int32_t num_overflow_blocks; /* Size of map */
 
-void G_command(long int grp);
+void G_command(int32_t grp);
 void GA_command(void);
 void H_command(void);
-void L_command(char* id, short int id_len);
-void S_command(long int n);
+void L_command(char* id, int16_t id_len);
+void S_command(int32_t n);
 void W_command(char* cmnd);
 void Z_command(void);
 
@@ -201,47 +204,47 @@ void fix_file(char* fn);
 bool is_dh_file(void);
 int process_file(void);
 void show_window(int64 addr);
-void show_group(long int group);
-Private void show_node(long int group);
+void show_group(int32_t group);
+Private void show_node(int32_t group);
 bool check_file(void);
 bool open_dump_file(void);
-bool rebuild_group(long int grp);
-bool dump_group(long int grp);
+bool rebuild_group(int32_t grp);
+bool dump_group(int32_t grp);
 bool write_dumped_data(void);
 bool write_record(DH_RECORD* rec);
 bool release_chain(int64 offset);
-long int get_overflow(void);
-bool clear_group(long int grp);
+int32_t get_overflow(void);
+bool clear_group(int32_t grp);
 bool check_and_fix(void);
-bool open_subfile(short int subfile);
-bool read_block(short int subfile, int64 offset, short int bytes, char* buff);
-bool write_block(short int subfile, int64 offset, short int bytes, char* buff);
+bool open_subfile(int16_t subfile);
+bool read_block(int16_t subfile, int64 offset, int16_t bytes, char* buff);
+bool write_block(int16_t subfile, int64 offset, int16_t bytes, char* buff);
 bool read_header(void);
 bool write_header(void);
-bool delete_subfile(short int subfile);
+bool delete_subfile(int16_t subfile);
 bool read_qmconfig(void);
-bool map_big_rec(short int rec_hdr_sf,
+bool map_big_rec(int16_t rec_hdr_sf,
                  int64 rec_hdr_offset,
                  DH_RECORD* rec_ptr,
-                 long int* map);
+                 int32_t* map);
 void tag_block(int64 offset,
-               short int ref_subfile,
+               int16_t ref_subfile,
                int64 ref_offset,
-               short int usage);
-void map_node(short int sf,
-              long int node,
+               int16_t usage);
+void map_node(int16_t sf,
+              int32_t node,
               char* akmap,
-              long int num_nodes,
-              long int parent);
-void map_ak_free_chain(short int sf, char* map, long int num_nodes);
+              int32_t num_nodes,
+              int32_t parent);
+void map_ak_free_chain(int16_t sf, char* map, int32_t num_nodes);
 bool recover_space(void);
 bool fix(void);
 bool yesno(char* prompt);
 void emit(char msg[], ...);
 char* I64(int64 x);
-void memupr(char* str, short int len);
+void memupr(char* str, int16_t len);
 char* strupr(char* s);
-void progress_bar(long int grp);
+void progress_bar(int32_t grp);
 
 void event_handler(int signum);
 
@@ -254,7 +257,7 @@ char* argv[];
   int arg;
   int argx;
   bool arg_end;
-  short int sf;
+  int16_t sf;
 
   for (sf = 0; sf < MAX_SUBFILES; sf++)
     fu[sf] = -1;
@@ -445,9 +448,9 @@ int process_file() {
   char cmnd[80 + 1];
   char u_cmnd[80 + 1];
   bool done = FALSE;
-  short int sf; /* Subfile index */
-  short int i;
-  long int n;
+  int16_t sf; /* Subfile index */
+  int16_t i;
+  int32_t n;
   int64 n64;
   char* p;
 
@@ -624,7 +627,7 @@ exit_process_file:
 /* ======================================================================
    G_command()  -  Gn command                                             */
 
-void G_command(long int grp) {
+void G_command(int32_t grp) {
   if (grp > 0) {
     if (subfile < 2)
       show_group(grp);
@@ -639,7 +642,7 @@ void G_command(long int grp) {
   GA_command  -  Show all groups                                          */
 
 void GA_command() {
-  long int grp;
+  int32_t grp;
 
   for (grp = 1; grp <= header.params.modulus; grp++) {
     show_group(grp);
@@ -652,7 +655,7 @@ void GA_command() {
    H_command()  -  Show header                                            */
 
 void H_command() {
-  long int load;
+  int32_t load;
   DH_AK_HEADER ak_header;
   int64 ak_node_offset;
 
@@ -732,10 +735,10 @@ void H_command() {
 /* ======================================================================
    L_command()  -  Locate record by hashing                               */
 
-void L_command(char* id, short int id_len) {
+void L_command(char* id, int16_t id_len) {
   char u_id[MAX_ID_LEN];
-  long int grp;
-  long int hash_value;
+  int32_t grp;
+  int32_t hash_value;
 
   if (id_len == 0)
     emit("Illegal record id\n");
@@ -760,7 +763,7 @@ void L_command(char* id, short int id_len) {
 /* ======================================================================
    S_command  -  Select subfile                                           */
 
-void S_command(long int n) {
+void S_command(int32_t n) {
   int64 bytes;
 
   if ((n >= 0) && (n < MAX_SUBFILES)) {
@@ -771,17 +774,17 @@ void S_command(long int n) {
       switch (subfile) {
         case PRIMARY_SUBFILE:
           printf("%ld group buffers\n",
-                 (long int)((bytes - header_bytes) / header.group_size));
+                 (int32_t)((bytes - header_bytes) / header.group_size));
           break;
 
         case OVERFLOW_SUBFILE:
           printf("%ld overflow buffers\n",
-                 (long int)((bytes - header_bytes) / header.group_size));
+                 (int32_t)((bytes - header_bytes) / header.group_size));
           break;
 
         default:
           printf("%ld node buffers\n",
-                 (long int)((bytes - ak_header_size) / DH_AK_NODE_SIZE));
+                 (int32_t)((bytes - ak_header_size) / DH_AK_NODE_SIZE));
           break;
       }
     } else
@@ -794,11 +797,11 @@ void S_command(long int n) {
    W_command()  -  Write data                                             */
 
 void W_command(char* cmnd) {
-  unsigned long int w_addr;
-  unsigned long int w_data;
-  unsigned long int old_data;
-  short int n;
-  short int bytes;
+  u_int32_t w_addr;
+  u_int32_t w_data;
+  u_int32_t old_data;
+  int16_t n;
+  int16_t bytes;
   char* p;
   char c;
 
@@ -917,9 +920,9 @@ void show_window(int64 addr) {
   int64 buff_addr = -1;
   int64 base_addr;
   int buff_offset;
-  short int i;
+  int16_t i;
   unsigned char c;
-  short int bytes;
+  int16_t bytes;
 
   addr &= ~0xF; /* Align on 16 byte boundary */
   bytes = window_size;
@@ -984,34 +987,34 @@ bool check_and_fix() {
 
 bool check_file() {
   bool status = FALSE;
-  short int akno;
+  int16_t akno;
   DH_AK_HEADER ak_header;
   int64 scan_load_bytes = 0;   /* Actual load bytes from scan */
   int64 scan_record_count = 0; /* Actual record count from scan */
-  long int apparent_modulus;   /* Calculated by examining groups */
-  long int grp;                /* Group number during scan */
-  short int sf;                /* Subfile index */
+  int32_t apparent_modulus;   /* Calculated by examining groups */
+  int32_t grp;                /* Group number during scan */
+  int16_t sf;                /* Subfile index */
   int64 offset;                /* Buffer offset into subfile */
   DH_BLOCK* buff = NULL;
   DH_BLOCK* ebuff = NULL;
-  short int id_len;
+  int16_t id_len;
   char id[MAX_ID_LEN + 1];
-  long int hash_value;
-  long int hgroup;
-  short int hash_errors = 0;
-  short int used_bytes;
-  short int rec_offset;
-  short int rec_size;
+  int32_t hash_value;
+  int32_t hgroup;
+  int16_t hash_errors = 0;
+  int16_t used_bytes;
+  int16_t rec_offset;
+  int16_t rec_size;
   DH_RECORD* rec_ptr;
-  long int released_group = 0;
-  long int last_offset;
-  long int free_blocks;
-  short int ak_subfile;
-  short int longest_id = 0;
+  int32_t released_group = 0;
+  int32_t last_offset;
+  int32_t free_blocks;
+  int16_t ak_subfile;
+  int16_t longest_id = 0;
   int64 next_buffer;
   int64 overflow_space;
 
-  long int num_nodes;
+  int32_t num_nodes;
   char* ak_map = NULL;
 
 #define CHK_FREE 0
@@ -1019,11 +1022,11 @@ bool check_file() {
 #define CHK_BIG_REC 2
 #define CHK_ECB 3
 
-  long int n;
+  int32_t n;
   int64 n64;
   char* p;
   char* q;
-  short int i;
+  int16_t i;
 
   num_groups_to_dump = 0;
 
@@ -1046,7 +1049,7 @@ bool check_file() {
 
   num_overflow_blocks = overflow_space / group_bytes;
 
-  n = (num_overflow_blocks + 1) * sizeof(long int);
+  n = (num_overflow_blocks + 1) * sizeof(int32_t);
   map = malloc(n);
   if (map == NULL) {
     emit("Unable to allocate space map\n");
@@ -1430,7 +1433,7 @@ bool check_file() {
     tag_block(offset, OVERFLOW_SUBFILE, last_offset, CHK_FREE);
 
     if (header.file_version < 2) {
-      if (buff->next & ((long)(group_bytes - 1))) {
+      if (buff->next & ((int32_t)(group_bytes - 1))) {
         emit("Faulty next block pointer x%08lX at 1.%s\n", buff->next,
              I64(offset));
         break;
@@ -1592,7 +1595,7 @@ exit_check:
 /* ======================================================================
    rebuild_group()  -  Dump and rebuild a specific group                  */
 
-bool rebuild_group(long int grp) {
+bool rebuild_group(int32_t grp) {
   if ((grp < 1) || (grp > header.params.modulus)) {
     emit("Invalid group number\n");
     return FALSE;
@@ -1636,7 +1639,7 @@ bool rebuild_group(long int grp) {
 bool open_dump_file() {
   emit("Creating temporary file\n");
 
-  sprintf(dump_file_name, "~QMFix.%lu", (long)getuid());
+  sprintf(dump_file_name, "~QMFix.%lu", (int32_t)getuid());
   dump_fu = open(dump_file_name, (int)(O_RDWR | O_CREAT | O_TRUNC | O_BINARY),
                  default_access);
   if (dump_fu < 0) {
@@ -1653,7 +1656,7 @@ bool open_dump_file() {
 bool write_dumped_data() {
   bool status = FALSE;
   DH_BLOCK* buff;
-  short int rec_offset;
+  int16_t rec_offset;
   DH_RECORD* rec_ptr;
 
   buff = malloc(group_bytes);
@@ -1684,9 +1687,9 @@ exit_write_dumped_data:
 /* ======================================================================
    dump_group()  -  Dump content of group for rebuild                     */
 
-bool dump_group(long int grp) {
+bool dump_group(int32_t grp) {
   bool status = FALSE;
-  short int sf; /* Subfile index */
+  int16_t sf; /* Subfile index */
   int64 offset; /* Buffer offset into subfile */
   DH_BLOCK* buff;
 
@@ -1724,7 +1727,7 @@ exit_dump_group:
 /* ======================================================================
    clear_group()  -  Clear group during rebuild                           */
 
-bool clear_group(long int grp) {
+bool clear_group(int32_t grp) {
   bool status = FALSE;
   int64 offset; /* Buffer offset into subfile */
   int64 new_offset;
@@ -1801,7 +1804,7 @@ exit_release_chain:
 /* ======================================================================
    get_overflow()  -  Allocate a new overflow block                       */
 
-long int get_overflow() {
+int32_t get_overflow() {
   DH_BLOCK* buff;
   int64 offset;
 
@@ -1829,7 +1832,7 @@ long int get_overflow() {
     if (header.file_version < 2) {
       /* Check not about to go over 2Gb */
 
-      if ((((unsigned long)offset) + group_bytes) > 0x80000000L) {
+      if ((((u_int32_t)offset) + group_bytes) > 0x80000000L) {
         emit("Recovery would take file over 2Gb\n");
         offset = 0;
         goto exit_get_overflow;
@@ -1853,11 +1856,11 @@ exit_get_overflow:
 /* ======================================================================
    show_group()  -  Display a group                                       */
 
-void show_group(long int group) {
-  short int sf = 0;
+void show_group(int32_t group) {
+  int16_t sf = 0;
   int64 offset;
-  short int used_bytes;
-  short int rec_offset;
+  int16_t used_bytes;
+  int16_t rec_offset;
   int id_len;
   int64 big_offset;
   char* buffer = NULL;
@@ -1866,8 +1869,8 @@ void show_group(long int group) {
   DH_BIG_BLOCK big_block;
   bool first_big;
   char id[MAX_ID_LEN + 1];
-  long int hash_value;
-  long int hgroup;
+  int32_t hash_value;
+  int32_t hgroup;
   char block_type[20 + 1];
 
   /*
@@ -1991,20 +1994,20 @@ exit_show_group:
 /* ======================================================================
    show_node()  -  Show AK node                                           */
 
-Private void show_node(long int group) {
+Private void show_node(int32_t group) {
   char buffer[DH_AK_NODE_SIZE];
   int64 offset;
-  short int used_bytes;
-  short int rec_offset;
+  int16_t used_bytes;
+  int16_t rec_offset;
   DH_RECORD* rec_ptr;
   int id_len;
-  long int big_offset;
+  int32_t big_offset;
   bool first_big;
   DH_BIG_NODE big_node;
-  short int child_count;
+  int16_t child_count;
   int64 child_offset;
   char* p;
-  short int i;
+  int16_t i;
   int key_len;
 
   offset = (((int64)(group - 1)) * DH_AK_NODE_SIZE) + ak_header_size;
@@ -2133,7 +2136,7 @@ Addr          Next Fl LR Chain Data len Id
 /* ======================================================================
    open_subfile()  -  Open a subfile                                      */
 
-bool open_subfile(short int sf) {
+bool open_subfile(int16_t sf) {
   char path[MAX_PATHNAME_LEN + 1];  // was hardcoded to 160.
   // converted to snprintf() -gwb 23Feb20
   if ((sf >= AK_BASE_SUBFILE) && (header.akpath[0] != '\0')) {
@@ -2155,7 +2158,7 @@ bool open_subfile(short int sf) {
 /* ======================================================================
    read_block()  -  Read a data block                                     */
 
-bool read_block(short int sf, int64 offset, short int bytes, char* buff) {
+bool read_block(int16_t sf, int64 offset, int16_t bytes, char* buff) {
   if (Seek(fu[sf], offset, SEEK_SET) < 0) {
     return FALSE;
   }
@@ -2170,7 +2173,7 @@ bool read_block(short int sf, int64 offset, short int bytes, char* buff) {
 /* ======================================================================
    write_block()  -  Write a data block                                   */
 
-bool write_block(short int sf, int64 offset, short int bytes, char* buff) {
+bool write_block(int16_t sf, int64 offset, int16_t bytes, char* buff) {
   if (Seek(fu[sf], offset, SEEK_SET) < 0) {
     return FALSE;
   }
@@ -2213,7 +2216,7 @@ bool write_header() {
 /* ======================================================================
    delete_subfile()  -  Delete a subfile                                  */
 
-bool delete_subfile(short int sf) {
+bool delete_subfile(int16_t sf) {
   char path[MAX_PATHNAME_LEN + 1];  // was hardcoded 160
   // converted to snprintf() -gwb 23Feb20
   if ((sf >= AK_BASE_SUBFILE) && (header.akpath[0] != '0')) {
@@ -2285,10 +2288,10 @@ bool read_qmconfig() {
 /* ======================================================================
    Map a big record                                                       */
 
-bool map_big_rec(short int rec_hdr_sf,
+bool map_big_rec(int16_t rec_hdr_sf,
                  int64 rec_hdr_offset,
                  DH_RECORD* rec_ptr,
-                 long int* map) {
+                 int32_t* map) {
   int64 offset;
   int64 next_offset;
   DH_BIG_BLOCK big_block;
@@ -2332,14 +2335,14 @@ bool map_big_rec(short int rec_hdr_sf,
    tag_block()  -  Construct space map                                    */
 
 void tag_block(int64 offset,
-               short int ref_subfile,
+               int16_t ref_subfile,
                int64 ref_offset,
-               short int usage) {
-  long int ogrp;
-  long int ref_grp;
-  long int n;
+               int16_t usage) {
+  int32_t ogrp;
+  int32_t ref_grp;
+  int32_t n;
   int64 other_offset;
-  long int other_group;
+  int32_t other_group;
   static char* uses[] = {"free block", "overflow block", "big record block",
                          "ECB"};
   static char* sf[] = {"primary", "overflow"};
@@ -2376,7 +2379,7 @@ void tag_block(int64 offset,
   n = map[ogrp - map_offset];
   if (n == 0) {
     map[ogrp - map_offset] =
-        (((long)usage) << 30) | ((long)ref_subfile << 29) | ref_grp;
+        (((int32_t)usage) << 30) | ((int32_t)ref_subfile << 29) | ref_grp;
   } else {
     other_group = n & 0x1FFFFFFF;
     other_offset = ((int64)n) * group_bytes + header_bytes;
@@ -2394,22 +2397,22 @@ void tag_block(int64 offset,
 /* ======================================================================
    map_node()  -  Map an AK node                                          */
 
-void map_node(short int sf,
-              long int node,
+void map_node(int16_t sf,
+              int32_t node,
               char* ak_map,
-              long int num_nodes,
-              long int parent) {
+              int32_t num_nodes,
+              int32_t parent) {
   char* buff = NULL;
   int64 offset;
   u_char node_type;
-  short int i;
-  long int child;
-  short int used_bytes;
-  short int rec_offset;
+  int16_t i;
+  int32_t child;
+  int16_t used_bytes;
+  int16_t rec_offset;
   DH_BIG_NODE big_node;
   DH_RECORD* rec_ptr;
   int64 big_offset;
-  long int big_node_no;
+  int32_t big_node_no;
 
   if (node > num_nodes) {
     emit("Non-existant node %ld referenced from node %ld\n", node, parent);
@@ -2520,12 +2523,12 @@ exit_map_node:
 /* ======================================================================
    map_ak_free_chain()  -  Add AK free chain to space map                 */
 
-void map_ak_free_chain(short int sf, char* map, long int num_nodes) {
+void map_ak_free_chain(int16_t sf, char* map, int32_t num_nodes) {
   char buff[DH_AK_NODE_SIZE];
   DH_AK_HEADER ak_header;
   int64 offset;
-  long int node;
-  long int last_node;
+  int32_t node;
+  int32_t last_node;
 
   read_block(sf, 0, DH_AK_HEADER_SIZE, (char*)&ak_header);
 
@@ -2586,7 +2589,7 @@ exit_map_ak_free_chain:
 
 bool recover_space() {
   bool status = FALSE;
-  short int sf;
+  int16_t sf;
   char oldpath[MAX_PATHNAME_LEN + 1];
   char newpath[MAX_PATHNAME_LEN + 1];
   int ofu;                   /* New overflow subfile */
@@ -2599,11 +2602,11 @@ bool recover_space() {
   int64 next_big_offset;
   int64 next_offset;
   int64 rewrite_offset;
-  short int used_bytes;
-  short int rec_offset;
+  int16_t used_bytes;
+  int16_t rec_offset;
   DH_RECORD* rec_ptr;
   bool rewrite;
-  long int grp;
+  int32_t grp;
   int64 n;
   bool damaged = FALSE;
 
@@ -2854,27 +2857,27 @@ exit_recover_space:
 bool write_record(DH_RECORD* rec) {
   bool status = FALSE;
   char id[MAX_ID_LEN + 1];
-  short int id_len; /* Record id length */
-  long int hash_value;
+  int16_t id_len; /* Record id length */
+  int32_t hash_value;
   int64 offset;                  /* Offset of group buffer in file */
-  long int group;                /* Group number */
+  int32_t group;                /* Group number */
   DH_BLOCK* buff = NULL;         /* Active buffer */
-  short int subfile;             /* Current subfile */
+  int16_t subfile;             /* Current subfile */
   int rec_offset;                /* Offset of record in group buffer */
   DH_RECORD* rec_ptr;            /* Record pointer */
-  short int used_bytes;          /* Number of bytes used in this group buffer */
-  long int old_big_rec_head = 0; /* Head of old big record chain */
+  int16_t used_bytes;          /* Number of bytes used in this group buffer */
+  int32_t old_big_rec_head = 0; /* Head of old big record chain */
   int64 overflow_offset;
   DH_BLOCK* obuff = NULL;
 #ifdef REPLACE_DUPLICATE
   // I moved the rec_size declaration here because it's only used within the
   // REPLACE_DUPLICATE code block below.  Otherwise it throws a variable set but
   // never used warning. -gwb 24Feb20
-  short int rec_size; /* Size of current record */
-  short int space;
-  short int orec_offset;
+  int16_t rec_size; /* Size of current record */
+  int16_t space;
+  int16_t orec_offset;
   DH_RECORD* orec_ptr;
-  short int orec_bytes;
+  int16_t orec_bytes;
   char* p;
   char* q;
   int n;
@@ -3224,7 +3227,7 @@ void event_handler(int signum) {
 
 char* I64(int64 x) {
   static char s[8][20];
-  static short int i = 0;
+  static int16_t i = 0;
 
   i = (i + 1) % 8;
   sprintf(s[i], "%.12llX", x);
@@ -3234,7 +3237,7 @@ char* I64(int64 x) {
 /* ======================================================================
    memupr()  -  Uppercase specified number of bytes                       */
 
-void memupr(char* str, short int len) {
+void memupr(char* str, int16_t len) {
   register char c;
 
   while (len--) {
@@ -3257,11 +3260,11 @@ char* strupr(char* s) {
 /* ======================================================================
    progress_bar()  -  Draw a progress bar                                 */
 
-void progress_bar(long int grp) {
+void progress_bar(int32_t grp) {
 #define MIN_BAR_INTERVAL 100
-  short int pct_done; /* Actually 50ths */
-  static short int last_pct_reported = -1;
-  static long int last_grp_reported = -MIN_BAR_INTERVAL;
+  int16_t pct_done; /* Actually 50ths */
+  static int16_t last_pct_reported = -1;
+  static int32_t last_grp_reported = -MIN_BAR_INTERVAL;
   char s[100];
 
   if (suppress_bar)
@@ -3272,7 +3275,7 @@ void progress_bar(long int grp) {
     if (grp > header.params.modulus)
       return; /* Scanning released groups */
 
-    pct_done = (short int)((((double)grp) * 50) / header.params.modulus);
+    pct_done = (int16_t)((((double)grp) * 50) / header.params.modulus);
     if ((pct_done != last_pct_reported) &&
         (grp - last_grp_reported >= MIN_BAR_INTERVAL)) {
       memset(s, '-', 50);

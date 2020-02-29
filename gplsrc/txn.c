@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 27Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
  * 22Feb20 gwb Converted an sprintf() to snprintf() in op_txncmt().
  * 
  * START-HISTORY (OpenQM):
@@ -55,29 +57,29 @@
 typedef struct TXN_CACHE TXN_CACHE;
 struct TXN_CACHE {
   TXN_CACHE* next;
-  short int mode;
+  int16_t mode;
 #define TXN_WRITE 1
 #define TXN_DELETE 2
 #define TXN_CLOSE 3
   FILE_VAR* fvar;    /* File */
   STRING_CHUNK* str; /* Data to write */
-  short int id_len;
+  int16_t id_len;
   char id[1];
 };
 
 Private TXN_CACHE* txn_head = NULL;
 Private TXN_CACHE* txn_tail = NULL;
-Private short int txn_cproc_level;
+Private int16_t txn_cproc_level;
 Private bool journalled_txn; /* Journalled update in this txn? */
 
 int txn_depth = 0;           /* Also accessed by op_sys.c */
-unsigned long commit_txn_id; /* Also needed by dh_jnl.c */
+u_int32_t commit_txn_id; /* Also needed by dh_jnl.c */
 
 typedef struct TXN_STACK TXN_STACK;
 struct TXN_STACK {
   TXN_STACK* next;
-  unsigned long txn_id;  /* Previous transaction id */
-  short int cproc_level; /* Command process level of previous transaction */
+  u_int32_t txn_id;  /* Previous transaction id */
+  int16_t cproc_level; /* Command process level of previous transaction */
   bool journalled_txn;
   TXN_CACHE* txn_head;
   TXN_CACHE* txn_tail;
@@ -89,9 +91,9 @@ struct TXN_STACK {
 
 Private TXN_STACK* txn_stack = NULL;
 
-Private TXN_CACHE* alloc_txn(short int id_len);
+Private TXN_CACHE* alloc_txn(int16_t id_len);
 Private void rollback(void);
-Private void clear_parent(short int fno, char* id, short int id_len);
+Private void clear_parent(int16_t fno, char* id, int16_t id_len);
 
 /* ======================================================================
    op_txnbgn()  -  Begin transaction                                      */
@@ -308,11 +310,11 @@ exit_txn_close:
 /* ======================================================================
    txn_delete()  -  Delete record via transaction cache                   */
 
-bool txn_delete(FILE_VAR* fvar, char* id, short int id_len) {
+bool txn_delete(FILE_VAR* fvar, char* id, int16_t id_len) {
   bool status = FALSE;
   TXN_CACHE* txn;
   STRING_CHUNK* str;
-  short int fno;
+  int16_t fno;
   FILE_ENTRY* fptr;
   bool nocase;
 
@@ -410,16 +412,16 @@ FILE_VAR* txn_open(char* pathname) {
    It is the caller's responsibility to increment the string reference
    count if the string is to be retained.                                  */
 
-short int txn_read(FILE_VAR* fvar,
+int16_t txn_read(FILE_VAR* fvar,
                    char* id,
-                   short int id_len,
+                   int16_t id_len,
                    char* actual_id,
                    STRING_CHUNK** str) {
-  short int status = 0;
+  int16_t status = 0;
   TXN_CACHE* head;
   TXN_STACK* stack;
   TXN_CACHE* txn;
-  short int fno;
+  int16_t fno;
   FILE_ENTRY* fptr;
   bool nocase;
 
@@ -466,11 +468,11 @@ exit_txn_read:
 /* ======================================================================
    txn_write()  -  Write record to transaction cache                      */
 
-bool txn_write(FILE_VAR* fvar, char* id, short int id_len, STRING_CHUNK* str) {
+bool txn_write(FILE_VAR* fvar, char* id, int16_t id_len, STRING_CHUNK* str) {
   bool status = FALSE;
   TXN_CACHE* txn;
   STRING_CHUNK* old_str;
-  short int fno;
+  int16_t fno;
   FILE_ENTRY* fptr;
   bool nocase;
 
@@ -528,7 +530,7 @@ exit_txn_write:
 /* ======================================================================
    alloc_txn()  -  Allocate transaction cache entry                       */
 
-Private TXN_CACHE* alloc_txn(short int id_len) {
+Private TXN_CACHE* alloc_txn(int16_t id_len) {
   TXN_CACHE* txn;
   int bytes;
 
@@ -560,7 +562,7 @@ Private void rollback() {
   TXN_CACHE* next_txn;
   FILE_VAR* fvar;
   STRING_CHUNK* str;
-  unsigned long saved_txn_id;
+  u_int32_t saved_txn_id;
 
   /* Remove all uncommitted actions */
 
@@ -616,9 +618,9 @@ Private void rollback() {
 /* ======================================================================
    clear_parent()  -  Clear references to record from parent txns         */
 
-Private void clear_parent(short int fno,    /* File number */
+Private void clear_parent(int16_t fno,    /* File number */
                           char* id,         /* Record id and... */
-                          short int id_len) /* ...id length */
+                          int16_t id_len) /* ...id length */
 {
   TXN_STACK* stack;
   TXN_CACHE* txn;

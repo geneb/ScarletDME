@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ *
  * 22Feb20 gwb Corrected an uninitialized variable issue in op_umask().
  *             I'm initializing it to 0, which is going to be better than
  *             the potentially random number that could be there when the
@@ -125,8 +128,8 @@ bool qmsendmail(char* sender,
 
 extern time_t clock_time;
 extern char* month_names[];
-Private long int date_adjustment = 0;
-Private short int tbase; /* Base of TOTAL() accumulator array,
+Private int32_t date_adjustment = 0;
+Private int16_t tbase; /* Base of TOTAL() accumulator array,
                                    zero if not to be used              */
 
 Private void for1(bool store_before_test);
@@ -146,7 +149,7 @@ void op_abtcause() {
    op_argct()  -  ARGCT()  -  Return count of passed arguments            */
 
 void op_argct() {
-  short int arg_ct;
+  int16_t arg_ct;
 
   arg_ct = process.program.arg_ct;
   if (process.program.flags & HDR_IS_FUNCTION)
@@ -171,7 +174,7 @@ void op_ascii() {
   DESCRIPTOR* descr;
   STRING_CHUNK* str;
   u_char* p;
-  short int bytes;
+  int16_t bytes;
   static u_char table[] = {
       /*0    1    2    3    4    5    6    7    8    9    A    B    C    D    E    F */
       0x00, 0x01, 0x02, 0x03, 0x3F, 0x09, 0x3F, 0x7F, 0x3F, 0x3F, 0x3F, 0x0B,
@@ -246,7 +249,7 @@ void op_clrmode() {
 
   descr = e_stack - 1;
   GetInt(descr);
-  process.program.flags &= ~((unsigned long int)(descr->data.value));
+  process.program.flags &= ~((u_int32_t)(descr->data.value));
   k_pop(1);
 }
 
@@ -324,7 +327,7 @@ void op_ebcdic() {
   DESCRIPTOR* descr;
   STRING_CHUNK* str;
   u_char* p;
-  short int bytes;
+  int16_t bytes;
   register u_char c;
   static u_char table[] = {
       /*0    1    2    3    4    5    6    7    8    9    A    B    C    D    E    F */
@@ -375,7 +378,7 @@ void op_ebcdic() {
 void op_pwcrypt() {
   DESCRIPTOR* descr;
   STRING_CHUNK* str;
-  long int a = 1;
+  int32_t a = 1;
   double n;
   int i = 1;
   u_char* p;
@@ -390,10 +393,10 @@ void op_pwcrypt() {
       n = str->bytes;
       p = (u_char*)(str->data);
       while (n--)
-        a = (long)sqrt(a * i++ * *(p++));
+        a = (int32_t)sqrt(a * i++ * *(p++));
     } while ((str = str->next) != NULL);
 
-    srand((long int)a);
+    srand((int32_t)a);
 
     for (i = 1, p = result; i <= 16; i++)
       *(p++) = 33 + (rand() % 94);
@@ -472,11 +475,11 @@ Private void forloop(bool store_before_test) {
 
   DESCRIPTOR* descr;
   DESCRIPTOR* control_descr;
-  long int control_value;
+  int32_t control_value;
   double fcontrol_value;
-  long int limit;
+  int32_t limit;
   double flimit;
-  long int step;
+  int32_t step;
   double fstep;
   bool is_float = FALSE;
   bool again;
@@ -607,7 +610,7 @@ Private void forloop(bool store_before_test) {
   if (again) {
     pc += 3;
   } else {
-    pc = c_base + (*pc | (((long)*(pc + 1)) << 8) | (((long)*(pc + 2)) << 16));
+    pc = c_base + (*pc | (((int32_t)*(pc + 1)) << 8) | (((int32_t)*(pc + 2)) << 16));
   }
 }
 
@@ -642,9 +645,9 @@ Private void for1(bool store_before_test) {
 
   DESCRIPTOR* descr;
   DESCRIPTOR* control_descr;
-  long int control_value;
+  int32_t control_value;
   double fcontrol_value;
-  long int limit;
+  int32_t limit;
   double flimit;
   bool is_float = FALSE;
   bool again;
@@ -753,7 +756,7 @@ Private void for1(bool store_before_test) {
   if (again) {
     pc += 3;
   } else {
-    pc = c_base + (*pc | (((long)*(pc + 1)) << 8) | (((long)*(pc + 2)) << 16));
+    pc = c_base + (*pc | (((int32_t)*(pc + 1)) << 8) | (((int32_t)*(pc + 2)) << 16));
   }
 }
 
@@ -813,7 +816,7 @@ void op_itype2() {
 
   descr = e_stack - 1;
   GetInt(descr);
-  tbase = (short int)(descr->data.value);
+  tbase = (int16_t)(descr->data.value);
   k_pop(1);
 
   itype();
@@ -832,10 +835,10 @@ Private void itype() {
   DESCRIPTOR* descr;
   STRING_CHUNK* str;
   char* p;
-  short int i;
+  int16_t i;
   int n;
   u_char type;
-  unsigned short int header_flags;
+  u_int16_t header_flags;
   OBJECT_HEADER* obj;
 
   /* Find I-type code.  An I-type must be referenced via an ADDR as we are
@@ -879,7 +882,8 @@ Private void itype() {
   }
 
   k_pop(1);
-  if (((long int)p) & 0x00000003) {
+  
+  if (((int32_t)p) & 0x00000003) {
     /* Not word aligned - must make a copy. To ensure that this gets
       released at an abort, we push a string descriptor onto the stack */
 
@@ -964,11 +968,11 @@ void op_sendmail() {
 
   DESCRIPTOR* descr;
   char* text;
-  long int text_bytes;
+  int32_t text_bytes;
   char* recipients = NULL;
   char* cc_recipients = NULL;
   char* bcc_recipients = NULL;
-  long int bytes;
+  int32_t bytes;
   char sender[100 + 1];
   char subject[255 + 1];
   char* attachments = NULL;
@@ -1085,7 +1089,7 @@ void op_nap() {
 
   DESCRIPTOR* descr;
   time_t wake_time;
-  long int tm;
+  int32_t tm;
 
   descr = e_stack - 1;
   GetInt(descr);
@@ -1176,7 +1180,7 @@ void op_pause() {
  */
 
   DESCRIPTOR* descr;
-  long int timeout;
+  int32_t timeout;
 
   descr = e_stack - 1;
   GetInt(descr);
@@ -1209,7 +1213,7 @@ exit_op_pause:
 
 void op_precision() {
   DESCRIPTOR* descr;
-  long int precision;
+  int32_t precision;
 
   descr = e_stack - 1;
   GetInt(descr);
@@ -1220,7 +1224,7 @@ void op_precision() {
   else if (precision > 14)
     precision = 14;
 
-  process.program.precision = (short int)precision;
+  process.program.precision = (int16_t)precision;
 
   k_pop(1);
 }
@@ -1350,8 +1354,8 @@ void op_sleep() {
  */
 
   DESCRIPTOR* descr;
-  long int time_now;
-  long int wake_time;
+  int32_t time_now;
+  int32_t wake_time;
 
   time_now = local_time();
 
@@ -1418,23 +1422,23 @@ void op_time() {
 
 void op_timedate() {
   char s[20 + 1];
-  long int timenow;
-  short int hour;
-  short int min;
-  short int sec;
+  int32_t timenow;
+  int16_t hour;
+  int16_t min;
+  int16_t sec;
   STRING_CHUNK* p;
-  long int n;
-  short int i;
+  int32_t n;
+  int16_t i;
 
   timenow = local_time() + date_adjustment;
 
   /* Form time of day values */
 
   n = timenow % 86400L;
-  hour = (short int)(n / 3600);
+  hour = (int16_t)(n / 3600);
   n = n % 3600;
-  min = (short int)(n / 60);
-  sec = (short int)(n % 60);
+  min = (int16_t)(n / 60);
+  sec = (int16_t)(n % 60);
 
   /* Build result string */
 
@@ -1456,7 +1460,7 @@ void op_timedate() {
    op_total()  -  TOTAL() function                                        */
 
 void op_total() {
-  short int index;
+  int16_t index;
   DESCRIPTOR* descr;
   DESCRIPTOR* total_descr;
 
@@ -1583,12 +1587,12 @@ void op_wake() {
  */
 
   DESCRIPTOR* descr;
-  short int uid;
+  int16_t uid;
   USER_ENTRY* uptr;
 
   descr = e_stack - 1;
   GetInt(descr);
-  uid = (short int)(descr->data.value);
+  uid = (int16_t)(descr->data.value);
   k_dismiss();
 
   if ((uid > 0) && (uid <= sysseg->hi_user_no)) {
@@ -1650,14 +1654,14 @@ exit_op_xtd:
 Private char days_in_month[12] = {31, 28, 31, 30, 31, 30,
                                   31, 31, 30, 31, 30, 31};
 
-void day_to_dmy(long int day_no,
-                short int* day,    /* 1 - 31 */
-                short int* mon,    /* 1 - 12 */
-                short int* year,   /* Absolute */
-                short int* julian) /* Day of year */
+void day_to_dmy(int32_t day_no,
+                int16_t* day,    /* 1 - 31 */
+                int16_t* mon,    /* 1 - 12 */
+                int16_t* year,   /* Absolute */
+                int16_t* julian) /* Day of year */
 {
-  long int n;
-  short int i;
+  int32_t n;
+  int16_t i;
 
   /* The Pick date has 31/12/67 as day zero. For convenience in conversion,
     adjust the date value so that the datum becomes 1/1/0001 as day zero.  */
@@ -1668,20 +1672,20 @@ void day_to_dmy(long int day_no,
 
   n = day_no / 146097;
 
-  *year = (short int)(1 + (n * 400));
+  *year = (int16_t)(1 + (n * 400));
 
   day_no -= n * 146097;
 
   /* Calculate number of 100 year cycles within this 400 year cycle */
 
   n = min(day_no / 36524, 3);
-  *year += (short int)(n * 100);
+  *year += (int16_t)(n * 100);
   day_no -= n * 36524;
 
   /* Calculate number of 4 year cycles within this 100 year cycle */
 
   n = day_no / 1461;
-  *year += (short int)(n * 4);
+  *year += (int16_t)(n * 4);
   day_no -= n * 1461;
 
   /* Calculate whole years into this four year group */
@@ -1690,10 +1694,10 @@ void day_to_dmy(long int day_no,
     n = 3; /* Final day of 4 year group */
   else
     n = day_no / 365;
-  *year += (short int)n;
+  *year += (int16_t)n;
   day_no -= n * 365;
 
-  *julian = (short int)(day_no + 1);
+  *julian = (int16_t)(day_no + 1);
 
   /* Is this a leap year? */
 
@@ -1711,18 +1715,18 @@ void day_to_dmy(long int day_no,
   }
 
   *mon = i + 1;
-  *day = (short int)(day_no + 1);
+  *day = (int16_t)(day_no + 1);
 }
 
 /* ======================================================================
    day_to_ddmmmyyyy()  -  Convert date to DD MMM YYYY format              */
 
-char* day_to_ddmmmyyyy(long int day_no) /* QM format day number */
+char* day_to_ddmmmyyyy(int32_t day_no) /* QM format day number */
 {
-  short int year;
-  short int mon;
-  short int day;
-  short int day_of_year;
+  int16_t year;
+  int16_t mon;
+  int16_t day;
+  int16_t day_of_year;
   static char date_string[11 + 1];
 
   day_to_dmy(day_no, &day, &mon, &year, &day_of_year);
@@ -1738,7 +1742,7 @@ char* day_to_ddmmmyyyy(long int day_no) /* QM format day number */
 /* ======================================================================
    set_date()  -  Set current date                                        */
 
-void set_date(long int new_date) {
+void set_date(int32_t new_date) {
   date_adjustment = (new_date - ((local_time() / 86400L) + 732)) * 86400;
 }
 
