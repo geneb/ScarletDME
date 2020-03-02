@@ -18,7 +18,13 @@
  * 
  * Ladybridge Systems can be contacted via the www.openqm.com web site.
  * 
- * START-HISTORY:
+ * ScarletDME Wiki: https://scarlet.deltasoft.com
+ * 
+ * START-HISTORY (ScarletDME):
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ *
+ * START-HISTORY (OpenQM):
  * 01 Jul 07  2.5-7 Extensive change for PDA merge.
  * 15 Nov 06  2.4-16 0527 Moved printing of mode 1 job to to_file.c
  * 13 Oct 06  2.4-15 Separated printer name and file name in print unit.
@@ -39,77 +45,67 @@
  * START-CODE
  */
 
-#include <qm.h>
-#include <tio.h>
-#include <config.h>
+#include "qm.h"
+#include "tio.h"
+#include "config.h"
 
 #define FILE_BUFF_SIZE 1024
 
-void to_file(PRINT_UNIT * pu, char * str, short int bytes);
-
+void to_file(PRINT_UNIT* pu, char* str, int16_t bytes);
 
 /* ======================================================================
    to_printer  -  Send text to printer                                    */
 
-void to_printer(pu, str, bytes)
-   PRINT_UNIT * pu;
-   char * str;
-   short int bytes;
-{
- to_file(pu, str, bytes);
-}
+void to_printer(pu, str, bytes) PRINT_UNIT* pu;
+char* str;
+int16_t bytes;
+{ to_file(pu, str, bytes); }
 
 /* ======================================================================
    validate_printer()  -  Check printer name is valid                     */
 
-bool validate_printer(printer_name)
-   char * printer_name;
-{
- return TRUE;
-}
+bool validate_printer(printer_name) char* printer_name;
+{ return TRUE; }
 
 /* ======================================================================
    end_printer()  -  End access to printer                                */
 
-void end_printer(pu)
-   PRINT_UNIT * pu;
+void end_printer(pu) PRINT_UNIT* pu;
 {
- if (!(pu->flags & PU_KEEP_OPEN))
-  {
-   end_file(pu);
+  if (!(pu->flags & PU_KEEP_OPEN)) {
+    end_file(pu);
   }
 }
 
 /* ======================================================================
    spool_print_job()                                                      */
 
-void spool_print_job(PRINT_UNIT * pu)
-{
- char cmd[300];
- char * p;
+void spool_print_job(PRINT_UNIT* pu) {
+  char cmd[300];
+  char* p;
 
-   if (pu->spooler != NULL)
-    {
-     p = cmd + sprintf(cmd, "%s ", pu->spooler);
-    }
-   else if (pcfg.spooler[0] != '\0')
-    {
-     p = cmd + sprintf(cmd, "%s ", pcfg.spooler);
-    }
-   else
-    {
-     p = cmd + sprintf(cmd, "lp ");
-    }
+  if (pu->spooler != NULL) {
+    p = cmd + sprintf(cmd, "%s ", pu->spooler);
+  } else if (pcfg.spooler[0] != '\0') {
+    p = cmd + sprintf(cmd, "%s ", pcfg.spooler);
+  } else {
+    p = cmd + sprintf(cmd, "lp ");
+  }
 
-   if (pu->copies > 1) p +=  sprintf(p, " -n %d", pu->copies);     /* Copies */
-   if (pu->printer_name != NULL) p += sprintf(p, " -d %s", pu->printer_name);  /* Printer */
-   if (pu->banner != NULL) p += sprintf(p, " -t \"%s\"", pu->banner);  /* Banner */
-   if (pu->options != NULL) p += sprintf(p, " -o \"%s\"", pu->options);  /* Options */
-   if (pu->flags & PU_LAND) p += sprintf(p, " -o \"landscape\"");
+  if (pu->copies > 1)
+    p += sprintf(p, " -n %d", pu->copies); /* Copies */
+  if (pu->printer_name != NULL)
+    p += sprintf(p, " -d %s", pu->printer_name); /* Printer */
+  if (pu->banner != NULL)
+    p += sprintf(p, " -t \"%s\"", pu->banner); /* Banner */
+  if (pu->options != NULL)
+    p += sprintf(p, " -o \"%s\"", pu->options); /* Options */
+  if (pu->flags & PU_LAND)
+    p += sprintf(p, " -o \"landscape\"");
 
-   p += sprintf(p, " '%s' > /dev/null", pu->file.pathname);    /* File to print */
+  p += sprintf(p, " '%s' > /dev/null", pu->file.pathname); /* File to print */
 
-   system(cmd);
+  system(cmd);
 }
 
 /* END-CODE */

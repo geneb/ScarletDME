@@ -18,7 +18,13 @@
  * 
  * Ladybridge Systems can be contacted via the www.openqm.com web site.
  * 
- * START-HISTORY:
+ * ScarletDME Wiki: https://scarlet.deltasoft.com
+ * 
+ * START-HISTORY (ScarletDME):
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ *
+ * START-HISTORY (OpenQM):
  * 01 Jul 07  2.5-7 Extensive change for PDA merge.
  * 05 Oct 06  2.4-14 Added op_ldlstr().
  * 03 Jul 06  2.4-6 op_arg() now aborts if illegal argument number given.
@@ -74,16 +80,14 @@
 #include "qm.h"
 #include "options.h"
 
-Private void set_descr(DESCRIPTOR * p, u_char type);
+Private void set_descr(DESCRIPTOR* p, u_char type);
 void op_ldsys(void);
-
 
 /* ======================================================================
    op_arg()  -  Return argument n from the current subroutine             */
 
-void op_arg()
-{
- /* Stack:
+void op_arg() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -92,29 +96,27 @@ void op_arg()
      |=============================|=============================|
  */
 
- DESCRIPTOR * descr;
- int arg;
+  DESCRIPTOR* descr;
+  int arg;
 
- descr = e_stack - 1;
- GetInt(descr);
- arg = descr->data.value;
- k_dismiss();
+  descr = e_stack - 1;
+  GetInt(descr);
+  arg = descr->data.value;
+  k_dismiss();
 
- if ((arg < 1) || (arg > process.program.arg_ct))
-  {
-   k_error("Illegal argument reference");
+  if ((arg < 1) || (arg > process.program.arg_ct)) {
+    k_error("Illegal argument reference");
   }
 
- InitDescr(e_stack, ADDR);
- (e_stack++)->data.d_addr = process.program.vars + arg - 1;
+  InitDescr(e_stack, ADDR);
+  (e_stack++)->data.d_addr = process.program.vars + arg - 1;
 }
 
 /* ======================================================================
    op_ass()  -  ASSIGNED() function                                       */
 
-void op_ass()
-{
- /* Stack:
+void op_ass() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -123,25 +125,25 @@ void op_ass()
      |=============================|=============================|
  */
 
- DESCRIPTOR * descr;
- DESCRIPTOR * test_descr;
+  DESCRIPTOR* descr;
+  DESCRIPTOR* test_descr;
 
- descr = e_stack - 1;
+  descr = e_stack - 1;
 
- test_descr = descr;
- while(test_descr->type == ADDR) test_descr = test_descr->data.d_addr;
+  test_descr = descr;
+  while (test_descr->type == ADDR)
+    test_descr = test_descr->data.d_addr;
 
- Release(descr);
- InitDescr(descr, INTEGER);
- descr->data.value = (test_descr->type != UNASSIGNED);
+  Release(descr);
+  InitDescr(descr, INTEGER);
+  descr->data.value = (test_descr->type != UNASSIGNED);
 }
 
 /* ======================================================================
    op_changed()  -  CHANGED() function (restricted)                       */
 
-void op_changed()
-{
- /* Stack:
+void op_changed() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -150,62 +152,59 @@ void op_changed()
      |=============================|=============================|
  */
 
- DESCRIPTOR * descr;
- DESCRIPTOR * test_descr;
+  DESCRIPTOR* descr;
+  DESCRIPTOR* test_descr;
 
- descr = e_stack - 1;
+  descr = e_stack - 1;
 
- test_descr = descr;
- while(test_descr->type == ADDR) test_descr = test_descr->data.d_addr;
+  test_descr = descr;
+  while (test_descr->type == ADDR)
+    test_descr = test_descr->data.d_addr;
 
- Release(descr);
- InitDescr(descr, INTEGER);
- descr->data.value = ((test_descr->flags & DF_ARGSET) == 0);
+  Release(descr);
+  InitDescr(descr, INTEGER);
+  descr->data.value = ((test_descr->flags & DF_ARGSET) == 0);
 }
 
 /* ======================================================================
    op_clear()  -  CLEAR statement  -  Set local variables to zero         */
 
-void op_clear()
-{
- DESCRIPTOR * p;            /* Local variable descriptor */
- short int i;               /* Local variable index */
+void op_clear() {
+  DESCRIPTOR* p; /* Local variable descriptor */
+  int16_t i;   /* Local variable index */
 
- for (i = 0, p = process.program.vars; i < process.program.no_vars; i++, p++)
-  {
-   if ((p->type != COMMON) && (!(p->flags & DF_SYSTEM))) set_descr(p, INTEGER);
+  for (i = 0, p = process.program.vars; i < process.program.no_vars; i++, p++) {
+    if ((p->type != COMMON) && (!(p->flags & DF_SYSTEM)))
+      set_descr(p, INTEGER);
   }
 }
 
 /* ======================================================================
    op_clrcom()  -  CLEARCOMMON : Set unnamed common variables to zero     */
 
-void op_clrcom()
-{
- DESCRIPTOR descr;
- DESCRIPTOR * p;
- ARRAY_HEADER * a_hdr;
- ARRAY_CHUNK * a_chunk;
- STRING_CHUNK * str_hdr;
- char block_name[3+1];
+void op_clrcom() {
+  DESCRIPTOR descr;
+  DESCRIPTOR* p;
+  ARRAY_HEADER* a_hdr;
+  ARRAY_CHUNK* a_chunk;
+  STRING_CHUNK* str_hdr;
+  char block_name[3 + 1];
 
- /* Find blank common */
+  /* Find blank common */
 
- sprintf(block_name, "$%d", (int)cproc_level);
+  sprintf(block_name, "$%d", (int)cproc_level);
 
- for (a_hdr = process.named_common; a_hdr != NULL;
-      a_hdr = a_hdr->next_common)
-  {
-   a_chunk = a_hdr->chunk[0];
-   
-   str_hdr = a_chunk->descr[0].data.str.saddr;
-   if (strcmp(str_hdr->data, block_name) == 0)
-    {
-     p = &descr;
-     InitDescr(p, COMMON);
-     descr.data.c_addr = a_hdr;
-     set_descr(p, INTEGER);
-     break;
+  for (a_hdr = process.named_common; a_hdr != NULL;
+       a_hdr = a_hdr->next_common) {
+    a_chunk = a_hdr->chunk[0];
+
+    str_hdr = a_chunk->descr[0].data.str.saddr;
+    if (strcmp(str_hdr->data, block_name) == 0) {
+      p = &descr;
+      InitDescr(p, COMMON);
+      descr.data.c_addr = a_hdr;
+      set_descr(p, INTEGER);
+      break;
     }
   }
 }
@@ -213,9 +212,8 @@ void op_clrcom()
 /* ======================================================================
    op_deref()  -  DEREF opcode. Resolve item as actual value.             */
 
-void op_deref()
-{
- /* Stack:
+void op_deref() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -224,19 +222,19 @@ void op_deref()
      |=============================|=============================|
  */
 
- DESCRIPTOR * descr;
+  DESCRIPTOR* descr;
 
- descr = (e_stack - 1)->data.d_addr;   /* One step only */
- if (descr->type == ADDR) k_get_value(descr);
- k_pop(1);  /* Always ADDR */
+  descr = (e_stack - 1)->data.d_addr; /* One step only */
+  if (descr->type == ADDR)
+    k_get_value(descr);
+  k_pop(1); /* Always ADDR */
 }
 
 /* ======================================================================
    op_dup()  -  Duplicate item at top of stack                            */
 
-void op_dup()
-{
- /* Stack:
+void op_dup() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -247,64 +245,64 @@ void op_dup()
      |=============================|=============================|
  */
 
- register STRING_CHUNK * str;
+  register STRING_CHUNK* str;
 
- *e_stack = *(e_stack - 1);
+  *e_stack = *(e_stack - 1);
 
- /* ++ALLTYPES++ */
+  /* ++ALLTYPES++ */
 
- switch(e_stack->type)
-  {
-   case SUBR:
+  switch (e_stack->type) {
+    case SUBR:
       str = e_stack->data.subr.saddr;
-      if (str != NULL) str->ref_ct++;
+      if (str != NULL)
+        str->ref_ct++;
       break;
 
-   case STRING:
-   case SELLIST:
+    case STRING:
+    case SELLIST:
       str = e_stack->data.str.saddr;
-      if (str != NULL) str->ref_ct++;
+      if (str != NULL)
+        str->ref_ct++;
       break;
 
-   case FILE_REF:
+    case FILE_REF:
       e_stack->data.fvar->ref_ct++;
       break;
 
-   case ARRAY:
+    case ARRAY:
       e_stack->data.ahdr_addr->ref_ct++;
       break;
 
-   case COMMON:
-   case PERSISTENT:
+    case COMMON:
+    case PERSISTENT:
       e_stack->data.c_addr->ref_ct++;
       break;
 
-   case IMAGE:
+    case IMAGE:
       e_stack->data.i_addr->ref_ct++;
       break;
 
-   case BTREE:
+    case BTREE:
       e_stack->data.btree->ref_ct++;
       break;
 
-   case SOCK:
+    case SOCK:
       e_stack->data.sock->ref_ct++;
       break;
 
-   case OBJ:
+    case OBJ:
       e_stack->data.objdata->ref_ct++;
       break;
   }
 
- e_stack++;
+  e_stack++;
 }
 
 /* ======================================================================
    op_ld0()  -  Load integer zero                                         */
 
-void op_ld0()
-{
- /* Stack:
+void op_ld0() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -313,17 +311,15 @@ void op_ld0()
      |=============================|=============================|
  */
 
- InitDescr(e_stack, INTEGER);
- (e_stack++)->data.value = 0;
+  InitDescr(e_stack, INTEGER);
+  (e_stack++)->data.value = 0;
 }
-
 
 /* ======================================================================
    op_ld1()  -  Load integer one                                          */
 
-void op_ld1()
-{
- /* Stack:
+void op_ld1() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -332,16 +328,15 @@ void op_ld1()
      |=============================|=============================|
  */
 
- InitDescr(e_stack, INTEGER);
- (e_stack++)->data.value = 1;
+  InitDescr(e_stack, INTEGER);
+  (e_stack++)->data.value = 1;
 }
 
 /* ======================================================================
    op_ldcom()  -  Load variable from common                               */
 
-void op_ldcom()
-{
- /* Stack:
+void op_ldcom() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -350,52 +345,48 @@ void op_ldcom()
      |=============================|=============================|
  */
 
- unsigned short int com_no;
- DESCRIPTOR * com_descr;    /* Common block descriptor */
- unsigned long int var_no;
- ARRAY_HEADER * a_hdr;
- ARRAY_CHUNK * a_chunk;
+  u_int16_t com_no;
+  DESCRIPTOR* com_descr; /* Common block descriptor */
+  u_int32_t var_no;
+  ARRAY_HEADER* a_hdr;
+  ARRAY_CHUNK* a_chunk;
 
- /* Fetch common block number and locate block */
+  /* Fetch common block number and locate block */
 
- com_no = *pc | (unsigned short int)(*(pc + 1) << 8);
- pc += 2;
+  com_no = *pc | (u_int16_t)(*(pc + 1) << 8);
+  pc += 2;
 
- com_descr = process.program.vars + com_no;
+  com_descr = process.program.vars + com_no;
 
- while(com_descr->type == ADDR) com_descr = com_descr->data.d_addr;
- if ((com_descr->type != COMMON)
-     && (com_descr->type != PERSISTENT)
-     && (com_descr->type != LOCALVARS))
-  {
-   k_error(sysmsg(1233));
+  while (com_descr->type == ADDR)
+    com_descr = com_descr->data.d_addr;
+  if ((com_descr->type != COMMON) && (com_descr->type != PERSISTENT) &&
+      (com_descr->type != LOCALVARS)) {
+    k_error(sysmsg(1233));
   }
 
- a_hdr = com_descr->data.ahdr_addr;
+  a_hdr = com_descr->data.ahdr_addr;
 
- /* Fetch variable number within common block */
+  /* Fetch variable number within common block */
 
- var_no = *pc | (((long int)*(pc + 1)) << 8);
- pc += 2;
+  var_no = *pc | (((int32_t)*(pc + 1)) << 8);
+  pc += 2;
 
- if ((var_no < 1) || (var_no > (unsigned long int)(a_hdr->rows)))
-  {
-   k_error(sysmsg(1234));
+  if ((var_no < 1) || (var_no > (u_int32_t)(a_hdr->rows))) {
+    k_error(sysmsg(1234));
   }
 
+  a_chunk = a_hdr->chunk[var_no / MAX_ARRAY_CHUNK_SIZE];
 
- a_chunk = a_hdr->chunk[var_no / MAX_ARRAY_CHUNK_SIZE];
-
- InitDescr(e_stack, ADDR);
- (e_stack++)->data.d_addr = a_chunk->descr + (var_no % MAX_ARRAY_CHUNK_SIZE);
+  InitDescr(e_stack, ADDR);
+  (e_stack++)->data.d_addr = a_chunk->descr + (var_no % MAX_ARRAY_CHUNK_SIZE);
 }
 
 /* ======================================================================
    op_ldfloat()  -  Load floating point value                             */
 
-void op_ldfloat()
-{
- /* Stack:
+void op_ldfloat() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -404,31 +395,31 @@ void op_ldfloat()
      |=============================|=============================|
  */
 
- InitDescr(e_stack, FLOATNUM);
+  InitDescr(e_stack, FLOATNUM);
 
 #ifdef BIG_ENDIAN_SYSTEM
- {
-  u_char * p;
-  u_char * q;
-  short int n;
-  for(n = sizeof(double), p = (u_char *)&(e_stack->data.float_value), q = pc + n; n--;)
-   {
-    *(p++) = *(--q);
-   }
- }
+  {
+    u_char* p;
+    u_char* q;
+    int16_t n;
+    for (n = sizeof(double), p = (u_char*)&(e_stack->data.float_value),
+        q = pc + n;
+         n--;) {
+      *(p++) = *(--q);
+    }
+  }
 #else
- memcpy(&(e_stack->data.float_value), pc, sizeof(double));
+  memcpy(&(e_stack->data.float_value), pc, sizeof(double));
 #endif
- pc += sizeof(double);
- e_stack++;
+  pc += sizeof(double);
+  e_stack++;
 }
 
 /* ======================================================================
    op_ldlcl()  -  Load local variable address                             */
 
-void op_ldlcl()
-{
- /* Stack:
+void op_ldlcl() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -437,21 +428,20 @@ void op_ldlcl()
      |=============================|=============================|
  */
 
- unsigned long int var_no;
+  u_int32_t var_no;
 
- var_no = *pc | (((long int)*(pc + 1)) << 8);
- pc += 2;
+  var_no = *pc | (((int32_t)*(pc + 1)) << 8);
+  pc += 2;
 
- InitDescr(e_stack, ADDR);
- (e_stack++)->data.d_addr = process.program.vars + var_no;
+  InitDescr(e_stack, ADDR);
+  (e_stack++)->data.d_addr = process.program.vars + var_no;
 }
 
 /* ======================================================================
    op_ldlint()  -  Load long integer                                      */
 
-void op_ldlint()
-{
- /* Stack:
+void op_ldlint() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -460,23 +450,21 @@ void op_ldlint()
      |=============================|=============================|
  */
 
- unsigned long int value;
+  u_int32_t value;
 
- value = *pc | (((long int)*(pc+1)) << 8)
-             | (((long int)(*(pc+2))) << 16)
-             | (((long int)*(pc+3)) << 24);
- pc += 4;
+  value = *pc | (((int32_t)*(pc + 1)) << 8) | (((int32_t)(*(pc + 2))) << 16) |
+          (((int32_t)*(pc + 3)) << 24);
+  pc += 4;
 
- InitDescr(e_stack, INTEGER);
- (e_stack++)->data.value = (long int)value;
+  InitDescr(e_stack, INTEGER);
+  (e_stack++)->data.value = (int32_t)value;
 }
 
 /* ======================================================================
    op_ldlstr()  -  Load long string                                        */
 
-void op_ldlstr()
-{
- /* Stack:
+void op_ldlstr() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -485,24 +473,23 @@ void op_ldlstr()
      |=============================|=============================|
  */
 
- long int string_length;
+  int32_t string_length;
 
- string_length = *pc | (((long int)*(pc+1)) << 8)
-                     | (((long int)(*(pc+2))) << 16)
-                     | (((long int)(*(pc+3))) << 24);
- pc += 4;
+  string_length = *pc | (((int32_t)*(pc + 1)) << 8) |
+                  (((int32_t)(*(pc + 2))) << 16) |
+                  (((int32_t)(*(pc + 3))) << 24);
+  pc += 4;
 
- k_put_string((char *)pc, string_length, e_stack);
- e_stack++;
- pc += string_length;
+  k_put_string((char*)pc, string_length, e_stack);
+  e_stack++;
+  pc += string_length;
 }
 
 /* ======================================================================
    op_ldsint()  -  Load short integer                                     */
 
-void op_ldsint()
-{
- /* Stack:
+void op_ldsint() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -511,17 +498,16 @@ void op_ldsint()
      |=============================|=============================|
  */
 
- InitDescr(e_stack, INTEGER);
-// (e_stack++)->data.value = *(((signed char *)pc)++);
- (e_stack++)->data.value = (signed char)(*(pc++));
+  InitDescr(e_stack, INTEGER);
+  // (e_stack++)->data.value = *(((signed char *)pc)++);
+  (e_stack++)->data.value = (signed char)(*(pc++));
 }
 
 /* ======================================================================
    op_ldslcl()  -  Load short local variable address                      */
 
-void op_ldslcl()
-{
- /* Stack:
+void op_ldslcl() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -530,16 +516,15 @@ void op_ldslcl()
      |=============================|=============================|
  */
 
- InitDescr(e_stack, ADDR);
- (e_stack++)->data.d_addr = process.program.vars + *(pc++);
+  InitDescr(e_stack, ADDR);
+  (e_stack++)->data.d_addr = process.program.vars + *(pc++);
 }
 
 /* ======================================================================
    op_ldnull()  -  Load null string                                       */
 
-void op_ldnull()
-{
- /* Stack:
+void op_ldnull() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -548,16 +533,15 @@ void op_ldnull()
      |=============================|=============================|
  */
 
- InitDescr(e_stack, STRING);
- (e_stack++)->data.str.saddr = NULL;
+  InitDescr(e_stack, STRING);
+  (e_stack++)->data.str.saddr = NULL;
 }
 
 /* ======================================================================
    op_ldstr()  -  Load string                                             */
 
-void op_ldstr()
-{
- /* Stack:
+void op_ldstr() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -566,40 +550,36 @@ void op_ldstr()
      |=============================|=============================|
  */
 
- short int string_length;
- short int actual_length;
- STRING_CHUNK * str;
+  int16_t string_length;
+  int16_t actual_length;
+  STRING_CHUNK* str;
 
- string_length = *(pc++);     /* Always fits a single chunk */
+  string_length = *(pc++); /* Always fits a single chunk */
 
- InitDescr(e_stack, STRING);
+  InitDescr(e_stack, STRING);
 
- if (string_length == 0)
-  {
-   e_stack->data.str.saddr = NULL;
-  }
- else
-  {
-   str = s_alloc((long)string_length, &actual_length);
-   e_stack->data.str.saddr = str;
-  
-   str->ref_ct = 1;
-   str->string_len = string_length;
-   str->bytes = string_length;
-   memcpy(str->data, pc, string_length);
-  
-   pc += string_length;
+  if (string_length == 0) {
+    e_stack->data.str.saddr = NULL;
+  } else {
+    str = s_alloc((int32_t)string_length, &actual_length);
+    e_stack->data.str.saddr = str;
+
+    str->ref_ct = 1;
+    str->string_len = string_length;
+    str->bytes = string_length;
+    memcpy(str->data, pc, string_length);
+
+    pc += string_length;
   }
 
- e_stack++;
+  e_stack++;
 }
 
 /* ======================================================================
    op_ldsys()  -  Load system variable from $SYSCOM common block          */
 
-void op_ldsys()
-{
- /* Stack:
+void op_ldsys() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -608,37 +588,36 @@ void op_ldsys()
      |=============================|=============================|
  */
 
- unsigned long int var_no;
- ARRAY_HEADER * a_hdr;
- ARRAY_CHUNK * a_chunk;
+  u_int32_t var_no;
+  ARRAY_HEADER* a_hdr;
+  ARRAY_CHUNK* a_chunk;
 
- /* Fetch common block number and locate block */
+  /* Fetch common block number and locate block */
 
- if (process.syscom == NULL) k_error(sysmsg(1235));
+  if (process.syscom == NULL)
+    k_error(sysmsg(1235));
 
- a_hdr = process.syscom;
+  a_hdr = process.syscom;
 
- /* Fetch variable number within common block */
+  /* Fetch variable number within common block */
 
- var_no = *(pc++);
+  var_no = *(pc++);
 
- if ((var_no < 1) || (var_no > (unsigned long int)(a_hdr->rows)))
-  {
-   k_error(sysmsg(1234));
+  if ((var_no < 1) || (var_no > (u_int32_t)(a_hdr->rows))) {
+    k_error(sysmsg(1234));
   }
 
- a_chunk = a_hdr->chunk[var_no / MAX_ARRAY_CHUNK_SIZE];
+  a_chunk = a_hdr->chunk[var_no / MAX_ARRAY_CHUNK_SIZE];
 
- InitDescr(e_stack, ADDR);
- (e_stack++)->data.d_addr = &(a_chunk->descr[var_no % MAX_ARRAY_CHUNK_SIZE]);
+  InitDescr(e_stack, ADDR);
+  (e_stack++)->data.d_addr = &(a_chunk->descr[var_no % MAX_ARRAY_CHUNK_SIZE]);
 }
 
 /* ======================================================================
    op_ldsysv()  -  Load value of system variable from $SYSCOM common block */
 
-void op_ldsysv()
-{
- /* Stack:
+void op_ldsysv() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -647,16 +626,15 @@ void op_ldsysv()
      |=============================|=============================|
  */
 
- op_ldsys();
- k_get_value(e_stack - 1);
+  op_ldsys();
+  k_get_value(e_stack - 1);
 }
 
 /* ======================================================================
    op_ldunass()  -  Load unassigned                                       */
 
-void op_ldunass()
-{
- /* Stack:
+void op_ldunass() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -665,15 +643,14 @@ void op_ldunass()
      |=============================|=============================|
  */
 
- InitDescr(e_stack++, UNASSIGNED);
+  InitDescr(e_stack++, UNASSIGNED);
 }
 
 /* ======================================================================
    op_me()  -  Create OBJ descriptor for self                             */
 
-void op_me()
-{
- /* Stack:
+void op_me() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -682,19 +659,19 @@ void op_me()
      |=============================|=============================|
  */
 
- if (process.program.objdata == NULL) k_error("ME reference in non-object code");
+  if (process.program.objdata == NULL)
+    k_error("ME reference in non-object code");
 
- InitDescr(e_stack, OBJ);
- process.program.objdata->ref_ct++;
- (e_stack++)->data.objdata = process.program.objdata;
+  InitDescr(e_stack, OBJ);
+  process.program.objdata->ref_ct++;
+  (e_stack++)->data.objdata = process.program.objdata;
 }
 
 /* ======================================================================
    op_pop()  -  Pop evaluation stack                                      */
 
-void op_pop()
-{
- /* Stack:
+void op_pop() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -703,16 +680,15 @@ void op_pop()
      |=============================|=============================|
  */
 
- k_dismiss();
+  k_dismiss();
 }
 
 /* ======================================================================
    op_reuse()  -  REUSE opcode. Resolve stack top as actual value with
                   reuse flag set.                                         */
 
-void op_reuse()
-{
- /* Stack:
+void op_reuse() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -721,19 +697,18 @@ void op_reuse()
      |=============================|=============================|
  */
 
- DESCRIPTOR * descr;
+  DESCRIPTOR* descr;
 
- descr = e_stack - 1;
- k_get_value(descr);       /* Would normally expect a string */
- descr->flags |= DF_REUSE;
+  descr = e_stack - 1;
+  k_get_value(descr); /* Would normally expect a string */
+  descr->flags |= DF_REUSE;
 }
 
 /* ======================================================================
    op_stnull()  -  Store a null string in variable                        */
 
-void op_stnull()
-{
- /* Stack:
+void op_stnull() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -742,26 +717,25 @@ void op_stnull()
      |=============================|=============================|
  */
 
- DESCRIPTOR * descr;
+  DESCRIPTOR* descr;
 
- descr = e_stack - 1;
+  descr = e_stack - 1;
 
- do {
-     descr = descr->data.d_addr;
-    } while(descr->type == ADDR);
+  do {
+    descr = descr->data.d_addr;
+  } while (descr->type == ADDR);
 
- Release(descr);
- InitDescr(descr, STRING);
- descr->data.str.saddr = NULL;
- k_pop(1);      /* Dismiss ADDR */
+  Release(descr);
+  InitDescr(descr, STRING);
+  descr->data.str.saddr = NULL;
+  k_pop(1); /* Dismiss ADDR */
 }
 
 /* ======================================================================
    op_setunass()  -  Set variable to unassigned (restricted)              */
 
-void op_setunass()
-{
- /* Stack:
+void op_setunass() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -770,20 +744,20 @@ void op_setunass()
      |=============================|=============================|
  */
 
- DESCRIPTOR * descr;
+  DESCRIPTOR* descr;
 
- descr = e_stack - 1;
- while(descr->type == ADDR) descr = descr->data.d_addr;
- set_descr(descr, UNASSIGNED);
- k_pop(1);
+  descr = e_stack - 1;
+  while (descr->type == ADDR)
+    descr = descr->data.d_addr;
+  set_descr(descr, UNASSIGNED);
+  k_pop(1);
 }
 
 /* ======================================================================
    op_stor()  -  Store value in variable                                  */
 
-void op_stor()
-{
- /* Stack:
+void op_stor() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -794,50 +768,50 @@ void op_stor()
      |=============================|=============================|
  */
 
- DESCRIPTOR * value_descr;
- DESCRIPTOR * var_descr;
+  DESCRIPTOR* value_descr;
+  DESCRIPTOR* var_descr;
 
- var_descr = e_stack - 2;
- value_descr = e_stack - 1;
+  var_descr = e_stack - 2;
+  value_descr = e_stack - 1;
 
- /* For best performance, test the type before calling k_get_value().  The
+  /* For best performance, test the type before calling k_get_value().  The
     item at the top of the e-stack is quite likely to be a value already.  */
 
- switch(value_descr->type)     /* ++ALLTYPES++ Check if affected */
+  switch (value_descr->type) /* ++ALLTYPES++ Check if affected */
   {
-   case ADDR:
+    case ADDR:
       k_get_value(value_descr);
       break;
 
-   case UNASSIGNED:
-      if (!Option(OptUnassignedWarning)) k_unassigned(value_descr);
+    case UNASSIGNED:
+      if (!Option(OptUnassignedWarning))
+        k_unassigned(value_descr);
       k_unass_zero(value_descr, value_descr);
       break;
   }
 
- do {
-     var_descr = var_descr->data.d_addr;
-    } while(var_descr->type == ADDR);
+  do {
+    var_descr = var_descr->data.d_addr;
+  } while (var_descr->type == ADDR);
 
- Release(var_descr);
+  Release(var_descr);
 
- *var_descr = *value_descr;
- var_descr->flags &= ~(DF_REUSE | DF_CHANGE); /* Ensure clear; eg A = REUSE(B) */
-  
+  *var_descr = *value_descr;
+  var_descr->flags &=
+      ~(DF_REUSE | DF_CHANGE); /* Ensure clear; eg A = REUSE(B) */
 
- /* Remove both items from stack. The data item was copied so we must not
+  /* Remove both items from stack. The data item was copied so we must not
     use k_dismiss() whatever its type. The address item is known to be a
     ADDR so a k_pop() is adequate.                                      */
 
- k_pop(2);      /* Dismiss ADDR */
+  k_pop(2); /* Dismiss ADDR */
 }
 
 /* ======================================================================
    op_storsys()  -  Store value in system variable                        */
 
-void op_storsys()
-{
- /* Stack:
+void op_storsys() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -851,50 +825,51 @@ void op_storsys()
      purposes. These variables must not be cleared by the CLEAR opcode.
  */
 
- DESCRIPTOR * value_descr;
- DESCRIPTOR * var_descr;
+  DESCRIPTOR* value_descr;
+  DESCRIPTOR* var_descr;
 
- var_descr = e_stack - 2;
- value_descr = e_stack - 1;
+  var_descr = e_stack - 2;
+  value_descr = e_stack - 1;
 
- /* For best performance, test the type before calling k_get_value().  The
+  /* For best performance, test the type before calling k_get_value().  The
     item at the top of the e-stack is quite likely to be a value already.  */
 
- switch(value_descr->type)     /* ++ALLTYPES++ Check if affected */
+  switch (value_descr->type) /* ++ALLTYPES++ Check if affected */
   {
-   case ADDR:
+    case ADDR:
       k_get_value(value_descr);
       break;
 
-   case UNASSIGNED:
-      if (!Option(OptUnassignedWarning)) k_unassigned(value_descr);
+    case UNASSIGNED:
+      if (!Option(OptUnassignedWarning))
+        k_unassigned(value_descr);
       k_unass_zero(value_descr, value_descr);
       break;
   }
 
- do {
-     var_descr = var_descr->data.d_addr;
-    } while(var_descr->type == ADDR);
+  do {
+    var_descr = var_descr->data.d_addr;
+  } while (var_descr->type == ADDR);
 
- Release(var_descr);
+  Release(var_descr);
 
- *var_descr = *value_descr;
- var_descr->flags &= ~(DF_REUSE | DF_CHANGE); /* Ensure clear; eg A = REUSE(B) */
- var_descr->flags |= DF_SYSTEM;
+  *var_descr = *value_descr;
+  var_descr->flags &=
+      ~(DF_REUSE | DF_CHANGE); /* Ensure clear; eg A = REUSE(B) */
+  var_descr->flags |= DF_SYSTEM;
 
- /* Remove both items from stack. The data item was copied so we must not
+  /* Remove both items from stack. The data item was copied so we must not
     use k_dismiss() whatever its type. The address item is known to be a
     ADDR so a k_pop() is adequate.                                      */
 
- k_pop(2);      /* Dismiss ADDR */
+  k_pop(2); /* Dismiss ADDR */
 }
 
 /* ======================================================================
    op_stz()  -  Store zero in variable                                    */
 
-void op_stz()
-{
- /* Stack:
+void op_stz() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -903,27 +878,26 @@ void op_stz()
      |=============================|=============================|
  */
 
- DESCRIPTOR * descr;
+  DESCRIPTOR* descr;
 
- descr = e_stack - 1;
+  descr = e_stack - 1;
 
- do {
-     descr = descr->data.d_addr;
-    } while(descr->type == ADDR);
+  do {
+    descr = descr->data.d_addr;
+  } while (descr->type == ADDR);
 
- Release(descr);
+  Release(descr);
 
- InitDescr(descr, INTEGER);
- descr->data.value = 0;
- k_pop(1);      /* Dismiss ADDR */
+  InitDescr(descr, INTEGER);
+  descr->data.value = 0;
+  k_pop(1); /* Dismiss ADDR */
 }
 
 /* ======================================================================
    op_swap()  -  Swap top two items on stack                              */
 
-void op_swap()
-{
- /* Stack:
+void op_swap() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -934,20 +908,19 @@ void op_swap()
      |=============================|=============================|
  */
 
- DESCRIPTOR descr;
+  DESCRIPTOR descr;
 
- descr = *(e_stack - 1);
+  descr = *(e_stack - 1);
 
- *(e_stack - 1) = *(e_stack - 2);
- *(e_stack - 2) = descr;
+  *(e_stack - 1) = *(e_stack - 2);
+  *(e_stack - 2) = descr;
 }
 
 /* ======================================================================
    op_unass()  -  UNASSIGNED() function                                   */
 
-void op_unass()
-{
- /* Stack:
+void op_unass() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -956,25 +929,25 @@ void op_unass()
      |=============================|=============================|
  */
 
- DESCRIPTOR * descr;
- DESCRIPTOR * test_descr;
+  DESCRIPTOR* descr;
+  DESCRIPTOR* test_descr;
 
- descr = e_stack - 1;
+  descr = e_stack - 1;
 
- test_descr = descr;
- while(test_descr->type == ADDR) test_descr = test_descr->data.d_addr;
+  test_descr = descr;
+  while (test_descr->type == ADDR)
+    test_descr = test_descr->data.d_addr;
 
- Release(descr);
- InitDescr(descr, INTEGER);
- descr->data.value = (test_descr->type == UNASSIGNED);
+  Release(descr);
+  InitDescr(descr, INTEGER);
+  descr->data.value = (test_descr->type == UNASSIGNED);
 }
 
 /* ======================================================================
    op_value()  -  VALUE opcode. Resolve stack top as actual value.        */
 
-void op_value()
-{
- /* Stack:
+void op_value() {
+  /* Stack:
 
      |=============================|=============================|
      |            BEFORE           |           AFTER             |
@@ -983,66 +956,63 @@ void op_value()
      |=============================|=============================|
  */
 
- k_get_value(e_stack - 1);
+  k_get_value(e_stack - 1);
 }
 
 /* ======================================================================
    set_descr()  -  Set descriptor(s) to integer zero or unassigned        */
 
-Private void set_descr(
-   DESCRIPTOR * p,
-   u_char type)
-{
- ARRAY_HEADER * a_hdr;      /* Array header pointer */
- ARRAY_CHUNK * chunk;       /* Array chunk pointer */
- short int j;               /* Array chunk index */
- short int k;               /* Array element index */
- short int lo;
+Private void set_descr(DESCRIPTOR* p, u_char type) {
+  ARRAY_HEADER* a_hdr; /* Array header pointer */
+  ARRAY_CHUNK* chunk;  /* Array chunk pointer */
+  int16_t j;         /* Array chunk index */
+  int16_t k;         /* Array element index */
+  int16_t lo;
 
- /* ++ALLTYPES++ */
+  /* ++ALLTYPES++ */
 
- switch(p->type)
-  {
-   case STRING:
-   case FILE_REF:
-   case SUBR:
-   case SELLIST:
-   case SOCK:
-   case OBJ:
-   case OBJCD:
-   case OBJCDX:
+  switch (p->type) {
+    case STRING:
+    case FILE_REF:
+    case SUBR:
+    case SELLIST:
+    case SOCK:
+    case OBJ:
+    case OBJCD:
+    case OBJCDX:
       k_release(p);
       /* *** FALL THROUGH *** */
-   case UNASSIGNED:
-   case ADDR:
-   case FLOATNUM:
-   case INTEGER:
+    case UNASSIGNED:
+    case ADDR:
+    case FLOATNUM:
+    case INTEGER:
       InitDescr(p, type);
       p->data.value = 0;
       break;
 
-   case ARRAY:
-   case COMMON:
-   case LOCALVARS:
-   case PERSISTENT:
-      a_hdr = p->data.ahdr_addr;  /* Same as c_addr for common */
+    case ARRAY:
+    case COMMON:
+    case LOCALVARS:
+    case PERSISTENT:
+      a_hdr = p->data.ahdr_addr; /* Same as c_addr for common */
       do {
-          lo = (p->type == COMMON)?1:0;  /* Don't clear name in common */
-          for(j = 0; j < a_hdr->num_chunks; j++)
-           {
-            chunk = a_hdr->chunk[j];
-            if (chunk != NULL) /* Was allocated successfully */
-             {
-              for(k = lo; k < chunk->num_descr; k++) set_descr(&(chunk->descr[k]), type);
-             }
-            lo = 0;
-           }
-          if (p->type != LOCALVARS) break;
-          a_hdr = a_hdr->next_common;  /* Links to stacked instance */
-         } while(a_hdr != NULL);
+        lo = (p->type == COMMON) ? 1 : 0; /* Don't clear name in common */
+        for (j = 0; j < a_hdr->num_chunks; j++) {
+          chunk = a_hdr->chunk[j];
+          if (chunk != NULL) /* Was allocated successfully */
+          {
+            for (k = lo; k < chunk->num_descr; k++)
+              set_descr(&(chunk->descr[k]), type);
+          }
+          lo = 0;
+        }
+        if (p->type != LOCALVARS)
+          break;
+        a_hdr = a_hdr->next_common; /* Links to stacked instance */
+      } while (a_hdr != NULL);
       break;
 
-   case PMATRIX:
+    case PMATRIX:
       break;
   }
 }

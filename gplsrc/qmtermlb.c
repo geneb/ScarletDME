@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 27Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ *
  * 22Feb20 gwb Converted an sprintf() to snprintf() in tsettermtype().
  * 
  * START-HISTORY (OpenQM):
@@ -127,7 +130,7 @@ typedef struct termtype {
   char* term_names;      /* str_table offset of term names */
   char* str_table;       /* pointer to string table */
   signed char* Booleans; /* array of boolean values */
-  short* Numbers;        /* array of integer values */
+  int16_t* Numbers;        /* array of integer values */
   char** Strings;        /* array of string offsets */
 } TERMTYPE;
 
@@ -142,7 +145,7 @@ Private int npop(void);
 Private void spush(char* x);
 Private char* spop(void);
 Private char* parse_format(char* s, char* format, int* len);
-Private void convert_shorts(char* buf, short* Numbers, int count);
+Private void convert_shorts(char* buf, int16_t* Numbers, int count);
 Private void convert_strings(char* buf,
                              char** Strings,
                              int count,
@@ -265,8 +268,8 @@ bool tsettermtype(termname) char* termname;
 
   /* ---------- Read the numbers */
 
-  bytes = max(NumNumNames, num_count) * sizeof(short int);
-  if ((tinfo.Numbers = (short int*)k_alloc(95, bytes)) == NULL) {
+  bytes = max(NumNumNames, num_count) * sizeof(int16_t);
+  if ((tinfo.Numbers = (int16_t*)k_alloc(95, bytes)) == NULL) {
     process.status = ER_TI_NUMMEM; /* Error allocating space for numbers */
     goto exit_settermtype;
   }
@@ -1303,7 +1306,7 @@ int* len;
    convert_shorts()  -  Convert short integer format                      */
 
 Private void convert_shorts(buf, numbers, count) char* buf;
-short* numbers;
+int16_t* numbers;
 int count;
 {
   int i;

@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ *
  * 22Feb20 gwb Converted sprintf() to snprintf() in op_delete(), op_readv(),
  *             read_record(), and dir_write().
  * 
@@ -97,22 +100,22 @@
 #define MAX_T1_BUFFER_SIZE 31744
 Private char* t1_buffer = NULL;
 Private int t1_buffer_size;
-Private short int t1_space;
+Private int16_t t1_space;
 Private char* t1_ptr;
 Private OSFILE t1_fu;
 
-void t1in(char* src, char* dst, short int inct, short int* outct);
+void t1in(char* src, char* dst, int16_t inct, int16_t* outct);
 
 void op_write(void); /* Necessary for internal call */
 void op_dspnl(void);
 void op_matparse(void);
 
-Private void t1_buffer_alloc(long int size);
-Private bool t1_write(char* p, short int bytes);
+Private void t1_buffer_alloc(int32_t size);
+Private bool t1_write(char* p, int16_t bytes);
 Private bool t1_flush(void);
 Private void t1_buffer_free(void);
 Private void read_record(bool matread);
-Private bool valid_id(char* id, short int id_len);
+Private bool valid_id(char* id, int16_t id_len);
 
 /* ======================================================================
    op_clrfile()  -  Clear File                                            */
@@ -137,7 +140,7 @@ void op_clrfile() {
   char subfilename[MAX_PATHNAME_LEN + 1];
   DIR* dfu;
   struct dirent* dp;
-  unsigned short int op_flags;
+  u_int16_t op_flags;
   FILE_ENTRY* fptr;
   DH_FILE* dh_file;
   bool took_lock = FALSE; /* Did we aquire lock here? */
@@ -301,16 +304,16 @@ void op_delete() {
   DESCRIPTOR* rid_descr;
   char id[MAX_ID_LEN + 1];
   char mapped_id[2 * MAX_ID_LEN + 1];
-  short int id_len;
+  int16_t id_len;
   FILE_VAR* fvar;
   DH_FILE* dh_file;
-  unsigned short int op_flags;
+  u_int16_t op_flags;
   char subfilename[MAX_PATHNAME_LEN + 1];
   char pathname[MAX_PATHNAME_LEN + 1];
-  short int path_len;
+  int16_t path_len;
   FILE_ENTRY* fptr;
   bool keep_lock;
-  unsigned long int txn_id;
+  u_int32_t txn_id;
   struct stat statbuf;
 
   op_flags = process.op_flags;
@@ -506,17 +509,17 @@ void op_readv() {
   char id[MAX_ID_LEN + 1];
   char mapped_id[2 * MAX_ID_LEN + 1];
   char actual_id[MAX_ID_LEN + 1];
-  long int field_no;
+  int32_t field_no;
   char subfilename[MAX_PATHNAME_LEN + 1];
   char pathname[MAX_PATHNAME_LEN + 1];
-  short int path_len;
-  short int id_len;
+  int16_t path_len;
+  int16_t id_len;
   FILE_VAR* fvar;
   DH_FILE* dh_file;
-  unsigned short int op_flags;
+  u_int16_t op_flags;
   STRING_CHUNK* str;
-  long int status = 0;
-  unsigned long txn_id;
+  int32_t status = 0;
+  u_int32_t txn_id;
 
   process.status = 0;
 
@@ -774,13 +777,13 @@ void op_write() {
   char id[MAX_ID_LEN + 1];
   char lock_id[MAX_ID_LEN + 1];
   char mapped_id[2 * MAX_ID_LEN + 1];
-  short int id_len;
+  int16_t id_len;
   FILE_VAR* fvar;
   DH_FILE* dh_file;
   STRING_CHUNK* str;
-  unsigned short int op_flags;
+  u_int16_t op_flags;
   bool keep_lock;
-  unsigned long txn_id;
+  u_int32_t txn_id;
 
   op_flags = process.op_flags;
   process.op_flags = 0;
@@ -940,7 +943,7 @@ void op_writev() {
     call to WRITEV.
  */
 
-  unsigned short int op_flags;
+  u_int16_t op_flags;
 
   op_flags = process.op_flags;
   process.op_flags = 0;
@@ -991,23 +994,23 @@ Private void read_record(bool matread) {
   char id[MAX_ID_LEN + 1];
   char mapped_id[2 * MAX_ID_LEN + 1];
   char actual_id[MAX_ID_LEN + 1]; /* Returned as recorded in file */
-  short int id_len;
+  int16_t id_len;
   char pathname[MAX_PATHNAME_LEN + 1];
-  short int path_len;
+  int16_t path_len;
   char record_path[MAX_PATHNAME_LEN + 1];
   FILE_VAR* fvar;
   DH_FILE* dh_file;
-  long int bytes;
-  unsigned short int op_flags;
+  int32_t bytes;
+  u_int16_t op_flags;
   OSFILE t1_fu;
-  long int remaining_bytes;
-  short int n;
-  short int status;
+  int32_t remaining_bytes;
+  int16_t n;
+  int16_t status;
   DESCRIPTOR temp_descr; /* Temporary string used by MATREAD */
   DESCRIPTOR* str_descr; /* Descriptor into which to perform string read */
   STRING_CHUNK* str;
   bool is_net_file;
-  unsigned long txn_id;
+  u_int32_t txn_id;
   char* p;
   char* q;
   struct stat statbuf;
@@ -1062,7 +1065,7 @@ Private void read_record(bool matread) {
 
   if (id_len <= 0) {
     process.status = ER_IID;
-    status = (short int)process.status;
+    status = (int16_t)process.status;
     goto exit_op_read; /* We failed to extract the record id */
   }
 
@@ -1121,7 +1124,7 @@ Private void read_record(bool matread) {
           goto exit_op_read;
 
         case TXC_DELETED: /* Reference found as deleted record */
-          status = (short int)(process.status = ER_RNF);
+          status = (int16_t)(process.status = ER_RNF);
           goto exit_op_read;
       }
     }
@@ -1152,11 +1155,11 @@ Private void read_record(bool matread) {
           break;
 
         case DHE_RECORD_NOT_FOUND:
-          status = (short int)(process.status = ER_RNF);
+          status = (int16_t)(process.status = ER_RNF);
           break;
 
         default:
-          status = (short int)(-(process.status = dh_err));
+          status = (int16_t)(-(process.status = dh_err));
           goto exit_op_read;
       }
       break;
@@ -1188,7 +1191,7 @@ Private void read_record(bool matread) {
       t1_fu = dio_open(record_path, DIO_READ);
 
       if (!ValidFileHandle(t1_fu)) {
-        status = (short int)(process.status = ER_RNF);
+        status = (int16_t)(process.status = ER_RNF);
         goto exit_op_read;
       }
 
@@ -1201,7 +1204,7 @@ Private void read_record(bool matread) {
 
       /* Find file size and initialise target string */
 
-      remaining_bytes = (long)filelength64(t1_fu);
+      remaining_bytes = (int32_t)filelength64(t1_fu);
 
       if ((op_flags & P_PICKREAD)) {
         k_release(str_descr);
@@ -1218,7 +1221,7 @@ Private void read_record(bool matread) {
         bytes = min(remaining_bytes, t1_buffer_size);
 
         if (Read(t1_fu, t1_buffer, bytes) < 0) {
-          status = (short int)(-(process.status = ER_IOE));
+          status = (int16_t)(-(process.status = ER_IOE));
           process.os_error = OSError;
           goto exit_op_read;
         }
@@ -1338,7 +1341,7 @@ exit_op_read:
 /* ======================================================================
    map_t1_id()  -  Perform name mapping for directory files               */
 
-bool map_t1_id(char* id, short int id_len, char* mapped_id) {
+bool map_t1_id(char* id, int16_t id_len, char* mapped_id) {
   char* p;
   char* q;
   char* r;
@@ -1381,13 +1384,13 @@ bool map_t1_id(char* id, short int id_len, char* mapped_id) {
 
 bool dir_write(FILE_VAR* fvar, char* mapped_id, STRING_CHUNK* str) {
   char pathname[MAX_PATHNAME_LEN + 1];
-  short int path_len;
+  int16_t path_len;
   char record_path[MAX_PATHNAME_LEN + 1];
   char temp_path[MAX_PATHNAME_LEN + 1];
-  short int bytes_remaining;
+  int16_t bytes_remaining;
   char* p;
   char* q;
-  short int n;
+  int16_t n;
   struct stat statbuf;
 
   t1_fu = INVALID_FILE_HANDLE;
@@ -1510,16 +1513,16 @@ exit_dir_write:
 /* ======================================================================
    Directory file buffering functions                                     */
 
-Private void t1_buffer_alloc(long int size) {
+Private void t1_buffer_alloc(int32_t size) {
   if (size > MAX_T1_BUFFER_SIZE)
     size = MAX_T1_BUFFER_SIZE;
   t1_buffer = (char*)k_alloc(8, size);
   t1_ptr = t1_buffer;
   t1_buffer_size = size;
-  t1_space = (short int)size;
+  t1_space = (int16_t)size;
 }
 
-Private bool t1_write(char* p, short int bytes) {
+Private bool t1_write(char* p, int16_t bytes) {
   while (bytes) {
     if (bytes < t1_space) /* Fits with at least one byte to spare */
     {
@@ -1546,7 +1549,7 @@ Private bool t1_write(char* p, short int bytes) {
 }
 
 Private bool t1_flush() {
-  short int len;
+  int16_t len;
   len = t1_buffer_size - t1_space;
   if (len == 0)
     return TRUE;
@@ -1568,7 +1571,7 @@ Private void t1_buffer_free() {
    call_trigger()  -  Call trigger function                               */
 
 bool call_trigger(DESCRIPTOR* fvar_descr,
-                  short int mode,
+                  int16_t mode,
                   DESCRIPTOR* id_descr,
                   DESCRIPTOR* data_descr,
                   bool on_error,
@@ -1579,7 +1582,7 @@ bool call_trigger(DESCRIPTOR* fvar_descr,
   STRING_CHUNK* str;
   DH_FILE* dh_file;
   bool error;
-  short int args;
+  int16_t args;
 
   fvar = fvar_descr->data.fvar;
   dh_file = fvar->access.dh.dh_file;
@@ -1674,7 +1677,7 @@ void op_pickread() {
 /* ======================================================================
    valid_id()  -  Validate record id                                      */
 
-Private bool valid_id(char* id, short int id_len) {
+Private bool valid_id(char* id, int16_t id_len) {
   register char c;
 
   if ((id_len <= 0) /* Handle k_get_c_string() failure here */

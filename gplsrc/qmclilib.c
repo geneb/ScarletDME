@@ -16,6 +16,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ *
  * 23Feb20 gwb Cleared variable set but not used warnings in QMReadList and
  *             context_error().  context_error() should be revisited in the
  *             future.  See the comment in the function for more info.
@@ -177,10 +180,10 @@ void set_default_character_maps(void);
 #include "qmclient.h"
 
 /* Network data */
-Private bool OpenSocket(char* host, short int port);
+Private bool OpenSocket(char* host, int16_t port);
 Private bool CloseSocket(void);
 Private bool read_packet(void);
-Private bool write_packet(int type, char* data, long int bytes);
+Private bool write_packet(int type, char* data, int32_t bytes);
 Private void net_error(char* prefix, int err);
 Private void debug(unsigned char* p, int n);
 Private void initialise_client(void);
@@ -189,8 +192,8 @@ Private void disconnect(void);
 
 typedef struct ARGDATA ARGDATA;
 struct ARGDATA {
-  short int argno;
-  long int arglen ALIGN2;
+  int16_t argno;
+  int32_t arglen ALIGN2;
   char text[1];
 };
 
@@ -212,7 +215,7 @@ struct INBUFF {
       char reply[1];
     } execute;
     struct { /* QMOpen */
-      short int fno;
+      int16_t fno;
     } open;
     struct { /* QMRead, QMReadl, QMReadu */
       char rec[1];
@@ -230,26 +233,26 @@ struct INBUFF {
 } ALIGN2;
 
 Private INBUFF* buff = NULL;
-Private long int buff_size;  /* Allocated size of buffer */
-Private long int buff_bytes; /* Size of received packet */
+Private int32_t buff_size;  /* Allocated size of buffer */
+Private int32_t buff_bytes; /* Size of received packet */
 Private FILE* srvr_debug = NULL;
 
 #define MAX_SESSIONS 4
 Private struct {
   bool is_local;
-  short int context;
+  int16_t context;
 #define CX_DISCONNECTED 0 /* No session active */
 #define CX_CONNECTED 1    /* Session active but not... */
 #define CX_EXECUTING 2    /* ...executing command (implies connected) */
   char qmerror[512 + 1];
-  short int server_error;
-  long int qm_status;
+  int16_t server_error;
+  int32_t qm_status;
   SOCKET sock;
   int RxPipe[2];
   int TxPipe[2];
   int pid; /* 0421 Pid of child process */
 } session[MAX_SESSIONS];
-Private short int session_idx = 0;
+Private int16_t session_idx = 0;
 
 /* Matching data */
 Private char* component_start;
@@ -260,23 +263,23 @@ void DLLEntry QMDisconnect(void);
 void DLLEntry QMEndCommand(void);
 
 /* Internal functions */
-Private char* SelectLeftRight(short int fno,
+Private char* SelectLeftRight(int16_t fno,
                               char* index_name,
-                              short int listno,
-                              short int mode);
-Private void SetLeftRight(short int fno, char* index_name, short int mode);
-Private bool context_error(short int expected);
-Private void delete_record(short int mode, int fno, char* id);
+                              int16_t listno,
+                              int16_t mode);
+Private void SetLeftRight(int16_t fno, char* index_name, int16_t mode);
+Private bool context_error(int16_t expected);
+Private void delete_record(int16_t mode, int fno, char* id);
 Private char* read_record(int fno, char* id, int* err, int mode);
-Private void write_record(short int mode, short int fno, char* id, char* data);
+Private void write_record(int16_t mode, int16_t fno, char* id, char* data);
 Private bool GetResponse(void);
 Private void Abort(char* msg, bool use_response);
 Private char* memstr(char* str, char* substr, int str_len, int substr_len);
 Private bool match_template(char* string,
                             char* template,
-                            short int component,
-                            short int return_component);
-Private bool message_pair(int type, char* data, long int bytes);
+                            int16_t component,
+                            int16_t return_component);
+Private bool message_pair(int type, char* data, int32_t bytes);
 Private char* NullString(void);
 Private char* sysdir(void);
 
@@ -285,14 +288,14 @@ Private char* sysdir(void);
 /* ======================================================================
    QMCall()  - Call catalogued subroutine                                 */
 
-void DLLEntry QMCall(char* subrname, short int argc, ...) {
+void DLLEntry QMCall(char* subrname, int16_t argc, ...) {
   va_list ap;
-  short int i;
+  int16_t i;
   char* arg;
   int subrname_len;
-  long int arg_len;
-  long int bytes; /* Total length of outgoing packet */
-  long int n;
+  int32_t arg_len;
+  int32_t bytes; /* Total length of outgoing packet */
+  int32_t n;
   char* p;
   INBUFF* q;
   struct ARGDATA* argptr;
@@ -344,20 +347,20 @@ void DLLEntry QMCall(char* subrname, short int argc, ...) {
 
   p = (char*)buff;
 
-  *((short int*)p) = ShortInt(subrname_len); /* Subrname length */
+  *((int16_t*)p) = ShortInt(subrname_len); /* Subrname length */
   p += 2;
 
   memcpy(p, subrname, subrname_len); /* Subrname */
   p += (subrname_len + 1) & ~1;
 
-  *((short int*)p) = ShortInt(argc); /* Arg count */
+  *((int16_t*)p) = ShortInt(argc); /* Arg count */
   p += 2;
 
   va_start(ap, argc);
   for (i = 1; i <= argc; i++) {
     arg = va_arg(ap, char*);
     arg_len = (arg == NULL) ? 0 : strlen(arg);
-    *((long int*)p) = LongInt(arg_len); /* Arg length */
+    *((int32_t*)p) = LongInt(arg_len); /* Arg length */
     p += 4;
     if (arg_len)
       memcpy(p, arg, arg_len); /* Arg text */
@@ -416,14 +419,14 @@ QMChange(char* src, char* old, char* new, int occurrences, int start) {
   int src_len;
   int old_len;
   int new_len;
-  long int bytes; /* Remaining bytes counter */
+  int32_t bytes; /* Remaining bytes counter */
   char* start_pos;
   char* new_str;
-  long int changes;
+  int32_t changes;
   char* pos;
   char* p;
   char* q;
-  long int n;
+  int32_t n;
 
   initialise_client();
 
@@ -527,7 +530,7 @@ return_unchanged:
 
 void DLLEntry QMClearSelect(int listno) {
   struct {
-    short int listno;
+    int16_t listno;
   } ALIGN2 packet;
 
   if (context_error(CX_CONNECTED))
@@ -554,7 +557,7 @@ exit_qmclearselect:
 
 void DLLEntry QMClose(int fno) {
   struct {
-    short int fno;
+    int16_t fno;
   } ALIGN2 packet;
 
   if (context_error(CX_CONNECTED))
@@ -609,7 +612,7 @@ QMConnect(char* host, int port, char* username, char* password, char* account) {
     goto exit_qmconnect;
   }
 
-  *((short int*)p) = ShortInt(n); /* User name len */
+  *((int16_t*)p) = ShortInt(n); /* User name len */
   p += 2;
 
   memcpy(p, (char*)username, n); /* User name */
@@ -623,7 +626,7 @@ QMConnect(char* host, int port, char* username, char* password, char* account) {
     goto exit_qmconnect;
   }
 
-  *((short int*)p) = ShortInt(n); /* Password len */
+  *((int16_t*)p) = ShortInt(n); /* Password len */
   p += 2;
 
   memcpy(p, (char*)password, n); /* Password */
@@ -762,9 +765,9 @@ exit_qmconnect_local:
    QMDcount()  -  Count fields, values or subvalues                       */
 
 int DLLEntry QMDcount(char* src, char* delim_str) {
-  long int src_len;
+  int32_t src_len;
   char* p;
-  long int ct = 0;
+  int32_t ct = 0;
   char delim;
 
   initialise_client();
@@ -806,14 +809,14 @@ void DLLEntry QMDebug(bool mode) {
    QMDel()  -  Delete field, value or subvalue                            */
 
 char* DLLEntry QMDel(char* src, int fno, int vno, int svno) {
-  long int src_len;
+  int32_t src_len;
   char* pos;      /* Rolling source pointer */
-  long int bytes; /* Remaining bytes counter */
-  long int new_len;
+  int32_t bytes; /* Remaining bytes counter */
+  int32_t new_len;
   char* new_str;
   char* p;
-  short int i;
-  long int n;
+  int16_t i;
+  int32_t n;
 
   initialise_client();
 
@@ -977,7 +980,7 @@ void DLLEntry QMDisconnect() {
    QMDisconnectAll()  -  Close connection to all servers.                 */
 
 void DLLEntry QMDisconnectAll() {
-  short int i;
+  int16_t i;
 
   for (i = 0; i < MAX_SESSIONS; i++) {
     if (session[session_idx].context != CX_DISCONNECTED) {
@@ -1093,7 +1096,7 @@ char* DLLEntry QMError() {
    QMExecute()  -  Execute a command                                      */
 
 char* DLLEntry QMExecute(char* cmnd, int* err) {
-  long int reply_len = 0;
+  int32_t reply_len = 0;
   char* reply;
 
   if (context_error(CX_CONNECTED))
@@ -1129,7 +1132,7 @@ exit_qmexecute:
    QMExtract()  -  Extract field, value or subvalue                       */
 
 char* DLLEntry QMExtract(char* src, int fno, int vno, int svno) {
-  long int src_len;
+  int32_t src_len;
   char* p;
   char* result;
 
@@ -1209,7 +1212,7 @@ char* DLLEntry QMField(char* src, char* delim, int first, int occurrences) {
   int src_len;
   int delim_len;
   char delimiter;
-  long int bytes; /* Remaining bytes counter */
+  int32_t bytes; /* Remaining bytes counter */
   char* pos;
   char* p;
   char* q;
@@ -1285,18 +1288,18 @@ int DLLEntry QMGetSession() {
    QMIns()  -  Insert field, value or subvalue                            */
 
 char* DLLEntry QMIns(char* src, int fno, int vno, int svno, char* new) {
-  long int src_len;
+  int32_t src_len;
   char* pos;        /* Rolling source pointer */
-  long int bytes;   /* Remaining bytes counter */
-  long int ins_len; /* Length of inserted data */
-  long int new_len;
+  int32_t bytes;   /* Remaining bytes counter */
+  int32_t ins_len; /* Length of inserted data */
+  int32_t new_len;
   char* new_str;
   char* p;
-  short int i;
-  long int n;
-  short int fm = 0;
-  short int vm = 0;
-  short int sm = 0;
+  int16_t i;
+  int32_t n;
+  int16_t fm = 0;
+  int16_t vm = 0;
+  int16_t sm = 0;
   char postmark = '\0';
 
   initialise_client();
@@ -1457,7 +1460,7 @@ int DLLEntry QMLocate(char* item,
   bool ascending = TRUE;
   bool left = TRUE;
   bool sorted = FALSE;
-  short int idx = 1;
+  int16_t idx = 1;
   int d;
   bool found = FALSE;
   int i;
@@ -1647,10 +1650,10 @@ exit_logto:
 /* ======================================================================
    QMMarkMapping()  -  Enable/disable mark mapping on a directory file    */
 
-void DLLEntry QMMarkMapping(short int fno, short int state) {
+void DLLEntry QMMarkMapping(int16_t fno, int16_t state) {
   struct {
-    short int fno;
-    short int state;
+    int16_t fno;
+    int16_t state;
   } packet;
 
   if (!context_error(CX_CONNECTED)) {
@@ -1815,10 +1818,10 @@ char* DLLEntry QMReadl(int fno, char* id, int wait, int* err) {
 
 char* DLLEntry QMReadList(int listno) {
   char* list;
-  /* short int status = 0; variable set but never used */
-  long int data_len = 0;
+  /* int16_t status = 0; variable set but never used */
+  int32_t data_len = 0;
   struct {
-    short int listno;
+    int16_t listno;
   } ALIGN2 packet;
 
   if (context_error(CX_CONNECTED))
@@ -1857,11 +1860,11 @@ exit_qmreadlist:
 /* ======================================================================
    QMReadNext()  - Read select list entry                                 */
 
-char* DLLEntry QMReadNext(short int listno) {
+char* DLLEntry QMReadNext(int16_t listno) {
   char* id;
-  long int id_len = 0;
+  int32_t id_len = 0;
   struct {
-    short int listno;
+    int16_t listno;
   } ALIGN2 packet;
 
   if (context_error(CX_CONNECTED))
@@ -1905,10 +1908,10 @@ char* DLLEntry QMReadu(int fno, char* id, int wait, int* err) {
 
 void DLLEntry QMRecordlock(int fno, char* id, int update_lock, int wait) {
   int id_len;
-  short int flags;
+  int16_t flags;
   struct {
-    short int fno;
-    short int flags; /* 0x0001 : Update lock */
+    int16_t fno;
+    int16_t flags; /* 0x0001 : Update lock */
                      /* 0x0002 : No wait */
     char id[MAX_ID_LEN];
   } ALIGN2 packet;
@@ -1954,7 +1957,7 @@ void DLLEntry QMRecordlock(int fno, char* id, int update_lock, int wait) {
 void DLLEntry QMRelease(int fno, char* id) {
   int id_len;
   struct {
-    short int fno;
+    int16_t fno;
     char id[MAX_ID_LEN];
   } ALIGN2 packet;
 
@@ -2003,18 +2006,18 @@ exit_release:
    QMReplace()  -  Replace field, value or subvalue                       */
 
 char* DLLEntry QMReplace(char* src, int fno, int vno, int svno, char* new) {
-  long int src_len;
+  int32_t src_len;
   char* pos;        /* Rolling source pointer */
-  long int bytes;   /* Remaining bytes counter */
-  long int ins_len; /* Length of inserted data */
-  long int new_len;
+  int32_t bytes;   /* Remaining bytes counter */
+  int32_t ins_len; /* Length of inserted data */
+  int32_t new_len;
   char* new_str;
   char* p;
-  short int i;
-  long int n;
-  short int fm = 0;
-  short int vm = 0;
-  short int sm = 0;
+  int16_t i;
+  int32_t n;
+  int16_t fm = 0;
+  int16_t vm = 0;
+  int16_t sm = 0;
 
   initialise_client();
 
@@ -2183,7 +2186,7 @@ done:
    QMRespond()  -  Respond to request for input                           */
 
 char* DLLEntry QMRespond(char* response, int* err) {
-  long int reply_len = 0;
+  int32_t reply_len = 0;
   char* reply;
 
   if (context_error(CX_EXECUTING))
@@ -2224,8 +2227,8 @@ exit_qmrespond:
 
 void DLLEntry QMSelect(int fno, int listno) {
   struct {
-    short int fno;
-    short int listno;
+    int16_t fno;
+    int16_t listno;
   } ALIGN2 packet;
 
   if (context_error(CX_CONNECTED))
@@ -2254,19 +2257,19 @@ exit_qmselect:
 /* ======================================================================
    QMSelectIndex()  - Generate select list from index entry               */
 
-void DLLEntry QMSelectIndex(short int fno,
+void DLLEntry QMSelectIndex(int16_t fno,
                             char* index_name,
                             char* index_value,
-                            short int listno) {
+                            int16_t listno) {
   struct {
-    short int fno;
-    short int listno;
-    short int name_len;
+    int16_t fno;
+    int16_t listno;
+    int16_t name_len;
     char index_name[255 + 1];
-    short int data_len_place_holder;       /* Index name is actually... */
+    int16_t data_len_place_holder;       /* Index name is actually... */
     char index_data_place_holder[255 + 1]; /* ...var length */
   } packet;
-  short int n;
+  int16_t n;
   char* p;
 
   if (context_error(CX_CONNECTED))
@@ -2288,8 +2291,8 @@ void DLLEntry QMSelectIndex(short int fno,
   /* Insert index value */
 
   n = strlen(index_value); /* 0267 */
-  *((short int*)p) = ShortInt(n);
-  p += sizeof(short int);
+  *((int16_t*)p) = ShortInt(n);
+  p += sizeof(int16_t);
   memcpy(p, index_value, n);
   p += n;
   if (n & 1)
@@ -2316,28 +2319,28 @@ exit_qmselectindex:
    QMSelectLeft()  - Scan index position to left
    QMSelectRight()  - Scan index position to right                        */
 
-char* DLLEntry QMSelectLeft(short int fno, char* index_name, short int listno) {
+char* DLLEntry QMSelectLeft(int16_t fno, char* index_name, int16_t listno) {
   return SelectLeftRight(fno, index_name, listno, SrvrSelectLeft);
 }
 
-char* DLLEntry QMSelectRight(short int fno,
+char* DLLEntry QMSelectRight(int16_t fno,
                              char* index_name,
-                             short int listno) {
+                             int16_t listno) {
   return SelectLeftRight(fno, index_name, listno, SrvrSelectRight);
 }
 
-Private char* SelectLeftRight(short int fno,
+Private char* SelectLeftRight(int16_t fno,
                               char* index_name,
-                              short int listno,
-                              short int mode) {
-  long int key_len = 0;
+                              int16_t listno,
+                              int16_t mode) {
+  int32_t key_len = 0;
   char* key;
   struct {
-    short int fno;
-    short int listno;
+    int16_t fno;
+    int16_t listno;
     char index_name[255 + 1];
   } packet;
-  short int n;
+  int16_t n;
   char* p;
 
   if (!context_error(CX_CONNECTED)) {
@@ -2374,20 +2377,20 @@ Private char* SelectLeftRight(short int fno,
    QMSetLeft()  - Set index position at extreme left
    QMSetRight()  - Set index position at extreme right                    */
 
-void DLLEntry QMSetLeft(short int fno, char* index_name) {
+void DLLEntry QMSetLeft(int16_t fno, char* index_name) {
   SetLeftRight(fno, index_name, SrvrSetLeft);
 }
 
-void DLLEntry QMSetRight(short int fno, char* index_name) {
+void DLLEntry QMSetRight(int16_t fno, char* index_name) {
   SetLeftRight(fno, index_name, SrvrSetRight);
 }
 
-Private void SetLeftRight(short int fno, char* index_name, short int mode) {
+Private void SetLeftRight(int16_t fno, char* index_name, int16_t mode) {
   struct {
-    short int fno;
+    int16_t fno;
     char index_name[255 + 1];
   } packet;
-  short int n;
+  int16_t n;
   char* p;
 
   if (!context_error(CX_CONNECTED)) {
@@ -2450,7 +2453,7 @@ void DLLEntry QMWriteu(int fno, char* id, char* data) {
 /* ======================================================================
    context_error()  - Check for appropriate context                       */
 
-Private bool context_error(short int expected) {
+Private bool context_error(int16_t expected) {
   /* the char* p throws a warning about the variable being set, but never used.
  * The annoying thing about this is that p is being set to useful values,
  * but that detailed information is never making it out of the routine.
@@ -2501,10 +2504,10 @@ Private bool context_error(short int expected) {
 
 /* ====================================================================== */
 
-Private void delete_record(short int mode, int fno, char* id) {
+Private void delete_record(int16_t mode, int fno, char* id) {
   int id_len;
   struct {
-    short int fno;
+    int16_t fno;
     char id[MAX_ID_LEN];
   } ALIGN2 packet;
 
@@ -2547,12 +2550,12 @@ exit_delete:
    read_record()  -  Common path for READ, READL and READU                */
 
 Private char* read_record(int fno, char* id, int* err, int mode) {
-  long int status;
-  long int rec_len = 0;
+  int32_t status;
+  int32_t rec_len = 0;
   int id_len;
   char* rec;
   struct {
-    short int fno;
+    int16_t fno;
     char id[MAX_ID_LEN];
   } ALIGN2 packet;
 
@@ -2600,14 +2603,14 @@ exit_read:
 
 /* ====================================================================== */
 
-Private void write_record(short int mode, short int fno, char* id, char* data) {
+Private void write_record(int16_t mode, int16_t fno, char* id, char* data) {
   int id_len;
-  long int data_len;
+  int32_t data_len;
   int bytes;
   INBUFF* q;
   struct PACKET {
-    short int fno;
-    short int id_len;
+    int16_t fno;
+    int16_t id_len;
     char id[1];
   } ALIGN2;
 
@@ -2739,14 +2742,14 @@ Private char* memstr(char* str, char* substr, int str_len, int substr_len) {
 Private bool match_template(
     char* string,
     char* template,
-    short int component, /* Current component number - 1 (incremented) */
-    short int return_component /* Required component number */) {
+    int16_t component, /* Current component number - 1 (incremented) */
+    int16_t return_component /* Required component number */) {
 
 
   bool not;
-  short int n;
-  short int m;
-  short int z;
+  int16_t n;
+  int16_t m;
+  int16_t z;
   char* p;
   char delimiter;
   char* start;
@@ -3080,7 +3083,7 @@ match_found:
 /* ======================================================================
    message_pair()  -  Send packet and receive response                    */
 
-Private bool message_pair(int type, char* data, long int bytes) {
+Private bool message_pair(int type, char* data, int32_t bytes) {
   if (write_packet(type, data, bytes)) {
     return GetResponse();
   }
@@ -3101,9 +3104,9 @@ Private char* NullString() {
 /* ======================================================================
    OpenSocket()  -  Open connection to server                            */
 
-Private bool OpenSocket(char* host, short int port) {
+Private bool OpenSocket(char* host, int16_t port) {
   bool status = FALSE;
-  unsigned long nInterfaceAddr;
+  u_int32_t nInterfaceAddr;
   struct hostent* hostdata;
   int nPort;
   struct sockaddr_in sock_addr;
@@ -3125,7 +3128,7 @@ Private bool OpenSocket(char* host, short int port) {
       goto exit_opensocket;
     }
 
-    nInterfaceAddr = *((long int*)(hostdata->h_addr));
+    nInterfaceAddr = *((int32_t*)(hostdata->h_addr));
   }
 
   nPort = htons(port);
@@ -3198,16 +3201,16 @@ static void net_error(char* prefix, int err) {
 
 Private bool read_packet() {
   int rcvd_bytes;        /* Length of received packet fragment */
-  long int packet_bytes; /* Total length of incoming packet */
+  int32_t packet_bytes; /* Total length of incoming packet */
   int rcv_len;
-  long int n;
+  int32_t n;
   unsigned char* p;
 
   /* 0272 restructured */
   struct {
-    long int packet_length;
-    short int server_error ALIGN2;
-    long int status ALIGN2;
+    int32_t packet_length;
+    int16_t server_error ALIGN2;
+    int32_t status ALIGN2;
   } in_packet_header;
 #define IN_PKT_HDR_BYTES 10
 
@@ -3293,10 +3296,10 @@ Private bool read_packet() {
 /* ======================================================================
    write_packet()  -  Send QM data packet                                 */
 
-Private bool write_packet(int type, char* data, long int bytes) {
+Private bool write_packet(int type, char* data, int32_t bytes) {
   struct {
-    long int length;
-    short int type;
+    int32_t length;
+    int16_t type;
   } ALIGN2 packet_header;
 #define PKT_HDR_BYTES 6
 
@@ -3342,8 +3345,8 @@ Private bool write_packet(int type, char* data, long int bytes) {
    debug()  -  Debug function                                             */
 
 Private void debug(unsigned char* p, int n) {
-  short int i;
-  short int j;
+  int16_t i;
+  int16_t j;
   unsigned char c;
   char s[72 + 1];
   static char hex[] = "0123456789ABCDEF";
@@ -3435,7 +3438,7 @@ Private char* sysdir() {
 /* ====================================================================== */
 
 Private void initialise_client() {
-  short int i;
+  int16_t i;
 
   if (buff == NULL) {
     set_default_character_maps();
@@ -3459,7 +3462,7 @@ Private void initialise_client() {
 /* ====================================================================== */
 
 Private bool FindFreeSession() {
-  short int i;
+  int16_t i;
 
   /* Find a free session table entry */
 
@@ -3511,9 +3514,9 @@ Private void disconnect() {
 /* ======================================================================
    swap2()                                                                */
 
-short int swap2(short int data) {
+int16_t swap2(int16_t data) {
   union {
-    short int val;
+    int16_t val;
     unsigned char chr[2];
   } in, out;
 
@@ -3526,9 +3529,9 @@ short int swap2(short int data) {
 /* ======================================================================
    swap4()                                                                */
 
-long int swap4(long int data) {
+int32_t swap4(int32_t data) {
   union {
-    long int val;
+    int32_t val;
     unsigned char chr[4];
   } in, out;
 

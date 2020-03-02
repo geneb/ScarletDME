@@ -21,6 +21,12 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  *
  * START-HISTORY (ScarletDME):
+ * 29Feb20 gwb Changed LONG_MAX to INT32_MAX.  When building for a 64 bit 
+ *             platform, the LONG_MAX constant overflows the size of the
+ *             int32_t variable type.  This change needed to be made across
+ *             the entire code base.
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
  * 22Feb20 gwb Cleaned up a variable assigned but unused warning.
  * 
  * START-HISTORY (OpenQM):
@@ -83,19 +89,20 @@
 #include "options.h"
 #include "config.h"
 #include <sched.h>
+#include <stdint.h> 
 
 int OpenFile(char* path, int mode, int rights);
 
-Private long int tx_ref = 0; /* Running transfer count for FDS sequence */
-Private short int FDS_open_count = 0;
+Private int32_t tx_ref = 0; /* Running transfer count for FDS sequence */
+Private int16_t FDS_open_count = 0;
 
 Private void restart_tx_ref(void);
 
-bool FDS_open(DH_FILE* dh_file, short int subfile);
+bool FDS_open(DH_FILE* dh_file, int16_t subfile);
 
 /* ====================================================================== */
 
-void dh_fsync(DH_FILE* dh_file, short int subfile) {
+void dh_fsync(DH_FILE* dh_file, int16_t subfile) {
   if (!ValidFileHandle(dh_file->sf[subfile].fu)) {
     if (!FDS_open(dh_file, subfile)) {
       log_printf("DH_FSYNC: FDS open failure %d on %s subfile %d.\n",
@@ -118,7 +125,7 @@ bool dh_init() {
 
 bool dh_open_subfile(DH_FILE* dh_file,
                      char* pathname,
-                     short int subfile,
+                     int16_t subfile,
                      bool create) {
   bool status = FALSE;
   char filename[MAX_PATHNAME_LEN + 1];
@@ -154,7 +161,7 @@ exit_dh_open_subfile:
 
 /* ====================================================================== */
 
-void dh_close_subfile(DH_FILE* dh_file, short int subfile) {
+void dh_close_subfile(DH_FILE* dh_file, int16_t subfile) {
   if (ValidFileHandle(dh_file->sf[subfile].fu)) {
     CloseFile(dh_file->sf[subfile].fu);
     dh_file->sf[subfile].fu = INVALID_FILE_HANDLE;
@@ -184,7 +191,7 @@ void dh_shutdown() {
 
 /* ====================================================================== */
 
-int64 dh_filesize(DH_FILE* dh_file, short int subfile) {
+int64 dh_filesize(DH_FILE* dh_file, int16_t subfile) {
   if (!FDS_open(dh_file, subfile))
     return -1;
 
@@ -193,7 +200,7 @@ int64 dh_filesize(DH_FILE* dh_file, short int subfile) {
 
 /* ====================================================================== */
 
-bool FDS_open(DH_FILE* dh_file, short int subfile) {
+bool FDS_open(DH_FILE* dh_file, int16_t subfile) {
   bool status = FALSE;
 
   if (!ValidFileHandle(dh_file->sf[subfile].fu)) {
@@ -215,15 +222,15 @@ exit_fds_open:
 
 void FDS_close() {
   DH_FILE* p;
-  short int i;
-  long int low_ref;
+  int16_t i;
+  int32_t low_ref;
   DH_FILE* dh_file = NULL;
-  short int subfile;
+  int16_t subfile;
 
   /* Close the file with the lowest transfer reference number */
 
   for (p = dh_file_head; p != NULL; p = p->next_file) {
-    low_ref = LONG_MAX;
+    low_ref = INT32_MAX;  // was LONG_MAX.  See 29Feb20 comment at the top.
     for (i = 0; i < p->no_of_subfiles; i++) {
       if ((ValidFileHandle(p->sf[i].fu)) && (p->sf[i].tx_ref < low_ref)) {
         dh_file = p;
@@ -286,10 +293,10 @@ OSFILE dio_open(char* fn, int mode) {
    dh_read_group()  -  Read a group buffer                                */
 
 bool dh_read_group(DH_FILE* dh_file,
-                   short int subfile,
-                   long int group,
+                   int16_t subfile,
+                   int32_t group,
                    char* buff,
-                   short int bytes) {
+                   int16_t bytes) {
   FILE_ENTRY* fptr;
   int64 offset;
 
@@ -340,10 +347,10 @@ bool dh_read_group(DH_FILE* dh_file,
    dh_write_group()  -  Write a group buffer                              */
 
 bool dh_write_group(DH_FILE* dh_file,
-                    short int subfile,
-                    long int group,
+                    int16_t subfile,
+                    int32_t group,
                     char* buff,
-                    short int bytes) {
+                    int16_t bytes) {
   int64 offset;
   FILE_ENTRY* fptr;
 
@@ -394,20 +401,20 @@ bool dh_write_group(DH_FILE* dh_file,
    dh_get_overflow()  -  Get overflow block(s)
    Returns zero if unable to allocate block.                              */
 
-long int dh_get_overflow(
+int32_t dh_get_overflow(
     DH_FILE* dh_file,
     bool have_group_lock) /* Process already owns header group lock. Also
                              we do not flush the header if we are keeping
                              an existing lock.                            */
 {
-  short int header_lock;
+  int16_t header_lock;
   DH_BLOCK overflow_block;
-  long int ogrp;
+  int32_t ogrp;
   int64 offset;
   FILE_ENTRY* fptr;
   char* buff = NULL;
-  short int group_bytes;
-  short int subfile = OVERFLOW_SUBFILE;
+  int16_t group_bytes;
+  int16_t subfile = OVERFLOW_SUBFILE;
 
   fptr = FPtr(dh_file->file_id);
 
@@ -427,7 +434,7 @@ long int dh_get_overflow(
   } else {
     /* Must make new overflow block(s) */
 
-    group_bytes = (short int)(dh_file->group_size);
+    group_bytes = (int16_t)(dh_file->group_size);
     buff = (char*)k_alloc(74, group_bytes);
 
     if (!ValidFileHandle(dh_file->sf[subfile].fu)) {
@@ -452,7 +459,7 @@ long int dh_get_overflow(
     if (dh_file->file_version < 2) {
       /* Check not about to go over 2Gb */
 
-      if ((((unsigned long)offset) + group_bytes) > 0x80000000L) {
+      if ((((u_int32_t)offset) + group_bytes) > 0x80000000L) {
         dh_err = DHE_SIZE;
         ogrp = 0;
         goto exit_get_overflow;
@@ -471,7 +478,7 @@ long int dh_get_overflow(
       goto exit_get_overflow;
     }
 
-    ogrp = (long int)(((offset - dh_file->header_bytes) / group_bytes) + 1);
+    ogrp = (int32_t)(((offset - dh_file->header_bytes) / group_bytes) + 1);
   }
 
 exit_get_overflow:
@@ -490,14 +497,14 @@ exit_get_overflow:
 /* ======================================================================
    dh_free_overflow()  -  Add a block to the free overflow chain          */
 
-void dh_free_overflow(DH_FILE* dh_file, long int ogrp) {
-  short int header_lock;
+void dh_free_overflow(DH_FILE* dh_file, int32_t ogrp) {
+  int16_t header_lock;
   char* buff;
-  short int group_bytes;
+  int16_t group_bytes;
   FILE_ENTRY* fptr;
 
   fptr = FPtr(dh_file->file_id);
-  group_bytes = (short int)(dh_file->group_size);
+  group_bytes = (int16_t)(dh_file->group_size);
 
   buff = (char*)k_alloc(103, group_bytes);
   memset(buff, '\0', group_bytes);
@@ -549,9 +556,9 @@ bool dh_flush_header(DH_FILE* dh_file) {
     header.params.split_load = fptr->params.split_load;
     header.params.merge_load = fptr->params.merge_load;
     header.params.load_bytes =
-        (unsigned long int)(fptr->params.load_bytes & 0xFFFFFFFF);
+        (u_int32_t)(fptr->params.load_bytes & 0xFFFFFFFF);
     header.params.extended_load_bytes =
-        (short int)(fptr->params.load_bytes >> 32);
+        (int16_t)(fptr->params.load_bytes >> 32);
     header.params.mod_value = fptr->params.mod_value;
     header.params.longest_id = fptr->params.longest_id;
     header.params.free_chain = SetFwdLink(dh_file, fptr->params.free_chain);
@@ -576,23 +583,23 @@ bool dh_flush_header(DH_FILE* dh_file) {
 }
 
 /* ======================================================================
-   dh_get_group_lock()  -  Set a group                                        */
+   dh_get_group_lock()  -  Set a group lock                             */
 
-short int dh_get_group_lock(DH_FILE* dh_file, long int group, bool write_lock) {
-  short int file_id;
-  short int idx;      /* Index of hash cell */
-  short int scan_idx; /* Scanning index */
+int16_t dh_get_group_lock(DH_FILE* dh_file, int32_t group, bool write_lock) {
+  int16_t file_id;
+  int16_t idx;      /* Index of hash cell */
+  int16_t scan_idx; /* Scanning index */
   GLOCK_ENTRY* lptr;
-  short int active_locks;
-  short int free_cell;
-  static short int pause_ct = 5;
+  int16_t active_locks;
+  int16_t free_cell;
+  static int16_t pause_ct = 5;
   bool retry = FALSE;
-  /* FILE_ENTRY* fptr; variable set but not used. */
+  // FILE_ENTRY* fptr; variable set but not used.
   int steps = 0;
 
   file_id = dh_file->file_id;
   idx = GLockHash(file_id, group);
-  /* fptr = FPtr(file_id); variable set but not used. */
+  // fptr = FPtr(file_id);  //variable set but not used.
 
 again:
   scan_idx = idx;
@@ -622,12 +629,11 @@ again:
         }
 
         goto wait_for_lock; /* Must wait */
-      } else                /* Not the right lock */
-      {
+      } else {
+        /* Not the right lock */
       }
       active_locks--;
-    } else if (lptr->hash == 0) /* Unused cell */
-    {
+    } else if (lptr->hash == 0) { /* Unused cell */
       if (free_cell == 0)
         free_cell = scan_idx;
     }
@@ -715,7 +721,7 @@ wait_for_lock:
 /* ======================================================================
    dh_free_group_lock()  -  Free a group lock                             */
 
-void dh_free_group_lock(short int slot) {
+void dh_free_group_lock(int16_t slot) {
   GLOCK_ENTRY* lptr;
   GLOCK_ENTRY* hash_lptr;
 
@@ -743,10 +749,10 @@ void dh_free_group_lock(short int slot) {
    dh_configure()  - Change file parameters                               */
 
 void dh_configure(DH_FILE* dh_file,
-                  long int min_modulus,
-                  short int split_load,
-                  short int merge_load,
-                  long int large_rec_size) {
+                  int32_t min_modulus,
+                  int16_t split_load,
+                  int16_t merge_load,
+                  int32_t large_rec_size) {
   FILE_ENTRY* fptr;
   fptr = FPtr(dh_file->file_id);
 
@@ -808,7 +814,7 @@ bool write_at(OSFILE fu, int64 offset, char* buff, int bytes) {
    dh_set_subfile  -  Copy a file unit number into the DH_FILE system,
    adjusting the FDS open count.                                          */
 
-void dh_set_subfile(DH_FILE* dh_file, short int subfile, OSFILE fu) {
+void dh_set_subfile(DH_FILE* dh_file, int16_t subfile, OSFILE fu) {
   dh_file->sf[subfile].fu = fu;
   FDS_open_count++;
 }
@@ -826,7 +832,7 @@ void dh_set_subfile(DH_FILE* dh_file, short int subfile, OSFILE fu) {
 
 Private void restart_tx_ref() {
   DH_FILE* p;
-  short int sf;
+  int16_t sf;
 
   for (p = dh_file_head; p != NULL; p = p->next_file) {
     for (sf = 0; sf < p->no_of_subfiles; sf++) {

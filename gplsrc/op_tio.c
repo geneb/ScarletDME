@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ *
  * 22Feb20 gwb Cleared up a variable assigned but never used in
  *             process_client_input().
  * 
@@ -200,7 +203,7 @@ Private bool error_displayed = FALSE;
 /* Cached pointer to last referenced print unit to increase performance
    when an application uses many printers.                               */
 #define NO_LAST_PU -2
-Private short int last_pu = NO_LAST_PU; /* Print unit no (never 0 or -1) */
+Private int16_t last_pu = NO_LAST_PU; /* Print unit no (never 0 or -1) */
 Private PRINT_UNIT* last_pu_ptr;        /* Pointer to PRINT_UNIT structure */
 
 #define PrinterOn ((process.program.flags & PF_PRINTER_ON) != 0)
@@ -209,8 +212,8 @@ Private PRINT_UNIT* last_pu_ptr;        /* Pointer to PRINT_UNIT structure */
 bool check_debug(void);
 void op_dbgon(void);
 void op_dsp(void);
-void to_printer(PRINT_UNIT*, char* q, short int bytes);
-void to_file(PRINT_UNIT*, char* q, short int bytes);
+void to_printer(PRINT_UNIT*, char* q, int16_t bytes);
+void to_file(PRINT_UNIT*, char* q, int16_t bytes);
 STRING_CHUNK* inblk(int max_bytes);
 
 /* Internal used opcodes */
@@ -219,10 +222,10 @@ void op_getprompt(void);
 /* Internal functions */
 Private int colour_map(int user_colour);
 Private void keyedit_trap_exit(int mode);
-Private void capture(char* s, short int n);
+Private void capture(char* s, int16_t n);
 Private void emitn(char* tgt, char* src, int rpt);
 Private int como_open(char name[]);
-Private void como_string(char* str, short int bytes);
+Private void como_string(char* str, int16_t bytes);
 Private bool display_chunked_string(bool flush);
 Private bool display_footer(void);
 Private void display_header(void);
@@ -230,18 +233,18 @@ Private void heading(bool eject);
 Private void phantom_error(void);
 Private bool print_chunked_string(PRINT_UNIT* pu, bool flush);
 Private void set_data_lines(PRINT_UNIT* pu);
-Private void set_print_mode(PRINT_UNIT* pu, short int mode);
+Private void set_print_mode(PRINT_UNIT* pu, int16_t mode);
 Private PRINT_UNIT* tio_find_printer(DESCRIPTOR* descr, bool pr_on);
 Private void tio_display_new_page(void);
 Private void tio_new_line(void);
 Private bool tio_print_string(PRINT_UNIT* pu,
                               char* q,
-                              short int bytes,
+                              int16_t bytes,
                               bool transparent_newline);
 Private void getkey(bool invert, int timeout);
 Private void printer_off(void);
 Private void printer_on(void);
-void csr(short int x, short int y);
+void csr(int16_t x, int16_t y);
 void clr(void);
 void cll(void);
 Private void process_client_input(void);
@@ -644,7 +647,7 @@ void op_como() {
 
   DESCRIPTOR* descr;
   char path_name[MAX_PATHNAME_LEN + 1];
-  unsigned short int op_flags;
+  u_int16_t op_flags;
 
   op_flags = process.op_flags;
   process.op_flags = 0;
@@ -661,7 +664,7 @@ void op_como() {
     como_close();
     process.status = 0;
   } else {
-    process.status = (long)como_open(path_name);
+    process.status = (int32_t)como_open(path_name);
   }
 
 exit_como:
@@ -775,7 +778,7 @@ void op_footing() {
 
 void op_getprompt() {
   STRING_CHUNK* str;
-  short int n;
+  int16_t n;
 
   InitDescr(e_stack, STRING);
 
@@ -1181,8 +1184,8 @@ void op_keyinct() {
 Private void getkey(bool invert, int timeout) /* -ve = none */
 {
   STRING_CHUNK* str;
-  short int n;
-  short int k;
+  int16_t n;
+  int16_t k;
   char c;
 
   if (connection_type == CN_NONE)
@@ -1272,7 +1275,7 @@ void op_page() {
   }
 
   if (descr->data.value >= 0)
-    pu->page_no = (short int)(descr->data.value); /* 0382 moved */
+    pu->page_no = (int16_t)(descr->data.value); /* 0382 moved */
 
   k_pop(2);
 }
@@ -1298,8 +1301,8 @@ void op_pset() {
 
   DESCRIPTOR* descr;
   PRINT_UNIT* pu;
-  long int new_value;
-  short int param;
+  int32_t new_value;
+  int16_t param;
 
   /* Get new value */
 
@@ -1311,7 +1314,7 @@ void op_pset() {
 
   descr = e_stack - 2;
   GetInt(descr);
-  param = (short int)(descr->data.value);
+  param = (int16_t)(descr->data.value);
   if (descr->data.value != param) /* Overflow - set illegal param no */
   {
     param = -1;
@@ -1333,7 +1336,7 @@ void op_pset() {
       if (new_value == -1)
         pu->width = pcfg.lptrwide;
       else if (new_value >= 0)
-        pu->width = (short int)new_value;
+        pu->width = (int16_t)new_value;
       new_value = pu->width;
       break;
 
@@ -1341,7 +1344,7 @@ void op_pset() {
       if (new_value == -1)
         pu->lines_per_page = pcfg.lptrhigh;
       else if (new_value >= 0)
-        pu->lines_per_page = (short int)new_value;
+        pu->lines_per_page = (int16_t)new_value;
       new_value = pu->lines_per_page;
       set_data_lines(pu);
       break;
@@ -1350,7 +1353,7 @@ void op_pset() {
       if (new_value == -1)
         pu->top_margin = TIO_DEFAULT_TMGN;
       else if (new_value >= 0)
-        pu->top_margin = (short int)new_value;
+        pu->top_margin = (int16_t)new_value;
       new_value = pu->top_margin;
       set_data_lines(pu);
       break;
@@ -1359,7 +1362,7 @@ void op_pset() {
       if (new_value == -1)
         pu->bottom_margin = TIO_DEFAULT_BMGN;
       else if (new_value >= 0)
-        pu->bottom_margin = (short int)new_value;
+        pu->bottom_margin = (int16_t)new_value;
       new_value = pu->bottom_margin;
       set_data_lines(pu);
       break;
@@ -1368,7 +1371,7 @@ void op_pset() {
       if (new_value == -1)
         pu->left_margin = TIO_DEFAULT_LMGN;
       else if (new_value >= 0)
-        pu->left_margin = (short int)new_value;
+        pu->left_margin = (int16_t)new_value;
       new_value = pu->left_margin;
       break;
 
@@ -1428,7 +1431,7 @@ void op_pset() {
       if (new_value == -1)
         pu->copies = 1;
       else if (new_value >= 0)
-        pu->copies = (short int)new_value;
+        pu->copies = (int16_t)new_value;
       new_value = pu->copies;
       break;
 
@@ -1460,8 +1463,8 @@ void op_setpu() {
 
   DESCRIPTOR* descr;
   PRINT_UNIT* pu;
-  short int key;
-  short int n;
+  int16_t key;
+  int16_t n;
   char* printer_name = NULL;
   char s[10];
 
@@ -1471,7 +1474,7 @@ void op_setpu() {
 
   descr = e_stack - 3;
   GetInt(descr);
-  key = (short int)(descr->data.value);
+  key = (int16_t)(descr->data.value);
 
   /* Get print unit */
 
@@ -1488,7 +1491,7 @@ void op_setpu() {
   {
     case PU_MODE:
       GetInt(descr);
-      switch (n = (short int)(descr->data.value)) {
+      switch (n = (int16_t)(descr->data.value)) {
         case PRINT_TO_DISPLAY:
         case PRINT_TO_PRINTER:
         case PRINT_TO_FILE:
@@ -1507,14 +1510,14 @@ void op_setpu() {
 
     case PU_WIDTH:
       GetInt(descr);
-      if ((n = (short int)(descr->data.value)) < 0)
+      if ((n = (int16_t)(descr->data.value)) < 0)
         n = pcfg.lptrwide;
       pu->width = n;
       break;
 
     case PU_LENGTH:
       GetInt(descr);
-      if ((n = (short int)(descr->data.value)) < 0)
+      if ((n = (int16_t)(descr->data.value)) < 0)
         n = pcfg.lptrhigh;
       pu->lines_per_page = n;
       set_data_lines(pu);
@@ -1522,7 +1525,7 @@ void op_setpu() {
 
     case PU_TOPMARGIN:
       GetInt(descr);
-      if ((n = (short int)(descr->data.value)) < 0)
+      if ((n = (int16_t)(descr->data.value)) < 0)
         n = TIO_DEFAULT_TMGN;
       pu->top_margin = n;
       set_data_lines(pu);
@@ -1530,7 +1533,7 @@ void op_setpu() {
 
     case PU_BOTMARGIN:
       GetInt(descr);
-      if ((n = (short int)(descr->data.value)) < 0)
+      if ((n = (int16_t)(descr->data.value)) < 0)
         n = TIO_DEFAULT_BMGN;
       pu->bottom_margin = n;
       set_data_lines(pu);
@@ -1538,7 +1541,7 @@ void op_setpu() {
 
     case PU_LEFTMARGIN:
       GetInt(descr);
-      if ((n = (short int)(descr->data.value)) < 0)
+      if ((n = (int16_t)(descr->data.value)) < 0)
         n = TIO_DEFAULT_LMGN;
       pu->left_margin = n;
       break;
@@ -1591,14 +1594,14 @@ void op_setpu() {
 
     case PU_COPIES:
       GetInt(descr);
-      if ((n = (short int)(descr->data.value)) < 1)
+      if ((n = (int16_t)(descr->data.value)) < 1)
         n = 1;
       pu->copies = n;
       break;
 
     case PU_PAGENUMBER:
       GetInt(descr);
-      if ((n = (short int)(descr->data.value)) < 1)
+      if ((n = (int16_t)(descr->data.value)) < 1)
         n = 1;
       pu->page_no = n;
       break;
@@ -1622,24 +1625,24 @@ void op_setpu() {
     case PU_CPI:
       k_get_float(descr);
       pu->cpi =
-          (short int)(descr->data.float_value * 100); /* Stored scaled by 100 */
+          (int16_t)(descr->data.float_value * 100); /* Stored scaled by 100 */
       break;
 
     case PU_PAPER_SIZE:
       GetInt(descr);
-      if ((n = (short int)(descr->data.value)) < 1)
+      if ((n = (int16_t)(descr->data.value)) < 1)
         n = 1;
       pu->paper_size = n;
       break;
 
     case PU_LPI:
       GetInt(descr);
-      pu->lpi = (short int)(descr->data.value);
+      pu->lpi = (int16_t)(descr->data.value);
       break;
 
     case PU_WEIGHT:
       GetInt(descr);
-      pu->weight = (short int)(descr->data.value);
+      pu->weight = (int16_t)(descr->data.value);
       break;
 
     case PU_SYMBOL_SET:
@@ -1713,8 +1716,8 @@ void op_getpu() {
 
   DESCRIPTOR* descr;
   PRINT_UNIT* pu;
-  short int key;
-  short int n;
+  int16_t key;
+  int16_t n;
   DESCRIPTOR result;
 
   process.status = 0;
@@ -1728,13 +1731,13 @@ void op_getpu() {
 
   descr = e_stack - 2;
   GetInt(descr);
-  key = (short int)(descr->data.value);
+  key = (int16_t)(descr->data.value);
 
   descr = e_stack - 1;
 
   if (key == PU_DEFINED) {
     GetInt(descr);
-    n = (short int)(descr->data.value);
+    n = (int16_t)(descr->data.value);
     for (pu = &tio.dsp; pu != NULL; pu = pu->next) {
       if (pu->unit == n) {
         result.data.value = TRUE;
@@ -1803,7 +1806,7 @@ void op_getpu() {
         break;
 
       case PU_LINESLEFT:
-        n = (short int)(pu->data_lines_per_page - pu->line);
+        n = (int16_t)(pu->data_lines_per_page - pu->line);
         if (pu->unit < 0)
           n--; /* Space for pagination prompt */
         result.data.value = n;
@@ -1867,7 +1870,7 @@ void op_getpu() {
         break;
 
       case PU_LINENO:
-        n = (short int)(pu->line + 1);
+        n = (int16_t)(pu->line + 1);
         if (n > pu->data_lines_per_page)
           n = 1; /* Page throw pending */
         result.data.value = n;
@@ -1945,14 +1948,14 @@ void op_prclose() {
  */
 
   DESCRIPTOR* descr;
-  short int low_unit;
-  short int high_unit;
+  int16_t low_unit;
+  int16_t high_unit;
   PRINT_UNIT* pu;
-  short int level = 0;
+  int16_t level = 0;
 
   descr = e_stack - 1;
   GetInt(descr);
-  low_unit = (short int)(descr->data.value);
+  low_unit = (int16_t)(descr->data.value);
 
   switch (low_unit) {
     case -3: /* Close all units at this or higher level */
@@ -2039,8 +2042,8 @@ void op_prdisp() {
  */
 
   PRINT_UNIT* pu;
-  unsigned short int op_flags;
-  short int status = 0;
+  u_int16_t op_flags;
+  int16_t status = 0;
 
   op_flags = process.op_flags;
   process.op_flags = 0;
@@ -2086,7 +2089,7 @@ void op_prfile() {
   DESCRIPTOR pathname;
   DESCRIPTOR status;
   PRINT_UNIT* pu;
-  unsigned short int op_flags;
+  u_int16_t op_flags;
 
   op_flags = process.op_flags;
   process.op_flags = 0;
@@ -2151,8 +2154,8 @@ void op_prname() {
 
   DESCRIPTOR* descr;
   PRINT_UNIT* pu;
-  unsigned short int op_flags;
-  short int status = 0;
+  u_int16_t op_flags;
+  int16_t status = 0;
   char* printer_name = NULL;
 
   op_flags = process.op_flags;
@@ -2342,8 +2345,8 @@ void op_pterm() {
  */
 
   DESCRIPTOR* descr;
-  long int new_value;
-  short int action;
+  int32_t new_value;
+  int16_t action;
   STRING_CHUNK* str;
   DESCRIPTOR result;
 
@@ -2353,7 +2356,7 @@ void op_pterm() {
 
   descr = e_stack - 2;
   GetInt(descr);
-  action = (short int)(descr->data.value);
+  action = (int16_t)(descr->data.value);
 
   descr = e_stack - 1;
   switch (action) {
@@ -2499,10 +2502,10 @@ void op_savescrn() {
  */
 
   DESCRIPTOR* descr;
-  short int x;
-  short int y;
-  short int width;
-  short int height;
+  int16_t x;
+  int16_t y;
+  int16_t width;
+  int16_t height;
   SCREEN_IMAGE* p;
 
   if ((connection_type == CN_NONE) || is_QMVbSrvr)
@@ -2510,19 +2513,19 @@ void op_savescrn() {
 
   descr = e_stack - 1;
   GetInt(descr);
-  height = (short int)(descr->data.value);
+  height = (int16_t)(descr->data.value);
 
   descr = e_stack - 2;
   GetInt(descr);
-  width = (short int)(descr->data.value);
+  width = (int16_t)(descr->data.value);
 
   descr = e_stack - 3;
   GetInt(descr);
-  y = (short int)(descr->data.value);
+  y = (int16_t)(descr->data.value);
 
   descr = e_stack - 4;
   GetInt(descr);
-  x = (short int)(descr->data.value);
+  x = (int16_t)(descr->data.value);
 
   /* Validate dimensions */
 
@@ -2610,7 +2613,7 @@ void op_ttyset() {
 /* ======================================================================
    como_string()  -  Write string to como file                            */
 
-Private void como_string(char* str, short int bytes) {
+Private void como_string(char* str, int16_t bytes) {
   if (!tio.suppress_como) {
     Write(tio.como_file, str, bytes);
   }
@@ -2727,8 +2730,8 @@ Private bool display_chunked_string(bool flush) {
 void emit_header_footer(PRINT_UNIT* pu, bool is_heading) {
   STRING_CHUNK* str;
   DESCRIPTOR* descr;
-  short int bytes;
-  short int n;
+  int16_t bytes;
+  int16_t n;
   char* p;
   char* q;
   bool text_emitted = FALSE;
@@ -2883,7 +2886,7 @@ Private void set_data_lines(PRINT_UNIT* pu) {
 /* ======================================================================
    set_print_mode()  -  Clear down and reset printer mode at change       */
 
-Private void set_print_mode(PRINT_UNIT* pu, short int mode) {
+Private void set_print_mode(PRINT_UNIT* pu, int16_t mode) {
   if (pu->mode != mode) {
     /* Clear down old settings */
 
@@ -2926,10 +2929,10 @@ void squeek() {
    pagination, etc.                                                       */
 
 bool tio_display_string(char* q,
-                        short int bytes,
+                        int16_t bytes,
                         bool flush,
                         bool transparent_newline) {
-  short int n;
+  int16_t n;
   char* p;
 
   tio.dsp.flags |= PU_ACTIVE | PU_OUTPUT;
@@ -3017,10 +3020,10 @@ Private void tio_display_new_page() {
   }
 }
 
-Private void capture(char* q, short int n) {
-  short int cn;
+Private void capture(char* q, int16_t n) {
+  int16_t cn;
   STRING_CHUNK* str;
-  short int space;
+  int16_t space;
 
   if (capture_head == NULL) /* Allocate first chunk */
   {
@@ -3120,7 +3123,7 @@ Private bool display_footer() {
    display_header()  -  Display page header                               */
 
 Private void display_header() {
-  short int i;
+  int16_t i;
 
   clr();
 
@@ -3144,10 +3147,10 @@ Private PRINT_UNIT* tio_find_printer(
                               If not set, interprets unit 0 as unit -1 */
 {
   PRINT_UNIT* pu;
-  short int u;
+  int16_t u;
 
   GetInt(descr);
-  u = (short int)(descr->data.value);
+  u = (int16_t)(descr->data.value);
 
   if (u == last_pu)
     return last_pu_ptr;
@@ -3195,7 +3198,7 @@ bool tio_handle_break() {
   bool saved_capturing;
   char c;
   bool ok;
-  long int offset;
+  int32_t offset;
   struct PROGRAM* pgm;
   int handler_return;
 
@@ -3391,7 +3394,7 @@ bool tio_init() {
 int tio_printf(char* template_string, ...) {
   char s[500];
   va_list arg_ptr;
-  short int n;
+  int16_t n;
 
   va_start(arg_ptr, template_string);
 
@@ -3440,7 +3443,7 @@ Private void tio_new_line() {
 
 Private bool tio_print_string(PRINT_UNIT* pu,
                               char* q,
-                              short int bytes,
+                              int16_t bytes,
                               bool transparent_newline) {
   bool status = TRUE;
 
@@ -3477,13 +3480,13 @@ void tio_write(char* s) {
 /* ======================================================================
    tio_set_printer()  -  Set up print unit structure                      */
 
-PRINT_UNIT* tio_set_printer(short int unit,
-                            short int mode,
-                            short int lines_per_page,
-                            short int width,
-                            short int top_margin,
-                            short int bottom_margin,
-                            short int left_margin) {
+PRINT_UNIT* tio_set_printer(int16_t unit,
+                            int16_t mode,
+                            int16_t lines_per_page,
+                            int16_t width,
+                            int16_t top_margin,
+                            int16_t bottom_margin,
+                            int16_t left_margin) {
   PRINT_UNIT* p;
   PRINT_UNIT* pu = NULL;
 
@@ -3620,7 +3623,7 @@ void free_print_unit(PRINT_UNIT* pu) {
 
 /* ====================================================================== */
 
-void csr(short int x, short int y) {
+void csr(int16_t x, int16_t y) {
   char* p;
   int n;
 
@@ -3722,11 +3725,11 @@ void op_readpkt() {
 
  */
 
-  long int packet_bytes; /* Total packet length including header */
+  int32_t packet_bytes; /* Total packet length including header */
   STRING_CHUNK* str_hdr = NULL;
   STRING_CHUNK* str = NULL;
   STRING_CHUNK* tail;
-  short int chunk_bytes;
+  int16_t chunk_bytes;
   int n;
 
   /* Read packet length from header */
@@ -3784,7 +3787,7 @@ void op_writepkt() {
 
   DESCRIPTOR* descr;
   STRING_CHUNK* str;
-  long int packet_length;
+  int32_t packet_length;
 
   descr = e_stack - 1;
   k_get_string(descr);
@@ -3827,24 +3830,24 @@ exit_op_writepkt:
 Private void process_client_input() {
   DESCRIPTOR* descr;
   struct {
-    long int packet_len;
-    short int server_error;
+    int32_t packet_len;
+    int16_t server_error;
   } header_packet;
 #define HDR_PKT_SIZE 6
 
   struct {
-    long int packet_len;
-    short int function;
+    int32_t packet_len;
+    int16_t function;
   } in_packet;
 #define IN_PKT_SIZE 6
 
   STRING_CHUNK* str;
   STRING_CHUNK* str_hdr;
   STRING_CHUNK* tail;
-  long int packet_bytes;
-  short int chunk_bytes;
-  long int n;
-  /* short int function; variable set but never used */
+  int32_t packet_bytes;
+  int16_t chunk_bytes;
+  int32_t n;
+  /* int16_t function; variable set but never used */
 
   /* Send any output */
 
@@ -3929,7 +3932,7 @@ Private void process_client_input() {
     if (!read_socket(str->data, n))
       break;
 
-    str->bytes = (short int)n;
+    str->bytes = (int16_t)n;
     str_hdr->string_len += n;
     packet_bytes -= n;
   }
@@ -3963,7 +3966,7 @@ Private void process_client_input() {
 bool write_socket(char* str, int bytes, bool flush) {
   int n;
   char* p;
-  short int mode;
+  int16_t mode;
 #define WS_CHAR_FF 1
 #define WS_CR 2
 

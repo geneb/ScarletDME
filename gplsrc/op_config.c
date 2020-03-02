@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  *
  * START-HISTORY (ScarletDME):
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ *
  * 22Feb20 gwb There was code missing in op_config() that was triggering a compiler
  *             warning.  The result of the missing code would have resulted in the 
  *             "SH" and "SH1" tests to not work properly if they were encountered.
@@ -214,7 +217,7 @@ void op_pconfig() {
   bool status = FALSE;
   char param[8 + 1];
   STRING_CHUNK* str;
-  long int n;
+  int32_t n;
 
   process.status = 1;
 
@@ -256,7 +259,7 @@ void op_pconfig() {
     GetInt(descr);
     if ((descr->data.value < 0) || (descr->data.value > 3))
       goto exit_op_pconfig;
-    pcfg.fsync = (short int)(descr->data.value);
+    pcfg.fsync = (int16_t)(descr->data.value);
   } else if (!strcmp(param, "GDI")) {
     GetInt(descr);
     if ((descr->data.value < 0) || (descr->data.value > 1))
@@ -266,22 +269,22 @@ void op_pconfig() {
     GetInt(descr);
     if ((descr->data.value < 1) || (descr->data.value > MAX_GROUP_SIZE))
       goto exit_op_pconfig;
-    pcfg.grpsize = (short int)(descr->data.value);
+    pcfg.grpsize = (int16_t)(descr->data.value);
   } else if (!strcmp(param, "INTPREC")) {
     GetInt(descr);
     if ((descr->data.value < 0) || (descr->data.value > 14))
       goto exit_op_pconfig;
-    pcfg.intprec = (short int)(descr->data.value);
+    pcfg.intprec = (int16_t)(descr->data.value);
   } else if (!strcmp(param, "LPTRHIGH")) {
     GetInt(descr);
     if ((descr->data.value < 1) || (descr->data.value > 32767))
       goto exit_op_pconfig;
-    pcfg.lptrhigh = (short int)(descr->data.value);
+    pcfg.lptrhigh = (int16_t)(descr->data.value);
   } else if (!strcmp(param, "LPTRWIDE")) {
     GetInt(descr);
     if ((descr->data.value < 1) || (descr->data.value > 1000))
       goto exit_op_pconfig;
-    pcfg.lptrwide = (short int)(descr->data.value);
+    pcfg.lptrwide = (int16_t)(descr->data.value);
   } else if (!strcmp(param, "MAXCALL")) {
     GetInt(descr);
     if ((descr->data.value < 10) || (descr->data.value > 1000000))
@@ -296,7 +299,7 @@ void op_pconfig() {
     GetInt(descr);
     if (descr->data.value < 0)
       goto exit_op_pconfig;
-    pcfg.objects = (short int)(descr->data.value);
+    pcfg.objects = (int16_t)(descr->data.value);
   } else if (!strcmp(param, "OBJMEM")) {
     GetInt(descr);
     if (descr->data.value < 0)
@@ -311,7 +314,7 @@ void op_pconfig() {
     GetInt(descr);
     if ((descr->data.value < 0) || (descr->data.value > 32))
       goto exit_op_pconfig;
-    pcfg.reccache = (short int)(descr->data.value);
+    pcfg.reccache = (int16_t)(descr->data.value);
     init_record_cache();
   } else if (!strcmp(param, "RINGWAIT")) {
     GetInt(descr);
@@ -354,7 +357,7 @@ void op_pconfig() {
     GetInt(descr);
     if ((descr->data.value < 2) || (descr->data.value > MAX_SORTMRG))
       goto exit_op_pconfig;
-    pcfg.sortmrg = (short int)(descr->data.value);
+    pcfg.sortmrg = (int16_t)(descr->data.value);
   } else if (!strcmp(param, "SORTWORK")) {
     k_get_string(descr);
     if ((str = descr->data.str.saddr) == NULL)
@@ -388,7 +391,7 @@ void op_pconfig() {
     n = descr->data.value;
     if ((n < 1900) || (n > 2500))
       goto exit_op_pconfig;
-    pcfg.yearbase = (short int)(descr->data.value);
+    pcfg.yearbase = (int16_t)(descr->data.value);
   } else {
     process.status = 1;
     goto exit_op_pconfig;

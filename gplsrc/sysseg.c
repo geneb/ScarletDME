@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 27Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ * 27Feb20 gwb Changed some instances of "QM" to "ScarletDME"
  * 22Feb20 gwb Function declarations converted to ANSI style from K&R.
  *             Converted sprintf() in bind_sysseg() and start_qm() to
  *             snprintf().
@@ -70,14 +73,14 @@ void LockSemaphore(int semno);
 void UnlockSemaphore(int semno);
 
 #define SYSSEG_REVSTAMP \
-  (((unsigned long)MAJOR_REV << 16) | ((unsigned long)MINOR_REV << 8) | BUILD)
+  (((u_int32_t)MAJOR_REV << 16) | ((u_int32_t)MINOR_REV << 8) | BUILD)
 
 #include <sys/ipc.h>
 #include <sys/shm.h>
 
 void dump_config(void);
 
-Private bool create_shared_segment(long int bytes,
+Private bool create_shared_segment(int32_t bytes,
                                    struct CONFIG* cfg,
                                    char* errmsg);
 
@@ -87,19 +90,19 @@ bool bind_sysseg(bool create, char* errmsg) {
   /* Linux only - Create rather than attach to existing? */
 
   bool status = FALSE;
-  long int bytes;
-  long int offset;
-  short int num_glocks;
+  int32_t bytes;
+  int32_t offset;
+  int16_t num_glocks;
   struct CONFIG* cfg = NULL;
-  short int max_users;
-  short int rlock_entry_size;
-  short int hi_user_no;
+  int16_t max_users;
+  int16_t rlock_entry_size;
+  int16_t hi_user_no;
   int user_map_size;
   char path[MAX_PATHNAME_LEN + 1];
   int pcode_fu;
   struct stat st;
   int pcode_len;
-  short int user_entry_size;
+  int16_t user_entry_size;
 
   /* Get the semaphores. If this fails, return directly rather than jumping
     to the normal error exit as we do not need to release the semaphores.   */
@@ -127,7 +130,7 @@ bool bind_sysseg(bool create, char* errmsg) {
     }
 
     if (create) {
-      strcpy(errmsg, "QM is already started");
+      strcpy(errmsg, "ScarletDME is already started.");
       goto exit_bind_sysseg;
     }
 
@@ -142,7 +145,7 @@ bool bind_sysseg(bool create, char* errmsg) {
     Create a new shared segment and populate it.                   */
 
   if (!create) {
-    strcpy(errmsg, "QM is not started");
+    strcpy(errmsg, "ScarletDME has not been started.");
     goto exit_bind_sysseg;
   }
 
@@ -166,7 +169,7 @@ bool bind_sysseg(bool create, char* errmsg) {
   bytes += NUM_SEMAPHORES * sizeof(SEMAPHORE_ENTRY);
 
   user_entry_size =
-      sizeof(struct USER_ENTRY) + (cfg->numfiles * sizeof(short int));
+      sizeof(struct USER_ENTRY) + (cfg->numfiles * sizeof(int16_t));
   bytes += max_users * user_entry_size;
 
   /* Work out size of user map based on highest user number. Users are
@@ -175,7 +178,7 @@ bool bind_sysseg(bool create, char* errmsg) {
     the licence results in more than this number of simultaneous processes. */
 
   hi_user_no = max(max_users, MIN_HI_USER_NO);
-  user_map_size = (hi_user_no + 1) * sizeof(short int);
+  user_map_size = (hi_user_no + 1) * sizeof(int16_t);
   bytes += user_map_size;
 
   /* Find size of pcode */
@@ -310,7 +313,7 @@ exit_bind_sysseg:
 /* ======================================================================
    create_shared_segment()                                                */
 
-Private bool create_shared_segment(long int bytes,
+Private bool create_shared_segment(int32_t bytes,
                                    struct CONFIG* cfg,
                                    char* errmsg) {
   int shmid;
@@ -412,7 +415,7 @@ bool start_qm() {
 bool stop_qm() {
   int shmid;
   struct shmid_ds shm;
-  short int i;
+  int16_t i;
   USER_ENTRY* uptr;
 
   if ((shmid = shmget(QM_SHM_KEY, 0, 0666)) != -1) {

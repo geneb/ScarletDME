@@ -18,7 +18,13 @@
  * 
  * Ladybridge Systems can be contacted via the www.openqm.com web site.
  * 
- * START-HISTORY:
+ * ScarletDME Wiki: https://scarlet.deltasoft.com
+ * 
+ * START-HISTORY (ScarletDME):
+ * 27Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ * 
+ * START-HISTORY (OpenQM):
  * 01 Jul 07  2.5-7 Extensive change for PDA merge.
  * 19 Jun 07  2.5-7 k_call() now has additional argument for stack adjustment.
  * 05 Feb 07  2.4-20 Added transparent_newline argument to tio_display_string().
@@ -106,7 +112,7 @@ typedef struct OBJDATA OBJDATA;
 /* ======================================================================
    Command line items                                                     */
 
-Public short int command_options init(0);
+Public int16_t command_options init(0);
 #define CMD_APPLY_LICENCE    0x0001      /* -l option */
 #define CMD_QUERY_ACCOUNT    0x0002      /* -a option */
 #define CMD_INSTALL          0x0004      /* -i option */
@@ -154,7 +160,7 @@ Public char * CRLF init("\r\n");
 
 /* QM.C */
 void fatal(void);
-void dump(u_char * addr, long int bytes);
+void dump(u_char * addr, int32_t bytes);
 void set_console_title(void);
 
 /* ANALYSE.C */
@@ -167,20 +173,20 @@ int64 dir_filesize(FILE_VAR * fvar);
 bool init_console(void);
 void shut_console(void);
 bool write_console(char * p, int bytes);
-bool save_screen(SCREEN_IMAGE * scrn, short int x, short int y,
-                 short int w, short int h);
+bool save_screen(SCREEN_IMAGE * scrn, int16_t x, int16_t y,
+                 int16_t w, int16_t h);
 void restore_screen(SCREEN_IMAGE * scrn, bool restore_cursor);
 void set_codepage(void);
 
 /* CTYPE.C */
 void set_default_character_maps(void);
 char * LowerCaseString(char * s);
-int MemCompareNoCase(char * p, char * q, short int len);
+int MemCompareNoCase(char * p, char * q, int16_t len);
 char * memichr(char * s, char c, int n);
-void memucpy(char * tgt, char * src, short int len);
-int sort_compare(char * s1, char * s2, short int bytes, bool nocase);
-int StringCompLenNoCase(char * p, char * q, short int len);
-void UpperCaseMem(char * str, short int len);
+void memucpy(char * tgt, char * src, int16_t len);
+int sort_compare(char * s1, char * s2, int16_t bytes, bool nocase);
+int StringCompLenNoCase(char * p, char * q, int16_t len);
+void UpperCaseMem(char * str, int16_t len);
 char * UpperCaseString(char * s);
 
 /* DH_FILE.C */
@@ -195,17 +201,17 @@ OSFILE dio_open(char * fn, int mode);
 bool GetConfigPath(char * inipath);
 
 /* KERNEL.C */
-short int assign_user_no(short int user_table_index);
+int16_t assign_user_no(int16_t user_table_index);
 bool init_kernel(void);
-short int in_group(char * name);
+int16_t in_group(char * name);
 char * account(void);
 void kernel(void);
 void k_recurse(u_char * code_ptr, int num_args);
 void k_recurse_object(u_char * code_ptr, int num_args, OBJDATA * objdata);
-void k_call(char * name, int num_args, u_char * code_ptr, short int stack_adj);
+void k_call(char * name, int num_args, u_char * code_ptr, int16_t stack_adj);
 void k_return(void);
 void k_run_program(void);
-bool raise_event(short int event, short int user);
+bool raise_event(int16_t event, int16_t user);
 void process_events(void);
 void show_stack(void);
 void sigchld_handler(int signum);
@@ -238,7 +244,7 @@ void k_unassigned_null(DESCRIPTOR * descr);
 void k_error(char msg[], ...);
 void k_quit(void);
 void k_err_pu(void);
-int k_line_no(long int offset, u_char * xcbase);
+int k_line_no(int32_t offset, u_char * xcbase);
 char * k_var_name(DESCRIPTOR * descr);
 void log_message(char * msg);
 int log_printf(char * str, ...);
@@ -256,7 +262,7 @@ void k_get_string(DESCRIPTOR * p);
 void k_get_file(DESCRIPTOR * p);
 void k_get_value(DESCRIPTOR * p);
 void k_num_array1(void(op(void)));
-void k_num_array2(void(op(void)), short int default_value);
+void k_num_array2(void(op(void)), int16_t default_value);
 void k_release(DESCRIPTOR * p);
 void k_deref_image(SCREEN_IMAGE * image);
 void k_deref_string(STRING_CHUNK * str);
@@ -269,10 +275,10 @@ bool k_str_to_num(DESCRIPTOR * p);
 STRING_CHUNK * k_copy_string(STRING_CHUNK * src);
 bool k_is_num(DESCRIPTOR * p);
 bool strdbl(char * p, double * value);
-bool strnint(char * p, short int len, long int * value);
+bool strnint(char * p, int16_t len, int32_t * value);
 void k_unass_zero(DESCRIPTOR * original, DESCRIPTOR * dereferenced);
 void k_unass_null(DESCRIPTOR * original, DESCRIPTOR * dereferenced);
-unsigned long GetUnsignedInt(DESCRIPTOR * descr);
+u_int32_t GetUnsignedInt(DESCRIPTOR * descr);
 
 #define k_pop(n) e_stack -= n
 #define k_dismiss() k_release(--e_stack)
@@ -285,27 +291,27 @@ char * sysmsg(int msg_no);
 /* NETFILES.C */
 int net_clearfile(FILE_VAR * fvar);
 void net_close(FILE_VAR * fvar);
-int net_delete(FILE_VAR * fvar, char * id, short int id_len, bool keep_lock);
+int net_delete(FILE_VAR * fvar, char * id, int16_t id_len, bool keep_lock);
 STRING_CHUNK * net_fileinfo(FILE_VAR * fvar, int key);
 int net_filelock(FILE_VAR * fvar, bool wait);
 int net_fileunlock(FILE_VAR * fvar);
 STRING_CHUNK * net_indices1(FILE_VAR * fvar);
 STRING_CHUNK * net_indices2(FILE_VAR * fvar, char * index_name);
-int net_lock(FILE_VAR * fvar, char * id, short int id_len, bool update, bool no_wait);
+int net_lock(FILE_VAR * fvar, char * id, int16_t id_len, bool update, bool no_wait);
 void net_mark_mapping(FILE_VAR * fvar, bool state);
 bool net_open(char * server, char * remote_file, FILE_VAR * fvar);
-int net_read(FILE_VAR * fvar, char * id, short int id_len, unsigned short int op_flags, STRING_CHUNK ** str);
-int net_readv(FILE_VAR * fvar, char * id, short int id_len, int field_no, unsigned short int op_flags, STRING_CHUNK ** str);
-int net_recordlocked(FILE_VAR * fvar, char * id, short int id_len);
-int net_scanindex(FILE_VAR * fvar, char * index_name, short int list_no,
+int net_read(FILE_VAR * fvar, char * id, int16_t id_len, u_int16_t op_flags, STRING_CHUNK ** str);
+int net_readv(FILE_VAR * fvar, char * id, int16_t id_len, int field_no, u_int16_t op_flags, STRING_CHUNK ** str);
+int net_recordlocked(FILE_VAR * fvar, char * id, int16_t id_len);
+int net_scanindex(FILE_VAR * fvar, char * index_name, int16_t list_no,
                   DESCRIPTOR * key_descr, bool right);
-int net_select(FILE_VAR * fvar, STRING_CHUNK ** list, long int * count);
+int net_select(FILE_VAR * fvar, STRING_CHUNK ** list, int32_t * count);
 int net_selectindex(FILE_VAR * fvar, char * index_name, STRING_CHUNK ** str);
 int net_selectindexv(FILE_VAR * fvar, char * index_name, char * value, STRING_CHUNK ** str);
 int net_setindex(FILE_VAR * fvar, char * index_name, bool right);
-int net_unlock(FILE_VAR * fvar, char * id, short int id_len);
+int net_unlock(FILE_VAR * fvar, char * id, int16_t id_len);
 int net_unlock_all(void);
-int net_write(FILE_VAR * fvar, char * id, short int id_len, STRING_CHUNK * str, bool keep_lock);
+int net_write(FILE_VAR * fvar, char * id, int16_t id_len, STRING_CHUNK * str, bool keep_lock);
 STRING_CHUNK * get_qmnet_connections(void);
 
 /* OBJECT.C */
@@ -314,7 +320,7 @@ void unload_object(void * obj_hdr);
 void unload_all(void);
 bool is_global(void * obj_hdr);
 void invalidate_object(void);
-void * find_object(long int id);
+void * find_object(int32_t id);
 STRING_CHUNK * hsm_dump(void);
 void hsm_enter(void);
 void hsm_on(void);
@@ -324,7 +330,7 @@ OBJDATA * create_objdata(u_char * obj);
 void free_object(OBJDATA * objdata);
 
 /* OP_ARRAY.C */
-ARRAY_HEADER * a_alloc(long int rows, long int cols, bool init_zero);
+ARRAY_HEADER * a_alloc(int32_t rows, int32_t cols, bool init_zero);
 void free_common(ARRAY_HEADER * addr);
 void free_array(ARRAY_HEADER * hdr_addr);
 void delete_common(ARRAY_HEADER * ahdr);
@@ -332,7 +338,7 @@ void delete_common(ARRAY_HEADER * ahdr);
 /* OP_BTREE.C */
 bool bt_get_string(DESCRIPTOR * descr, char ** s);
 void btree_to_string(DESCRIPTOR * descr);
-void free_btree_element(BTREE_ELEMENT * element, short int keys);
+void free_btree_element(BTREE_ELEMENT * element, int16_t keys);
 
 /* OP_DIO1.C */
 void dio_close(FILE_VAR * fvar);
@@ -347,38 +353,38 @@ bool make_path(char * tgt);
 
 /* OP_DIO3.C */
 bool dir_write(FILE_VAR * fvar, char * mapped_id, STRING_CHUNK * str);
-bool map_t1_id(char * id, short int id_len, char * mapped_id);
-bool call_trigger(DESCRIPTOR * fvar_descr, short int mode, DESCRIPTOR * id_descr,
+bool map_t1_id(char * id, int16_t id_len, char * mapped_id);
+bool call_trigger(DESCRIPTOR * fvar_descr, int16_t mode, DESCRIPTOR * id_descr,
                   DESCRIPTOR * data_descr, bool on_error, bool updatable);
 
 /* OP_DIO4.C */
 bool dio_init(void);
-void clear_select(short int list_no);
-void complete_select(short int list_no);
-void end_select(short int list_no);
+void clear_select(int16_t list_no);
+void complete_select(int16_t list_no);
+void end_select(int16_t list_no);
 
 /* OP_ICONV.C */
-long int iconv_time_conversion(void);
+int32_t iconv_time_conversion(void);
 
 /* OP_JUMPS.C */
 bool valid_call_name(char * call_name);
 
 /* OP_LOCK.C */
-bool check_lock(FILE_VAR * fvar, char * id, short int id_len);
-short int lock_record(FILE_VAR *, char * id, short int id_len, bool update,
-                      unsigned long int txn_id, bool no_wait);
-bool unlock_record(FILE_VAR *, char * id, short int id_len);
-void unlock_txn(unsigned long int txn);
+bool check_lock(FILE_VAR * fvar, char * id, int16_t id_len);
+int16_t lock_record(FILE_VAR *, char * id, int16_t id_len, bool update,
+                      u_int32_t txn_id, bool no_wait);
+bool unlock_record(FILE_VAR *, char * id, int16_t id_len);
+void unlock_txn(u_int32_t txn);
 void clear_lock_wait(void);
 void rebuild_llt(void);
 
 /* OP_MISC.C */
-void day_to_dmy(long int day_no, short int * day, short int * mon,
-                short int * year, short int * julian);
-char * day_to_ddmmmyyyy(long int day_no);
+void day_to_dmy(int32_t day_no, int16_t * day, int16_t * mon,
+                int16_t * year, int16_t * julian);
+char * day_to_ddmmmyyyy(int32_t day_no);
 
 /* OP_OCONV.C */
-long int length_conversion(char * p);
+int32_t length_conversion(char * p);
 int oconv_d(int dt, char * code, char * tgt);
 
 /* OP_SEQIO.C */
@@ -391,25 +397,25 @@ void close_skt(SOCKVAR * skt);
 void set_case(bool upcase);
 
 /* OP_STR2.C */
-bool find_item(STRING_CHUNK * str, long int field, long int value,
-               long int subvalue, STRING_CHUNK ** chunk, short int * offset);
+bool find_item(STRING_CHUNK * str, int32_t field, int32_t value,
+               int32_t subvalue, STRING_CHUNK ** chunk, int16_t * offset);
 STRING_CHUNK * copy_string(STRING_CHUNK * tail, STRING_CHUNK ** head,
-                      char * src, short int len, short int * chunk_size);
+                      char * src, int16_t len, int16_t * chunk_size);
 
 /* OP_STR4.C */
 bool match_template(char * string, char * tmpl,
-                    short int component, short int return_component);
+                    int16_t component, int16_t return_component);
 
 /* TIME.C */
-long int local_time(void);
-long int qmtime(void);
+int32_t local_time(void);
+int32_t qmtime(void);
 
 /* OP_TIO.C */
 void como_close(void);
 void free_print_units(void);
 bool settermtype(char * name);
 void squeek(void);
-bool tio_display_string(char * q, short int bytes, bool flush, bool transparent_newline);
+bool tio_display_string(char * q, int16_t bytes, bool flush, bool transparent_newline);
 bool tio_handle_break(void);
 bool tio_init(void);
 int tio_printf(char * tmpl, ...);
@@ -417,7 +423,7 @@ void tio_shut(void);
 void tio_write(char * s);
 void freescrn(SCREEN_IMAGE * image);
 void break_key(void);
-short int keyin(int timeout);
+int16_t keyin(int timeout);
 bool keyready(void);
 bool write_socket(char * str, int bytes, bool flush);
 bool to_outbuf(char * str, int bytes);
@@ -427,15 +433,15 @@ void lock_beep(void);
 void pdump(void);
 
 /* QMLIB.C */
-int ftoa(double f, short int dp, bool truncate, char * result);
+int ftoa(double f, int16_t dp, bool truncate, char * result);
 int strdcount(char * s, char d);
 void strrep(char * s, char oldstr, char newstr);
 
 /* RECCACHE.C */
 void dump_rec_cache(void);
 void init_record_cache(void);
-void cache_record(short int fno, short int id_len, char * id, STRING_CHUNK * head);
-bool scan_record_cache(short int fno, short int id_len, char * id, 
+void cache_record(int16_t fno, int16_t id_len, char * id, STRING_CHUNK * head);
+bool scan_record_cache(int16_t fno, int16_t id_len, char * id, 
                        STRING_CHUNK ** data);
 
 /* SOCKIO.C */
@@ -447,20 +453,20 @@ bool flush_outbuf(void);
 /* STRINGS.C */
 char * alloc_c_string(DESCRIPTOR * descr);
 char * dupstring(char * str);
-STRING_CHUNK * s_alloc(long int size, short int * actual_size);
-STRING_CHUNK * s_make_contiguous(STRING_CHUNK * str_addr, short int * errnum);
+STRING_CHUNK * s_alloc(int32_t size, int16_t * actual_size);
+STRING_CHUNK * s_make_contiguous(STRING_CHUNK * str_addr, int16_t * errnum);
 void s_free(STRING_CHUNK * p);
 void s_free_all(void);
 void setqmstring(char ** strptr, DESCRIPTOR * descr);
 void setstring(char ** strptr, char * string);
-void ts_fill(char c, long int len);
-void ts_init(STRING_CHUNK ** head, long int base_size);
+void ts_fill(char c, int32_t len);
+void ts_init(STRING_CHUNK ** head, int32_t base_size);
 void ts_new_chunk(void);
 void ts_copy_byte(char c);
 void ts_copy(char * src, int len);
 void ts_copy_c_string(char * str);
 int ts_printf(char * tmpl, ...);
-long int ts_terminate(void);
+int32_t ts_terminate(void);
 void ts_stack(void);
 void ts_unstack(void);
 
@@ -483,8 +489,8 @@ int qmpoll(int fd, int timeout);
 bool is_port(char * name);
 int openport(char * name);
 void closeport(int hPort);
-int readport(int hPort, char * str, short int bytes);
-bool writeport(int hPort, char * str, short int bytes);
+int readport(int hPort, char * str, int16_t bytes);
+bool writeport(int hPort, char * str, int16_t bytes);
 #endif
 
 /* END-CODE */

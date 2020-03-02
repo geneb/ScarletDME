@@ -18,7 +18,13 @@
  * 
  * Ladybridge Systems can be contacted via the www.openqm.com web site.
  * 
- * START-HISTORY:
+ * Scarlet Wiki: https://scarlet.deltasoft.com
+ * 
+ * START-HISTORY (ScarletDME):
+ * 27Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ * 
+ * START-HISTORY (OpenQM):
  * 01 Jul 07  2.5-7 Extensive change for PDA merge.
  * 23 Nov 05  2.2-17 Extracted from op_misc.c
  * 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
@@ -31,55 +37,44 @@
  * START-CODE
  */
 
-   #include <sys/types.h>
+#include <sys/types.h>
 #include "qm.h"
 #include <time.h>
 
-   #define _timezone timezone
-
+#define _timezone timezone
 
 time_t clock_time;
 
 /* ====================================================================== */
 
-long int local_time(void)
-{
- static long int hour = -1;
- struct tm * ltm;
- static int dst;
- long int h;
+int32_t local_time(void) {
+  static int32_t hour = -1;
+  struct tm* ltm;
+  static int dst;
+  int32_t h;
 
- clock_time = time(NULL);
+  clock_time = time(NULL);
 
- /* Because daylight saving time does not take effect at midnight (though
+  /* Because daylight saving time does not take effect at midnight (though
     the Windows/Linux implementation might), we must reassess whether we
     are in a daylight saving time period if this call to local_time() is
     not in the same hour as the previous call.                            */
 
- h = clock_time / 3600;
- if (h != hour)   /* Must reassess whether we're in daylight saving time */
+  h = clock_time / 3600;
+  if (h != hour) /* Must reassess whether we're in daylight saving time */
   {
-   hour = h;
-   ltm = localtime(&clock_time);
-   dst = (ltm->tm_isdst)?3600:0;
+    hour = h;
+    ltm = localtime(&clock_time);
+    dst = (ltm->tm_isdst) ? 3600 : 0;
+  }
 
-  } 
-
-
-
- return clock_time - _timezone + dst;
-
-
-
-
+  return clock_time - _timezone + dst;
 }
 
 /* ====================================================================== */
-   
-long int qmtime()
-{
- return local_time() + (732 * 86400L);
-}
 
+int32_t qmtime() {
+  return local_time() + (732 * 86400L);
+}
 
 /* END-CODE */

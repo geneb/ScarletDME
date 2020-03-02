@@ -1,0 +1,18 @@
+This file covers some setup & configuration topics you'll need in order
+to build and run ScarletDME on your system.
+
+Users & Groups
+--------------
+ScarletDME is set up to be "owned" by the qmsys user under the group 
+qmusers.  Users of ScarletDME must belong to the qmusers group.
+
+Add the qmsys user:
+sudo useradd qmsys
+
+Add the qmusers group:
+sudo groupadd qmusers
+
+Assign the qmusers group to qmsys, root, and any others that may need it:
+sudo usermod -a -G qmusers root
+sudo usermod -a -G qmusers qmsys
+sudo usermod -a -G qmusers <userid>

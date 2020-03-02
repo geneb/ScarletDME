@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ *
  * 22Feb20 gwb Converted a few sprintf() to snprintf() and fixed a few 
  *             variable set but never used warnings.
  *             Fun conspiracy theory posited in op_createsq(). :)
@@ -77,7 +80,7 @@
 
 Private void openseq(bool map_name);
 Private void writeseq(bool flush_to_disk);
-Private void emit(FILE_VAR* fvar, char* p, short int bytes);
+Private void emit(FILE_VAR* fvar, char* p, int16_t bytes);
 Private int flush_seq(FILE_VAR* fvar, bool force_write);
 Private OSFILE create_seq_record(FILE_VAR* fvar);
 
@@ -102,7 +105,7 @@ void op_createsq() {
   FILE_VAR* fvar;
   SQ_FILE* sq_file;
   OSFILE fu;
-  /* unsigned short int op_flags; variable set but never used. */
+  /* u_int16_t op_flags; variable set but never used. */
   /* op_flags = process.op_flags; variable set but never used. */
   /* TODO: I think the above code /should/ be used in some way.
    * In the op_delseq() function below, op_flags IS used.
@@ -172,13 +175,13 @@ void op_delseq() {
     prior to the call to DELSEQ.
  */
 
-  unsigned short int op_flags;
+  u_int16_t op_flags;
   DESCRIPTOR* descr;
   char file_name[MAX_PATHNAME_LEN + 1];
-  short int file_name_len;
+  int16_t file_name_len;
   char unmapped_name[MAX_PATHNAME_LEN + 1];
   char rec_name[MAX_PATHNAME_LEN + 1];
-  short int rec_name_len;
+  int16_t rec_name_len;
   struct stat stat_buf;
 
   op_flags = process.op_flags;
@@ -414,23 +417,23 @@ Private void openseq(bool map_name) {
   DESCRIPTOR* rec_descr;
   DESCRIPTOR* filename_descr;
   char file_name[MAX_PATHNAME_LEN + 1];
-  short int file_name_len;
+  int16_t file_name_len;
   char unmapped_name[MAX_PATHNAME_LEN + 1];
   char record_name[MAX_PATHNAME_LEN + 1];
   char pathname[MAX_PATHNAME_LEN + 1];
   char fullpathname[MAX_PATHNAME_LEN + 1];
-  short int rec_name_len;
+  int16_t rec_name_len;
   FILE_VAR* fvar = NULL;
   SQ_FILE* sq_file = NULL;
   OSFILE fu = INVALID_FILE_HANDLE;
-  unsigned short int op_flags;
+  u_int16_t op_flags;
   bool read_only = FALSE;
-  short int blocking_user;
+  int16_t blocking_user;
   int status;
-  unsigned short int flags = 0;
+  u_int16_t flags = 0;
   char* p;
-  unsigned long int device = 0;
-  unsigned long int inode = 0;
+  u_int32_t device = 0;
+  u_int32_t inode = 0;
   struct stat stat_buf;
 
   op_flags = process.op_flags;
@@ -827,11 +830,11 @@ void op_readblk() {
   FILE_VAR* fvar;
   SQ_FILE* sq_file;
   OSFILE fu;
-  long int bytes;
+  int32_t bytes;
   int64 block;
-  short int offset;
-  short int n;
-  unsigned short int flags;
+  int16_t offset;
+  int16_t n;
+  u_int16_t flags;
   int bytes_in_buffer;
   int bytes_read;
   int poll_status;
@@ -936,9 +939,9 @@ void op_readblk() {
     }
   } else if (sq_file->flags & SQ_NOBUF) {
     while (bytes > 0) {
-      n = (short int)min(bytes, SEQ_BUFFER_SIZE);
+      n = (int16_t)min(bytes, SEQ_BUFFER_SIZE);
 
-      if ((sq_file->bytes = (short int)Read(fu, sq_file->buff, n)) <= 0) {
+      if ((sq_file->bytes = (int16_t)Read(fu, sq_file->buff, n)) <= 0) {
         sq_file->bytes = 0;
         break;
       }
@@ -956,19 +959,19 @@ void op_readblk() {
 
         Seek(fu, block, SEEK_SET);
         if ((sq_file->bytes =
-                 (short int)Read(fu, sq_file->buff, SEQ_BUFFER_SIZE)) <= 0) {
+                 (int16_t)Read(fu, sq_file->buff, SEQ_BUFFER_SIZE)) <= 0) {
           sq_file->bytes = 0;
           break;
         }
         sq_file->base = block;
       }
 
-      offset = (short int)(sq_file->posn & SEQ_BUFFER_MASK);
+      offset = (int16_t)(sq_file->posn & SEQ_BUFFER_MASK);
       n = sq_file->bytes - offset;
       if (n == 0)
         break; /* End of file */
       if (bytes < n)
-        n = (short int)bytes;
+        n = (int16_t)bytes;
       ts_copy(sq_file->buff + offset, n);
       sq_file->posn += n;
       bytes -= n;
@@ -1018,17 +1021,17 @@ void op_readseq() {
   SQ_FILE* sq_file;
   OSFILE fu;
   int64 block;
-  short int offset;
-  short int bytes;
+  int16_t offset;
+  int16_t bytes;
   /* bool check_lf; variable set but never used */
   char* p;
-  unsigned short int op_flags;
-  short int n;
+  u_int16_t op_flags;
+  int16_t n;
   char* q;
   int bytes_read;
   bool lf_found;
   bool done = FALSE;
-  unsigned short int flags;
+  u_int16_t flags;
   int poll_status;
   int timeout;
 
@@ -1153,13 +1156,13 @@ void op_readseq() {
 
         Seek(fu, block, SEEK_SET);
         if ((sq_file->bytes =
-                 (short int)Read(fu, sq_file->buff, SEQ_BUFFER_SIZE)) < 0) {
+                 (int16_t)Read(fu, sq_file->buff, SEQ_BUFFER_SIZE)) < 0) {
           sq_file->bytes = 0;
         }
         sq_file->base = block;
       }
 
-      offset = (short int)(sq_file->posn & SEQ_BUFFER_MASK);
+      offset = (int16_t)(sq_file->posn & SEQ_BUFFER_MASK);
       bytes = sq_file->bytes - offset;
       if (bytes == 0) /* End of file */
       {
@@ -1221,7 +1224,7 @@ void op_seek() {
  */
 
   DESCRIPTOR* descr;
-  long int relto;
+  int32_t relto;
   int64 offset;
   FILE_VAR* fvar;
   SQ_FILE* sq_file;
@@ -1332,7 +1335,7 @@ void op_timeout() {
   DESCRIPTOR* descr;
   FILE_VAR* fvar;
   SQ_FILE* sq_file;
-  long int timeout;
+  int32_t timeout;
 
   /* Get timeout period */
 
@@ -1381,7 +1384,7 @@ void op_weofseq() {
   FILE_VAR* fvar;
   SQ_FILE* sq_file;
   OSFILE fu;
-  unsigned short int op_flags;
+  u_int16_t op_flags;
 
   op_flags = process.op_flags;
   process.op_flags = 0;
@@ -1564,7 +1567,7 @@ Private void writeseq(bool flush_to_disk) {
   SQ_FILE* sq_file;
   OSFILE fu;
   STRING_CHUNK* src_str;
-  unsigned short int op_flags;
+  u_int16_t op_flags;
 
   op_flags = process.op_flags;
   process.op_flags = 0;
@@ -1668,10 +1671,10 @@ exit_op_writeseq:
 /* ======================================================================
    emit()  -  Write data to sequential file                               */
 
-Private void emit(FILE_VAR* fvar, char* p, short int bytes) {
-  short int n;
+Private void emit(FILE_VAR* fvar, char* p, int16_t bytes) {
+  int16_t n;
   int64 block;
-  short int offset;
+  int16_t offset;
   SQ_FILE* sq_file;
 
   sq_file = fvar->access.seq.sq_file;
@@ -1682,14 +1685,14 @@ Private void emit(FILE_VAR* fvar, char* p, short int bytes) {
       flush_seq(fvar, FALSE);
 
       Seek(sq_file->fu, block, SEEK_SET);
-      if ((sq_file->bytes = (short int)Read(sq_file->fu, sq_file->buff,
+      if ((sq_file->bytes = (int16_t)Read(sq_file->fu, sq_file->buff,
                                             SEQ_BUFFER_SIZE)) < 0) {
         sq_file->bytes = 0;
       }
       sq_file->base = block;
     }
 
-    offset = (short int)(sq_file->posn & SEQ_BUFFER_MASK);
+    offset = (int16_t)(sq_file->posn & SEQ_BUFFER_MASK);
 
     n = min(bytes, SEQ_BUFFER_SIZE - offset);
     memcpy(sq_file->buff + offset, p, n);

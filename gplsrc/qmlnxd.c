@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 27Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ *
  * 25Feb20 gwb Converted an sprintf() to snprintf().
  * 
  * START-HISTORY (OpenQM):
@@ -116,9 +119,9 @@ int main() {
 
 void check_lost_users() {
   USER_ENTRY* uptr;
-  long int pid;
-  short int u;
-  short int num_checked = 0;
+  int32_t pid;
+  int16_t u;
+  int16_t num_checked = 0;
   bool lost_user_detected = FALSE;
   char cmd[MAX_PATHNAME_LEN + 10];
 

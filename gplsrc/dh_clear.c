@@ -18,7 +18,13 @@
  * 
  * Ladybridge Systems can be contacted via the www.openqm.com web site.
  * 
- * START-HISTORY:
+ * ScarletDME Wiki: https://scarlet.deltasoft.com
+ * 
+ * START-HISTORY (ScarletDME):
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ * 
+ * START-HISTORY (OpenQM):
  * 01 Jul 07  2.5-7 Extensive changes for PDA merge.
  * 17 Mar 06  2.3-8 Added record count to file table.
  * 19 Sep 05  2.2-11 Use dh_buffer to reduce stack space.
@@ -44,114 +50,107 @@
    compile wrongly.  The register tracking seems to carry the value of
    new_modulus instead of mod_value into the second statement.
 */
-   #pragma option -Od
+#pragma option -Od
 #endif
 
 /* ====================================================================== */
 
-bool dh_clear(DH_FILE * dh_file)
-{
- bool status = FALSE;
- FILE_ENTRY * fptr;
- long int new_modulus;
- long int mod_value;
- long int group;
- int group_size_bytes;
- unsigned long int ak_map;
- short int akno;
+bool dh_clear(DH_FILE* dh_file) {
+  bool status = FALSE;
+  FILE_ENTRY* fptr;
+  int32_t new_modulus;
+  int32_t mod_value;
+  int32_t group;
+  int group_size_bytes;
+  u_int32_t ak_map;
+  int16_t akno;
 
- dh_err = 0;
- process.os_error = 0;
+  dh_err = 0;
+  process.os_error = 0;
 
- dh_end_select_file(dh_file);     /* Kill any select */
+  dh_end_select_file(dh_file); /* Kill any select */
 
- fptr = FPtr(dh_file->file_id);
- StartExclusive(FILE_TABLE_LOCK, 44);
- fptr->stats.clears++;
- sysseg->global_stats.clears++;
- EndExclusive(FILE_TABLE_LOCK);
+  fptr = FPtr(dh_file->file_id);
+  StartExclusive(FILE_TABLE_LOCK, 44);
+  fptr->stats.clears++;
+  sysseg->global_stats.clears++;
+  EndExclusive(FILE_TABLE_LOCK);
 
- /* ----------------------------------------------------------------------
+  /* ----------------------------------------------------------------------
     Rewrite primary subfile header with minimum modulus, etc               */
 
- FDS_open(dh_file, PRIMARY_SUBFILE);
- if (!dh_read_group(dh_file, PRIMARY_SUBFILE, 0, dh_buffer, (short int)(dh_file->header_bytes)))
-  {
-   goto exit_dh_clear;
+  FDS_open(dh_file, PRIMARY_SUBFILE);
+  if (!dh_read_group(dh_file, PRIMARY_SUBFILE, 0, dh_buffer,
+                     (int16_t)(dh_file->header_bytes))) {
+    goto exit_dh_clear;
   }
- ak_map = ((DH_HEADER *)dh_buffer)->ak_map;
+  ak_map = ((DH_HEADER*)dh_buffer)->ak_map;
 
- new_modulus = fptr->params.min_modulus;
- group_size_bytes = dh_file->group_size;
+  new_modulus = fptr->params.min_modulus;
+  group_size_bytes = dh_file->group_size;
 
- fptr->params.modulus = new_modulus;
- fptr->params.load_bytes = 0;
- fptr->params.free_chain = 0;
- fptr->record_count = 0;
+  fptr->params.modulus = new_modulus;
+  fptr->params.load_bytes = 0;
+  fptr->params.free_chain = 0;
+  fptr->record_count = 0;
 
- /* Calculate mod_value as next power of two >= new_modulus */
+  /* Calculate mod_value as next power of two >= new_modulus */
 
- for (mod_value = 1; mod_value < new_modulus; mod_value <<= 1) {}
- fptr->params.mod_value = mod_value;
-
- dh_file->flags |= FILE_UPDATED;
- dh_flush_header(dh_file);
-
- /* Initialise data groups */
-
- memset(dh_buffer, 0, group_size_bytes);
- ((DH_BLOCK *)(dh_buffer))->used_bytes = BLOCK_HEADER_SIZE;
- ((DH_BLOCK *)(dh_buffer))->block_type = DHT_DATA;
-
- if (Seek(dh_file->sf[PRIMARY_SUBFILE].fu, (int64)(dh_file->header_bytes), SEEK_SET) < 0)
-  {
-   dh_err = DHE_SEEK_ERROR;
-   process.os_error = OSError;
-   goto exit_dh_clear;
+  for (mod_value = 1; mod_value < new_modulus; mod_value <<= 1) {
   }
-   
- for (group = 1; group <= new_modulus; group++)
-  {
-   if (Write(dh_file->sf[PRIMARY_SUBFILE].fu, dh_buffer, group_size_bytes) < 0)
-    {
-     dh_err = DHE_INIT_DATA_ERROR;
-     process.os_error = OSError;
-     goto exit_dh_clear;
+  fptr->params.mod_value = mod_value;
+
+  dh_file->flags |= FILE_UPDATED;
+  dh_flush_header(dh_file);
+
+  /* Initialise data groups */
+
+  memset(dh_buffer, 0, group_size_bytes);
+  ((DH_BLOCK*)(dh_buffer))->used_bytes = BLOCK_HEADER_SIZE;
+  ((DH_BLOCK*)(dh_buffer))->block_type = DHT_DATA;
+
+  if (Seek(dh_file->sf[PRIMARY_SUBFILE].fu, (int64)(dh_file->header_bytes),
+           SEEK_SET) < 0) {
+    dh_err = DHE_SEEK_ERROR;
+    process.os_error = OSError;
+    goto exit_dh_clear;
+  }
+
+  for (group = 1; group <= new_modulus; group++) {
+    if (Write(dh_file->sf[PRIMARY_SUBFILE].fu, dh_buffer, group_size_bytes) <
+        0) {
+      dh_err = DHE_INIT_DATA_ERROR;
+      process.os_error = OSError;
+      goto exit_dh_clear;
     }
   }
 
- /* Remove any excess group's disk space */
+  /* Remove any excess group's disk space */
 
-SetFileSize(dh_file->sf[PRIMARY_SUBFILE].fu,
-            GroupOffset(dh_file, ((int64)new_modulus) + 1));
+  SetFileSize(dh_file->sf[PRIMARY_SUBFILE].fu,
+              GroupOffset(dh_file, ((int64)new_modulus) + 1));
 
-/* ----------------------------------------------------------------------
+  /* ----------------------------------------------------------------------
     Cast off all overflow blocks                                           */
 
+  FDS_open(dh_file, OVERFLOW_SUBFILE);
+  SetFileSize(dh_file->sf[OVERFLOW_SUBFILE].fu, dh_file->header_bytes);
 
- FDS_open(dh_file, OVERFLOW_SUBFILE);
- SetFileSize(dh_file->sf[OVERFLOW_SUBFILE].fu, dh_file->header_bytes);
-
-
-
-/* ----------------------------------------------------------------------
+  /* ----------------------------------------------------------------------
    Clear down AKs                                                         */
 
- for (akno = 0; akno < MAX_INDICES; akno++)
-  {
-   if ((ak_map >> akno) & 1)
-    {
-     if (!ak_clear(dh_file, AK_BASE_SUBFILE + akno)) goto exit_dh_clear;
+  for (akno = 0; akno < MAX_INDICES; akno++) {
+    if ((ak_map >> akno) & 1) {
+      if (!ak_clear(dh_file, AK_BASE_SUBFILE + akno))
+        goto exit_dh_clear;
     }
   }
 
-
- status = TRUE;
+  status = TRUE;
 
 exit_dh_clear:
 
- return status;
+  return status;
 }
 
 /* END-CODE */
-

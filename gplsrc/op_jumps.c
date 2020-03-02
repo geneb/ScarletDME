@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ *
  * 22Feb20 gwb Converted sprintf() to snprintf() in op_chkcat().
  *             More error handling needs to be implemented due to this change.
  * 
@@ -88,7 +91,7 @@ Private void computed_jump(bool save_link, bool pick_style);
 
 void op_call() {
   DESCRIPTOR* descr;
-  short int num_args;
+  int16_t num_args;
   char call_name[MAX_PROGRAM_NAME_LEN + 1];
 
   num_args = *(pc++);
@@ -168,10 +171,10 @@ void op_callv() {
 
   DESCRIPTOR* subr_descr;
   DESCRIPTOR* descr;
-  short int num_args;
+  int16_t num_args;
   char call_name[MAX_PROGRAM_NAME_LEN + 1];
   ARRAY_HEADER* ahdr;
-  short int i;
+  int16_t i;
 
   /* Get array header address for argument matrix */
 
@@ -184,7 +187,7 @@ void op_callv() {
 
   descr = e_stack - 2;
   GetInt(descr);
-  num_args = (short int)(descr->data.value);
+  num_args = (int16_t)(descr->data.value);
   if ((num_args < 0) || (num_args > 255))
     k_error(sysmsg(1131));
 
@@ -419,7 +422,7 @@ void op_gosub() {
     k_error(sysmsg(1133));
   }
   process.program.gosub_stack[process.program.gosub_depth++] = pc - c_base + 3;
-  pc = c_base + (*pc | (((long)*(pc + 1)) << 8) | (((long)*(pc + 2)) << 16));
+  pc = c_base + (*pc | (((int32_t)*(pc + 1)) << 8) | (((int32_t)*(pc + 2)) << 16));
 }
 
 /* ======================================================================
@@ -438,7 +441,7 @@ void op_jfalse() {
   k_pop(1);
 
   if (jumping) {
-    pc = c_base + (*pc | (((long)*(pc + 1)) << 8) | (((long)*(pc + 2)) << 16));
+    pc = c_base + (*pc | (((int32_t)*(pc + 1)) << 8) | (((int32_t)*(pc + 2)) << 16));
   } else
     pc += 3;
 }
@@ -450,7 +453,7 @@ void op_jmp() {
   if (my_uptr->events)
     process_events();
 
-  pc = c_base + (*pc | (((long)*(pc + 1)) << 8) | (((long)*(pc + 2)) << 16));
+  pc = c_base + (*pc | (((int32_t)*(pc + 1)) << 8) | (((int32_t)*(pc + 2)) << 16));
 }
 
 /* ======================================================================
@@ -483,7 +486,7 @@ again:
   k_pop(1);
 
   if (jumping) {
-    pc = c_base + (*pc | (((long)*(pc + 1)) << 8) | (((long)*(pc + 2)) << 16));
+    pc = c_base + (*pc | (((int32_t)*(pc + 1)) << 8) | (((int32_t)*(pc + 2)) << 16));
   } else
     pc += 3;
 }
@@ -518,7 +521,7 @@ again:
   k_pop(1);
 
   if (jumping) {
-    pc = c_base + (*pc | (((long)*(pc + 1)) << 8) | (((long)*(pc + 2)) << 16));
+    pc = c_base + (*pc | (((int32_t)*(pc + 1)) << 8) | (((int32_t)*(pc + 2)) << 16));
   } else
     pc += 3;
 }
@@ -553,7 +556,7 @@ again:
   k_pop(1);
 
   if (jumping) {
-    pc = c_base + (*pc | (((long)*(pc + 1)) << 8) | (((long)*(pc + 2)) << 16));
+    pc = c_base + (*pc | (((int32_t)*(pc + 1)) << 8) | (((int32_t)*(pc + 2)) << 16));
   } else
     pc += 3;
 }
@@ -588,7 +591,7 @@ again:
   k_pop(1);
 
   if (jumping) {
-    pc = c_base + (*pc | (((long)*(pc + 1)) << 8) | (((long)*(pc + 2)) << 16));
+    pc = c_base + (*pc | (((int32_t)*(pc + 1)) << 8) | (((int32_t)*(pc + 2)) << 16));
   } else
     pc += 3;
 }
@@ -609,7 +612,7 @@ void op_jtrue() {
   k_pop(1);
 
   if (jumping) {
-    pc = c_base + (*pc | (((long)*(pc + 1)) << 8) | (((long)*(pc + 2)) << 16));
+    pc = c_base + (*pc | (((int32_t)*(pc + 1)) << 8) | (((int32_t)*(pc + 2)) << 16));
   } else
     pc += 3;
 }
@@ -644,7 +647,7 @@ again:
   k_pop(1);
 
   if (jumping) {
-    pc = c_base + (*pc | (((long)*(pc + 1)) << 8) | (((long)*(pc + 2)) << 16));
+    pc = c_base + (*pc | (((int32_t)*(pc + 1)) << 8) | (((int32_t)*(pc + 2)) << 16));
   } else
     pc += 3;
 }
@@ -775,7 +778,7 @@ void op_returnto() {
   if (process.program.gosub_depth) /* Returning from local call (GOSUB) */
   {
     --process.program.gosub_depth;
-    pc = c_base + (*pc | (((long)*(pc + 1)) << 8) | (((long)*(pc + 2)) << 16));
+    pc = c_base + (*pc | (((int32_t)*(pc + 1)) << 8) | (((int32_t)*(pc + 2)) << 16));
   } else /* Returning from a CALL */
   {
     k_return();
@@ -817,12 +820,12 @@ Private void computed_jump(
     bool pick_style) /* Affects action of out of range index value */
 {
   DESCRIPTOR* descr;
-  short int num_labels;
-  long int n;
+  int16_t num_labels;
+  int32_t n;
 
   num_labels = *(pc++);
   if (num_labels == 0) {
-    num_labels = (short int)(*pc | (((long int)*(pc + 1)) << 8));
+    num_labels = (int16_t)(*pc | (((int32_t)*(pc + 1)) << 8));
     pc += 2;
   }
 
@@ -852,7 +855,7 @@ Private void computed_jump(
   }
 
   pc += (n - 1) * 3;
-  pc = c_base + (*pc | (((long)*(pc + 1)) << 8) | (((long)*(pc + 2)) << 16));
+  pc = c_base + (*pc | (((int32_t)*(pc + 1)) << 8) | (((int32_t)*(pc + 2)) << 16));
 }
 
 /* ======================================================================

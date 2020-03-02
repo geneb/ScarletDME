@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ *
  * 22Feb20 gwb Converted sprintf() to snprintf() in dir_select() and in 
  *             op_dir().  Both use dubious recovery methods if there's an
  *             error and both should be reviewed.
@@ -33,7 +36,7 @@
  * 19 Jul 06  2.4-10 Various optimisations in op_readnext().
  * 04 May 06  2.4-4 0487 Do not rely on @SELECTED being an integer when
  *                  overwriting it.
- * 26 Apr 06  2.4-2 0481 Directory file select used short int record count.
+ * 26 Apr 06  2.4-2 0481 Directory file select used int16_t record count.
  * 19 Dec 05  2.3-3 Added OptSelectKeepCase handling in dir_select().
  * 16 Dec 05  2.3-3 0441 Clear old list at start of op_select().
  * 13 May 05  2.1-15 Added error arg to s_make_contiguous().
@@ -78,13 +81,13 @@ void op_rmvf(void);
 void op_stor(void);
 void op_dcount(void);
 
-Private void readnext(short int mode);
-Private bool dir_select(FILE_VAR* fvar, short int list_no);
+Private void readnext(int16_t mode);
+Private bool dir_select(FILE_VAR* fvar, int16_t list_no);
 
 /* ====================================================================== */
 
 bool dio_init() {
-  short int i;
+  int16_t i;
 
   for (i = 0; i <= HIGH_SELECT; i++) {
     select_ftype[i] = SEL_NONE;
@@ -104,7 +107,7 @@ bool dio_init() {
    op_clearall()  -  Clear all user select lists                          */
 
 void op_clearall() {
-  short int i;
+  int16_t i;
 
   for (i = 0; i <= HIGH_USER_SELECT; i++) {
     clear_select(i);
@@ -125,13 +128,13 @@ void op_clrselect() {
  */
 
   DESCRIPTOR* list_descr;
-  short int list_no; /* Select list number */
+  int16_t list_no; /* Select list number */
 
   /* Get the select list number */
 
   list_descr = e_stack - 1;
   GetInt(list_descr);
-  list_no = (short int)(list_descr->data.value);
+  list_no = (int16_t)(list_descr->data.value);
   k_pop(1);
 
   if (InvalidSelectListNo(list_no))
@@ -174,13 +177,13 @@ void op_getlist() {
  */
 
   DESCRIPTOR* descr;
-  short int list_no;
+  int16_t list_no;
 
   /* Validate select list number, leaving on e-stack */
 
   descr = e_stack - 1;
   GetInt(descr);
-  list_no = (short int)(descr->data.value);
+  list_no = (int16_t)(descr->data.value);
 
   if (InvalidSelectListNo(list_no))
     k_select_range_error();
@@ -205,13 +208,13 @@ void op_formlist() {
  */
 
   DESCRIPTOR* descr;
-  short int list_no;
+  int16_t list_no;
 
   /* Validate select list number, leaving on e-stack */
 
   descr = e_stack - 1;
   GetInt(descr);
-  list_no = (short int)(descr->data.value);
+  list_no = (int16_t)(descr->data.value);
   if (InvalidSelectListNo(list_no))
     k_select_range_error();
 
@@ -237,14 +240,14 @@ void op_readlist() {
  */
 
   DESCRIPTOR* descr;
-  short int list_no;
+  int16_t list_no;
   DESCRIPTOR status_descr;
 
   /* Validate select list number, leaving on e-stack */
 
   descr = e_stack - 1;
   GetInt(descr);
-  list_no = (short int)(descr->data.value);
+  list_no = (int16_t)(descr->data.value);
 
   if (InvalidSelectListNo(list_no))
     k_select_range_error();
@@ -355,7 +358,7 @@ void op_rdnxint() {
   readnext(3);
 }
 
-Private void readnext(short int mode)
+Private void readnext(int16_t mode)
 /* 0 = Standard READNEXT, returns composite exploded data */
 /* 1 = Standard READNEXT, returns id only */
 /* 2 = Extended READNEXT, returns id and  positional data */
@@ -368,18 +371,18 @@ Private void readnext(short int mode)
   DESCRIPTOR value_descr;
   DESCRIPTOR subvalue_descr;
   DESCRIPTOR int_descr;
-  short int list_no;
-  short int status;
-  unsigned short int op_flags;
-  long int count;
+  int16_t list_no;
+  int16_t status;
+  u_int16_t op_flags;
+  int32_t count;
   char* vpos;
-  short int id_bytes;
-  short int bytes_remaining;
+  int16_t id_bytes;
+  int16_t bytes_remaining;
   int value = 0;
   int subvalue = 0;
   STRING_CHUNK* str;
   int saved_status;
-  short int errnum;
+  int16_t errnum;
 
   op_flags = process.op_flags;
   process.op_flags = 0;
@@ -432,7 +435,7 @@ Private void readnext(short int mode)
     process.status = saved_status;
   } else {
     GetInt(descr);
-    list_no = (short int)(descr->data.value);
+    list_no = (int16_t)(descr->data.value);
     k_pop(1);
     if (InvalidSelectListNo(list_no))
       k_select_range_error();
@@ -525,7 +528,7 @@ Private void readnext(short int mode)
         str->bytes = id_bytes;
         str->string_len = id_bytes;
       } else
-        id_bytes = (short int)(str->string_len); /* 0239 */
+        id_bytes = (int16_t)(str->string_len); /* 0239 */
 
       if (mode >= 2) /* Return positional data */
       {
@@ -640,13 +643,13 @@ void op_savelist() {
  */
 
   DESCRIPTOR* descr;
-  short int list_no;
+  int16_t list_no;
 
   /* Validate select list number, leaving on e-stack */
 
   descr = e_stack - 1;
   GetInt(descr);
-  list_no = (short int)(descr->data.value);
+  list_no = (int16_t)(descr->data.value);
   if (InvalidSelectListNo(list_no))
     k_select_range_error();
 
@@ -672,13 +675,13 @@ void op_select() {
     call to SELECT.
  */
 
-  unsigned short int op_flags;
+  u_int16_t op_flags;
   DESCRIPTOR* descr;
   DESCRIPTOR* list_descr;
   DESCRIPTOR* count_descr;
-  short int list_no;
+  int16_t list_no;
   FILE_VAR* fvar;
-  long int record_count;
+  int32_t record_count;
 
   op_flags = process.op_flags;
   process.op_flags = 0;
@@ -689,7 +692,7 @@ void op_select() {
 
   descr = e_stack - 1;
   GetInt(descr);
-  list_no = (short int)(descr->data.value);
+  list_no = (int16_t)(descr->data.value);
 
   if (InvalidSelectListNo(list_no))
     k_select_range_error();
@@ -787,8 +790,8 @@ void op_selecte() {
   STRING_CHUNK* src_hdr;
   STRING_CHUNK* src_str;
   STRING_CHUNK* tgt_str;
-  short int offset; /* Offset into current source chunk */
-  short int bytes_remaining;
+  int16_t offset; /* Offset into current source chunk */
+  int16_t bytes_remaining;
 
   /* Get target address */
 
@@ -868,17 +871,17 @@ void op_selectv() {
     NOTE: This opcode uses list 11 internally.
  */
 
-  unsigned short int op_flags;
+  u_int16_t op_flags;
   DESCRIPTOR* descr;
   DESCRIPTOR* tgt_descr;
   FILE_VAR* fvar;
   STRING_CHUNK* tgt_str;
   STRING_CHUNK* str;
-  long int record_count;
+  int32_t record_count;
   DESCRIPTOR* list_descr;
   DESCRIPTOR* count_descr;
   char* p;
-  short int bytes;
+  int16_t bytes;
 
   op_flags = process.op_flags;
   process.op_flags = 0;
@@ -1011,7 +1014,7 @@ void op_sselect() {
  */
 
   DESCRIPTOR* descr;
-  short int list_no;
+  int16_t list_no;
 
   process.op_flags = 0; /* ON ERROR not used */
 
@@ -1021,7 +1024,7 @@ void op_sselect() {
 
   descr = e_stack - 1;
   GetInt(descr);
-  list_no = (short int)(descr->data.value);
+  list_no = (int16_t)(descr->data.value);
 
   if (InvalidSelectListNo(list_no))
     k_select_range_error();
@@ -1053,8 +1056,8 @@ void op_slctinfo() {
 
   DESCRIPTOR* descr;
   DESCRIPTOR* select_count_descr;
-  short int list_no; /* Select list number */
-  long int key;
+  int16_t list_no; /* Select list number */
+  int32_t key;
 
   /* Fetch key value */
 
@@ -1067,7 +1070,7 @@ void op_slctinfo() {
 
   descr = e_stack - 1;
   GetInt(descr);
-  list_no = (short int)(descr->data.value);
+  list_no = (int16_t)(descr->data.value);
 
   if (InvalidSelectListNo(list_no))
     k_select_range_error();
@@ -1099,7 +1102,7 @@ void op_slctinfo() {
 /* ======================================================================
    clear_select()  -  Clear a select list                                 */
 
-void clear_select(short int list_no) {
+void clear_select(int16_t list_no) {
   DESCRIPTOR* tgt_descr; /* Target select list descriptor */
 
   /* Find SELECT.LIST array in SYSCOM */
@@ -1130,7 +1133,7 @@ void clear_select(short int list_no) {
 /* ======================================================================
    Perform select on directory file                                       */
 
-Private bool dir_select(FILE_VAR* fvar, short int list_no) {
+Private bool dir_select(FILE_VAR* fvar, int16_t list_no) {
   bool status = FALSE;
   FILE_ENTRY* fptr;
   char pathname[MAX_PATHNAME_LEN + 1];
@@ -1262,7 +1265,7 @@ void op_dir() {
 
   DESCRIPTOR* descr;
   char pathname[MAX_PATHNAME_LEN + 1];
-  short int path_len;
+  int16_t path_len;
   char name[MAX_PATHNAME_LEN + 1];
   STRING_CHUNK* result = NULL;
   char mode;
@@ -1329,7 +1332,7 @@ void op_dir() {
 /* ======================================================================
    complete_select()  -  Complete a partial select                        */
 
-void complete_select(short int list_no) {
+void complete_select(int16_t list_no) {
   switch (select_ftype[list_no]) {
     case SEL_DH:
       dh_complete_select(list_no);
@@ -1340,7 +1343,7 @@ void complete_select(short int list_no) {
 /* ======================================================================
    end_select()  -  Terminate a partial select                           */
 
-void end_select(short int list_no) {
+void end_select(int16_t list_no) {
   switch (select_ftype[list_no]) {
     case SEL_DH:
       dh_end_select(list_no);

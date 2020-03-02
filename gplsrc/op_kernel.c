@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ *
  * 22Feb20 gwb Cleared a pair of variables set but not used in op_cnctport and
  *             converted an sprintf() to snprintf() in op_phantom().
  * START-HISTORY (OpenQM):
@@ -55,7 +58,7 @@ Public bool case_sensitive;
 int help(char* key);
 bool IsAdmin(void);
 bool recover_users(void);
-void set_date(long int);
+void set_date(int32_t);
 
 Private bool run_exe(char* exe_name, char* cmd_line);
 
@@ -118,12 +121,12 @@ void op_kernel() {
   DESCRIPTOR* descr;
   int action;
   DESCRIPTOR result;
-  long int n;
+  int32_t n;
   char s[(MAX_PATHNAME_LEN * 2) + 1];
-  short int i;
-  short int j;
+  int16_t i;
+  int16_t j;
   char* p;
-  long int* q;
+  int32_t* q;
   USER_ENTRY* uptr;
   STRING_CHUNK* str;
 
@@ -290,7 +293,7 @@ void op_kernel() {
 
     case K_CPROC_LEVEL:
       if (descr->data.value > 0)
-        cproc_level = (short int)(descr->data.value);
+        cproc_level = (int16_t)(descr->data.value);
       result.data.value = cproc_level;
       break;
 
@@ -338,7 +341,7 @@ void op_kernel() {
         InitDescr(&result, STRING);
         result.data.str.saddr = NULL;
         ts_init(&(result.data.str.saddr), 5 * FILESTATS_COUNTERS);
-        for (i = 0, q = (long int*)&(sysseg->global_stats.reset);
+        for (i = 0, q = (int32_t*)&(sysseg->global_stats.reset);
              i < FILESTATS_COUNTERS; i++, q++) {
           ts_printf("%ld\xfe", *q);
         }
@@ -580,10 +583,10 @@ void op_phantom() {
      |================================|=============================|
  */
 
-  short int i;
+  int16_t i;
   USER_ENTRY* uptr;
-  short int phantom_user_index;
-  short int phantom_uid = 0;
+  int16_t phantom_user_index;
+  int16_t phantom_uid = 0;
   char path[MAX_PATHNAME_LEN + 1];
   char option[15 + 1];
   int cpid;
@@ -849,10 +852,10 @@ void op_events() {
  */
 
   DESCRIPTOR* descr;
-  long int flags;
+  int32_t flags;
   int user;
   USER_ENTRY* uptr;
-  short int i;
+  int16_t i;
 
   /* Get flag values */
 
@@ -890,7 +893,7 @@ void op_events() {
    op_setflags()  -  SETFLAGS opcode  - Set opcode_flags                  */
 
 void op_setflags() {
-  register unsigned short int flags;
+  register u_int16_t flags;
 
   flags = *(pc++);
   flags |= *(pc++) << 8;

@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 27Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ *
  * 25Feb20 gwb Converted sprintf() to snprintf(). 
  *             Updated K&R function declarations to ANSI.
  *        
@@ -90,7 +93,7 @@ int main(int argc, char* argv[]) {
   int status = 1;
   int arg;
   char mode;
-  short int ak;
+  int16_t ak;
   char path[MAX_PATHNAME_LEN + 1];
   char old_akpath[MAX_PATHNAME_LEN + 1];
   struct stat stat_buf;
@@ -416,7 +419,7 @@ bool write_primary_header() {
 bool cross_check(char* path) {
   bool status = FALSE;
   char pathname[MAX_PATHNAME_LEN + 1];
-  short int ak;
+  int16_t ak;
   DH_AK_HEADER ak_header;
   int akfu = -1;
 
@@ -472,7 +475,7 @@ bool copy_indices() {
   bool status = FALSE;
   char src[MAX_PATHNAME_LEN + 1];
   char tgt[MAX_PATHNAME_LEN + 1];
-  short int ak;
+  int16_t ak;
   int src_fu = -1;
   int tgt_fu = -1;
   int bytes;

@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  *
  * START-HISTORY (ScarletDME):
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
  * 22Feb20 gwb Replaced a pair of sprintf() with snprintf() in dh_open().
  * 
  * START-HISTORY (OpenQM):
@@ -66,27 +68,27 @@ DH_FILE* dh_open(char path[]) {
   FILE_ENTRY* fptr;
   char filename[MAX_PATHNAME_LEN + 1];
   char pathname[MAX_PATHNAME_LEN + 1];
-  short int i;
+  int16_t i;
   char* p;
   struct DH_HEADER header;
   struct DH_AK_HEADER ak_header;
   char* ibuff = NULL;
-  short int file_id = -1;
+  int16_t file_id = -1;
   OSFILE fu = INVALID_FILE_HANDLE;  /* Primary subfile */
   OSFILE ofu = INVALID_FILE_HANDLE; /* Overflow subfile */
   int bytes;
-  unsigned long int ak_map;
-  short int no_of_subfiles;
-  short int no_of_aks;
+  u_int32_t ak_map;
+  int16_t no_of_subfiles;
+  int16_t no_of_aks;
   bool read_only = FALSE;
   DESCRIPTOR* descr;
   int n;
   int subfile;
-  long int ak_node_num;
+  int32_t ak_node_num;
   OBJECT_HEADER* obj;
   struct stat statbuf;
-  unsigned long int device = 0;
-  unsigned long int inode = 0;
+  u_int32_t device = 0;
+  u_int32_t inode = 0;
 
   dh_err = 0;
   process.os_error = 0;
@@ -413,7 +415,7 @@ DH_FILE* dh_open(char path[]) {
 
   dh_file->file_id = file_id;
 
-  dh_file->flags |= (unsigned long int)header.flags;
+  dh_file->flags |= (u_int32_t)header.flags;
 
   /* Add DH_FILE structure to chain of open files */
 
@@ -452,7 +454,7 @@ exit_dh_open:
 /* ======================================================================
   dh_modulus()  -  Return current modulus of DH file                      */
 
-long int dh_modulus(DH_FILE* dh_file) {
+int32_t dh_modulus(DH_FILE* dh_file) {
   FILE_ENTRY* fptr;
 
   fptr = FPtr(dh_file->file_id);
@@ -462,14 +464,14 @@ long int dh_modulus(DH_FILE* dh_file) {
 /* ======================================================================
    Find and reserve a new file table entry                                */
 
-short int get_file_entry(char* filename,
-                         unsigned long int device,
-                         unsigned long int inode,
+int16_t get_file_entry(char* filename,
+                         u_int32_t device,
+                         u_int32_t inode,
                          struct DH_HEADER* header) {
-  short int free_table_entry;
+  int16_t free_table_entry;
   bool found;
   FILE_ENTRY* fptr;
-  short int file_id;
+  int16_t file_id;
 
   dh_err = 0;
 

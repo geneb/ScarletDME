@@ -18,7 +18,11 @@
  * 
  * Ladybridge Systems can be contacted via the www.openqm.com web site.
  * 
- * START-HISTORY:
+* ScarletDME Wiki: https://scarlet.deltasoft.com
+ * 
+ * START-HISTORY (ScarletDME):
+ *
+ * START-HISTORY (OpenQM):
  * 01 Jul 07  2.5-7 Extensive change for PDA merge.
  * 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
  * END-HISTORY
@@ -31,69 +35,73 @@
  * START-CODE
  */
 
-#include <qm.h>
+#include "qm.h"
 
 /* ======================================================================
    qmsendmail()  -  Send email                                            */
 
-bool qmsendmail(sender, recipients, cc_recipients, bcc_recipients,
-                subject, text, attachments)
-   char * sender;         /* Sender's address:  fred@acme.com */
-   char * recipients;     /* Comma separated list of recipient addresses */
-   char * cc_recipients;  /* Comma separated list of recipient addresses */
-   char * bcc_recipients; /* Comma separated list of recipient addresses */
-   char * subject;        /* Subject line */
-   char * text;           /* Text of email */
-   char * attachments;    /* Comma separated list of attachment files */
+bool qmsendmail(
+    sender,
+    recipients,
+    cc_recipients,
+    bcc_recipients,
+    subject,
+    text,
+    attachments) char* sender; /* Sender's address:  fred@acme.com */
+char* recipients;              /* Comma separated list of recipient addresses */
+char* cc_recipients;           /* Comma separated list of recipient addresses */
+char* bcc_recipients;          /* Comma separated list of recipient addresses */
+char* subject;                 /* Subject line */
+char* text;                    /* Text of email */
+char* attachments;             /* Comma separated list of attachment files */
 {
- bool status = FALSE;
- char tempname[12+1];  /* .qm_mailnnnn */
- char command[1024+1];
- int tfu;
- int n;
+  bool status = FALSE;
+  char tempname[12 + 1]; /* .qm_mailnnnn */
+  char command[1024 + 1];
+  int tfu;
+  int n;
 
+  /* Write mail text to a temporary file */
 
- /* Write mail text to a temporary file */
-
- sprintf(tempname, ".qm_mail%d", my_uptr->uid);
- tfu = open(tempname, O_RDWR | O_CREAT | O_TRUNC, default_access);
- if (tfu < 0)
-  {
-   process.status = ER_NO_TEMP;
-   process.os_error = errno;
-   goto exit_sendmail;
+  sprintf(tempname, ".qm_mail%d", my_uptr->uid);
+  tfu = open(tempname, O_RDWR | O_CREAT | O_TRUNC, default_access);
+  if (tfu < 0) {
+    process.status = ER_NO_TEMP;
+    process.os_error = errno;
+    goto exit_sendmail;
   }
 
- n = strlen(text);
- if (write(tfu, text, n) != n)
-  {
-   process.status = ER_NO_TEMP;
-   goto exit_sendmail;
+  n = strlen(text);
+  if (write(tfu, text, n) != n) {
+    process.status = ER_NO_TEMP;
+    goto exit_sendmail;
   }
 
- close(tfu);
+  close(tfu);
 
- /* Construct mail command */
+  /* Construct mail command */
 
- n = sprintf(command, "mail -s \"%s\"", subject);
+  n = sprintf(command, "mail -s \"%s\"", subject);
 
- if (cc_recipients != NULL) n += sprintf(command + n, " -c %s", cc_recipients);
- if (bcc_recipients != NULL) n += sprintf(command + n, " -b %s", bcc_recipients);
- if (recipients != NULL) n += sprintf(command + n, " %s", recipients);
+  if (cc_recipients != NULL)
+    n += sprintf(command + n, " -c %s", cc_recipients);
+  if (bcc_recipients != NULL)
+    n += sprintf(command + n, " -b %s", bcc_recipients);
+  if (recipients != NULL)
+    n += sprintf(command + n, " %s", recipients);
 
- sprintf(command + n, " <%s", tempname);
+  sprintf(command + n, " <%s", tempname);
 
- system(command);
+  system(command);
 
- /* Delete temporary file */
+  /* Delete temporary file */
 
- remove(tempname);
+  remove(tempname);
 
-
- status = TRUE;
+  status = TRUE;
 
 exit_sendmail:
- return status;
+  return status;
 }
 
 /* END-CODE */

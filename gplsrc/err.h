@@ -18,7 +18,11 @@
  * 
  * Ladybridge Systems can be contacted via the www.openqm.com web site.
  * 
- * START-HISTORY:
+ * ScarletDME Wiki: https://scarlet.deltasoft.com
+ * 
+ * START-HISTORY (ScarletDME):
+ * 
+ * START-HISTORY (OpenQM):
  * 09 Apr 09 gwb Added ER_INCOMP_PROTO
  *               Added ER_NONBLOCK_FAIL
  *

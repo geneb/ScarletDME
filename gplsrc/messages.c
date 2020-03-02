@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  *
  * START-HISTORY (ScarletDME):
+ * 28Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ * 
  * 22Feb20 gwb Converted sprintf() to snprintf() and removed some unused
  *             variables in sysmsg()
  * 07Aug09 dat Changed to using Directory file version of MESSAGES
@@ -88,7 +91,7 @@ bool load_language(char* language_prefix) {
   static char* default_days =
       "Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday";
   char* p;
-  short int i;
+  int16_t i;
 
   if (strlen(language_prefix) > 3)
     return FALSE;
@@ -255,7 +258,7 @@ void op_sysmsg() {
  */
 
   DESCRIPTOR* descr;
-  short int arg_ct;
+  int16_t arg_ct;
   int saved_process_status;
   int saved_os_error;
   char* msg;

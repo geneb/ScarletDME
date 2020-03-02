@@ -21,6 +21,12 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 29Feb20 gwb Fixed issues related to format specifiers in ?printf()
+ *             statements.  The warnings are triggered due to the conversion
+ *             platform agnostic variable types (int32_t, etc)
+ *             Changed instances of LONG_MAX to INT32_MAX.
+ * 27Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
  * 21Feb20 gwb Eliminated existing warnings on sprintf() by converting to snprint().
  *             Additional logging should be done to give more info on the errors if
  *             they happen.
@@ -45,7 +51,8 @@
 
 #include "qm.h"
 #include "dh_int.h"
-
+#include <stdint.h>
+#include <inttypes.h>
 
 Private bool dh_analyse(DH_FILE* dh_file, char* result);
 Private bool dir_analyse(FILE_VAR* fvar, char* result);
@@ -86,56 +93,56 @@ Private bool dh_analyse(DH_FILE* dh_file, /* File descriptor */
                         char* result)     /* Result string */
 {
   bool status = FALSE;
-  long int group;
-  short int group_bytes;
+  int32_t group;
+  int16_t group_bytes;
   DH_BLOCK* buff;
   DH_RECORD* rec_ptr;
   DH_BIG_BLOCK big_buff;
-  long int grp;
+  int32_t grp;
   FILE_ENTRY* fptr;
-  short int subfile;
-  short int lock_slot = 0;
-  short int rec_offset;
-  short int used_bytes;
-  short int rec_bytes;
-  long int record_len;
-  long int recs_in_group;   /* Records in group being processed */
-  long int blocks_in_group; /* Blocks in group being processed */
-  long int used_bytes_in_group;
-  long int non_numeric_ids = 0;
+  int16_t subfile;
+  int16_t lock_slot = 0;
+  int16_t rec_offset;
+  int16_t used_bytes;
+  int16_t rec_bytes;
+  int32_t record_len;
+  int32_t recs_in_group;   /* Records in group being processed */
+  int32_t blocks_in_group; /* Blocks in group being processed */
+  int32_t used_bytes_in_group;
+  int32_t non_numeric_ids = 0;
 
   /* Group statistics */
-  long int empty_groups = 0;            /* Empty groups */
-  long int overflowed_groups = 0;       /* Single overflow block */
-  long int badly_overflowed_groups = 0; /* Multiple overflow blocks */
-  long int smallest_group = LONG_MAX;   /* Blocks in smallest group */
-  long int largest_group = 0;           /* Blocks in largest group */
-  long int total_blocks = 0;            /* Total blocks in all groups */
+  int32_t empty_groups = 0;            /* Empty groups */
+  int32_t overflowed_groups = 0;       /* Single overflow block */
+  int32_t badly_overflowed_groups = 0; /* Multiple overflow blocks */
+  int32_t smallest_group = INT32_MAX;   /* Blocks in smallest group */
+  int32_t largest_group = 0;           /* Blocks in largest group */
+  int32_t total_blocks = 0;            /* Total blocks in all groups */
 
   /* Per group statistics */
-  long int min_recs_per_group = LONG_MAX;  /* Minimum records per group */
-  long int max_recs_per_group = 0;         /* Maximum records per group */
-  long int min_bytes_per_group = LONG_MAX; /* Min used bytes per group */
-  long int max_bytes_per_group = 0;        /* Max used bytes per group */
+  int32_t min_recs_per_group = INT32_MAX;  /* Minimum records per group */
+  int32_t max_recs_per_group = 0;         /* Maximum records per group */
+  int32_t min_bytes_per_group = INT32_MAX; /* Min used bytes per group */
+  int32_t max_bytes_per_group = 0;        /* Max used bytes per group */
 
   /* Record statistics for normal records */
-  long int record_count = 0;           /* Number of records */
-  long int smallest_record = LONG_MAX; /* Smallest record size */
-  long int largest_record = 0;         /* Largest record size */
+  int32_t record_count = 0;           /* Number of records */
+  int32_t smallest_record = INT32_MAX; /* Smallest record size */
+  int32_t largest_record = 0;         /* Largest record size */
   int64 total_record_bytes = 0;        /* Total used space */
 
   /* Record statistics for large records */
-  long int large_record_count = 0;         /* Number of records */
-  long int smallest_lrg_record = LONG_MAX; /* Smallest record size */
-  long int largest_lrg_record = 0;         /* Largest record size */
+  int32_t large_record_count = 0;         /* Number of records */
+  int32_t smallest_lrg_record = INT32_MAX; /* Smallest record size */
+  int32_t largest_lrg_record = 0;         /* Largest record size */
   int64 total_lrg_record_bytes = 0;        /* Total used space */
 
   /* Record length statistics */
-  long int histogram[11] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  int32_t histogram[11] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
   /* 16 bytes - 8k bytes, over 8k */
 
-  short int i;
-  long int n;
+  int16_t i;
+  int32_t n;
   char* p;
 
   dh_err = 0;
@@ -153,7 +160,7 @@ Private bool dh_analyse(DH_FILE* dh_file, /* File descriptor */
   fptr->inhibit_count++;
   EndExclusive(FILE_TABLE_LOCK);
 
-  group_bytes = (short int)(dh_file->group_size);
+  group_bytes = (int16_t)(dh_file->group_size);
   for (group = 1; group <= fptr->params.modulus; group++) {
     if (my_uptr->events)
       process_events();
@@ -357,9 +364,9 @@ Private bool dir_analyse(FILE_VAR* fvar, char* result) {
   bool status = FALSE;
   FILE_ENTRY* fptr;
   char name[MAX_PATHNAME_LEN + 1];
-  long int record_count = 0; /* Number of records */
+  int32_t record_count = 0; /* Number of records */
   int64 total_record_bytes = 0;
-  int64 smallest_record = LONG_MAX; /* Smallest record size */
+  int64 smallest_record = INT32_MAX; /* Smallest record size */
   int64 largest_record = 0;         /* Largest record size */
   char parent_name[MAX_PATHNAME_LEN + 1];
   int parent_len;

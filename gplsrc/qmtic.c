@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 27Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ * 
  * 23Feb20 gwb Bumped MAX_PATHNAME_LEN to 250 from 160.  250 is within the
  *             max filename limit of both Linux and Windows.
  *             Converted a few problematic sprintf() calls to snprintf() and
@@ -134,12 +137,12 @@
 
 #ifdef BIG_ENDIAN_SYSTEM
 #define Reverse2(a) a = swap2(a)
-short int swap2(short int data);
+int16_t swap2(int16_t data);
 #endif
 
 /* Type definitions */
 
-typedef short int bool;
+typedef int16_t bool;
 #define FALSE 0
 #define TRUE 1
 
@@ -159,12 +162,12 @@ char terminfodir[MAX_PATHNAME_LEN + 1] = "";
 
 union {
   struct {
-    short int magic;
-    short int name_size;
-    short int bool_count;
-    short int num_count;
-    short int str_count;
-    short int str_size;
+    int16_t magic;
+    int16_t name_size;
+    int16_t bool_count;
+    int16_t num_count;
+    int16_t str_count;
+    int16_t str_size;
   } header;
   char buff[4096];
 } tinfo;
@@ -172,8 +175,8 @@ union {
 
 int tinfo_bytes;
 char booleans[NumBoolNames];
-short int numerics[NumNumNames];
-short int string_offsets[NumStrNames];
+int16_t numerics[NumNumNames];
+int16_t string_offsets[NumStrNames];
 char strings[4096];
 
 int errors;
@@ -193,7 +196,7 @@ bool overwrite = TRUE;      /* -X */
 bool verbose = FALSE;       /* -V Detailed progress report */
 
 char text[512 + 1];
-short int text_len;
+int16_t text_len;
 bool flush_text;
 
 bool more;
@@ -211,7 +214,7 @@ char* get_token(void);
 void process_escapes(u_char* p);
 void reset_buffers(void);
 bool in_list(char* name);
-short int lookup(char* id, char* names[], short int ct);
+int16_t lookup(char* id, char* names[], int16_t ct);
 void err(char* template, ...);
 bool write_entry(char* name);
 void decompile_entry(void);
@@ -470,12 +473,12 @@ bool read_config() {
 
 void process_file() {
   bool skip;
-  short int id_len;
+  int16_t id_len;
   char* tptr;
   char* p;
-  short int n;
+  int16_t n;
 #ifdef BIG_ENDIAN_SYSTEM
-  short int i;
+  int16_t i;
 #endif
 
   if (verbose)
@@ -641,7 +644,7 @@ char* get_token() {
   static int idx = 0;
   char* token;
   char* p;
-  short int n;
+  int16_t n;
 
   while (rec[idx] == '\0') {
     do {
@@ -694,8 +697,8 @@ char* get_token() {
 /* ====================================================================== */
 
 void process_escapes(u_char* p) {
-  short int i;
-  short int n;
+  int16_t i;
+  int16_t n;
   u_char* q;
   u_char* r;
 
@@ -806,8 +809,8 @@ bool in_list(char* defn_names) { /* Names in definition */
 /* ======================================================================
    lookup()  -  Lookup capability name                                    */
 
-short int lookup(char* id, char* names[], short int ct) {
-  short int i;
+int16_t lookup(char* id, char* names[], int16_t ct) {
+  int16_t i;
 
   for (i = 0; i < ct; i++)
     if (strcmp(id, names[i]) == 0)
@@ -895,8 +898,8 @@ bool write_entry(char* name) {
 
 void decompile_entry() {
   int fu;
-  short int i;
-  short int n;
+  int16_t i;
+  int16_t n;
   char* p;
   char* q;
   u_char* r;
@@ -981,7 +984,7 @@ void decompile_entry() {
   /* ----- Numbers */
 
   for (i = 0; i < tinfo.header.num_count; i++, p += 2) {
-    n = *((short int*)p);
+    n = *((int16_t*)p);
 #ifdef BIG_ENDIAN_SYSTEM
     Reverse2(n);
 #endif
@@ -999,7 +1002,7 @@ void decompile_entry() {
 
   q = p + tinfo.header.str_count * 2;
   for (i = 0; i < tinfo.header.str_count; i++, p += 2) {
-    n = *((short int*)p);
+    n = *((int16_t*)p);
 #ifdef BIG_ENDIAN_SYSTEM
     Reverse2(n);
 #endif
@@ -1087,7 +1090,7 @@ exit_decompile_entry:
 void emit(char* template, ...) {
   va_list arg_ptr;
   char s[512];
-  short int n;
+  int16_t n;
 
   va_start(arg_ptr, template);
   vsprintf(s, template, arg_ptr);
@@ -1213,9 +1216,9 @@ void build_index(bool decomp) {
 /* ======================================================================
    swap2()                                                                */
 
-short int swap2(short int data) {
+int16_t swap2(int16_t data) {
   union {
-    short int val;
+    int16_t val;
     unsigned char chr[2];
   } in, out;
 

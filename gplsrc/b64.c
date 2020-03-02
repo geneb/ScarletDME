@@ -18,7 +18,11 @@
  * 
  * Ladybridge Systems can be contacted via the www.openqm.com web site.
  * 
- * START-HISTORY:
+ * ScarletDME Wiki: https://scarlet.deltasoft.com
+ * 
+ * START-HISTORY (ScarletDME):
+ *
+ * START-HISTORY (OpenQM):
  * 03 Aug 07  2.5-7 New program.
  * 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
  * END-HISTORY
@@ -54,146 +58,132 @@
 #include "qm.h"
 
 /* Translation Table as described in RFC1113 */
-static const char cb64[]="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+static const char cb64[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 /* Translation Table to decode (created by author) */
-static const char cd64[]="|$$$}rstuvwxyz{$$$$$$$>?@ABCDEFGHIJKLMNOPQRSTUVW$$$$$$XYZ[\\]^_`abcdefghijklmnopq";
-
+static const char cd64[] =
+    "|$$$}rstuvwxyz{$$$$$$$>?@ABCDEFGHIJKLMNOPQRSTUVW$$$$$$XYZ[\\]^_`"
+    "abcdefghijklmnopq";
 
 /* ======================================================================
  * encode()  -  Base64 encode adding padding and line breaks              */
 
-STRING_CHUNK * b64encode(STRING_CHUNK * str)
-{
- unsigned char in[3];
- unsigned char out[4];
- int i;
- int len;
- STRING_CHUNK * tgt;
- char * p;
- int bytes;
+STRING_CHUNK* b64encode(STRING_CHUNK* str) {
+  unsigned char in[3];
+  unsigned char out[4];
+  int i;
+  int len;
+  STRING_CHUNK* tgt;
+  char* p;
+  int bytes;
 
- if (str == NULL) return NULL;
+  if (str == NULL)
+    return NULL;
 
- ts_init(&tgt, str->string_len);
+  ts_init(&tgt, str->string_len);
 
- p = str->data;
- bytes = str->bytes;
+  p = str->data;
+  bytes = str->bytes;
 
- while(str != NULL)
-  {
-   len = 0;
-   for(i = 0; i < 3; i++)
-    {
-     if (str != NULL)
-      {
-       in[i] = (unsigned char)(*(p++));
-       len++;
-       if (--bytes == 0)
-        {
-         str = str->next;
-         if (str != NULL)
-          {
-           p = str->data;
-           bytes = str->bytes;
+  while (str != NULL) {
+    len = 0;
+    for (i = 0; i < 3; i++) {
+      if (str != NULL) {
+        in[i] = (unsigned char)(*(p++));
+        len++;
+        if (--bytes == 0) {
+          str = str->next;
+          if (str != NULL) {
+            p = str->data;
+            bytes = str->bytes;
           }
         }
-      }
-     else in[i] = 0;
+      } else
+        in[i] = 0;
     }
 
-   if (len)
-    {
-     out[0] = cb64[ in[0] >> 2 ];
-     out[1] = cb64[ ((in[0] & 0x03) << 4) | ((in[1] & 0xf0) >> 4) ];
-     out[2] = (unsigned char)((len > 1)?cb64[ ((in[1] & 0x0f) << 2) | ((in[2] & 0xc0) >> 6) ] : '=');
-     out[3] = (unsigned char)((len > 2)?cb64[ in[2] & 0x3f ] : '=');
+    if (len) {
+      out[0] = cb64[in[0] >> 2];
+      out[1] = cb64[((in[0] & 0x03) << 4) | ((in[1] & 0xf0) >> 4)];
+      out[2] = (unsigned char)((len > 1) ? cb64[((in[1] & 0x0f) << 2) |
+                                                ((in[2] & 0xc0) >> 6)]
+                                         : '=');
+      out[3] = (unsigned char)((len > 2) ? cb64[in[2] & 0x3f] : '=');
 
-     ts_copy((char *)out, 4);
+      ts_copy((char*)out, 4);
     }
   }
 
- ts_terminate();
+  ts_terminate();
 
- return tgt;
+  return tgt;
 }
 
 /* ======================================================================
    decode()  -  Decode a base64 encoded stream discarding padding, line
                 breaks and noise                                          */
 
-STRING_CHUNK * b64decode(STRING_CHUNK * str)
-{
- unsigned char in[4];
- unsigned char out[3];
- unsigned char v;
- int i;
- int len;
- STRING_CHUNK * tgt;
- char * p;
- int bytes;
+STRING_CHUNK* b64decode(STRING_CHUNK* str) {
+  unsigned char in[4];
+  unsigned char out[3];
+  unsigned char v;
+  int i;
+  int len;
+  STRING_CHUNK* tgt;
+  char* p;
+  int bytes;
 
+  if (str == NULL)
+    return NULL;
 
- if (str == NULL) return NULL;
+  ts_init(&tgt, str->string_len);
 
- ts_init(&tgt, str->string_len);
+  p = str->data;
+  bytes = str->bytes;
 
- p = str->data;
- bytes = str->bytes;
-
- while(str != NULL)
-  {
-   for(len = 0, i = 0; i < 4 && str != NULL; i++)
-    {
-     v = 0;
-     while(str != NULL && v == 0)
-      {
-       if (bytes == 0)
-        {
-         str = str->next;
-         if (str != NULL)
-          {
-           p = str->data;
-           bytes = str->bytes;
+  while (str != NULL) {
+    for (len = 0, i = 0; i < 4 && str != NULL; i++) {
+      v = 0;
+      while (str != NULL && v == 0) {
+        if (bytes == 0) {
+          str = str->next;
+          if (str != NULL) {
+            p = str->data;
+            bytes = str->bytes;
           }
         }
-       v = (unsigned char)*(p++);
-       bytes--;
+        v = (unsigned char)*(p++);
+        bytes--;
 
-       v = (unsigned char)((v < 43 || v > 122) ? 0 : cd64[v-43]);
-       if (v)
-        {
-         v = (unsigned char)((v == '$')?0:(v-61));
+        v = (unsigned char)((v < 43 || v > 122) ? 0 : cd64[v - 43]);
+        if (v) {
+          v = (unsigned char)((v == '$') ? 0 : (v - 61));
         }
       }
 
-     if (str != NULL)
-      {
-       len++;
-       if (v)
-        {
-         in[i] = (unsigned char)(v - 1);
+      if (str != NULL) {
+        len++;
+        if (v) {
+          in[i] = (unsigned char)(v - 1);
         }
-      }
-     else
-      {
-       in[i] = 0;
+      } else {
+        in[i] = 0;
       }
     }
 
-   if (len)
-    {
-     out[0] = (unsigned char)(in[0] << 2 | in[1] >> 4);
-     out[1] = (unsigned char)(in[1] << 4 | in[2] >> 2);
-     out[2] = (unsigned char)(((in[2] << 6) & 0xc0) | in[3]);
+    if (len) {
+      out[0] = (unsigned char)(in[0] << 2 | in[1] >> 4);
+      out[1] = (unsigned char)(in[1] << 4 | in[2] >> 2);
+      out[2] = (unsigned char)(((in[2] << 6) & 0xc0) | in[3]);
 
-     ts_copy((char *)out, len - 1);
+      ts_copy((char*)out, len - 1);
     }
   }
 
- ts_terminate();
+  ts_terminate();
 
- return tgt;
+  return tgt;
 }
 
 /* END-CODE */

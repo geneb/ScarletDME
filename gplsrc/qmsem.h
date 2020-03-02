@@ -18,7 +18,13 @@
  * 
  * Ladybridge Systems can be contacted via the www.openqm.com web site.
  * 
- * START-HISTORY:
+ * ScarletDME Wiki: https://scarlet.deltasoft.com
+ * 
+ * START-HISTORY (ScarletDME):
+ * 27Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ * 
+ * START-HISTORY (OpenQM):
  * 29 Jun 06  2.4-5 Extracted from QM.H
  * 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
  * END-HISTORY
@@ -30,10 +36,9 @@
  * START-CODE
  */
 
-bool get_semaphores(bool create, char * errmsg);
+bool get_semaphores(bool create, char* errmsg);
 void delete_semaphores(void);
-   void StartExclusive(int semno, short int where);
-   void EndExclusive(int semno);
-
+void StartExclusive(int semno, int16_t where);
+void EndExclusive(int semno);
 
 /* END-CODE */

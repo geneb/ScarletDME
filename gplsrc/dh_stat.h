@@ -18,7 +18,13 @@
  * 
  * Ladybridge Systems can be contacted via the www.openqm.com web site.
  * 
- * START-HISTORY:
+ * ScarletDME Wiki: https://scarlet.deltasoft.com
+ * 
+ * START-HISTORY (ScarletDME):
+ * 27Feb20 gwb Changed integer declarations to be portable across address
+ *             space sizes (32 vs 64 bit)
+ * 
+ * START-HISTORY (OpenQM):
  * 18 Dec 06  2.4-18 Extracted from sysseg.h
  * 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
  * END-HISTORY
@@ -40,19 +46,19 @@
    FILE_TABLE_LOCK semaphore.                                                */
 
 struct FILESTATS {
-   long int reset;       /*  1: qmtime() value when cleared */
-   long int opens;       /*  2: Number of opens */
-   long int reads;       /*  3: Number of reads */
-   long int writes;      /*  4: Number of writes */
-   long int deletes;     /*  5: Number of deletes */
-   long int clears;      /*  6: Number of clearfiles */
-   long int selects;     /*  7: Number of Basic selects */
-   long int splits;      /*  8: Number of splits */
-   long int merges;      /*  9: Number of merges */
-   long int ak_reads;    /* 10: Number of AK reads */
-   long int ak_writes;   /* 11: Number of AK writes */
-   long int ak_deletes;  /* 12: Number of AK deletes */
-   long int spare[12];
+   int32_t reset;       /*  1: qmtime() value when cleared */
+   int32_t opens;       /*  2: Number of opens */
+   int32_t reads;       /*  3: Number of reads */
+   int32_t writes;      /*  4: Number of writes */
+   int32_t deletes;     /*  5: Number of deletes */
+   int32_t clears;      /*  6: Number of clearfiles */
+   int32_t selects;     /*  7: Number of Basic selects */
+   int32_t splits;      /*  8: Number of splits */
+   int32_t merges;      /*  9: Number of merges */
+   int32_t ak_reads;    /* 10: Number of AK reads */
+   int32_t ak_writes;   /* 11: Number of AK writes */
+   int32_t ak_deletes;  /* 12: Number of AK deletes */
+   int32_t spare[12];
 };
 #define FILESTATS_COUNTERS 12    /* Used counters */
 
