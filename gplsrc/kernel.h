@@ -102,7 +102,8 @@ Public bool map_dir_ids init(TRUE);   /* Map illegal characters in names */
 /* Define dynamically loaded pcode items */
 
 #define Pcode(a) Public u_char * pcode_##a;
-#include <pcode.h>
+
+#include "pcode.h"
 
 /* ======================================================================
    Program control data                                                   */

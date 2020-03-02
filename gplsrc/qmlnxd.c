@@ -18,7 +18,12 @@
  * 
  * Ladybridge Systems can be contacted via the www.openqm.com web site.
  * 
- * START-HISTORY:
+ * ScarletDME Wiki: https://scarlet.deltasoft.com
+ * 
+ * START-HISTORY (ScarletDME):
+ * 25Feb20 gwb Converted an sprintf() to snprintf().
+ * 
+ * START-HISTORY (OpenQM):
  * 21 Mar 07  2.5-1 Set pid of daemon from here as use of daemon() on startup
  *                  means parent doesn't have this information.
  * 19 Jan 07  2.4-19 Don't hold short code semaphore for entire table scan when
@@ -40,7 +45,7 @@
 
 #define Public
 #define init(a) = a
-#include <qm.h>
+#include "qm.h"
 
 #include <time.h>
 #include <ctype.h>
@@ -49,7 +54,7 @@
 #include <signal.h>
 #include <sched.h>
 
-int shmid;   /* Shared memory id */
+int shmid; /* Shared memory id */
 
 bool terminate = FALSE;
 
@@ -59,121 +64,111 @@ void signal_handler(int signum);
 
 /* ====================================================================== */
 
-int main()
-{
- char errmsg[80];
- int timer = 0;
+int main() {
+  char errmsg[80];
+  int timer = 0;
 
- process.user_no = -2; /* Mark as qmlnxd for semaphore table */
+  process.user_no = -2; /* Mark as qmlnxd for semaphore table */
 
- signal(SIGTERM, signal_handler);
+  signal(SIGTERM, signal_handler);
 
- /* Attach the shared memory segment */
+  /* Attach the shared memory segment */
 
- if (((shmid = shmget(QM_SHM_KEY, 0, 0666)) == -1)
-    || (((int)(sysseg = (SYSSEG *)shmat(shmid, NULL, 0))) == -1))
-  {
-   exit(1);
+  if (((shmid = shmget(QM_SHM_KEY, 0, 0666)) == -1) ||
+      (((int)(sysseg = (SYSSEG*)shmat(shmid, NULL, 0))) == -1)) {
+    exit(1);
   }
 
- /* Get access to semaphores */
+  /* Get access to semaphores */
 
- if (!get_semaphores(FALSE, errmsg)) exit(2);
+  if (!get_semaphores(FALSE, errmsg))
+    exit(2);
 
+  /* Set process id into shared memory */
 
- /* Set process id into shared memory */
+  sysseg->qmlnxd_pid = getpid();
 
- sysseg->qmlnxd_pid = getpid();
+  /* ========================= Main loop ========================= */
 
- /* ========================= Main loop ========================= */
+  while (!terminate) {
+    timer++;
 
+    /* One minute actions */
 
- while(!terminate)
-  {
-   timer++;
+    if ((timer % 5) == 0) {
+      /* Five minute actions */
 
-   /* One minute actions */
-
-
-   if ((timer % 5) == 0)
-    {
-     /* Five minute actions */
-
-     check_lost_users();
+      check_lost_users();
     }
 
-   sleep(60);
+    sleep(60);
   }
 
+  /* Tidy up on our way out */
 
- /* Tidy up on our way out */
+  shmdt((void*)sysseg); /* Dettach shared memory */
 
- shmdt((void *)sysseg);   /* Dettach shared memory */
-
- return 0;
+  return 0;
 }
 
 /* ======================================================================
    check_lost_users()  -  Clear down "lost" processes                     */
 
-void check_lost_users()
-{
- USER_ENTRY * uptr;
- long int pid;
- short int u;
- short int num_checked = 0;
- bool lost_user_detected = FALSE;
- char cmd[MAX_PATHNAME_LEN+10];
+void check_lost_users() {
+  USER_ENTRY* uptr;
+  long int pid;
+  short int u;
+  short int num_checked = 0;
+  bool lost_user_detected = FALSE;
+  char cmd[MAX_PATHNAME_LEN + 10];
 
- StartExclusive(SHORT_CODE,69);
+  StartExclusive(SHORT_CODE, 69);
 
- for (u = 1; u <= sysseg->max_users; u++)
-  {
-   uptr = UPtr(u);
-   pid = uptr->pid;
-   if (uptr->uid)
-    {
-     if ((++num_checked % 5) == 0)
-      {
-       /* Be nice - don't hold sempahore for entire table scan */
+  for (u = 1; u <= sysseg->max_users; u++) {
+    uptr = UPtr(u);
+    pid = uptr->pid;
+    if (uptr->uid) {
+      if ((++num_checked % 5) == 0) {
+        /* Be nice - don't hold sempahore for entire table scan */
 
-       EndExclusive(SHORT_CODE);
-       RelinquishTimeslice;
-       StartExclusive(SHORT_CODE,69);
-       if (uptr->uid == 0) continue; /* User logged out */
+        EndExclusive(SHORT_CODE);
+        RelinquishTimeslice;
+        StartExclusive(SHORT_CODE, 69);
+        if (uptr->uid == 0)
+          continue; /* User logged out */
       }
 
-     if (kill(pid, 0) && (errno != EPERM))
-      {
-       lost_user_detected = TRUE;
-       break;
+      if (kill(pid, 0) && (errno != EPERM)) {
+        lost_user_detected = TRUE;
+        break;
       }
     }
   }
 
- EndExclusive(SHORT_CODE);
+  EndExclusive(SHORT_CODE);
 
- if (lost_user_detected)
-  {
-   /* Fire off a QM session to clear down the users. Although it would be
+  if (lost_user_detected) {
+    /* Fire off a QM session to clear down the users. Although it would be
       nice to do the whole job here, there are so many dependencies that
       qmlnxd ends up carrying around most of QM.                          */
-
-   sprintf(cmd, "%s/bin/qm -cleanup", sysseg->sysdir);
-   system(cmd);
+    // converted to snprintf() -gwb 25Feb20
+    if (snprintf(cmd, MAX_PATHNAME_LEN + 10, "%s/bin/qm -cleanup", sysseg->sysdir) >= (MAX_PATHNAME_LEN + 10)) {
+        printf(
+            "Overflowed path/filename buffer. Truncated to:\n%s/bin/qm "
+            "-cleanup",
+            sysseg->sysdir);
+      }
+    system(cmd);
   }
 }
-
 
 /* ======================================================================
    Signal handler                                                         */
 
-void signal_handler(signum)
-   int signum;
+void signal_handler(signum) int signum;
 {
- switch(signum)
-  {
-   case SIGTERM:
+  switch (signum) {
+    case SIGTERM:
       signal(SIGTERM, SIG_IGN);
       terminate = TRUE;
       break;
@@ -183,47 +178,40 @@ void signal_handler(signum)
 /* ======================================================================
    log_message()  -  Add message to error log                             */
 
-void log_message(char * msg)
-{
- int errlog;
- time_t timenow;
- struct tm * ltime;
- int bytes;
+void log_message(char* msg) {
+  int errlog;
+  time_t timenow;
+  struct tm* ltime;
+  int bytes;
 #define BUFF_SIZE 4096
- char buff[BUFF_SIZE];
- static char * month_names[12] = {"January","February","March","April","May","June","July","August","September","October","November","December"};
+  char buff[BUFF_SIZE];
+  static char* month_names[12] = {
+      "January", "February", "March",     "April",   "May",      "June",
+      "July",    "August",   "September", "October", "November", "December"};
 
- if (sysseg->errlog)
-  {
-   StartExclusive(ERRLOG_SEM, 71);
+  if (sysseg->errlog) {
+    StartExclusive(ERRLOG_SEM, 71);
 
-   sprintf(buff, "%s%cerrlog", sysseg->sysdir, DS);
-   errlog = open(buff, O_RDWR | O_CREAT | O_BINARY, 0777);
+    sprintf(buff, "%s%cerrlog", sysseg->sysdir, DS);
+    errlog = open(buff, O_RDWR | O_CREAT | O_BINARY, 0777);
 
-   if (errlog >= 0)
-    {
-     lseek(errlog, 0, SEEK_END);
+    if (errlog >= 0) {
+      lseek(errlog, 0, SEEK_END);
 
-     timenow = time(NULL);
-     ltime = localtime(&timenow);
+      timenow = time(NULL);
+      ltime = localtime(&timenow);
 
-     bytes = sprintf(buff, "%02d %.3s %02d %02d:%02d:%02d [qmlnxd]:%s   %s%s",
-             ltime->tm_mday,
-             month_names[ltime->tm_mon],
-             ltime->tm_year % 100,
-             ltime->tm_hour,
-             ltime->tm_min,
-             ltime->tm_sec,
-             Newline,
-             msg,
-             Newline);
+      bytes = sprintf(buff, "%02d %.3s %02d %02d:%02d:%02d [qmlnxd]:%s   %s%s",
+                      ltime->tm_mday, month_names[ltime->tm_mon],
+                      ltime->tm_year % 100, ltime->tm_hour, ltime->tm_min,
+                      ltime->tm_sec, Newline, msg, Newline);
     }
 
-   write(errlog, buff, bytes);
+    write(errlog, buff, bytes);
 
-   close(errlog);
+    close(errlog);
 
-   EndExclusive(ERRLOG_SEM);
+    EndExclusive(ERRLOG_SEM);
   }
 }
 

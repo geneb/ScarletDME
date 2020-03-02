@@ -54,7 +54,7 @@
    #include <sys/types.h>
    #include <sys/stat.h>
 
-#include <qmdefs.h>
+#include "qmdefs.h"
 
 
 /* Select list limits */
@@ -95,13 +95,13 @@ typedef struct OBJDATA OBJDATA;
 /* ======================================================================
    Standard includes needed everywhere                                    */
 
-#include <dh.h>
-#include <sysseg.h>
-#include <err.h>
-#include <descr.h>
-#include <kernel.h>
-#include <qmsem.h>
-#include <linuxlb.h>
+#include "dh.h"
+#include "sysseg.h"
+#include "err.h"
+#include "descr.h"
+#include "kernel.h"
+#include "qmsem.h"
+#include "linuxlb.h"
 
 /* ======================================================================
    Command line items                                                     */
