@@ -6,7 +6,7 @@
 #
 # Port #4242 is normally used for this.
 
-service qmsrvr
+service qmserver
 {
 	protocol 	= tcp
 	flags		= REUSE

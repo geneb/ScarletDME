@@ -1,3 +1,13 @@
+06Mar20 -gwb
+--------------
+Fixed a couple of more warnings that are triggered for the 64 bit build.
+Fixed service naming issues in the xinetd configuration files.
+===============================================================================
+
+05Mar20 -gwb
+Fixed an implict declaration warning, but forgot to note it here.
+===============================================================================
+
 28Feb20, 29Feb20 -gwb
 ---------------------
 ScarletDME now builds as a 64 bit application without error and will properly

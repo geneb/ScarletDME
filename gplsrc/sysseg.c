@@ -323,7 +323,7 @@ Private bool create_shared_segment(int32_t bytes,
     return FALSE;
   }
 
-  if ((int)(sysseg = (SYSSEG*)shmat(shmid, NULL, 0)) == -1) {
+  if ((sysseg = (SYSSEG*)shmat(shmid, NULL, 0)) == (void*)(-1)) {
     sprintf(errmsg, "Error %d attaching to new shared segment.", errno);
     return FALSE;
   }
@@ -338,7 +338,7 @@ bool attach_shared_memory() {
   int shmid;
 
   if ((shmid = shmget(QM_SHM_KEY, 0, 0666)) != -1) {
-    if ((int)(sysseg = (SYSSEG*)shmat(shmid, NULL, 0)) == -1) {
+    if ((sysseg = (SYSSEG*)shmat(shmid, NULL, 0)) == (void*)(-1)) {
       fprintf(stderr, "Error %d attaching to shared segment.\n", errno);
       return FALSE;
     }
@@ -425,7 +425,7 @@ bool stop_qm() {
     }
 
     if (shm.shm_nattch) {
-      if ((int)(sysseg = (SYSSEG*)shmat(shmid, NULL, 0)) != -1) {
+      if ((sysseg = (SYSSEG*)shmat(shmid, NULL, 0)) != (void*)(-1)) {
         /* Send all QM processes the SIGTERM signal */
 
         for (i = 1; i <= sysseg->max_users; i++) {
