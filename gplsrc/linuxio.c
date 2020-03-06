@@ -21,6 +21,7 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 05Mar20 gwb Added an include for crypt in order to eliminate a warning.
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
@@ -95,6 +96,9 @@
 #include <time.h>
 
 #include <sched.h>
+
+#define _GNU_SOURCE  /* eliminates the warning when we call crypt() below */
+#include <crypt.h>
 
 Public int ChildPipe;
 Public bool in_sh; /* 0562 Doing SH command? */
