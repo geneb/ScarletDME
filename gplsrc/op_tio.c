@@ -3908,7 +3908,7 @@ Private void process_client_input() {
 
 #ifdef BIG_ENDIAN_SYSTEM
   packet_bytes = swap4(in_packet.packet_len);
-  function = swap2(in_packet.function); 
+  /* function = swap2(in_packet.function); variable set but never used */
 #else
   packet_bytes = in_packet.packet_len;
   /* function = in_packet.function; variable set but never used */

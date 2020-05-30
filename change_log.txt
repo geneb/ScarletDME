@@ -1,3 +1,20 @@
+30May20 -Simon Kissane
+----------------------
+Added support for building on macOS Mojave.
+
+Note I haven't confirmed it actually works on macOS, just that it
+builds successfully.
+
+Note that on macOS this builds 64-bit instead of 32-bit. In macOS
+Catalina, support for running 32-bit programs has been removed. I am
+still on Mojave, but while Mojave can still run 32-bit programs, it has
+problems with building them. Due to both of those reasons, I made the
+macOS build default to 64-bit. (I didn't change the 32-bit default on
+Linux).
+
+I tested the build on Linux as well (Ubuntu), and it built successfully,
+so I conclude my changes for macOS have not broken the Linux build.
+
 28Feb20, 29Feb20 -gwb
 ---------------------
 ScarletDME now builds as a 64 bit application without error and will properly

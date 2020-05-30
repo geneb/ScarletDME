@@ -111,8 +111,12 @@
 #include "revstamp.h"
 
 #define NIX
+#ifdef __APPLE__
+#include <machine/endian.h>
+#else
 #include <endian.h>
-#if __BYTE_ORDER == __BIG_ENDIAN
+#endif
+#if __BYTE_ORDER__ == __BIG_ENDIAN__
 #define BIG_ENDIAN_SYSTEM
 #endif
 
