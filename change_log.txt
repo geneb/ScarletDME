@@ -1,3 +1,21 @@
+30May20 -Simon Kissane
+----------------------
+Add Dockerfile for building/running ScarletDME under Docker
+
+Usage:
+
+./docker/run
+
+At root@XXXXXXXXXXXX:/usr/qmsys# prompt, run:
+   ./bin/qm -start
+   ./bin/qm
+
+This is useful for people who run macOS who want an easy way of
+building/running 32-bit Linux ScarletDME under Docker for Mac. (It could
+also be useful for people who run Linux but may not have the right
+development packages installed - the Dockerfile installs the necessary
+packages automatically.)
+
 06Mar20 -gwb
 --------------
 Fixed a couple of more warnings that are triggered for the 64 bit build.
