@@ -2,6 +2,11 @@
 ; QMClient PureBasic interface
 ; Copyright (c) 2005 Ladybridge Systems, All Rights Reserved
 
+; Change History:
+; 22 Mar 07  2.5-1 Changed UseFile() to FileID() to correspond to change in
+;                  PureBasic version 4.
+;                  Changed interface to ReadString(). Corrected definitions
+;                  for QMError() and QMExecute().
 ; Usage notes:
 ;
 ; All arguments to QMCall() must be strings. Where a called subroutine returns
@@ -50,8 +55,8 @@ Declare QMDeleteu(Fileno.l, Id.s)
 Declare QMDisconnect()
 Declare QMDisconnectAll()
 Declare QMEndCommand()
-Declare QMError()
-Declare QMExecute(Cmd.s, *Err.l)
+Declare.s QMError()
+Declare.s QMExecute(Cmd.s, *Err.l)
 Declare.s QMExtract(Src.s, Fno.l, Vno.l, SvNo.l)
 Declare.s QMField(Src.s, Delim.s, Start.l, Occ.l)
 Declare.l QMGetSession()
@@ -99,10 +104,17 @@ Procedure OpenQMClientLibrary()
          End
       EndIf
 
-      UseFile(fno)
+; PureBasic version 4 replacement code
+      FileID(fno)
       Repeat
-         String$ = ReadString()
+         String$ = ReadString(fno, #PB_Ascii)
       Until Eof(fno) Or Left(String$,6) = "QMSYS="
+
+;     FileID(fno)
+;     Repeat
+;        String$ = ReadString()
+;     Until Eof(fno) Or Left(String$,6) = "QMSYS="
+; End of replacement code
 
       If Eof(fno)
          Printn("Cannot find QMSYS pointer in configuration file")
@@ -351,7 +363,7 @@ EndProcedure
 
 
 ;===== QMError
-Procedure QMError()
+Procedure.s QMError()
    OpenQMClientLibrary()
    *String = CallCFunction(QMLib, "QMError")
    If *string
@@ -363,7 +375,7 @@ EndProcedure
 
 
 ;===== QMExecute
-Procedure QMExecute(Cmd.s, *Err.l)
+Procedure.s QMExecute(Cmd.s, *Err.l)
    CheckConnected()
    *String = CallCFunction(QMLib, "QMExecute", Cmd, *Err)
    If *string
