@@ -92,11 +92,12 @@ TEMPSRCS := $(wildcard *.c)
 SRCS     := $(TEMPSRCS:qmclient.c=)
 OBJS     := $(SRCS:.c=.o)
 DIROBJS  := $(addprefix $(GPLOBJ),$(OBJS))
-INSTROOT := /usr/qmsys
 
 ifeq (Darwin,$(OSNAME))
+	INSTROOT := /opt/qmsys
 	SONAME_OPT = -install_name
 else
+	INSTROOT := /usr/qmsys
 	SONAME_OPT = -soname
 endif
 
@@ -246,8 +247,8 @@ datafiles:
 	@cp -r $(MAIN)VOC.DIC/ $(INSTROOT)/VOC.DIC
 	@cp -r $(MAIN)BP.OUT/ $(INSTROOT)/BP.OUT
 	@chown -R qmsys.qmusers $(INSTROOT)
-	@chmod 775 /usr/qmsys
-	@chmod 775 /usr/qmsys/*
+	@chmod 775 $(INSTROOT)
+	@chmod 775 $(INSTROOT)/*
 	@echo Data file copy completed!
 clean:
 	@$(RM) $(GPLOBJ)*.o
