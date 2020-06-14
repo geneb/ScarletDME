@@ -690,10 +690,10 @@ void op_inc() {
   if (arg->type == INTEGER) {
     if (arg->data.value < INT32_MAX) {
       arg->data.value++;
-    } else /* Must convert to float */
-    {
+    } else { /* Must convert to float */
       arg->type = FLOATNUM;
       arg->data.float_value = ((double)INT32_MAX) + 1;
+      // this appears to force an overflow error via k_get_int().
     }
   } else {
     arg->data.float_value += 1.0;

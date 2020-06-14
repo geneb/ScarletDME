@@ -883,7 +883,8 @@ Private void itype() {
 
   k_pop(1);
   
-  if (((int32_t)p) & 0x00000003) {
+  if (((int)p) & 0x00000003) {
+    // if ((p-(char*)NULL) & 0x3) {  (this fixes the warning the above line triggers)
     /* Not word aligned - must make a copy. To ensure that this gets
       released at an abort, we push a string descriptor onto the stack */
 

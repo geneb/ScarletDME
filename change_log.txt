@@ -15,6 +15,34 @@ Linux).
 I tested the build on Linux as well (Ubuntu), and it built successfully,
 so I conclude my changes for macOS have not broken the Linux build.
 
+30May20 -Simon Kissane
+----------------------
+Add Dockerfile for building/running ScarletDME under Docker
+
+Usage:
+
+./docker/run
+
+At root@XXXXXXXXXXXX:/usr/qmsys# prompt, run:
+   ./bin/qm -start
+   ./bin/qm
+
+This is useful for people who run macOS who want an easy way of
+building/running 32-bit Linux ScarletDME under Docker for Mac. (It could
+also be useful for people who run Linux but may not have the right
+development packages installed - the Dockerfile installs the necessary
+packages automatically.)
+
+06Mar20 -gwb
+--------------
+Fixed a couple of more warnings that are triggered for the 64 bit build.
+Fixed service naming issues in the xinetd configuration files.
+===============================================================================
+
+05Mar20 -gwb
+Fixed an implict declaration warning, but forgot to note it here.
+===============================================================================
+
 28Feb20, 29Feb20 -gwb
 ---------------------
 ScarletDME now builds as a 64 bit application without error and will properly

@@ -474,8 +474,7 @@ void k_get_int(DESCRIPTOR* p) {
 
   descr = k_dereference(p);
 
-  switch (p->type) /* ++ALLTYPES++ */
-  {
+  switch (p->type) { /* ++ALLTYPES++ */
     case INTEGER:
       break;
 
@@ -483,7 +482,6 @@ void k_get_int(DESCRIPTOR* p) {
       if (fabs(p->data.float_value) > INT32_MAX) {
         k_error(sysmsg(1220));
       }
-        
 
       if (pcfg.intprec) {
         if (p->data.float_value < 0) {
