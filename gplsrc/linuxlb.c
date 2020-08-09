@@ -47,7 +47,9 @@
 #include <pwd.h>
 #include <time.h>
 
+#ifndef __APPLE__
 #include <crypt.h>
+#endif
 
 /* ======================================================================
    filelength64()  -  Return file size in bytes                           */

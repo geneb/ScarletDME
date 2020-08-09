@@ -63,14 +63,24 @@ GPLBIN   := $(MAIN)bin/
 TERMINFO := $(MAIN)terminfo/
 VPATH    := $(GPLOBJ):$(GPLBIN):$(GPLSRC)
 
+OSNAME   := $(shell uname -s)
+
 COMP     := gcc
-ARCH	 := -m32
+ifeq (Darwin,$(OSNAME))
+	ARCH     :=
+else
+	ARCH	 := -m32
+endif
 
 #C_FLAGS  := -Wall -Wformat=2 -Wno-format-nonliteral -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH)
 # -Wformat=0 turns off the format specifier warnings so other warningings don't get lost.
 C_FLAGS  := -Wall -Wformat=0 -Wno-format-nonliteral -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH)
 
-L_FLAGS  := -Wl,--no-as-needed -lm -lcrypt -ldl
+ifeq (Darwin,$(OSNAME))
+	L_FLAGS  := -lm -ldl
+else
+	L_FLAGS  := -Wl,--no-as-needed -lm -lcrypt -ldl
+endif
 RM       := rm
 
 QMHDRS   := $(wildcard *.h)
@@ -82,7 +92,14 @@ TEMPSRCS := $(wildcard *.c)
 SRCS     := $(TEMPSRCS:qmclient.c=)
 OBJS     := $(SRCS:.c=.o)
 DIROBJS  := $(addprefix $(GPLOBJ),$(OBJS))
-INSTROOT := /usr/qmsys
+
+ifeq (Darwin,$(OSNAME))
+	INSTROOT := /opt/qmsys
+	SONAME_OPT = -install_name
+else
+	INSTROOT := /usr/qmsys
+	SONAME_OPT = -soname
+endif
 
 #TEMPOBJS := $(SRCS:.c=.o)
 #OBJS     := $(addprefix $(GPLOBJ),$(TEMPOBJS))
@@ -94,8 +111,8 @@ qm: $(QMOBJS) qmclilib.so qmtic qmfix qmconv qmidx qmlnxd terminfo
 
 qmclilib.so: qmclilib.o
 	@echo Linking $@
-	@$(COMP) -shared -Wl,-soname,qmclilib.so -lc $(ARCH) $(GPLOBJ)qmclilib.o -o $(GPLBIN)qmclilib.so
-	@$(COMP) -shared -Wl,-soname,libqmcli.so -lc $(ARCH) $(GPLOBJ)qmclilib.o -o $(GPLBIN)libqmcli.so
+	@$(COMP) -shared -Wl,$(SONAME_OPT),qmclilib.so -lc $(ARCH) $(GPLOBJ)qmclilib.o -o $(GPLBIN)qmclilib.so
+	@$(COMP) -shared -Wl,$(SONAME_OPT),libqmcli.so -lc $(ARCH) $(GPLOBJ)qmclilib.o -o $(GPLBIN)libqmcli.so
 #	@cp $(GPLOBJ)qmclilib.o $(GPLBIN)qmclilib.o
 #	@cp $(GPLOBJ)qmclilib.so $(GPLBIN)qmclilib.so
 
@@ -230,8 +247,8 @@ datafiles:
 	@cp -r $(MAIN)VOC.DIC/ $(INSTROOT)/VOC.DIC
 	@cp -r $(MAIN)BP.OUT/ $(INSTROOT)/BP.OUT
 	@chown -R qmsys.qmusers $(INSTROOT)
-	@chmod 775 /usr/qmsys
-	@chmod 775 /usr/qmsys/*
+	@chmod 775 $(INSTROOT)
+	@chmod 775 $(INSTROOT)/*
 	@echo Data file copy completed!
 clean:
 	@$(RM) $(GPLOBJ)*.o

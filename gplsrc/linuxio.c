@@ -97,8 +97,10 @@
 
 #include <sched.h>
 
+#ifndef __APPLE__
 #define _GNU_SOURCE  /* eliminates the warning when we call crypt() below */
 #include <crypt.h>
+#endif
 
 Public int ChildPipe;
 Public bool in_sh; /* 0562 Doing SH command? */
