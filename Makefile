@@ -191,6 +191,14 @@ install:
 	done
 	@chmod -R 775 $(INSTROOT)
 
+	#	For now copy qmconfig to /etc/scarlet.conf
+	@echo Writing scarlet.conf file
+	@cp $(main)qmconfig /etc/scarlet.conf
+	@chmod 644 /etc/scarlet.conf
+
+#	Create symbolic link if it does not exist
+	@test -f /usr/bin/qm || @ln -s /usr/qmsys/bin/qm /usr/bin/qm
+
 datafiles:
 	@echo Installing data files...
 	@cp -r $(MAIN)ACCOUNTS/ $(INSTROOT)/ACCOUNTS
