@@ -1,14 +1,19 @@
-# Default ignored files
-/shelf/
-/workspace.xml
-# Datasource local storage ignored files
-/dataSources/
-/dataSources.local.xml
-# Editor-based HTTP Client requests
-/httpRequests/
-.idea/
-.vscode/
-PVS_Studio.fullhtml/
+gplobj/*.o
+bin/qm
+bin/libqmcli.so
+bin/pcode
+bin/qm
+bin/qmclilib.so
+bin/qmconv
+bin/qmfix
+bin/qmidx
+bin/qmlnxd
+bin/qmtic
+
+# Workspace files to exclude. IDE's, etc.
+.idea/**
+.vscode/**
+PVS_Studio.fullhtml/**
 PVS_Studio.tasks
 gcc.log
 strace_out
