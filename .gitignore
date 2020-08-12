@@ -9,3 +9,11 @@ bin/qmfix
 bin/qmidx
 bin/qmlnxd
 bin/qmtic
+
+# Workspace files to exclude. IDE's, etc.
+.idea/**
+.vscode/**
+PVS_Studio.fullhtml/**
+PVS_Studio.tasks
+gcc.log
+strace_out
