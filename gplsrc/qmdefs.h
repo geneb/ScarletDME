@@ -57,11 +57,19 @@
 #define _XOPEN_SOURCE
 #define _XOPEN_CRYPT
 #include <unistd.h>
+#ifdef __APPLE__
+#include <machine/endian.h>
+#else
 #include <endian.h>
-#if __BYTE_ORDER == __BIG_ENDIAN
+#endif
+#if __BYTE_ORDER__ == __BIG_ENDIAN__
 #define BIG_ENDIAN_SYSTEM
 #endif
+#ifdef __APPLE__
+extern char **environ;
+#else
 #define environ __environ
+#endif
 
 #define Seek(fu, offset, whence) lseek(fu, offset, whence)
 
