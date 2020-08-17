@@ -9,3 +9,4 @@ bin/qmfix
 bin/qmidx
 bin/qmlnxd
 bin/qmtic
+stacks/*
