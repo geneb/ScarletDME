@@ -1,0 +1,11 @@
+Here's a list of interesting open source (or free) projects and resources 
+that are related to Multi-Value databases like ScarletDME, OpenQM, D3 Pick, 
+UniVerse, etc.
+
+[26Mar21] Started.
+AnyKey - https://github.com/MarcusAureliusRhodes/AnyKey
+AnyKey's purpose is to enable Pick programs to respond to any key (or 
+combination of keys) on the keyboard, no matter what terminal emulation or 
+terminal emulator is being used.
+
+Introduction to Pick Programming: https://www.youtube.com/channel/UCN7Pq68IP_ffi9jokzzpnHg

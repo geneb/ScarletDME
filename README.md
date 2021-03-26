@@ -49,6 +49,9 @@ Some files have been reformatted, most have not.  However, eventually they all
 will be.  There's also instances of K&R-style function parameter declarations
 and those will be converted to ANSI-style as I discover them.
 
+[26Mar21] I've added a file called "open-mv-projects.txt" that have a list of free
+          resources projects that work with ScarletDME and other Multi-Value databases.
+
 [27Feb20] A Discord server is now available (basically a tarted up version of IRC) at
           https://discord.gg/cnyvVM
 
