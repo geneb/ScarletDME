@@ -1,3 +1,45 @@
+******************************************************************************
+*            THIS CHANGE LOG ONLY APPLIES TO THE "MASTER" BRANCH             *
+******************************************************************************
+
+07Jan22 - gwb
+-------------
+Made the following changes based on suggestions by Donald Montaine:
+1. Created the missing $FORMS directory and updated the Makefile to 
+   include it when "make install" is executed.
+
+2. The default qmconfig file has been renamed to as "scarlet.conf" (overlooked 
+   during the rebranding))
+
+3. Created a new default configuration file (scarlet.conf).
+   The new file contains the following configuration:
+   [qm]
+   QMSYS=/usr/qmsys
+   GRPSIZE=2
+   NUMUSERS=10
+   SORTMEM=4096
+
+   QMSYS is the location of the QMSYS account directory.  ScarletDME won't function
+   properly if this location is incorrect.
+
+   GRPSIZE is the default group size in 1024 byte units.  This value is used when
+   creating a dynamic file.  The value given must be in the range of 1 to 8.
+   It's advised that you set this to a multiple of your operating system's disk block
+   size.  The default block size on Linux is 4096 bytes, MacOS can be either 512 bytes
+   or 4096 bytes.
+
+   NUMUSERS sets the number of simultaneous users that can use ScarletDME at one time.
+   It may also control buffer allocations on the server side. (code that examines the
+   variable "max_users" is directly related to the NUMUSERS value)
+
+   SORTMEM This is the size in kilobytes where the system switches from a RAM based sort
+   to a disk based sort. If this isn't specified, it'll default to 1024(1MB).
+
+
+Updated .gitignore to add additional files to ignore.
+
+Moved this file and other text files into the "info" directory.
+
 30May20 -Simon Kissane
 ----------------------
 Add Dockerfile for building/running ScarletDME under Docker

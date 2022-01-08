@@ -1,0 +1,10 @@
+[27Feb20 gwb]
+For folks building on the Raspberry Pi, you may need to remove the "-m32".
+You can do this by inserting a "#" character before the -m32 option.  The
+changed line should read:
+ARCH 	:= #-m32
+
+Note that this only applies to people running a 32 bit version of Linux on
+their Pi.  If you're using a more modern 64 bit version, you'll need to
+continue to include the -m32 flag - at least until the 64 bit build is
+100% functional.

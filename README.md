@@ -13,6 +13,16 @@ For proper terminal operation, you'll need to install:
 ncurses-devel
 ncurses-compat-libs
 
+For Debian 11, the following packages may need to be installed:
+(you need to enable access to the 32 bit repository, this is done via:
+ sudo dpkg --add-architecture i386)
+
+libc6-dev:i386 (required for the 32 bit libcrypt.so)
+gcc-multilib
+lib32gcc-10-dev (maybe)
+
+Raspberry Pi users should check out info/raspberry-pi.txt.
+
 If you would like to support remote access to your ScarletDME system
 via the QMClient API or telnet services, you'll need to install:
 xinetd
@@ -23,6 +33,8 @@ xinetd.
 Before you build ScarletDME, you should create a user named "qmsys" and
 a group named "qmuser".  Make sure you add the qmuser group to any user
 that will be using ScarletDME, /including/ the "root" and "qmsys" users!
+
+** see info/setup.txt for details on creating the needed users & groups.
 
 You should be able to build the system by just typing "make' in the directory
 where the Makefile lives.  Enter "make install" to install the result of the

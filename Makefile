@@ -34,6 +34,8 @@
 #
 # Changelog
 # ---------
+# 07Jan22 gwb Added the $FORMS directory to the list of things to be copied.
+#             Fixed dumb typo in a Makefile comment.
 # 20Feb20 gwb Added -m32 $(ARCH) flag to ensure we're compiling with 32 bit 
 #             libraries.
 #             I also inverted the timeline of these comments in order to make
@@ -67,7 +69,7 @@ COMP     := gcc
 ARCH	 := -m32
 
 #C_FLAGS  := -Wall -Wformat=2 -Wno-format-nonliteral -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH)
-# -Wformat=0 turns off the format specifier warnings so other warningings don't get lost.
+# -Wformat=0 turns off the format specifier warnings so other warnings don't get lost.
 C_FLAGS  := -Wall -Wformat=0 -Wno-format-nonliteral -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH)
 
 L_FLAGS  := -Wl,--no-as-needed -lm -lcrypt -ldl
@@ -201,6 +203,8 @@ datafiles:
 	@cp -r $(MAIN)DIR_DICT/ $(INSTROOT)/DIR_DICT
 	@cp -r $(MAIN)ERRMSG/ $(INSTROOT)/ERRMSG
 	@cp -r $(MAIN)ERRMSG.DIC/ $(INSTROOT)/ERRMSG.DIC
+	@cp -r $(MAIN)\$$FORMS/ $(INSTROOT)/\$$FORMS
+	@chmod 775 $(INSTROOL)/\$$FORMS	
 	@cp -r $(MAIN)gcat/ $(INSTROOT)/gcat
 	@chmod 665 $(INSTROOT)/gcat/*
 	@cp -r $(MAIN)GPL.BP/ $(INSTROOT)/GPL.BP
