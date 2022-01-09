@@ -2,6 +2,13 @@
 *            THIS CHANGE LOG ONLY APPLIES TO THE "MASTER" BRANCH             *
 ******************************************************************************
 
+08Jan22 - gwb
+-------------
+Added created the $COMO directory and added it to the list of things to be 
+copied during "make install".
+This was done to prevent an error #3003 from being displayed by LISTF if 
+the $COMO file didn't exist.  Thanks to Don M. for this one as well.
+
 07Jan22 - gwb
 -------------
 Made the following changes based on suggestions by Donald Montaine:
