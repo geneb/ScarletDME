@@ -34,7 +34,8 @@
 #
 # Changelog
 # ---------
-# 08Jan22 gwb Added $COMO directory to the list of thigns to be copied on install.
+# 09Jan22 gwb Fixed a typo in the paths for $COMO and $FORMS.
+# 08Jan22 gwb Added $COMO directory to the list of things to be copied on install.
 # 07Jan22 gwb Added the $FORMS directory to the list of things to be copied.
 #             Fixed dumb typo in a Makefile comment.
 # 20Feb20 gwb Added -m32 $(ARCH) flag to ensure we're compiling with 32 bit 
@@ -201,13 +202,13 @@ datafiles:
 	@cp -r $(MAIN)BP/ $(INSTROOT)/BP
 	@cp -r $(MAIN)cat/ $(INSTROOT)/cat
 	@cp -r $(MAIN)\$$COMO/ $(INSTROOT)/\$$COMO
-	@chmod 775 $(INSTROOL)/\$$COMO
+	@chmod 775 $(INSTROOT)/\$$COMO
 	@cp -r $(MAIN)DICT.DIC/ $(INSTROOT)/DICT.DIC
 	@cp -r $(MAIN)DIR_DICT/ $(INSTROOT)/DIR_DICT
 	@cp -r $(MAIN)ERRMSG/ $(INSTROOT)/ERRMSG
 	@cp -r $(MAIN)ERRMSG.DIC/ $(INSTROOT)/ERRMSG.DIC
 	@cp -r $(MAIN)\$$FORMS/ $(INSTROOT)/\$$FORMS
-	@chmod 775 $(INSTROOL)/\$$FORMS
+	@chmod 775 $(INSTROOT)/\$$FORMS
 	@cp -r $(MAIN)gcat/ $(INSTROOT)/gcat
 	@chmod 665 $(INSTROOT)/gcat/*
 	@cp -r $(MAIN)GPL.BP/ $(INSTROOT)/GPL.BP
