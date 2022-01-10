@@ -1,3 +1,81 @@
+******************************************************************************
+*            THIS CHANGE LOG ONLY APPLIES TO THE "DEV" BRANCH                *
+******************************************************************************
+10Jan22 - gwb
+-------------
+All of the format specifier warnings for *printf()/sscanf() have been resolved
+for the 64 bit build.  One remains in the 32 bit build in analyse.c and because 
+of the length of the code question, I didn't want to add an #ifndef __LP64__ to it.
+
+I've also resolved all of the warnings related to casting.  This work, in conjunction
+with the format specifier warning cleanup now results in a fully working 64 bit build!
+The issues noted in the 28Feb20 update no longer appear to be present.  The Basic
+compiler appears to function normally.  One of the tests I performed was to compile
+the Basic compiler with itself and then compile itself again.  No errors were indicated
+and it appears to be working the same as it does when ScarletDME is built as a 32 bit
+application.  A full suite of regression tests really should be created in order to 
+ensure that there's no behavior differences between the 32 bit and 64 bit builds.
+
+It's now easier to build the 64 bit target - simply change the BUILD64 define to Y
+in the makefile.
+The makefile will now announce what target it's building for.
+===============================================================================
+
+09Jan22 - gwb
+-------------
+Changed the STRING_CHUNK struct to align on a 2 byte boundary.  A warning
+was being triggered due to a cast from DH_RECORD, which uses a 2 byte boundary,
+to STRING_CHUNK which was not explicitly aligned, resulting it defaulting to an 8
+byte boundary.
+===============================================================================
+
+08Jan22 - gwb
+-------------
+Added created the $COMO directory and added it to the list of things to be 
+copied during "make install".
+This was done to prevent an error #3003 from being displayed by LISTF if 
+the $COMO file didn't exist.  Thanks to Don M. for this one as well.
+===============================================================================
+
+07Jan22 - gwb
+-------------
+Made the following changes based on suggestions by Donald Montaine:
+1. Created the missing $FORMS directory and updated the Makefile to 
+   include it when "make install" is executed.
+
+2. The default qmconfig file has been renamed to as "scarlet.conf" (overlooked 
+   during the rebranding))
+
+3. Created a new default configuration file (scarlet.conf).
+   The new file contains the following configuration:
+   [qm]
+   QMSYS=/usr/qmsys
+   GRPSIZE=2
+   NUMUSERS=10
+   SORTMEM=4096
+
+   QMSYS is the location of the QMSYS account directory.  ScarletDME won't function
+   properly if this location is incorrect.
+
+   GRPSIZE is the default group size in 1024 byte units.  This value is used when
+   creating a dynamic file.  The value given must be in the range of 1 to 8.
+   It's advised that you set this to a multiple of your operating system's disk block
+   size.  The default block size on Linux is 4096 bytes, MacOS can be either 512 bytes
+   or 4096 bytes.
+
+   NUMUSERS sets the number of simultaneous users that can use ScarletDME at one time.
+   It may also control buffer allocations on the server side. (code that examines the
+   variable "max_users" is directly related to the NUMUSERS value)
+
+   SORTMEM This is the size in kilobytes where the system switches from a RAM based sort
+   to a disk based sort. If this isn't specified, it'll default to 1024(1MB).
+
+
+Updated .gitignore to add additional files to ignore.
+
+Moved this file and other text files into the "info" directory.
+===============================================================================
+
 30May20 -Simon Kissane
 ----------------------
 Added support for building on macOS Mojave.
@@ -14,6 +92,7 @@ Linux).
 
 I tested the build on Linux as well (Ubuntu), and it built successfully,
 so I conclude my changes for macOS have not broken the Linux build.
+===============================================================================
 
 30May20 -Simon Kissane
 ----------------------
@@ -32,6 +111,7 @@ building/running 32-bit Linux ScarletDME under Docker for Mac. (It could
 also be useful for people who run Linux but may not have the right
 development packages installed - the Dockerfile installs the necessary
 packages automatically.)
+===============================================================================
 
 06Mar20 -gwb
 --------------

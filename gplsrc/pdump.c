@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 02Jan22 gwb Cleaned up a number of warnings related to using the wrong
+ *             format specifier vs the variable type being formatted.
+ *
  * 28Feb20 gwb Added indicator of platform word size.
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
@@ -144,13 +147,13 @@ void pdump() {
   fprintf(fu, "==========================================================\n\n");
   /* Own user table entry */
 
-  fprintf(fu, "User %d. Process id %ld. Parent user %d.\n", process.user_no,
+  fprintf(fu, "User %d. Process id %d. Parent user %d.\n", process.user_no,
           my_uptr->pid, my_uptr->puid);
   fprintf(fu, "User name '%s'\n", my_uptr->username);
 
   /* Global system variables */
 
-  fprintf(fu, "\nSTATUS() = %ld, OS.ERROR() = %ld\n", process.status,
+  fprintf(fu, "\nSTATUS() = %d, OS.ERROR() = %d\n", process.status,
           process.os_error);
 
   /* SYSCOM data */
@@ -224,7 +227,7 @@ void pdump() {
   offset = pc - c_base;
   prog_no = 0;
   do {
-    fprintf(fu, "===== [%d] Program %s at 0x%08lX (line %d)\n", ++prog_no,
+    fprintf(fu, "===== [%d] Program %s at 0x%08X (line %d)\n", ++prog_no,
             ProgramName(pgm->saved_c_base), offset,
             k_line_no(offset, pgm->saved_c_base));
 
@@ -274,14 +277,14 @@ void pdump() {
     }
 
     fprintf(fu, "  Precision = %d\n", process.program.precision);
-    fprintf(fu, "  COL1() = %ld, COL2() = %ld\n\n", process.program.col1,
+    fprintf(fu, "  COL1() = %d, COL2() = %d\n\n", process.program.col1,
             process.program.col2);
     n = pgm->gosub_depth;
     if (n) {
       fprintf(fu, "  Gosub stack\n");
       for (i = n - 1; i >= 0; i--) {
         offset = pgm->gosub_stack[i] - 1; /* Back up to GOSUB (etc) */
-        fprintf(fu, "    0x%08lX, line %d\n", offset,
+        fprintf(fu, "    0x%08X, line %d\n", offset,
                 k_line_no(offset, pgm->saved_c_base));
       }
       fprintf(fu, "\n");
@@ -453,7 +456,7 @@ Private void dump_variable(DESCRIPTOR* descr, /* Descriptor to dump */
       break;
 
     case INTEGER:
-      fprintf(fu, "%s: Int: %ld\n", s, descr->data.value);
+      fprintf(fu, "%s: Int: %d\n", s, descr->data.value);
       break;
 
     case FLOATNUM:
@@ -475,7 +478,7 @@ Private void dump_variable(DESCRIPTOR* descr, /* Descriptor to dump */
             break;
           rmv_offset += str->bytes;
         }
-        fprintf(fu, "%s: String (rmv=%ld): \"", s, rmv_offset);
+        fprintf(fu, "%s: String (rmv=%d): \"", s, rmv_offset);
       } else {
         fprintf(fu, "%s: String: \"", s);
       }
@@ -497,9 +500,9 @@ Private void dump_variable(DESCRIPTOR* descr, /* Descriptor to dump */
       ahdr = descr->data.ahdr_addr;
       two_d = (ahdr->cols != 0);
       if (two_d)
-        fprintf(fu, "%s: Array (%ld,%ld)\n", s, ahdr->rows, ahdr->cols);
+        fprintf(fu, "%s: Array (%d,%d)\n", s, ahdr->rows, ahdr->cols);
       else
-        fprintf(fu, "%s: Array (%ld)\n", s, ahdr->rows);
+        fprintf(fu, "%s: Array (%d)\n", s, ahdr->rows);
 
       /* Dump array elements */
 
@@ -511,7 +514,7 @@ Private void dump_variable(DESCRIPTOR* descr, /* Descriptor to dump */
           if (el == 0) {
             strcpy(element, (two_d) ? "(0,0)" : "(0)");
           } else if (two_d) {
-            sprintf(element, "(%ld,%ld)", (el + base - 1) / ahdr->cols,
+            sprintf(element, "(%d,%d)", (el + base - 1) / ahdr->cols,
                     ((el + base - 1) % ahdr->cols) + 1);
           } else {
             sprintf(element, "(%d)", el);

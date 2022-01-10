@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 09Jan22 gwb Fixed some format specifier warnings.
+ *
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
@@ -458,7 +460,7 @@ end_conversion:
         else if (dp >= 0)
           ftoa((double)int_value, dp, FALSE, p); /* 0352 */
         else
-          sprintf(p, "%ld", int_value);
+          sprintf(p, "%d", int_value);
       } else /* Either is float or is integer with scale factor */
       {
         if (is_integer)
@@ -2744,7 +2746,7 @@ int32_t conv_dtx(char* p) {
     return 0;
   }
 
-  sprintf(s, "%lX", GetUnsignedInt(descr)); /* 0291 */
+  sprintf(s, "%u", GetUnsignedInt(descr)); /* 0291 */
   k_put_c_string(s, descr);
 
   return 0;

@@ -16,3 +16,8 @@ Assign the qmusers group to qmsys, root, and any others that may need it:
 sudo usermod -a -G qmusers root
 sudo usermod -a -G qmusers qmsys
 sudo usermod -a -G qmusers <userid>
+
+Note that once you've added yourself to the qmusers group, you'll need to log 
+out in order for the group addition to "take".  You also have the option of
+entering "su <userid>", which will create a new shell that is aware of the new
+ group you've been added to.

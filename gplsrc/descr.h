@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 09Jan22 gwb Changed STRING_CHUNK to be aligned on a 2 byte boundary.
+ *
  * 27Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  * 
@@ -298,7 +300,11 @@ struct STRING_CHUNK {
   int32_t offset;     /* ...offset. In SELLIST this is item count */
   int16_t ref_ct;     /* Reference count */
   char data[1];
-};
+} ALIGN2; /* Making this struct align on a 2 byte boundary cleared up a warning when 
+           * a struct of DH_RECORD was being cast to STRING_CHUNK in dh_ak.c, around
+           * line #3414. 09Jan22 gwb
+           */
+
 #define STRING_CHUNK_HEADER_SIZE (offsetof(STRING_CHUNK, data))
 #define MAX_STRING_CHUNK_SIZE ((signed int)(16384 - STRING_CHUNK_HEADER_SIZE))
 

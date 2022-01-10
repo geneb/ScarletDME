@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 10Jan22 gwb Fixed a format specifier warning.
+ *
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
@@ -87,7 +89,7 @@ char* Ltoa(value, string, radix) int32_t value;
 char* string;
 int radix; /* Ignored */
 {
-  sprintf(string, "%ld", value);
+  sprintf(string, "%d", value);
   return string;
 }
 

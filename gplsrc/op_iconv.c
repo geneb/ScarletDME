@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 09Jan22 gwb Fixed some format specifier warnings.
+ *
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
@@ -633,7 +635,7 @@ Private int32_t date_conversion(char* p) {
 
   days += day - 1;
 
-  sprintf(s, "%ld", days);
+  sprintf(s, "%d", days);
   k_dismiss();
   k_put_c_string(s, e_stack++);
 
@@ -1181,8 +1183,11 @@ Private int32_t masked_decimal_conversion(char* p) {
   q = s;
   if (neg)
     *(q++) = '-';
+#ifndef __LP64__
   sprintf(q, "%lld", value);
-
+#else
+  sprintf(q, "%ld", value);
+#endif
   /* Strip leading zeros */
 
   q = s;
@@ -1265,7 +1270,7 @@ int32_t iconv_time_conversion() {
     status = 0;
   }
 
-  sprintf(s, "%ld", time_value);
+  sprintf(s, "%d", time_value);
   k_dismiss();
   k_put_c_string(s, e_stack++);
 

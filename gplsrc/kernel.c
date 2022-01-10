@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 09Jan22 gwb Added a 64 bit target check to fatal_signal_handler() in order
+ *             to clear a warning when casting descr to int32_t on 64 bit builds.
+ *
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  * 
@@ -1423,8 +1426,14 @@ void fatal_signal_handler(int signum) {
 
     for (i = 4; i >= -4; i--) {
       descr = e_stack + i;
-      printf("%2d %08lX: %02X %02X %08lX %08lX\n", i, (int32_t)descr, descr->type,
+//#warning "Casting to int64_t may not be the right solution for this."      
+#ifndef __LP64__   /* 09Jan22 gwb: use int64_t for 64 bit builds. */
+      printf("%2d %08X: %02X %02X %08X %08X\n", i, (int32_t)descr, descr->type,
              descr->flags, descr->data.dbg.w1, descr->data.dbg.w2);
+#else
+      printf("%2d %08lX: %02X %02X %08X %08X\n", i, (int64_t)descr, descr->type,
+             descr->flags, descr->data.dbg.w1, descr->data.dbg.w2);
+#endif
       if (descr == e_stack_base)
         break;
     }

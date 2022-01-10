@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 09Jan22 gwb Cleaned up outstanding cast warnings when building for 64 bit.
+ *
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
@@ -75,7 +77,11 @@
 Private void ccall_c(unsigned char* s1, void* s2) {
   char* p;
   unsigned char ch;
+  #ifndef __LP64__ /* 09Jan22 gwb - 64 bit fixup */
   u_int32_t Val;
+  #else
+  u_int64 Val;
+  #endif
   u_int32_t Stk[50];
   int StkCnt;
   u_int64 res64;
@@ -92,7 +98,12 @@ Private void ccall_c(unsigned char* s1, void* s2) {
       case 1: /* dlload / LoadLibrary */
         p = (char*)s1;
         s1 += strlen(p) + 1;
+        /* 09Jan22 gwb - fix for 64 bit */
+#ifndef __LP64__        
         res64 = (u_int32_t)dlopen(p, RTLD_NOW | RTLD_GLOBAL);
+#else
+        res64 = (u_int64)dlopen(p, RTLD_NOW | RTLD_GLOBAL);
+#endif
         break;
 
       case 2: /* dlsym / GetProcAddr */
@@ -100,7 +111,12 @@ Private void ccall_c(unsigned char* s1, void* s2) {
         s1 += strlen(p) + 1;
         v = *(void**)s1;
         s1 += sizeof(void*);
+        /* 09Jan22 gwb - fix for 64 bit */
+#ifndef __LP64__        
         res64 = (u_int32_t)dlsym(v, p);
+#else
+        res64 = (u_int64)dlsym(v, p);
+#endif
         break;
 
       case 3: /* Push value */
@@ -109,8 +125,13 @@ Private void ccall_c(unsigned char* s1, void* s2) {
         break;
 
       case 4: /* Push mem offset */
+#ifndef __LP64__ /* 09Jan22 gwb - 64 bit fixup */      
         Stk[StkCnt++] = *(u_int32_t*)s1 + (u_int32_t)s2;
         s1 += sizeof(u_int32_t*);
+#else
+        Stk[StkCnt++] = *(u_int64_t*)s1 + (u_int64_t)s2;
+        s1 += sizeof(u_int64_t*);
+#endif
         break;
 
       case 5: /* Inc stack */
@@ -461,24 +482,48 @@ Private void ccall_c(unsigned char* s1, void* s2) {
         break;
 
       case 7: /* save 32-bit result */
+#ifndef __LP64__  /* 09Jan22 gwb - 64 bit fixup */      
         Val = *(u_int32_t*)s1 + (u_int32_t)s2;
         s1 += sizeof(u_int32_t*);
         *(u_int32_t*)Val = res64 & 0xFFFFFFFF;
+#else
+        Val = *(u_int64*)s1 + (u_int64)s2;
+        s1 += sizeof(u_int64*);
+        *(u_int64*)Val = res64 & 0xFFFFFFFFFFFFFFFF;
+#endif
         break;
 
       case 8: /* save 64-bit result */
+      /* 09Jan22 gwb - 64 bit fix */
+#ifndef __LP64__      
         Val = *(u_int32_t*)s1 + (u_int32_t)s2;
         s1 += sizeof(u_int32_t*);
         *(int64*)Val = res64;
+#else
+        Val = *(u_int64*)s1 + (u_int64)s2;
+        s1 += sizeof(u_int64*);
+        *(u_int64*)Val = res64;
+#endif
         break;
 
       case 9: /* copy from addr in eax to offset */
         break;
 
       case 10: /* save errno - call GetLastError() */
+      /* 09Jan22 gwb - 64 bit fix */
+#ifndef __LP64__      
         Val = *(u_int32_t*)s1 + (u_int32_t)s2;
         s1 += sizeof(u_int32_t*);
+#else
+        Val = *(u_int64*)s1 + (u_int64)s2;
+        s1 += sizeof(u_int64);
+#endif
+        /* 09Jan22 gwb - 64 bit fix */      
+#ifndef __LP64__        
         *(u_int32_t*)Val = errno;
+#else
+        *(u_int64*)Val = errno;
+#endif        
         break;
 
       default:

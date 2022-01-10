@@ -19,6 +19,7 @@
 * Ladybridge Systems can be contacted via the www.openqm.com web site.
 * 
 * START-HISTORY:
+* 10 Jan 22 gwb Rebranded signon message.
 * 20 Mar 09 gwb Took the sharp edges off the signon message.
 * 03 Oct 07  2.6-5 Use parse.pathname.tokens() when processing ACCOUNTS record.
 * 21 Aug 07  2.6-0 Create $COMMAND.STACK on creation of new account.
@@ -204,9 +205,9 @@ $include keycode.h
 
 
    if not(bitand(kernel(K$COMMAND.OPTIONS, 0), CMD.QUIET)) then
-      display "[ OpenQM Rev " : QM.REV.STAMP : "   Copyright Ladybridge Systems, " : QM.COPYRIGHT.YEAR : " ]"
+      display "[ ScarletDME Rev " : QM.REV.STAMP : "   Copyright Ladybridge Systems, " : QM.COPYRIGHT.YEAR : " ]"
       display
-      display "Welcome to OpenQM!  Multi-Value for the masses, not the classes."
+      display "Welcome to ScarletDME!  Multi-Value for the masses, not the classes."
       *following must be left to comply with clause 1 of the gpl licence
       display "This program is free software and is supplied with ABSOLUTELY NO WARRANTY."
       display "You are welcome to modify or redistribute this software subject to certain"

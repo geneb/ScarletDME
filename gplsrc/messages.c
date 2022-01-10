@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  *
  * START-HISTORY (ScarletDME):
+ * 09Jan22 gwb Fixed a format specifier warning.
+ *
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  * 
@@ -159,7 +161,7 @@ char* sysmsg(int msg_no) {
     }
     msg_file = open(path, O_RDONLY);
     if (msg_file < 0) {
-      sprintf(message, "[%d] Message file not found(%d %ld).", msg_no, dh_err,
+      sprintf(message, "[%d] Message file not found(%d %d).", msg_no, dh_err,
               process.os_error);
       return message;
     }

@@ -1,4 +1,4 @@
-# OpenQM makefile
+# ScarletDME Makefile
 #
 #   Copyright (C) 2008, Andruk Tatum.  Licensed under the GNU GPLv2, with 
 #   an exception for selling anything and everything that includes this file.
@@ -34,6 +34,14 @@
 #
 # Changelog
 # ---------
+# 09Jan22 gwb Added the ability to more easily select a 32 vs 64 bit build target.
+#             Setting BUILD64 := Y will result in a 64 bit build.
+#             There was a bug in the command that creates the symbolic link to
+#             the qm binary.  "@ln" was invalid, it should be "ln".
+#
+# 09Jan22 gwb Added $COMO directory to the list of things to be copied on install.
+#             Added the $FORMS directory to the list of things to be copied.
+#             Fixed dumb typo in a Makefile comment.
 # 20Feb20 gwb Added -m32 $(ARCH) flag to ensure we're compiling with 32 bit 
 #             libraries.
 #             I also inverted the timeline of these comments in order to make
@@ -55,6 +63,9 @@
 # dat - Diccon Tesson
 # gwb - Gene Buckle (geneb@deltasoft.com)
 
+# Set BUILD64 to N to build a 32 bit target.
+#
+BUILD64  := Y
 MAIN     := ./
 GPLSRC   := $(MAIN)gplsrc/
 GPLDOTSRC := $(MAIN)gpl.src
@@ -66,15 +77,23 @@ VPATH    := $(GPLOBJ):$(GPLBIN):$(GPLSRC)
 OSNAME   := $(shell uname -s)
 
 COMP     := gcc
+
 ifeq (Darwin,$(OSNAME))
-	ARCH     :=
+	ARCH :=
+	BITSIZE := 64
 else
-	ARCH	 := -m32
+	ifeq (Y,$(BUILD64))
+		ARCH :=
+		BITSIZE := 64
+	else
+		ARCH := -m32
+		BITSIZE := 32
+	endif
 endif
 
 #C_FLAGS  := -Wall -Wformat=2 -Wno-format-nonliteral -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH)
-# -Wformat=0 turns off the format specifier warnings so other warningings don't get lost.
-C_FLAGS  := -Wall -Wformat=0 -Wno-format-nonliteral -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH)
+# -Wformat=0 turns off the format specifier warnings so other warnings don't get lost.
+C_FLAGS  := -Wall -Wformat=2 -Wno-format-nonliteral -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH)
 
 ifeq (Darwin,$(OSNAME))
 	L_FLAGS  := -lm -ldl
@@ -194,7 +213,7 @@ sysseg.o: sysseg.c revstamp.h
 	@$(COMP) $(C_FLAGS) -c $< -o $(GPLOBJ)sysseg.o
 
 .c.o:
-	@echo Compiling $@
+	@echo Compiling $@, $(BITSIZE) bit target.
 	@$(COMP) $(C_FLAGS) -c $< -o $(GPLOBJ)$@
 
 .PHONY: clean distclean install datafiles
@@ -208,13 +227,12 @@ install:
 	done
 	@chmod -R 775 $(INSTROOT)
 
-	#	For now copy qmconfig to /etc/scarlet.conf
 	@echo Writing scarlet.conf file
-	@cp $(main)qmconfig /etc/scarlet.conf
+	@cp $(main)scarlet.conf /etc/scarlet.conf
 	@chmod 644 /etc/scarlet.conf
 
 #	Create symbolic link if it does not exist
-	@test -f /usr/bin/qm || @ln -s /usr/qmsys/bin/qm /usr/bin/qm
+	@test -f /usr/bin/qm || ln -s /usr/qmsys/bin/qm /usr/bin/qm
 
 datafiles:
 	@echo Installing data files...
@@ -222,10 +240,14 @@ datafiles:
 	@cp -r $(MAIN)ACCOUNTS.DIC/ $(INSTROOT)/ACCOUNTS.DIC
 	@cp -r $(MAIN)BP/ $(INSTROOT)/BP
 	@cp -r $(MAIN)cat/ $(INSTROOT)/cat
+	@cp -r $(MAIN)\$$COMO/ $(INSTROOT)/\$$COMO
+	@chmod 775 $(INSTROOT)/\$$COMO
 	@cp -r $(MAIN)DICT.DIC/ $(INSTROOT)/DICT.DIC
 	@cp -r $(MAIN)DIR_DICT/ $(INSTROOT)/DIR_DICT
 	@cp -r $(MAIN)ERRMSG/ $(INSTROOT)/ERRMSG
 	@cp -r $(MAIN)ERRMSG.DIC/ $(INSTROOT)/ERRMSG.DIC
+	@cp -r $(MAIN)\$$FORMS/ $(INSTROOT)/\$$FORMS
+	@chmod 775 $(INSTROOT)/\$$FORMS
 	@cp -r $(MAIN)gcat/ $(INSTROOT)/gcat
 	@chmod 665 $(INSTROOT)/gcat/*
 	@cp -r $(MAIN)GPL.BP/ $(INSTROOT)/GPL.BP
@@ -260,7 +282,8 @@ datafiles:
 	@echo Data file copy completed!
 clean:
 	@$(RM) $(GPLOBJ)*.o
-	@$(RM) $(GPLOBJ)*.so
+#	@$(RM) $(GPLOBJ)*.so
+# no .so files are currently dropped into GPLOBJ...
 
 distclean: clean
 	@$(RM) $(GPLOBJ)*.o

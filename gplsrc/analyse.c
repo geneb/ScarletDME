@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 10Jan22 gwb Fixed format specifier warnings.
+ *
  * 29Feb20 gwb Fixed issues related to format specifiers in ?printf()
  *             statements.  The warnings are triggered due to the conversion
  *             platform agnostic variable types (int32_t, etc)
@@ -320,9 +322,10 @@ exit_dh_analyse:
 
   /*                 1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
    * 16  17  18  19  20  21  22  23  24  25  26  27  28  29  30  31*/
+   
   sprintf(result,
-          "%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%Ld,%ld,"
-          "%ld,%Ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld",
+          "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%ld,%d,"
+          "%d,%ld,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
           fptr->params.modulus,    /*  1 Modulus */
           empty_groups,            /*  2 Empty groups */
           overflowed_groups,       /*  3 Single overflow groups */
@@ -420,8 +423,13 @@ Private bool dir_analyse(FILE_VAR* fvar, char* result) {
 
   if (largest_record == 0)
     smallest_record = 0;
-  sprintf(result, "%ld,%lld,%lld,%lld", record_count, total_record_bytes,
+#ifndef __LP64__    
+  sprintf(result, "%d,%lld,%lld,%lld", record_count, total_record_bytes,
           smallest_record, largest_record);
+#else
+  sprintf(result, "%d,%ld,%ld,%ld", record_count, total_record_bytes,
+          smallest_record, largest_record);
+#endif
 
 exit_dir_analyse:
   return status;

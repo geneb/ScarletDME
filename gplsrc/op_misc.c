@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 09Jan22 gwb Fixed a cast warning. (search for 09Jan22 for details)
+ *             Fixed a format specifier warning.
+ *
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
@@ -299,7 +302,7 @@ void op_dtx() {
 
   descr = e_stack - 1;
   GetInt(descr);
-  n = sprintf(value, "%lX", descr->data.value);
+  n = sprintf(value, "%d", descr->data.value);
 
   p = s;
   if (n < min_width) {
@@ -883,7 +886,13 @@ Private void itype() {
 
   k_pop(1);
   
-  if (((int)p) & 0x00000003) {
+  //if (((int)p) & 0x00000003) {
+    if ((p-(char*)NULL) & 0x3) { /* 09Jan22 gwb - 64 bit fix.
+                                  * I'm not sure what the origin of the 
+                                  * if (((int)p).... code is, but the below
+                                  * version of the if clears the "cast from pointer to
+                                  * integer of different size" warning.
+                                  */
     // if ((p-(char*)NULL) & 0x3) {  (this fixes the warning the above line triggers)
     /* Not word aligned - must make a copy. To ensure that this gets
       released at an abort, we push a string descriptor onto the stack */

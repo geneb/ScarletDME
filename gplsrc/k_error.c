@@ -230,7 +230,7 @@ void k_error(char* message, ...) {
     }
 
     failing_offset = xpc_offset - 1;
-    n = sprintf(s, "%08lX: ", failing_offset);
+    n = sprintf(s, "%08X: ", failing_offset);
   } else {
     n = 0;
   }
@@ -540,9 +540,9 @@ found:
 
       default: /* Some other element */
         if (cols == 0)
-          sprintf((char*)q, "(%ld)", element);
+          sprintf((char*)q, "(%d)", element);
         else
-          sprintf((char*)q, "(%ld,%ld)", ((element - 1) / cols) + 1,
+          sprintf((char*)q, "(%d,%d)", ((element - 1) / cols) + 1,
                   ((element - 1) % cols) + 1);
         break;
     }
@@ -621,7 +621,7 @@ void log_message(char* msg) {
       if (my_uptr != NULL) {
         bytes = sprintf(
             buff,
-            "%02d %.3s %02d %02d:%02d:%02d User %d (pid %ld, %s):%s   %s%s",
+            "%02d %.3s %02d %02d:%02d:%02d User %d (pid %d, %s):%s   %s%s",
             ltime->tm_mday, month_names[ltime->tm_mon], ltime->tm_year % 100,
             ltime->tm_hour, ltime->tm_min, ltime->tm_sec, my_uptr->uid,
             my_uptr->pid, my_uptr->username, Newline, msg, Newline);

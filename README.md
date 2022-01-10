@@ -1,11 +1,12 @@
 [Make sure to check out the change_log.txt file to see the most
  current work being done!]
 
-Currently ScarletDME is a 32 bit-only application - you'll need to
-compile it using 32 bit libraries on your system.  This is pretty
-easy to do.
+As of January 10th, 2022, ScarletDME can be built as a fully native 64 bit
+application!  More testing needs to be done, but the 64 bit build appears
+to function identically to the 32 bit build.
 
-These packages are needed to build ScarletDME for most Linux distributions:
+These packages are needed to build ScarletDME as a 32 bit application,
+for most Linux distributions:
 libgcc.i686
 glibc-devel.i686
 
@@ -23,18 +24,20 @@ xinetd.
 Before you build ScarletDME, you should create a user named "qmsys" and
 a group named "qmuser".  Make sure you add the qmuser group to any user
 that will be using ScarletDME, /including/ the "root" and "qmsys" users!
+See info/setup.txt for more information on creating users & groups.
 
 You should be able to build the system by just typing "make' in the directory
-where the Makefile lives.  Enter "make install" to install the result of the
-first "make" command.  You'll need to be root do this.  "make install" will 
-fail if the qmsys user and qmuser group doesn't exist.
+where the Makefile lives.  Enter "sudo make install" to install the result of the
+first "make" command.  Note that the make install command will fail if the 
+qmsys user and qmuser group doesn't exist.
 
 The install portion of the makefile may be tweaked to do additional things like
-copying the xinetd files to thier required locations and a fancy sed edit of
+copying the xinetd files to their required locations and a fancy sed edit of
 the /etc/services file.
 
-Run "make datafiles" to copy the "production" data files to their operating 
-location.
+Run "sudo make datafiles" to copy the "production" data files to their operating 
+location.  This MUST be done before starting ScarletDME.  The system cannot 
+function without these files.
 
 Code formatting notes:
 I'm using Visual Studio code with the Microsoft C/C++ IntelliSense, debugging,
@@ -50,7 +53,9 @@ will be.  There's also instances of K&R-style function parameter declarations
 and those will be converted to ANSI-style as I discover them.
 
 [27Feb20] A Discord server is now available (basically a tarted up version of IRC) at
-          https://discord.gg/cnyvVM
+          https://discord.gg/djzBBbp5 - if this link doesn't work for you,
+          please reach out to me (geneb@deltasoft.com) and I'll get you a working
+          link.  They do age out periodically.
 
 [26Feb20 gwb]
 

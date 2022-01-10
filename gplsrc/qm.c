@@ -1,5 +1,5 @@
 /* QM.C
- * Main module of QM
+ * Main module of ScarletDME (QM)
  * Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
  * 
  * This program is free software; you can redistribute it and/or modify
@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 10Jan22 gwb Added BUILD_TARGET macro in order to display build target size.
+ *
  * 29Feb20 gwb Fixed issues related to format specifiers in ?printf()
  *             statements.  The warnings are triggered due to the conversion
  *             platform agnostic variable types (int32_t, etc)
@@ -120,6 +122,12 @@
 #include "config.h"
 #include "options.h"
 #include "locks.h"
+
+#ifdef __LP64__  /* 10Jan22 gwb */
+ #define BUILD_TARGET  "64 Bit"
+#else
+ #define BUILD_TARGET  "32 Bit"
+#endif
 
 extern char* x_option; /* -x option */
 
@@ -334,7 +342,7 @@ Private bool comlin(int argc, char* argv[]) {
           if (stricmp(argv[arg], "-START") == 0) {
             check_admin();
             if (start_qm()) {
-              printf("ScarletDME has been started\n");
+              printf("ScarletDME (%s) has been started\n", BUILD_TARGET);
               exit(0);
             }
             exit(1);
@@ -343,7 +351,7 @@ Private bool comlin(int argc, char* argv[]) {
           if (stricmp(argv[arg], "-STOP") == 0) {
             check_admin();
             if (stop_qm()) {
-              printf("ScarletDME has been shutdown\n");
+              printf("ScarletDME (%s) has been shut down\n", BUILD_TARGET);
               exit(0);
             }
             exit(1);
@@ -353,7 +361,7 @@ Private bool comlin(int argc, char* argv[]) {
           if (!stricmp(argv[arg], "--HELP")) {
             goto help;
           } else if (!stricmp(argv[arg], "--VERSION")) {
-            printf("%s\n", QM_REV_STAMP);
+            printf("%s (%s)\n", QM_REV_STAMP, BUILD_TARGET);
             exit(0);
           } else
             goto unrecognised;

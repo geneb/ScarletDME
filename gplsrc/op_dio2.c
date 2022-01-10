@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 09Jan22 gwb Fixed some format specifier warnings.
+ *
  * 29Feb20 gwb Changed LONG_MAX to INT32_MAX.  When building for a 64 bit 
  *             platform, the LONG_MAX constant overflows the size of the
  *             int32_t variable type.  This change needed to be made across
@@ -650,14 +652,14 @@ void op_ospath() {
       n = (time(NULL) * 10) & 0xFFFFFFFL;
       do {
          /* converted to snprintf() -gwb 22Feb20 */
-        if (snprintf(name, MAX_PATHNAME_LEN + 1,"%s\\D%07lX", path, n) >= (MAX_PATHNAME_LEN +1 )) {
+        if (snprintf(name, MAX_PATHNAME_LEN + 1,"%s\\D%07d", path, n) >= (MAX_PATHNAME_LEN +1 )) {
             /* TODO: this should be logged to a file with more details */
             k_error("Overflowed path/filename length in delete_path()!");
             goto exit_op_pathinfo;
         }
         n--;
       } while (!access(name, 0));
-      sprintf(name, "D%07lX", n);
+      sprintf(name, "D%07d", n);
       k_put_c_string(name, e_stack);
       e_stack++;
       goto exit_op_pathinfo;

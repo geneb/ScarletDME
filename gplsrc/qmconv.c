@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 09Jan22 gwb Fixups for 64 bit builds.  (see #ifndef __LP64__ blocks)
+ *
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
@@ -458,9 +460,13 @@ int process_file(char* filename) {
 
     while (read_block(sf, grp_offset, group_bytes, buffer.data)) {
       if (debug)
-        printf("%012LX: Group %ld, type %d\n", grp_offset, grp,
+#ifndef __LP64__      
+        printf("%012LX: Group %d, type %d\n", grp_offset, grp, 
                buffer.dh_block.block_type);
-
+#else
+        printf("%012lu: Group %d, type %d\n", grp_offset, grp, 
+              buffer.dh_block.block_type);
+#endif
       /* What is this group? */
 
       switch (buffer.dh_block.block_type) {
@@ -474,7 +480,11 @@ int process_file(char* filename) {
           rec_offset = BLOCK_HEADER_SIZE;
           while (rec_offset < used_bytes) {
             if (debug)
-              printf("%012LX.%04X\n", grp_offset, rec_offset);
+#ifndef __LP64__            
+              printf("%012LX.%04X\n", grp_offset, rec_offset); 
+#else
+              printf("%012lu.%04X\n", grp_offset, rec_offset); 
+#endif
             rec_ptr = (DH_RECORD*)(buffer.data + rec_offset);
             next = rec_ptr->next; /* Pick up as is... */
             Reverse2(rec_ptr->next);
@@ -493,13 +503,13 @@ int process_file(char* filename) {
           break;
 
         default:
-          printf("Subfile %d, group %ld: Unknown block type (%d)\n", sf, grp,
+          printf("Subfile %d, group %d: Unknown block type (%d)\n", sf, grp,
                  buffer.dh_block.block_type);
           continue;
       }
 
       if (!write_block(sf, grp_offset, group_bytes, buffer.data)) {
-        printf("Subfile %d, group %ld: Write error\n", sf, grp);
+        printf("Subfile %d, group %d: Write error\n", sf, grp);
       }
 
       grp++;
@@ -559,9 +569,13 @@ int process_file(char* filename) {
 
     while (read_block(sf, grp_offset, group_bytes, buffer.data)) {
       if (debug)
-        printf("%012LX: Group %ld, type %d\n", grp_offset, grp,
+#ifndef __LP64__      
+        printf("%012LX: Group %d, type %d\n", grp_offset, grp,  
                buffer.dh_free_node.node_type);
-
+#else
+        printf("%012lu: Group %d, type %d\n", grp_offset, grp,
+               buffer.dh_free_node.node_type);
+#endif
       /* What is this node? */
 
       switch (buffer.dh_free_node.node_type) {
@@ -607,13 +621,13 @@ int process_file(char* filename) {
           break;
 
         default:
-          printf("Subfile %d, node %ld: Unknown node type (%d)\n", sf, grp,
+          printf("Subfile %d, node %d: Unknown node type (%d)\n", sf, grp,
                  buffer.dh_free_node.node_type);
           continue;
       }
 
       if (!write_block(sf, grp_offset, group_bytes, buffer.data)) {
-        printf("Subfile %d, node %ld: Write error\n", sf, grp);
+        printf("Subfile %d, node %d: Write error\n", sf, grp);
       }
 
       grp++;
@@ -639,7 +653,11 @@ int process_file(char* filename) {
     bytes_remaining = ak_itype_len;
     do {
       if (debug)
+#ifndef __LP64__      
         printf("Read block at %012LX\n", grp_offset);
+#else
+        printf("Read block at %012lu\n", grp_offset);
+#endif        
 
       if (!read_block(sf, grp_offset, group_bytes, (char*)p)) {
         printf("Read error converting AK I-type\n");
@@ -668,8 +686,11 @@ int process_file(char* filename) {
     bytes_remaining = ak_itype_len;
     do {
       if (debug)
-        printf("Update block at %012LX\n", grp_offset);
-
+#ifndef __LP64__      
+        printf("Update block at %012LX\n", grp_offset); 
+#else
+        printf("Update block at %012lu\n", grp_offset); 
+#endif
       if (!read_block(sf, grp_offset, group_bytes, (char*)p)) {
         printf("Read error replacing converted AK I-type\n");
         goto exit_process_file;

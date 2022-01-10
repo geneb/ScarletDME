@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 10Jan22 gwb Fixed a format specifier warning.
+ *
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  * 22Feb20 gwb Changed printed references of QM to ScarletDME.
@@ -134,7 +136,7 @@ void show_users() {
       if (origin[0] != '\0')
         strcat(origin, " ");
       strcat(origin, (char*)(uptr->ip_addr));
-      printf("%4hd %11ld %4d %-23s %-32s\n", uptr->uid, uptr->pid,
+      printf("%4hd %11d %4d %-23s %-32s\n", uptr->uid, uptr->pid,
              (int)(uptr->puid), origin, uptr->username);
     }
   }

@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 09Feb20 gwb Format specifier changes to clear out warnings.
+ *
  * 27Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  * 27Feb20 gwb Changed some instances of "QM" to "ScarletDME"
@@ -123,7 +125,7 @@ bool bind_sysseg(bool create, char* errmsg) {
     UnlockSemaphore(SHORT_CODE);
 
     if (sysseg->revstamp != SYSSEG_REVSTAMP) {
-      sprintf(errmsg, "Shared memory revstamp mismatch (%08lX %08lX)",
+      sprintf(errmsg, "Shared memory revstamp mismatch (%08X %08X)",
               sysseg->revstamp, SYSSEG_REVSTAMP);
       unbind_sysseg();
       goto exit_bind_sysseg;

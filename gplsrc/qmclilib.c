@@ -16,6 +16,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 09Jan22 gwb Fixes to warnings related out output specifiers in printf().
+ *             (mostly changing %ld to %d)
+ *
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
@@ -3244,7 +3247,7 @@ Private bool read_packet() {
   packet_bytes = LongInt(in_packet_header.packet_length) - IN_PKT_HDR_BYTES;
 
   if (srvr_debug != NULL) {
-    fprintf(srvr_debug, "IN (%ld bytes)\n", packet_bytes);
+    fprintf(srvr_debug, "IN (%d bytes)\n", packet_bytes);
   }
 
   if (packet_bytes >= buff_size) /* Must reallocate larger buffer */
@@ -3257,7 +3260,7 @@ Private bool read_packet() {
     buff_size = n;
 
     if (srvr_debug != NULL) {
-      fprintf(srvr_debug, "Resized buffer to %ld bytes\n", n);
+      fprintf(srvr_debug, "Resized buffer to %d bytes\n", n);
     }
   }
 
@@ -3321,7 +3324,7 @@ Private bool write_packet(int type, char* data, int32_t bytes) {
   }
 
   if (srvr_debug != NULL) {
-    fprintf(srvr_debug, "OUT (%ld bytes). Type %d\n", packet_header.length,
+    fprintf(srvr_debug, "OUT (%d bytes). Type %d\n", packet_header.length,
             (int)packet_header.type);
   }
 

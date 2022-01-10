@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  *
  * START-HISTORY (ScarletDME):
+ * 10Jan22 gwb Fixed some format specifier warnings.
+ *
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  * 22Feb20 gwb Fixed two 'variable assigned but unused' warnings in
@@ -342,7 +344,7 @@ void op_grpstat() {
 
   /* Construct return data */
 
-  sprintf(result, "%ld%c%d%c%d%c%ld", byte_count, FIELD_MARK, (int)buffer_count,
+  sprintf(result, "%d%c%d%c%d%c%d", byte_count, FIELD_MARK, (int)buffer_count,
           FIELD_MARK, (int)record_count, FIELD_MARK, large_record_count);
 
 exit_op_grpstat:

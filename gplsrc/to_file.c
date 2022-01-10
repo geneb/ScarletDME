@@ -21,7 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
-  * 27Feb20 gwb Changed integer declarations to be portable across address
+ * 09Jan22 gwb Fixed a format specifier warning. (%ld should have been %d)
+ *
+ * 27Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  * 22Feb20 gwb Converted sprintf() to snprintf() in start_file().
  * 
@@ -190,7 +192,7 @@ Private void start_file(PRINT_UNIT* pu) {
       pu->file.jobno = (sysseg->prtjob)++;
       EndExclusive(SHORT_CODE);
       /* convert to snprintf() -gwb 22Feb20 */
-      if (snprintf(fn, MAX_PATHNAME_LEN + 1, "%s/prt/p%ld", sysseg->sysdir,
+      if (snprintf(fn, MAX_PATHNAME_LEN + 1, "%s/prt/p%d", sysseg->sysdir,
                    pu->file.jobno) >= (MAX_PATHNAME_LEN + 1)) {
          /* TODO this should be logged to a file with more info */
          k_error("Overflowed path/filename buffer in start_file()!");

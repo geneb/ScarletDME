@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 09Jan22 gwb Fixed some format specifier warnings.
+ *
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
@@ -598,7 +600,7 @@ void op_inmata() {
     (e_stack++)->data.value = rows;
   } else /* Two dimension */
   {
-    s_len = sprintf(s, "%ld%c%ld", rows, (char)VALUE_MARK, cols);
+    s_len = sprintf(s, "%d%c%d", rows, (char)VALUE_MARK, cols);
 
     s_hdr = s_alloc((int32_t)s_len, &actual_size);
 

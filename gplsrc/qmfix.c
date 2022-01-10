@@ -21,6 +21,10 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 09Jan22 gwb Various fixes for sscanf() and printf() format codes that needed
+ *             adjusting in order to stop throwing warnings under 32 and 64 bit
+ *             target builds.
+ *
  * 27Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  * 
@@ -547,7 +551,7 @@ int process_file() {
         check_file();
       else if (stricmp(cmnd, "FIX") == 0)
         check_and_fix();
-      else if (sscanf(u_cmnd, "G%ld", &n) == 1)
+      else if (sscanf(u_cmnd, "G%d", &n) == 1)
         G_command(n);
       else if (stricmp(cmnd, "GA") == 0)
         GA_command();
@@ -561,15 +565,19 @@ int process_file() {
         show_window(display_addr - 2 * window_size);
       else if (stricmp(cmnd, "Q") == 0)
         done = TRUE;
-      else if (sscanf(u_cmnd, "REBUILD %ld", &n) == 1)
+      else if (sscanf(u_cmnd, "REBUILD %d", &n) == 1)
         rebuild_group(n);
       else if (stricmp(cmnd, "RECOVER") == 0)
         recover_space();
-      else if (sscanf(u_cmnd, "S%ld", &n) == 1)
+      else if (sscanf(u_cmnd, "S%d", &n) == 1)
         S_command(n);
       else if (strnicmp(cmnd, "W", 1) == 0)
         W_command(cmnd + 1);
-      else if (sscanf(u_cmnd, "%llx", &n64) == 1)
+#ifndef __LP64__        
+      else if (sscanf(u_cmnd, "%lld", &n64) == 1)
+#else
+      else if (sscanf(u_cmnd, "%ld", &n64) == 1)
+#endif
         show_window(n64);
       else if (stricmp(cmnd, "Z") == 0)
         Z_command();
@@ -773,17 +781,17 @@ void S_command(int32_t n) {
       emit("Subfile %d: x%s bytes, ", (int)n, I64(bytes));
       switch (subfile) {
         case PRIMARY_SUBFILE:
-          printf("%ld group buffers\n",
+          printf("%d group buffers\n",
                  (int32_t)((bytes - header_bytes) / header.group_size));
           break;
 
         case OVERFLOW_SUBFILE:
-          printf("%ld overflow buffers\n",
+          printf("%d overflow buffers\n",
                  (int32_t)((bytes - header_bytes) / header.group_size));
           break;
 
         default:
-          printf("%ld node buffers\n",
+          printf("%d node buffers\n",
                  (int32_t)((bytes - ak_header_size) / DH_AK_NODE_SIZE));
           break;
       }
@@ -805,7 +813,7 @@ void W_command(char* cmnd) {
   char* p;
   char c;
 
-  n = sscanf(cmnd, "%lx=%lx", &w_addr, &w_data);
+  n = sscanf(cmnd, "%d=%d", &w_addr, &w_data); /* was %lx for both - 64bit fix -gwb*/
 
   if (n < 1)
     goto w_format_error; /* Address component not present */
@@ -1639,7 +1647,8 @@ bool rebuild_group(int32_t grp) {
 bool open_dump_file() {
   emit("Creating temporary file\n");
 
-  sprintf(dump_file_name, "~QMFix.%lu", (int32_t)getuid());
+  sprintf(dump_file_name, "~QMFix.%d", (int32_t)getuid()); /* changed to %d from %lu */
+
   dump_fu = open(dump_file_name, (int)(O_RDWR | O_CREAT | O_TRUNC | O_BINARY),
                  default_access);
   if (dump_fu < 0) {
@@ -3230,7 +3239,11 @@ char* I64(int64 x) {
   static int16_t i = 0;
 
   i = (i + 1) % 8;
+#ifndef __LP64__  
   sprintf(s[i], "%.12llX", x);
+#else
+  sprintf(s[i], "%.12lu", x);
+#endif
   return s[i];
 }
 
@@ -3280,7 +3293,7 @@ void progress_bar(int32_t grp) {
         (grp - last_grp_reported >= MIN_BAR_INTERVAL)) {
       memset(s, '-', 50);
       memset(s, '*', pct_done);
-      sprintf(s + 50, "| %ld/%ld", grp, header.params.modulus);
+      sprintf(s + 50, "| %d/%d", grp, header.params.modulus);
       printf("\r%s", s);
       last_pct_reported = pct_done;
       last_grp_reported = grp;
@@ -3288,8 +3301,9 @@ void progress_bar(int32_t grp) {
     }
   } else /* End of scan */
   {
-    printf("\r**************************************************| %ld/%ld\n",
+    printf("\r**************************************************| %d/%d\n",
            header.params.modulus, header.params.modulus);
+
     last_pct_reported = -1;
     last_grp_reported = -MIN_BAR_INTERVAL;
     bar_displayed = FALSE;
