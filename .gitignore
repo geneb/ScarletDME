@@ -1,7 +1,6 @@
 gplobj/*.o
 bin/qm
 bin/libqmcli.so
-bin/pcode
 bin/qm
 bin/qmclilib.so
 bin/qmconv

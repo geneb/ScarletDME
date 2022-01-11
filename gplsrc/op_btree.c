@@ -21,6 +21,7 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 11Jan22 gwb Fix for Issue #17. 
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
@@ -651,7 +652,7 @@ void op_btinit() {
   int keys;
   BTREE_HEADER* bth;
   ARRAY_HEADER* a_hdr;
-  int16_t i;
+  int i; /* fix for issue #17 */
 
   descr = e_stack - 2;
   GetInt(descr);
