@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 11Jan22 gwb Fix for Issue #16, reformatted a bit.
+ * 
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  * 
@@ -62,7 +64,7 @@ int16_t in_group(char* group_name) {
   int group_id;
   static int num_groups = 0;
   gid_t* groups = NULL;
-  int16_t i;
+  int i;  /* Fix for Issue #16 */
 
   /* Have we already identified membership of this group? */
 
@@ -79,8 +81,7 @@ int16_t in_group(char* group_name) {
 
     if (group_id == getegid()) {
       status = 1;
-    } else /* Not primary group */
-    {
+    } else { /* Not primary group */
       if (groups == NULL) {
         num_groups = getgroups(0, NULL);
         groups = (gid_t*)malloc(num_groups * sizeof(gid_t));

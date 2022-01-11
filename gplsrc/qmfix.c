@@ -732,7 +732,7 @@ void H_command() {
          offsetof(DH_AK_HEADER, itype_ptr), I64(ak_node_offset),
          OffsetToNode(ak_node_offset));
     emit("      AK name      '%s'\n", ak_header.ak_name);
-    emit("%04X: Data created %ld\n",
+    emit("%04X: Data created %d\n",
          offsetof(DH_AK_HEADER, data_creation_timestamp),
          ak_header.data_creation_timestamp);
     emit("%04x: Map name     %s\n", offsetof(DH_AK_HEADER, collation_map_name),

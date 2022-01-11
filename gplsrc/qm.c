@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 11Jan22 gwb Fix for Issue #15
+ * 
  * 10Jan22 gwb Added BUILD_TARGET macro in order to display build target size.
  *
  * 29Feb20 gwb Fixed issues related to format specifiers in ?printf()
@@ -228,7 +230,7 @@ Private bool comlin(int argc, char* argv[]) {
   int socket_handle = 0;
   char c;
   int16_t bytes;
-  int16_t n;
+  int n;  /* Fix for Issue #15 - 11Jan22 gwb */
   int RxPipe;
   int TxPipe;
 
