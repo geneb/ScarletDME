@@ -21,6 +21,7 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 11Jan22 gwb Fix for Issue #12
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
@@ -279,7 +280,7 @@ void op_chkcat() {
   DESCRIPTOR* descr;
   char call_name[MAX_PROGRAM_NAME_LEN + 1];
   char mapped_name[MAX_PROGRAM_NAME_LEN * 2 + 1];
-  char pathname[160 + 1];
+  char pathname[MAX_PATHNAME_LEN + MAX_PROGRAM_NAME_LEN + 1];
   int mode = 0;
   DESCRIPTOR pathname_descr;
 
@@ -292,8 +293,7 @@ void op_chkcat() {
     UpperCaseString(call_name);
     (void)map_t1_id(call_name, strlen(call_name), mapped_name);
 
-    if (strchr("*$_!", call_name[0]) == NULL) /* No prefix */
-    {
+    if (strchr("*$_!", call_name[0]) == NULL) { /* No prefix */
       /* Try local catalogue (mode 1) */
 
       /* Push arguments onto e-stack */
@@ -313,7 +313,8 @@ void op_chkcat() {
       if (mode == 0) {
         /* Try private catalogue */
         /* converted to snprintf() -gwb 22Feb20 */
-        if (snprintf(pathname, MAX_PATHNAME_LEN + 1, "%s%c%s",
+        /* Fix for Issue #12 - 11Jan22 */
+        if (snprintf(pathname, (MAX_PATHNAME_LEN + MAX_PROGRAM_NAME_LEN) + 1, "%s%c%s",
                      private_catalogue, DS,
                      mapped_name) >= (MAX_PATHNAME_LEN + 1)) {
           /* TODO: this should also be logged with more detail */
@@ -328,7 +329,8 @@ void op_chkcat() {
     if (mode == 0) {
       /* Try global catalog */
       /* converted to snprintf() -gwb 22Feb20 */
-      if (snprintf(pathname, MAX_PATHNAME_LEN + 1, "%s%cgcat%c%s",
+      /* Fix for Issue #12 - 11Jan22*/
+      if (snprintf(pathname, (MAX_PATHNAME_LEN + MAX_PROGRAM_NAME_LEN) + 1, "%s%cgcat%c%s",
                    sysseg->sysdir, DS, DS,
                    mapped_name) >= (MAX_PATHNAME_LEN + 1)) {
         /* TODO: this should also be logged with more detail */
@@ -422,7 +424,8 @@ void op_gosub() {
     k_error(sysmsg(1133));
   }
   process.program.gosub_stack[process.program.gosub_depth++] = pc - c_base + 3;
-  pc = c_base + (*pc | (((int32_t)*(pc + 1)) << 8) | (((int32_t)*(pc + 2)) << 16));
+  pc = c_base +
+       (*pc | (((int32_t) * (pc + 1)) << 8) | (((int32_t) * (pc + 2)) << 16));
 }
 
 /* ======================================================================
@@ -441,7 +444,8 @@ void op_jfalse() {
   k_pop(1);
 
   if (jumping) {
-    pc = c_base + (*pc | (((int32_t)*(pc + 1)) << 8) | (((int32_t)*(pc + 2)) << 16));
+    pc = c_base +
+         (*pc | (((int32_t) * (pc + 1)) << 8) | (((int32_t) * (pc + 2)) << 16));
   } else
     pc += 3;
 }
@@ -453,7 +457,8 @@ void op_jmp() {
   if (my_uptr->events)
     process_events();
 
-  pc = c_base + (*pc | (((int32_t)*(pc + 1)) << 8) | (((int32_t)*(pc + 2)) << 16));
+  pc = c_base +
+       (*pc | (((int32_t) * (pc + 1)) << 8) | (((int32_t) * (pc + 2)) << 16));
 }
 
 /* ======================================================================
@@ -486,7 +491,8 @@ again:
   k_pop(1);
 
   if (jumping) {
-    pc = c_base + (*pc | (((int32_t)*(pc + 1)) << 8) | (((int32_t)*(pc + 2)) << 16));
+    pc = c_base +
+         (*pc | (((int32_t) * (pc + 1)) << 8) | (((int32_t) * (pc + 2)) << 16));
   } else
     pc += 3;
 }
@@ -521,7 +527,8 @@ again:
   k_pop(1);
 
   if (jumping) {
-    pc = c_base + (*pc | (((int32_t)*(pc + 1)) << 8) | (((int32_t)*(pc + 2)) << 16));
+    pc = c_base +
+         (*pc | (((int32_t) * (pc + 1)) << 8) | (((int32_t) * (pc + 2)) << 16));
   } else
     pc += 3;
 }
@@ -556,7 +563,8 @@ again:
   k_pop(1);
 
   if (jumping) {
-    pc = c_base + (*pc | (((int32_t)*(pc + 1)) << 8) | (((int32_t)*(pc + 2)) << 16));
+    pc = c_base +
+         (*pc | (((int32_t) * (pc + 1)) << 8) | (((int32_t) * (pc + 2)) << 16));
   } else
     pc += 3;
 }
@@ -591,7 +599,8 @@ again:
   k_pop(1);
 
   if (jumping) {
-    pc = c_base + (*pc | (((int32_t)*(pc + 1)) << 8) | (((int32_t)*(pc + 2)) << 16));
+    pc = c_base +
+         (*pc | (((int32_t) * (pc + 1)) << 8) | (((int32_t) * (pc + 2)) << 16));
   } else
     pc += 3;
 }
@@ -612,7 +621,8 @@ void op_jtrue() {
   k_pop(1);
 
   if (jumping) {
-    pc = c_base + (*pc | (((int32_t)*(pc + 1)) << 8) | (((int32_t)*(pc + 2)) << 16));
+    pc = c_base +
+         (*pc | (((int32_t) * (pc + 1)) << 8) | (((int32_t) * (pc + 2)) << 16));
   } else
     pc += 3;
 }
@@ -647,7 +657,8 @@ again:
   k_pop(1);
 
   if (jumping) {
-    pc = c_base + (*pc | (((int32_t)*(pc + 1)) << 8) | (((int32_t)*(pc + 2)) << 16));
+    pc = c_base +
+         (*pc | (((int32_t) * (pc + 1)) << 8) | (((int32_t) * (pc + 2)) << 16));
   } else
     pc += 3;
 }
@@ -778,7 +789,8 @@ void op_returnto() {
   if (process.program.gosub_depth) /* Returning from local call (GOSUB) */
   {
     --process.program.gosub_depth;
-    pc = c_base + (*pc | (((int32_t)*(pc + 1)) << 8) | (((int32_t)*(pc + 2)) << 16));
+    pc = c_base +
+         (*pc | (((int32_t) * (pc + 1)) << 8) | (((int32_t) * (pc + 2)) << 16));
   } else /* Returning from a CALL */
   {
     k_return();
@@ -825,7 +837,7 @@ Private void computed_jump(
 
   num_labels = *(pc++);
   if (num_labels == 0) {
-    num_labels = (int16_t)(*pc | (((int32_t)*(pc + 1)) << 8));
+    num_labels = (int16_t)(*pc | (((int32_t) * (pc + 1)) << 8));
     pc += 2;
   }
 
@@ -855,7 +867,8 @@ Private void computed_jump(
   }
 
   pc += (n - 1) * 3;
-  pc = c_base + (*pc | (((int32_t)*(pc + 1)) << 8) | (((int32_t)*(pc + 2)) << 16));
+  pc = c_base +
+       (*pc | (((int32_t) * (pc + 1)) << 8) | (((int32_t) * (pc + 2)) << 16));
 }
 
 /* ======================================================================
