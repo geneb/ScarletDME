@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 11Jan22 gwb Fix for Issue #13 ("Uncontrolled format string")
+ * 
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
@@ -181,7 +183,7 @@ void k_illegal_call_name() {
 
 void k_error(char* message, ...) {
   int32_t failing_offset;
-  char s[(3 * 80) + 1]; /* Max 3 lines */
+  char s[(MAX_ERROR_LINES * MAX_EMSG_LEN) + 1]; /* Max 3 lines */
   va_list arg_ptr;
   int16_t n;
   int line;
@@ -236,7 +238,8 @@ void k_error(char* message, ...) {
   }
 
   va_start(arg_ptr, message);
-  vsprintf(&(s[n]), message, arg_ptr);
+  /* Fix for Issue #13.  Converted a vsprintf() to vsnprintf(). -gwb */
+  vsnprintf(&(s[n]), (MAX_ERROR_LINES + MAX_EMSG_LEN) + 1,  message, arg_ptr);
   va_end(arg_ptr);
 
   if (c_base == NULL) /* No object currently loaded */

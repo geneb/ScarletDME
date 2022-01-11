@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  *
  * START-HISTORY (ScarletDME):
+ * 11Jan22 gwb Removed goto calls.
+ * 
  * 09Jan22 gwb Fixed a format specifier warning.
  *
  * 28Feb20 gwb Changed integer declarations to be portable across address
@@ -100,8 +102,7 @@ bool load_language(char* language_prefix) {
 
   strcpy(prefix, language_prefix);
 
-  if (loaded) /* Free old memory */
-  {
+  if (loaded) { /* Free old memory */
     k_free(month_names[0]);
     k_free(day_names[0]);
   }
@@ -111,6 +112,7 @@ bool load_language(char* language_prefix) {
   p = sysmsg(1500); /* TODO: Magic numbers are bad, mmkay? */
   if ((*p == '[') || (strdcount(p, ',') != 12))
     p = default_months; /* 0289 */
+
   month_names[0] = (char*)k_alloc(83, strlen(p) + 1);
   strcpy(month_names[0], p);
   (void)strtok(month_names[0], ",");
@@ -157,7 +159,8 @@ char* sysmsg(int msg_no) {
       /* TODO: this should be sent to the system log. */
       k_error("Overflowed directory/filename path length in sysmsg()!");
       message = "";
-      goto exit_sysmsg;  /* I died inside adding this. -gwb */
+      //goto exit_sysmsg;  /* I died inside adding this. -gwb */
+      return message;
     }
     msg_file = open(path, O_RDONLY);
     if (msg_file < 0) {
@@ -177,7 +180,8 @@ char* sysmsg(int msg_no) {
       /* TODO: this should be sent to the system log. */
       k_error("Overflowed directory/filename path length in sysmsg()!");
       message = "";
-      goto exit_sysmsg;  /* I died inside adding this. -gwb */
+      // goto exit_sysmsg;  /* I died inside adding this. -gwb */
+      return message; /* ...and un-died! */
     }
     msg_rec = open(path, O_RDONLY);
   }
@@ -191,7 +195,8 @@ char* sysmsg(int msg_no) {
       /* TODO: this should be sent to the system log. */
       k_error("Overflowed directory/filename path length in sysmsg()!");
       message = "";
-      goto exit_sysmsg;  /* I died inside adding this. -gwb */
+      // goto exit_sysmsg;  /* I died inside adding this. -gwb */
+      return message;  /* and un-died. */
     }
     msg_rec = open(path, O_RDONLY);
   }
@@ -202,8 +207,7 @@ char* sysmsg(int msg_no) {
     int msg_size = msg_stat.st_size;
 
     /* Check buffer size */
-    if (msg_size > message_len) /* Must increase buffer size */
-    {
+    if (msg_size > message_len) { /* Must increase buffer size */
       k_free(message); /* Release old buffer */
 
       n = (msg_size & ~127) +
@@ -218,8 +222,7 @@ char* sysmsg(int msg_no) {
     /*printf("FILE (%s) %d\n", path, msg_size);*/
   }
 
-  if (msg_rec < 0 || status < 0) /* Either open or read failed */
-  {
+  if (msg_rec < 0 || status < 0) { /* Either open or read failed */
     sprintf(message, "[%s] Message not found", id);
   }
 
@@ -238,7 +241,7 @@ char* sysmsg(int msg_no) {
     }
     p++;
   }
-exit_sysmsg:
+
   return message;
 }
 

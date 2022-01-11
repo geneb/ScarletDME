@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 11Jan22 gwb Created a couple of new defines to eliminate some magic number use
+ *             in the k_error() function.
+ * 
  * 27Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  * 
@@ -128,6 +131,9 @@ extern char **environ;
 #define MAX_SORTMRG 10
 #define MAX_SORT_KEYS 32
 #define MAX_SORT_KEY_LEN 1024
+
+#define MAX_ERROR_LINES 3        /* because I HATE magic numbers! */
+#define MAX_EMSG_LEN 80          /* These are used in k_error() in k_error.c */
 
 #define Private static
 
