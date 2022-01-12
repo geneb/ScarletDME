@@ -1,6 +1,36 @@
 ******************************************************************************
 *            THIS CHANGE LOG ONLY APPLIES TO THE "DEV" BRANCH                *
 ******************************************************************************
+11Jan22 - gwb 
+-------------
+Updates (in no particular order):
+It was discovered after I fixed an issue with the .gitignore file that we had
+a binary blob laying around that nobody was aware of!  It's called "pcode" and
+contains...pcode.  I think. :)  In fixing the .gitignore file to make sure that
+nothing from the bin directory got pushed to github, we lost that binary blob.
+This was discovered by Don M. when he tried building & installing from the dev
+branch this evening.  I made a quick fix and got the pcode file restored, so 
+others won't have this same issue.
+
+Unfortunately, the pcode file represents something we can't build from "source"
+at this time, so I'll have to work out precisely what's in it and reverse engineer
+it so that it can be re-created or expanded at will.  This is going to take some
+time, so it won't happen overnight.  The pcode file is loaded into the sysmesg
+structure when the bind_sysseg() call (in sysseg.c) is made, and it's parsed out
+in qm.c via the Pcode() macro - I left a pretty comprehensive explanation of 
+how the macro works there, so you might want to check it out.  It's a pretty clever
+way of processing a dynamic list of things as well as a way to create variables
+that reference them.
+
+Github offers a static code analysis tool called CodeQL that can be leveraged to
+find problems in your code.  I've got CodeQL enabled on the dev branch and it
+kicks off with each push to the repo.  It's very good at finding bad things to fix.
+I'll work through the issues it finds as I have time.  I've created a number of
+issues based on its output already.
+
+Closed git Issues 12, 15-17.
+
+===============================================================================
 10Jan22 - gwb
 -------------
 All of the format specifier warnings for *printf()/sscanf() have been resolved

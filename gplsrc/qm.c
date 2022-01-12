@@ -185,10 +185,32 @@ int main(int argc, char* argv[]) {
     /* Set pcode pointers */
 
 #undef Pcode
+/* 
+ * The block below is kind of interesting.  The #define functions as a function call that works like
+ * this:
+ * Given a call like Pcode(chain), the preprocessor is going to emit this:
+ * if (!load_pcode("chain", &pcode_chain))
+ *   goto abort;
+ * 
+ * Now the line below where pcode.h is included is going to trigger a call to load_pcode() for each
+ * line in the pcode.h file that references the Pcode() macro.  It's clever in that you don't need to 
+ * somehow specify a static list of pcode value names, you just add them to the include file and they'll
+ * get pulled in automatically since the compiler preprocessor will have "unrolled" all of the entries
+ * in the pcode.h include file, resulting in them being loaded at run time.
+ * 
+ * A similar method is used in kernel.h to declare all of the pcode variables via this define:
+ * #define Pcode(a) Public u_char* pcode_##a;
+ * Public has been defined in qmdefs.h as "extern".  Given a call of Pcode(chain), the pre-processor
+ * is going to expand that as:
+ * extern u_char* pcode_chain;
+ * 
+ * -gwb
+ * 
+ */
 #define Pcode(a)                   \
   if (!load_pcode(#a, &pcode_##a)) \
     goto abort;
-#include "pcode.h"  // why is this located here?
+#include "pcode.h"  
 
   if (!init_kernel())
     goto abort; /* Go run the system */
