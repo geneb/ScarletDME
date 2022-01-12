@@ -1,6 +1,20 @@
 ******************************************************************************
 *            THIS CHANGE LOG ONLY APPLIES TO THE "DEV" BRANCH                *
 ******************************************************************************
+12Jan22 -gwb
+------------
+Makefile fixes!
+
+Fixed a typo that resulted in the $IPC directory being a mess and 
+not having the dynamic files it needed.
+Cleaned up the datafiles installation process to make sure the things
+that needed to get copied were.
+Ensured correct permissions were being correctly set for the all the 
+files within the subdirectories of the installation location.
+Incorrect permissions were causing issues with creating an account on
+the very first login to the system.
+===============================================================================
+
 11Jan22 - gwb 
 -------------
 Updates (in no particular order):
