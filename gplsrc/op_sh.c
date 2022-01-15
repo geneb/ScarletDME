@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 15Jan22 gwb Fixed a "comparison of narrow type with wide type in loop" condition.
+ * 
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
@@ -71,14 +73,14 @@ void set_new_tty_modes(void);
 void op_capture(void);
 
 Private void sh(bool capture);
-Private void sh_execute(char* command);
-Private int clparse(char* p, char* argv[], int maxargs);
+Private void sh_execute(char *command);
+Private int clparse(char *p, char *argv[], int maxargs);
 
 int ChildPipe = -1;
 bool in_sh = FALSE; /* 0562 Doing SH command? */
 
 #define MAX_SH_COMMAND_LENGTH 32000
-Private char* cmd_str = NULL;
+Private char *cmd_str = NULL;
 
 /* ======================================================================
    op_sh()  -  Launch a DOS command                                       */
@@ -126,8 +128,8 @@ void op_shcap() {
    sh()  -  Execute shell command                                         */
 
 Private void sh(bool capture) {
-  DESCRIPTOR* descr;
-  STRING_CHUNK* str;
+  DESCRIPTOR *descr;
+  STRING_CHUNK *str;
   int bytes;
 
   descr = e_stack - 1;
@@ -141,8 +143,7 @@ Private void sh(bool capture) {
     if (cmd_str != NULL)
       k_free(cmd_str); /* From an earlier k_error() */
 
-    cmd_str = k_alloc(
-        111, bytes + MAX_PATHNAME_LEN + 10); /* Allow for strcat on Windows */
+    cmd_str = k_alloc(111, bytes + MAX_PATHNAME_LEN + 10); /* Allow for strcat on Windows */
     k_get_c_string(descr, cmd_str, bytes);
     k_dismiss();
 
@@ -178,7 +179,7 @@ Private void sh(bool capture) {
 /* ======================================================================
    sh_execute()  -  Execute SH command                                    */
 
-Private void sh_execute(char* command) {
+Private void sh_execute(char *command) {
 #define PIPE_BUFFER_SIZE 2048
   char buffer[PIPE_BUFFER_SIZE];
   bool saved_trap_break_char;
@@ -187,7 +188,7 @@ Private void sh_execute(char* command) {
   int ChildToQMPipe[2];
   bool use_input_pipe;
   int QMToChildPipe[2];
-  char* argv[10];
+  char *argv[10];
   int cpid;
   int16_t i;
   int bytes;
@@ -220,10 +221,9 @@ Private void sh_execute(char* command) {
     to use the pipe, this has some impact on the executed commands if they
     check the device type of the standard file handles.                     */
 
-  use_output_pipe =
-      capturing                          /* Trap output for EXECUTE CAPTURING */
-      || (connection_type != CN_CONSOLE) /* Not a direct connection */
-      || (tio.como_file >= 0);           /* Real como file */
+  use_output_pipe = capturing                          /* Trap output for EXECUTE CAPTURING */
+                    || (connection_type != CN_CONSOLE) /* Not a direct connection */
+                    || (tio.como_file >= 0);           /* Real como file */
 
   /* Similarly, on the input side, we need to use a pipe to feed the shell
     process if the real source of input is a socket. This allows us to
@@ -320,8 +320,8 @@ Private void sh_execute(char* command) {
 /* ======================================================================
    clparse()  -  Parse a command line into an argv array                  */
 
-Private int clparse(char* p, char* argv[], int maxargs) {
-  int16_t argc;
+Private int clparse(char *p, char *argv[], int maxargs) {
+  int argc; /* resolves CWE-197 */
 
   /* Although this works for our purposes, it isn't perfect. It really
     should handle quotes and \ escapes.                                */

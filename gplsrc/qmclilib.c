@@ -2013,7 +2013,7 @@ char* DLLEntry QMReplace(char* src, int fno, int vno, int svno, char* new) {
   int32_t new_len;
   char* new_str;
   char* p;
-  int16_t i;
+  int i;
   int32_t n;
   int16_t fm = 0;
   int16_t vm = 0;
@@ -3345,8 +3345,8 @@ Private bool write_packet(int type, char* data, int32_t bytes) {
    debug()  -  Debug function                                             */
 
 Private void debug(unsigned char* p, int n) {
-  int16_t i;
-  int16_t j;
+  int i;
+  int j;
   unsigned char c;
   char s[72 + 1];
   static char hex[] = "0123456789ABCDEF";

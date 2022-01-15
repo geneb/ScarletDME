@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 15Jan22 gwb Fixed an waring regarding "comparison of narrow type with wide type in 
+ *             loop condition."
+ * 
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
@@ -438,7 +441,7 @@ void op_sortinit() {
   DESCRIPTOR* descr;
   int keys;
   ARRAY_HEADER* a_hdr;
-  int16_t i;
+  int i;  /* was int16_t, which makes it dumb to compare against an int. */
 
   op_sortclr(); /* Discard any existing sort tree and files */
 
