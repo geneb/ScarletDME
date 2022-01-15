@@ -124,30 +124,15 @@
 #define MAX_SUBFILES (AK_BASE_SUBFILE + MAX_INDICES)
 
 /* GetLink() / SetLink() - Internal form = offset, file form by version */
-#define GetLink(x)                                   \
-  ((int64)((((x) == 0) || (header.file_version < 2)) \
-               ? (x)                                 \
-               : (((x)-1) * (int64)group_bytes + header_bytes)))
-#define SetLink(x)                          \
-  (((x) == 0) || (header.file_version < 2)) \
-      ? (x)                                 \
-      : (((x)-header_bytes) / group_bytes + 1)
+#define GetLink(x) ((int64)((((x) == 0) || (header.file_version < 2)) ? (x) : (((x)-1) * (int64)group_bytes + header_bytes)))
+#define SetLink(x) (((x) == 0) || (header.file_version < 2)) ? (x) : (((x)-header_bytes) / group_bytes + 1)
 
 /* GetAKLink() / SetAKLink() - Internal form = offset, file form by version */
-#define GetAKLink(x)                                 \
-  ((int64)((((x) == 0) || (header.file_version < 2)) \
-               ? (x)                                 \
-               : (((x)-1) * (int64)DH_AK_NODE_SIZE + ak_header_size)))
-#define SetAKLink(x)                        \
-  (((x) == 0) || (header.file_version < 2)) \
-      ? (x)                                 \
-      : (((x)-ak_header_size) / DH_AK_NODE_SIZE + 1)
+#define GetAKLink(x) ((int64)((((x) == 0) || (header.file_version < 2)) ? (x) : (((x)-1) * (int64)DH_AK_NODE_SIZE + ak_header_size)))
+#define SetAKLink(x) (((x) == 0) || (header.file_version < 2)) ? (x) : (((x)-ak_header_size) / DH_AK_NODE_SIZE + 1)
 
 /* GetAKNodeNum() - Get node number from version dependent file link */
-#define GetAKNodeNum(x)                                 \
-  ((int32_t)(((x) != 0) && (header.file_version >= 2)) \
-       ? (x)                                            \
-       : (((x)-ak_header_size) / DH_AK_NODE_SIZE + 1))
+#define GetAKNodeNum(x) ((int32_t)(((x) != 0) && (header.file_version >= 2)) ? (x) : (((x)-ak_header_size) / DH_AK_NODE_SIZE + 1))
 
 /* OffsetToNode() - Translate node offset to node number */
 #define OffsetToNode(x) ((int32_t)(((x)-ak_header_size) / DH_AK_NODE_SIZE + 1))
@@ -158,19 +143,19 @@ static bool suppress_bar = FALSE; /* -B */
 static bool check = FALSE;        /* -C */
 static bool interactive = FALSE;  /* -I */
 static bool logging = FALSE;      /* -L */
-static int16_t fix_level = 0;   /* 1 = -Q, 2 = -F */
+static int16_t fix_level = 0;     /* 1 = -Q, 2 = -F */
 static bool recover = FALSE;      /* -R */
 static bool verbose = FALSE;      /* -V */
 
-static FILE* log = NULL;
+static FILE *log = NULL;
 
 static bool file_found = FALSE;
 static char filename[MAX_PATHNAME_LEN + 1] = ""; /* File being processed */
 static int fu[MAX_SUBFILES];                     /* File variables */
-static int16_t subfile = 0;  /* Currently selected subfile */
-static DH_HEADER header;       /* Primary subfile header */
-static DH_HEADER oheader;      /* Overflow subfile header */
-static int16_t header_bytes; /* Offset of group 1 */
+static int16_t subfile = 0;                      /* Currently selected subfile */
+static DH_HEADER header;                         /* Primary subfile header */
+static DH_HEADER oheader;                        /* Overflow subfile header */
+static int16_t header_bytes;                     /* Offset of group 1 */
 static int16_t ak_header_size;
 static int16_t group_bytes;
 static int64 load_bytes;
@@ -192,19 +177,19 @@ int32_t groups_to_dump[MAX_GROUPS_TO_DUMP];
 char dump_file_name[20];
 int dump_fu;
 
-int32_t* map = NULL;
+int32_t *map = NULL;
 int32_t map_offset = 0;
 int32_t num_overflow_blocks; /* Size of map */
 
 void G_command(int32_t grp);
 void GA_command(void);
 void H_command(void);
-void L_command(char* id, int16_t id_len);
+void L_command(char *id, int16_t id_len);
 void S_command(int32_t n);
-void W_command(char* cmnd);
+void W_command(char *cmnd);
 void Z_command(void);
 
-void fix_file(char* fn);
+void fix_file(char *fn);
 bool is_dh_file(void);
 int process_file(void);
 void show_window(int64 addr);
@@ -215,39 +200,29 @@ bool open_dump_file(void);
 bool rebuild_group(int32_t grp);
 bool dump_group(int32_t grp);
 bool write_dumped_data(void);
-bool write_record(DH_RECORD* rec);
+bool write_record(DH_RECORD *rec);
 bool release_chain(int64 offset);
 int32_t get_overflow(void);
 bool clear_group(int32_t grp);
 bool check_and_fix(void);
 bool open_subfile(int16_t subfile);
-bool read_block(int16_t subfile, int64 offset, int16_t bytes, char* buff);
-bool write_block(int16_t subfile, int64 offset, int16_t bytes, char* buff);
+bool read_block(int16_t subfile, int64 offset, int16_t bytes, char *buff);
+bool write_block(int16_t subfile, int64 offset, int16_t bytes, char *buff);
 bool read_header(void);
 bool write_header(void);
 bool delete_subfile(int16_t subfile);
 bool read_qmconfig(void);
-bool map_big_rec(int16_t rec_hdr_sf,
-                 int64 rec_hdr_offset,
-                 DH_RECORD* rec_ptr,
-                 int32_t* map);
-void tag_block(int64 offset,
-               int16_t ref_subfile,
-               int64 ref_offset,
-               int16_t usage);
-void map_node(int16_t sf,
-              int32_t node,
-              char* akmap,
-              int32_t num_nodes,
-              int32_t parent);
-void map_ak_free_chain(int16_t sf, char* map, int32_t num_nodes);
+bool map_big_rec(int16_t rec_hdr_sf, int64 rec_hdr_offset, DH_RECORD *rec_ptr, int32_t *map);
+void tag_block(int64 offset, int16_t ref_subfile, int64 ref_offset, int16_t usage);
+void map_node(int16_t sf, int32_t node, char *akmap, int32_t num_nodes, int32_t parent);
+void map_ak_free_chain(int16_t sf, char *map, int32_t num_nodes);
 bool recover_space(void);
 bool fix(void);
-bool yesno(char* prompt);
+bool yesno(char *prompt);
 void emit(char msg[], ...);
-char* I64(int64 x);
-void memupr(char* str, int16_t len);
-char* strupr(char* s);
+char *I64(int64 x);
+void memupr(char *str, int16_t len);
+char *strupr(char *s);
 void progress_bar(int32_t grp);
 
 void event_handler(int signum);
@@ -255,7 +230,7 @@ void event_handler(int signum);
 /* ====================================================================== */
 
 int main(argc, argv) int argc;
-char* argv[];
+char *argv[];
 {
   int status = 1;
   int arg;
@@ -388,7 +363,7 @@ usage:
 /* ======================================================================
    fix_file()                                                             */
 
-void fix_file(char* fn) {
+void fix_file(char *fn) {
   // int status; delcared but never used.
 
   strcpy(filename, fn);
@@ -411,10 +386,8 @@ bool is_dh_file() {
   char pathname[MAX_PATHNAME_LEN + 1];
   struct stat statbuf;
   // converted to snprintf() -gwb 23Feb20
-  if (snprintf(pathname, MAX_PATHNAME_LEN + 1, "%s%c~0", filename, DS) >=
-      (MAX_PATHNAME_LEN + 1)) {
-    emit("Overflow of max file/pathname size. Truncated to:\n\"%s\"\n",
-         pathname);
+  if (snprintf(pathname, MAX_PATHNAME_LEN + 1, "%s%c~0", filename, DS) >= (MAX_PATHNAME_LEN + 1)) {
+    emit("Overflow of max file/pathname size. Truncated to:\n\"%s\"\n", pathname);
   }
 
   if (stat(pathname, &statbuf) != 0)
@@ -427,7 +400,7 @@ bool is_dh_file() {
   if (dhfu < 0)
     goto exit_is_dh_file;
 
-  if (read(dhfu, (u_char*)&header, DH_HEADER_SIZE) != DH_HEADER_SIZE) {
+  if (read(dhfu, (u_char *)&header, DH_HEADER_SIZE) != DH_HEADER_SIZE) {
     goto exit_is_dh_file;
   }
 
@@ -456,7 +429,7 @@ int process_file() {
   int16_t i;
   int32_t n;
   int64 n64;
-  char* p;
+  char *p;
 
   emit("Processing %s\n", filename);
 
@@ -480,8 +453,7 @@ int process_file() {
     case DH_PRIMARY:
       break;
     default:
-      emit("Primary subfile has incorrect magic number (%04X)\n",
-           (int)(header.magic));
+      emit("Primary subfile has incorrect magic number (%04X)\n", (int)(header.magic));
       if (!interactive)
         goto exit_process_file;
       break;
@@ -494,7 +466,7 @@ int process_file() {
 
   /* Read overflow subfile header */
 
-  if (!read_block(OVERFLOW_SUBFILE, 0, DH_HEADER_SIZE, (char*)&oheader)) {
+  if (!read_block(OVERFLOW_SUBFILE, 0, DH_HEADER_SIZE, (char *)&oheader)) {
     perror("Cannot read overflow subfile header");
     goto exit_process_file;
   }
@@ -502,8 +474,7 @@ int process_file() {
   /* Check magic number in overflow subfile */
 
   if (oheader.magic != DH_OVERFLOW) {
-    emit("Overflow subfile has incorrect magic number (%04X)\n",
-         (int)(oheader.magic));
+    emit("Overflow subfile has incorrect magic number (%04X)\n", (int)(oheader.magic));
     if (!interactive)
       goto exit_process_file;
   }
@@ -573,7 +544,7 @@ int process_file() {
         S_command(n);
       else if (strnicmp(cmnd, "W", 1) == 0)
         W_command(cmnd + 1);
-#ifndef __LP64__        
+#ifndef __LP64__
       else if (sscanf(u_cmnd, "%lld", &n64) == 1)
 #else
       else if (sscanf(u_cmnd, "%ld", &n64) == 1)
@@ -669,81 +640,52 @@ void H_command() {
 
   load = DHLoad(load_bytes, header.group_size, header.params.modulus);
 
-  emit("%04X: File version  %d\n", offsetof(DH_HEADER, file_version),
-       (int)header.file_version);
+  emit("%04X: File version  %d\n", offsetof(DH_HEADER, file_version), (int)header.file_version);
   emit("      Header size   %d (x%04X)\n", header_bytes, header_bytes);
-  emit("%04X: Group size    %d (x%04X)\n", offsetof(DH_HEADER, group_size),
-       (int)(header.group_size), (int)(header.group_size));
-  emit("%04X: Modulus       %ld\n", offsetof(DH_HEADER, params.modulus),
-       header.params.modulus);
-  emit("%04X: Min modulus   %ld\n", offsetof(DH_HEADER, params.min_modulus),
-       header.params.min_modulus);
-  emit("%04X: Big record    %ld\n", offsetof(DH_HEADER, params.big_rec_size),
-       header.params.big_rec_size);
-  emit("%04X: Split load    %d\n", offsetof(DH_HEADER, params.split_load),
-       (int)header.params.split_load);
-  emit("%04X: Merge load    %d\n", offsetof(DH_HEADER, params.merge_load),
-       (int)header.params.merge_load);
+  emit("%04X: Group size    %d (x%04X)\n", offsetof(DH_HEADER, group_size), (int)(header.group_size), (int)(header.group_size));
+  emit("%04X: Modulus       %ld\n", offsetof(DH_HEADER, params.modulus), header.params.modulus);
+  emit("%04X: Min modulus   %ld\n", offsetof(DH_HEADER, params.min_modulus), header.params.min_modulus);
+  emit("%04X: Big record    %ld\n", offsetof(DH_HEADER, params.big_rec_size), header.params.big_rec_size);
+  emit("%04X: Split load    %d\n", offsetof(DH_HEADER, params.split_load), (int)header.params.split_load);
+  emit("%04X: Merge load    %d\n", offsetof(DH_HEADER, params.merge_load), (int)header.params.merge_load);
   emit("      Load bytes    %s (%d%%)\n", I64(load_bytes), load);
-  emit("%04X: Mod value     %ld\n", offsetof(DH_HEADER, params.mod_value),
-       header.params.mod_value);
-  emit("%04X: Longest id    %d\n", offsetof(DH_HEADER, params.longest_id),
-       header.params.longest_id);
-  emit("%04X: Free chain    %08lX  x%s\n",
-       offsetof(DH_HEADER, params.free_chain), header.params.free_chain,
-       I64(GetLink(header.params.free_chain)));
-  emit("%04X: Flags         x%04X\n", offsetof(DH_HEADER, flags),
-       (int)header.flags);
-  emit("%04X: AK map        %08lX  x%s\n", offsetof(DH_HEADER, ak_map),
-       header.ak_map, I64(GetLink(header.ak_map)));
-  emit("%04X: Trigger name  '%s'\n", offsetof(DH_HEADER, trigger_name),
-       header.trigger_name);
-  emit("%04X: Trigger modes x%02X\n", offsetof(DH_HEADER, trigger_modes),
-       header.trigger_modes);
-  emit("%04X: Journal file  %d\n", offsetof(DH_HEADER, jnl_fno),
-       header.jnl_fno);
-  emit("%04X: AK path       '%s'\n", offsetof(DH_HEADER, akpath),
-       (header.akpath[0] == '\0') ? "" : header.akpath);
-  emit("%04X: Creation time %ld\n", offsetof(DH_HEADER, creation_timestamp),
-       header.creation_timestamp);
-  emit("%04X: Record count  x%s (actual count is one less)\n",
-       offsetof(DH_HEADER, record_count), I64(header.record_count));
+  emit("%04X: Mod value     %ld\n", offsetof(DH_HEADER, params.mod_value), header.params.mod_value);
+  emit("%04X: Longest id    %d\n", offsetof(DH_HEADER, params.longest_id), header.params.longest_id);
+  emit("%04X: Free chain    %08lX  x%s\n", offsetof(DH_HEADER, params.free_chain), header.params.free_chain, I64(GetLink(header.params.free_chain)));
+  emit("%04X: Flags         x%04X\n", offsetof(DH_HEADER, flags), (int)header.flags);
+  emit("%04X: AK map        %08lX  x%s\n", offsetof(DH_HEADER, ak_map), header.ak_map, I64(GetLink(header.ak_map)));
+  emit("%04X: Trigger name  '%s'\n", offsetof(DH_HEADER, trigger_name), header.trigger_name);
+  emit("%04X: Trigger modes x%02X\n", offsetof(DH_HEADER, trigger_modes), header.trigger_modes);
+  emit("%04X: Journal file  %d\n", offsetof(DH_HEADER, jnl_fno), header.jnl_fno);
+  emit("%04X: AK path       '%s'\n", offsetof(DH_HEADER, akpath), (header.akpath[0] == '\0') ? "" : header.akpath);
+  emit("%04X: Creation time %ld\n", offsetof(DH_HEADER, creation_timestamp), header.creation_timestamp);
+  emit("%04X: Record count  x%s (actual count is one less)\n", offsetof(DH_HEADER, record_count), I64(header.record_count));
   emit("\n");
 
   if (subfile >= AK_BASE_SUBFILE) {
     emit("AK %d header:\n", (int)(subfile - AK_BASE_SUBFILE));
-    if (!read_block(subfile, 0, DH_AK_HEADER_SIZE, (char*)&ak_header)) {
+    if (!read_block(subfile, 0, DH_AK_HEADER_SIZE, (char *)&ak_header)) {
       emit("Read error\n");
       return;
     }
 
-    emit("%04X: Flags        x%04X\n", offsetof(DH_AK_HEADER, flags),
-         (int)(ak_header.flags));
-    emit("%04X: Field number %d\n", offsetof(DH_AK_HEADER, fno),
-         (int)ak_header.fno);
+    emit("%04X: Flags        x%04X\n", offsetof(DH_AK_HEADER, flags), (int)(ak_header.flags));
+    emit("%04X: Field number %d\n", offsetof(DH_AK_HEADER, fno), (int)ak_header.fno);
     ak_node_offset = GetAKLink(ak_header.free_chain);
-    emit("%04X: Free chain   x%s, Node %ld\n",
-         offsetof(DH_AK_HEADER, free_chain), I64(ak_node_offset),
-         OffsetToNode(ak_node_offset));
-    emit("%04X: I-type bytes %ld\n", offsetof(DH_AK_HEADER, itype_len),
-         ak_header.itype_len);
+    emit("%04X: Free chain   x%s, Node %ld\n", offsetof(DH_AK_HEADER, free_chain), I64(ak_node_offset), OffsetToNode(ak_node_offset));
+    emit("%04X: I-type bytes %ld\n", offsetof(DH_AK_HEADER, itype_len), ak_header.itype_len);
     ak_node_offset = GetAKLink(ak_header.itype_ptr);
-    emit("%04X: I-type ptr   x%s, Node %ld\n",
-         offsetof(DH_AK_HEADER, itype_ptr), I64(ak_node_offset),
-         OffsetToNode(ak_node_offset));
+    emit("%04X: I-type ptr   x%s, Node %ld\n", offsetof(DH_AK_HEADER, itype_ptr), I64(ak_node_offset), OffsetToNode(ak_node_offset));
     emit("      AK name      '%s'\n", ak_header.ak_name);
-    emit("%04X: Data created %d\n",
-         offsetof(DH_AK_HEADER, data_creation_timestamp),
-         ak_header.data_creation_timestamp);
-    emit("%04x: Map name     %s\n", offsetof(DH_AK_HEADER, collation_map_name),
-         ak_header.collation_map_name);
+    emit("%04X: Data created %d\n", offsetof(DH_AK_HEADER, data_creation_timestamp), ak_header.data_creation_timestamp);
+    emit("%04x: Map name     %s\n", offsetof(DH_AK_HEADER, collation_map_name), ak_header.collation_map_name);
   }
 }
 
 /* ======================================================================
    L_command()  -  Locate record by hashing                               */
 
-void L_command(char* id, int16_t id_len) {
+void L_command(char *id, int16_t id_len) {
   char u_id[MAX_ID_LEN];
   int32_t grp;
   int32_t hash_value;
@@ -763,8 +705,7 @@ void L_command(char* id, int16_t id_len) {
       grp = (hash_value % (header.params.mod_value >> 1)) + 1;
     }
 
-    emit("Hash value %08lX, Group %ld, Address x%s\n", hash_value, grp,
-         I64(((int64)(grp - 1) * header.group_size) + header_bytes));
+    emit("Hash value %08lX, Group %ld, Address x%s\n", hash_value, grp, I64(((int64)(grp - 1) * header.group_size) + header_bytes));
   }
 }
 
@@ -781,18 +722,15 @@ void S_command(int32_t n) {
       emit("Subfile %d: x%s bytes, ", (int)n, I64(bytes));
       switch (subfile) {
         case PRIMARY_SUBFILE:
-          printf("%d group buffers\n",
-                 (int32_t)((bytes - header_bytes) / header.group_size));
+          printf("%d group buffers\n", (int32_t)((bytes - header_bytes) / header.group_size));
           break;
 
         case OVERFLOW_SUBFILE:
-          printf("%d overflow buffers\n",
-                 (int32_t)((bytes - header_bytes) / header.group_size));
+          printf("%d overflow buffers\n", (int32_t)((bytes - header_bytes) / header.group_size));
           break;
 
         default:
-          printf("%d node buffers\n",
-                 (int32_t)((bytes - ak_header_size) / DH_AK_NODE_SIZE));
+          printf("%d node buffers\n", (int32_t)((bytes - ak_header_size) / DH_AK_NODE_SIZE));
           break;
       }
     } else
@@ -804,13 +742,13 @@ void S_command(int32_t n) {
 /* ======================================================================
    W_command()  -  Write data                                             */
 
-void W_command(char* cmnd) {
+void W_command(char *cmnd) {
   u_int32_t w_addr;
   u_int32_t w_data;
   u_int32_t old_data;
   int16_t n;
   int16_t bytes;
-  char* p;
+  char *p;
   char c;
 
   n = sscanf(cmnd, "%d=%d", &w_addr, &w_data); /* was %lx for both - 64bit fix -gwb*/
@@ -828,8 +766,7 @@ void W_command(char* cmnd) {
         w_data = ((w_data & 0x0000FF00L) >> 8) | ((w_data & 0x000000FFL) << 8);
         break;
       case 8:
-        w_data = (w_data >> 24) | ((w_data & 0x00FF0000L) >> 8) |
-                 ((w_data & 0x0000FF00L) << 8) | ((w_data & 0x000000FFL) << 24);
+        w_data = (w_data >> 24) | ((w_data & 0x00FF0000L) >> 8) | ((w_data & 0x0000FF00L) << 8) | ((w_data & 0x000000FFL) << 24);
         break;
       default:
         emit("Illegal data length\n");
@@ -856,14 +793,11 @@ void W_command(char* cmnd) {
         emit("Was %02lX\n", old_data);
         break;
       case 4:
-        old_data =
-            ((old_data & 0x0000FF00L) >> 8) | ((old_data & 0x000000FFL) << 8);
+        old_data = ((old_data & 0x0000FF00L) >> 8) | ((old_data & 0x000000FFL) << 8);
         emit("Was %04lX\n", old_data);
         break;
       case 8:
-        old_data = (old_data >> 24) | ((old_data & 0x00FF0000L) >> 8) |
-                   ((old_data & 0x0000FF00L) << 8) |
-                   ((old_data & 0x000000FFL) << 24);
+        old_data = (old_data >> 24) | ((old_data & 0x00FF0000L) >> 8) | ((old_data & 0x0000FF00L) << 8) | ((old_data & 0x000000FFL) << 24);
         emit("Was %08lX\n", old_data);
         break;
     }
@@ -880,9 +814,7 @@ void W_command(char* cmnd) {
         emit("Error re-reading primary subfile header\n");
       }
     }
-  } else if ((n == 1) && ((p = strchr(cmnd, '=')) != NULL) &&
-             (((c = *(++p)) == '"') || (c == '\'')) && ((n = strlen(p)) >= 2) &&
-             (p[n - 1] == c)) {
+  } else if ((n == 1) && ((p = strchr(cmnd, '=')) != NULL) && (((c = *(++p)) == '"') || (c == '\'')) && ((n = strlen(p)) >= 2) && (p[n - 1] == c)) {
     if ((w_addr < 0) || (w_addr + n - 2 > filelength64(fu[subfile]))) {
       emit("Illegal address\n");
       return;
@@ -945,7 +877,7 @@ void show_window(int64 addr) {
     if (base_addr != buff_addr) {
       buff_addr = base_addr;
 
-      if (!read_block(subfile, buff_addr, 1024, (char*)buff)) {
+      if (!read_block(subfile, buff_addr, 1024, (char *)buff)) {
         emit(("Read error\n"));
         break;
       }
@@ -999,12 +931,12 @@ bool check_file() {
   DH_AK_HEADER ak_header;
   int64 scan_load_bytes = 0;   /* Actual load bytes from scan */
   int64 scan_record_count = 0; /* Actual record count from scan */
-  int32_t apparent_modulus;   /* Calculated by examining groups */
-  int32_t grp;                /* Group number during scan */
-  int16_t sf;                /* Subfile index */
+  int32_t apparent_modulus;    /* Calculated by examining groups */
+  int32_t grp;                 /* Group number during scan */
+  int16_t sf;                  /* Subfile index */
   int64 offset;                /* Buffer offset into subfile */
-  DH_BLOCK* buff = NULL;
-  DH_BLOCK* ebuff = NULL;
+  DH_BLOCK *buff = NULL;
+  DH_BLOCK *ebuff = NULL;
   int16_t id_len;
   char id[MAX_ID_LEN + 1];
   int32_t hash_value;
@@ -1013,7 +945,7 @@ bool check_file() {
   int16_t used_bytes;
   int16_t rec_offset;
   int16_t rec_size;
-  DH_RECORD* rec_ptr;
+  DH_RECORD *rec_ptr;
   int32_t released_group = 0;
   int32_t last_offset;
   int32_t free_blocks;
@@ -1023,7 +955,7 @@ bool check_file() {
   int64 overflow_space;
 
   int32_t num_nodes;
-  char* ak_map = NULL;
+  char *ak_map = NULL;
 
 #define CHK_FREE 0
 #define CHK_OVERFLOW 1
@@ -1032,21 +964,19 @@ bool check_file() {
 
   int32_t n;
   int64 n64;
-  char* p;
-  char* q;
+  char *p;
+  char *q;
   int16_t i;
 
   num_groups_to_dump = 0;
 
-  buff = (DH_BLOCK*)malloc(DH_MAX_GROUP_SIZE_BYTES);
+  buff = (DH_BLOCK *)malloc(DH_MAX_GROUP_SIZE_BYTES);
 
   emit("Checking file header...\n");
 
   /* Check group size is valid */
 
-  if ((group_bytes & (DH_GROUP_MULTIPLIER - 1)) ||
-      (group_bytes < DH_GROUP_MULTIPLIER) ||
-      (group_bytes > DH_MAX_GROUP_SIZE_BYTES)) {
+  if ((group_bytes & (DH_GROUP_MULTIPLIER - 1)) || (group_bytes < DH_GROUP_MULTIPLIER) || (group_bytes > DH_MAX_GROUP_SIZE_BYTES)) {
     emit("Invalid group size (%ld bytes)\n", group_bytes);
     goto exit_check;
   }
@@ -1067,8 +997,7 @@ bool check_file() {
 
   /* Check big record size */
 
-  if ((header.params.big_rec_size < 0) ||
-      (header.params.big_rec_size > (header.group_size - BLOCK_HEADER_SIZE))) {
+  if ((header.params.big_rec_size < 0) || (header.params.big_rec_size > (header.group_size - BLOCK_HEADER_SIZE))) {
     emit("Large record size is invalid (%ld)\n", header.params.big_rec_size);
     if (fix()) {
       header.params.big_rec_size = header.group_size - BLOCK_HEADER_SIZE;
@@ -1080,10 +1009,8 @@ bool check_file() {
 
   /* Check split and merge loads */
 
-  if ((header.params.split_load < 0) || (header.params.merge_load < 0) ||
-      (header.params.split_load <= header.params.merge_load)) {
-    emit("Invalid split and/or merge loads (%d, %d)\n",
-         (int)(header.params.split_load), (int)(header.params.merge_load));
+  if ((header.params.split_load < 0) || (header.params.merge_load < 0) || (header.params.split_load <= header.params.merge_load)) {
+    emit("Invalid split and/or merge loads (%d, %d)\n", (int)(header.params.split_load), (int)(header.params.merge_load));
     if (fix()) {
       header.params.split_load = 50;
       header.params.merge_load = 80;
@@ -1102,7 +1029,7 @@ bool check_file() {
       {
         /* Read AK subfile header to check magic number */
 
-        if (!read_block(sf, 0, DH_AK_HEADER_SIZE, (char*)&ak_header)) {
+        if (!read_block(sf, 0, DH_AK_HEADER_SIZE, (char *)&ak_header)) {
           emit("Cannot read AK%d subfile header", (int)akno);
           if (fix()) {
             delete_subfile(sf);
@@ -1115,8 +1042,7 @@ bool check_file() {
         }
 
         if (ak_header.magic != DH_INDEX) {
-          emit("AK%d subfile has incorrect magic number (%04X)\n", (int)akno,
-               (int)(ak_header.magic));
+          emit("AK%d subfile has incorrect magic number (%04X)\n", (int)akno, (int)(ak_header.magic));
           if (fix()) {
             delete_subfile(sf);
             header.ak_map &= ~(1 << akno);
@@ -1167,7 +1093,7 @@ bool check_file() {
     sf = PRIMARY_SUBFILE;
     offset = (((int64)(grp - 1)) * group_bytes) + header_bytes;
 
-    if (!read_block(sf, offset, group_bytes, (char*)buff))
+    if (!read_block(sf, offset, group_bytes, (char *)buff))
       break;
 
     used_bytes = buff->used_bytes;
@@ -1181,21 +1107,17 @@ bool check_file() {
         emit("Active group %ld found after released group(s)!\n", grp);
         if (fix()) {
           if (ebuff == NULL) {
-            ebuff = (DH_BLOCK*)malloc(group_bytes);
+            ebuff = (DH_BLOCK *)malloc(group_bytes);
             memset(ebuff, 0, group_bytes);
             ebuff->next = 0;
             ebuff->used_bytes = BLOCK_HEADER_SIZE;
             ebuff->block_type = DHT_DATA;
           }
 
-          emit("   Corrected by initialising %d groups starting at %d\n",
-               grp - released_group, released_group);
+          emit("   Corrected by initialising %d groups starting at %d\n", grp - released_group, released_group);
 
           while (released_group < grp) {
-            write_block(
-                PRIMARY_SUBFILE,
-                (((int64)(released_group - 1)) * group_bytes) + header_bytes,
-                group_bytes, (char*)ebuff);
+            write_block(PRIMARY_SUBFILE, (((int64)(released_group - 1)) * group_bytes) + header_bytes, group_bytes, (char *)ebuff);
             released_group++;
           }
           released_group = 0;
@@ -1203,11 +1125,10 @@ bool check_file() {
       }
 
       if (buff->block_type != DHT_DATA) {
-        emit("Group %ld has incorrect block type (%d)\n", grp,
-             (int)(buff->block_type));
+        emit("Group %ld has incorrect block type (%d)\n", grp, (int)(buff->block_type));
         if (fix()) {
           buff->block_type = DHT_DATA;
-          write_block(sf, offset, group_bytes, (char*)buff);
+          write_block(sf, offset, group_bytes, (char *)buff);
           emit("   Corrected by setting block type\n");
         }
       }
@@ -1225,7 +1146,7 @@ bool check_file() {
         while (rec_offset < used_bytes) {
           scan_record_count++;
 
-          rec_ptr = (DH_RECORD*)(((char*)buff) + rec_offset);
+          rec_ptr = (DH_RECORD *)(((char *)buff) + rec_offset);
           rec_size = rec_ptr->next;
           scan_load_bytes += rec_size;
 
@@ -1252,10 +1173,7 @@ bool check_file() {
 
             /* Add group to list of groups to dump */
 
-            if ((fix_level == 2) &&
-                ((num_groups_to_dump == 0) ||
-                 (groups_to_dump[num_groups_to_dump - 1] != grp)) &&
-                (num_groups_to_dump < MAX_GROUPS_TO_DUMP)) {
+            if ((fix_level == 2) && ((num_groups_to_dump == 0) || (groups_to_dump[num_groups_to_dump - 1] != grp)) && (num_groups_to_dump < MAX_GROUPS_TO_DUMP)) {
               groups_to_dump[num_groups_to_dump++] = grp;
             }
 
@@ -1274,7 +1192,7 @@ bool check_file() {
                 /* Remove header part of faulty big record by sliding back
                     any further records.                                    */
 
-                p = (char*)rec_ptr;
+                p = (char *)rec_ptr;
                 q = p + rec_size;
                 n = used_bytes - (rec_size + rec_offset);
                 if (n > 0)
@@ -1283,7 +1201,7 @@ bool check_file() {
                 used_bytes -= rec_size;
                 buff->used_bytes = used_bytes;
 
-                if (!write_block(sf, offset, group_bytes, (char*)buff)) {
+                if (!write_block(sf, offset, group_bytes, (char *)buff)) {
                   goto exit_check;
                 }
 
@@ -1313,7 +1231,7 @@ bool check_file() {
 
         sf = OVERFLOW_SUBFILE;
         offset = next_buffer;
-        if (!read_block(sf, offset, group_bytes, (char*)buff))
+        if (!read_block(sf, offset, group_bytes, (char *)buff))
           break;
 
         used_bytes = buff->used_bytes;
@@ -1329,8 +1247,7 @@ bool check_file() {
   /* Check modulus */
 
   if (apparent_modulus != header.params.modulus) {
-    emit("Apparent modulus %ld differs from recorded modulus %ld\n",
-         apparent_modulus, header.params.modulus);
+    emit("Apparent modulus %ld differs from recorded modulus %ld\n", apparent_modulus, header.params.modulus);
     if (fix()) {
       header.params.modulus = apparent_modulus;
       if (!write_header())
@@ -1344,8 +1261,7 @@ bool check_file() {
   for (n = 1; n < header.params.modulus; n = n << 1) {
   }
   if (header.params.mod_value != n) {
-    emit("Incorrect mod_value (%ld), expected %ld\n", header.params.mod_value,
-         n);
+    emit("Incorrect mod_value (%ld), expected %ld\n", header.params.mod_value, n);
     if (fix()) {
       header.params.mod_value = n;
       if (!write_header())
@@ -1356,8 +1272,7 @@ bool check_file() {
 
   /* Check minimum modulus */
 
-  if ((header.params.min_modulus < 1) ||
-      (header.params.min_modulus > header.params.modulus)) {
+  if ((header.params.min_modulus < 1) || (header.params.min_modulus > header.params.modulus)) {
     emit("Minimum modulus is invalid (%ld)\n", header.params.min_modulus);
     if (fix()) {
       header.params.min_modulus = 1;
@@ -1370,8 +1285,7 @@ bool check_file() {
   /* Check load */
 
   if (scan_load_bytes != load_bytes) {
-    emit("Load error: Actual %s, file header %s\n", I64(scan_load_bytes),
-         I64(load_bytes));
+    emit("Load error: Actual %s, file header %s\n", I64(scan_load_bytes), I64(load_bytes));
     if (fix()) {
       load_bytes = scan_load_bytes;
       if (!write_header())
@@ -1386,8 +1300,7 @@ bool check_file() {
     if (header.record_count == 0) {
       emit("Header record count has not been set\n");
     } else {
-      emit("Record count error: Actual %s, file header (adjusted) %s\n",
-           I64(scan_record_count), I64(header.record_count - 1));
+      emit("Record count error: Actual %s, file header (adjusted) %s\n", I64(scan_record_count), I64(header.record_count - 1));
     }
     if (fix()) {
       header.record_count = scan_record_count + 1;
@@ -1415,12 +1328,11 @@ bool check_file() {
   emit("Checking free chain...\n");
   free_blocks = 0;
   last_offset = 0;
-  for (offset = GetLink(header.params.free_chain); offset != 0;
-       offset = GetLink(buff->next)) {
+  for (offset = GetLink(header.params.free_chain); offset != 0; offset = GetLink(buff->next)) {
     if (quit)
       goto exit_check;
 
-    if (!read_block(OVERFLOW_SUBFILE, offset, group_bytes, (char*)buff)) {
+    if (!read_block(OVERFLOW_SUBFILE, offset, group_bytes, (char *)buff)) {
       emit("\nRead error at 1.%s\n", I64(offset));
       break;
     }
@@ -1429,9 +1341,9 @@ bool check_file() {
       emit("Overflow block x%s has non-zero used byte count\n", I64(offset));
       if (fix()) {
         n = buff->next;
-        memset((char*)buff, 0, group_bytes);
+        memset((char *)buff, 0, group_bytes);
         buff->next = n;
-        write_block(OVERFLOW_SUBFILE, offset, group_bytes, (char*)buff);
+        write_block(OVERFLOW_SUBFILE, offset, group_bytes, (char *)buff);
         emit("   Corrected by clearing block\n");
       }
     }
@@ -1442,8 +1354,7 @@ bool check_file() {
 
     if (header.file_version < 2) {
       if (buff->next & ((int32_t)(group_bytes - 1))) {
-        emit("Faulty next block pointer x%08lX at 1.%s\n", buff->next,
-             I64(offset));
+        emit("Faulty next block pointer x%08lX at 1.%s\n", buff->next, I64(offset));
         break;
       }
     }
@@ -1496,15 +1407,14 @@ bool check_file() {
           if (fix()) {
             /* Add to AK free node chain */
 
-            if (read_block(ak_subfile, 0, DH_AK_HEADER_SIZE,
-                           (char*)&ak_header)) {
+            if (read_block(ak_subfile, 0, DH_AK_HEADER_SIZE, (char *)&ak_header)) {
               offset = ((int64)(n - 1)) * DH_AK_NODE_SIZE + ak_header_size;
-              memset((char*)buff, 0, DH_AK_NODE_SIZE);
-              ((DH_FREE_NODE*)buff)->node_type = AK_FREE_NODE;
-              ((DH_FREE_NODE*)buff)->next = ak_header.free_chain;
-              write_block(ak_subfile, offset, DH_AK_NODE_SIZE, (char*)buff);
+              memset((char *)buff, 0, DH_AK_NODE_SIZE);
+              ((DH_FREE_NODE *)buff)->node_type = AK_FREE_NODE;
+              ((DH_FREE_NODE *)buff)->next = ak_header.free_chain;
+              write_block(ak_subfile, offset, DH_AK_NODE_SIZE, (char *)buff);
               ak_header.free_chain = offset;
-              write_block(ak_subfile, 0, DH_AK_HEADER_SIZE, (char*)&ak_header);
+              write_block(ak_subfile, 0, DH_AK_HEADER_SIZE, (char *)&ak_header);
               emit("   Corrected by adding to free node chain\n");
             }
           }
@@ -1525,14 +1435,13 @@ bool check_file() {
 
     if (map[n] == 0) {
       offset = (((int64)(n - 1 + map_offset)) * group_bytes) + header_bytes;
-      emit("Overflow block %ld (x%s) unreferenced\n", n + map_offset,
-           I64(offset));
+      emit("Overflow block %ld (x%s) unreferenced\n", n + map_offset, I64(offset));
       if (fix()) {
         /* Add to free chain */
 
-        memset((char*)buff, 0, group_bytes);
+        memset((char *)buff, 0, group_bytes);
         buff->next = header.params.free_chain;
-        write_block(OVERFLOW_SUBFILE, offset, group_bytes, (char*)buff);
+        write_block(OVERFLOW_SUBFILE, offset, group_bytes, (char *)buff);
         header.params.free_chain = SetLink(offset);
         write_header();
         emit("   Corrected by adding to free chain\n");
@@ -1540,13 +1449,11 @@ bool check_file() {
     }
   }
 
-  emit("%ld overflow blocks allocated, %ld on free chain\n",
-       num_overflow_blocks, free_blocks);
+  emit("%ld overflow blocks allocated, %ld on free chain\n", num_overflow_blocks, free_blocks);
 
   /* Perform automatic dump and rebuild of faulty groups */
 
-  if (num_groups_to_dump &&
-      yesno("Dump and rebuild groups with mis-hashed records")) {
+  if (num_groups_to_dump && yesno("Dump and rebuild groups with mis-hashed records")) {
     /* Open temporary file */
 
     if (!open_dump_file())
@@ -1649,8 +1556,7 @@ bool open_dump_file() {
 
   sprintf(dump_file_name, "~QMFix.%d", (int32_t)getuid()); /* changed to %d from %lu */
 
-  dump_fu = open(dump_file_name, (int)(O_RDWR | O_CREAT | O_TRUNC | O_BINARY),
-                 default_access);
+  dump_fu = open(dump_file_name, (int)(O_RDWR | O_CREAT | O_TRUNC | O_BINARY), default_access);
   if (dump_fu < 0) {
     emit("Unable to open temporary file for group dump and rebuild\n");
     return FALSE;
@@ -1664,9 +1570,9 @@ bool open_dump_file() {
 
 bool write_dumped_data() {
   bool status = FALSE;
-  DH_BLOCK* buff;
+  DH_BLOCK *buff;
   int16_t rec_offset;
-  DH_RECORD* rec_ptr;
+  DH_RECORD *rec_ptr;
 
   buff = malloc(group_bytes);
   if (Seek(dump_fu, 0, SEEK_SET) < 0) {
@@ -1679,7 +1585,7 @@ bool write_dumped_data() {
 
     rec_offset = offsetof(DH_BLOCK, record);
     while (rec_offset < buff->used_bytes) {
-      rec_ptr = (DH_RECORD*)(((char*)buff) + rec_offset);
+      rec_ptr = (DH_RECORD *)(((char *)buff) + rec_offset);
       if (!write_record(rec_ptr))
         goto exit_write_dumped_data;
       rec_offset += rec_ptr->next;
@@ -1698,11 +1604,11 @@ exit_write_dumped_data:
 
 bool dump_group(int32_t grp) {
   bool status = FALSE;
-  int16_t sf; /* Subfile index */
+  int16_t sf;   /* Subfile index */
   int64 offset; /* Buffer offset into subfile */
-  DH_BLOCK* buff;
+  DH_BLOCK *buff;
 
-  buff = (DH_BLOCK*)malloc(DH_MAX_GROUP_SIZE_BYTES);
+  buff = (DH_BLOCK *)malloc(DH_MAX_GROUP_SIZE_BYTES);
 
   /* Walk through the group, dumping each group buffer into the work file
     but ignoring any large record chains as these will sort themselves
@@ -1711,14 +1617,13 @@ bool dump_group(int32_t grp) {
   sf = PRIMARY_SUBFILE;
   offset = (((int64)(grp - 1)) * group_bytes) + header_bytes;
   do {
-    if (!read_block(sf, offset, group_bytes, (char*)buff)) {
+    if (!read_block(sf, offset, group_bytes, (char *)buff)) {
       emit("Error reading group %ld for dump and rebuild\n", grp);
       goto exit_dump_group;
     }
 
-    if (write(dump_fu, (char*)buff, group_bytes) != group_bytes) {
-      emit("Error writing group %ld to temporary file for dump and rebuild\n",
-           grp);
+    if (write(dump_fu, (char *)buff, group_bytes) != group_bytes) {
+      emit("Error writing group %ld to temporary file for dump and rebuild\n", grp);
       goto exit_dump_group;
     }
 
@@ -1740,14 +1645,14 @@ bool clear_group(int32_t grp) {
   bool status = FALSE;
   int64 offset; /* Buffer offset into subfile */
   int64 new_offset;
-  DH_BLOCK* buff;
+  DH_BLOCK *buff;
 
-  buff = (DH_BLOCK*)malloc(DH_MAX_GROUP_SIZE_BYTES);
+  buff = (DH_BLOCK *)malloc(DH_MAX_GROUP_SIZE_BYTES);
 
   /* Read primary group */
 
   offset = (((int64)(grp - 1)) * group_bytes) + header_bytes;
-  if (!read_block(PRIMARY_SUBFILE, offset, group_bytes, (char*)buff)) {
+  if (!read_block(PRIMARY_SUBFILE, offset, group_bytes, (char *)buff)) {
     emit("Error reading group %ld for dump and rebuild\n", grp);
     goto exit_clear_group;
   }
@@ -1760,7 +1665,7 @@ bool clear_group(int32_t grp) {
   buff->next = 0;
   buff->used_bytes = BLOCK_HEADER_SIZE;
   buff->block_type = DHT_DATA;
-  write_block(PRIMARY_SUBFILE, offset, group_bytes, (char*)buff);
+  write_block(PRIMARY_SUBFILE, offset, group_bytes, (char *)buff);
 
   /* Give away any overflow blocks (but not large record space) */
 
@@ -1779,13 +1684,13 @@ exit_clear_group:
 
 bool release_chain(int64 offset) {
   bool status = FALSE;
-  DH_BLOCK* buff;
+  DH_BLOCK *buff;
   int64 new_offset;
 
   buff = malloc(group_bytes);
 
   while (offset) {
-    if (!read_block(OVERFLOW_SUBFILE, offset, group_bytes, (char*)buff)) {
+    if (!read_block(OVERFLOW_SUBFILE, offset, group_bytes, (char *)buff)) {
       emit("Error reading overflow block at %s\n", I64(offset));
       goto exit_release_chain;
     }
@@ -1794,9 +1699,9 @@ bool release_chain(int64 offset) {
 
     /* Add to free chain */
 
-    memset((char*)buff, 0, group_bytes);
+    memset((char *)buff, 0, group_bytes);
     buff->next = GetLink(header.params.free_chain);
-    write_block(OVERFLOW_SUBFILE, offset, group_bytes, (char*)buff);
+    write_block(OVERFLOW_SUBFILE, offset, group_bytes, (char *)buff);
     header.params.free_chain = SetLink(offset);
     write_header();
     offset = new_offset;
@@ -1814,13 +1719,13 @@ exit_release_chain:
    get_overflow()  -  Allocate a new overflow block                       */
 
 int32_t get_overflow() {
-  DH_BLOCK* buff;
+  DH_BLOCK *buff;
   int64 offset;
 
   buff = malloc(group_bytes);
 
   if ((offset = GetLink(header.params.free_chain)) != 0) {
-    if (!read_block(OVERFLOW_SUBFILE, offset, BLOCK_HEADER_SIZE, (char*)buff)) {
+    if (!read_block(OVERFLOW_SUBFILE, offset, BLOCK_HEADER_SIZE, (char *)buff)) {
       offset = 0;
       goto exit_get_overflow;
     }
@@ -1850,7 +1755,7 @@ int32_t get_overflow() {
 
     memset(buff, '\0', group_bytes);
 
-    if (write(fu[OVERFLOW_SUBFILE], (char*)buff, group_bytes) != group_bytes) {
+    if (write(fu[OVERFLOW_SUBFILE], (char *)buff, group_bytes) != group_bytes) {
       emit("Write error extending overflow space\n");
       offset = 0;
       goto exit_get_overflow;
@@ -1872,9 +1777,9 @@ void show_group(int32_t group) {
   int16_t rec_offset;
   int id_len;
   int64 big_offset;
-  char* buffer = NULL;
-  DH_BLOCK* buff;
-  DH_RECORD* rec_ptr;
+  char *buffer = NULL;
+  DH_BLOCK *buff;
+  DH_RECORD *rec_ptr;
   DH_BIG_BLOCK big_block;
   bool first_big;
   char id[MAX_ID_LEN + 1];
@@ -1892,7 +1797,7 @@ Addr          Next Fl LR Chain Data len Id
 */
 
   buffer = malloc(DH_MAX_GROUP_SIZE_BYTES);
-  buff = (DH_BLOCK*)buffer;
+  buff = (DH_BLOCK *)buffer;
 
   offset = (((int64)(group - 1)) * group_bytes) + header_bytes;
 
@@ -1922,25 +1827,21 @@ Addr          Next Fl LR Chain Data len Id
     else
       sprintf(block_type, "unknown (%d)", buff->block_type);
 
-    emit("   Type: %s, Used space %04X, Spare space %04X\n", block_type,
-         (int)used_bytes, (int)(group_bytes - used_bytes));
+    emit("   Type: %s, Used space %04X, Spare space %04X\n", block_type, (int)used_bytes, (int)(group_bytes - used_bytes));
 
     rec_offset = offsetof(DH_BLOCK, record);
 
-    emit("Addr          Next Fl LR Chain Data len Id  [Next %s]\n",
-         I64(GetLink(buff->next)));
+    emit("Addr          Next Fl LR Chain Data len Id  [Next %s]\n", I64(GetLink(buff->next)));
 
     while (rec_offset < used_bytes) {
       if (quit)
         goto exit_show_group;
 
-      rec_ptr = (DH_RECORD*)(buffer + rec_offset);
+      rec_ptr = (DH_RECORD *)(buffer + rec_offset);
 
       id_len = rec_ptr->id_len;
       if (rec_ptr->flags & DH_BIG_REC) {
-        emit("%s: %04X %02X %08lX ........ %.*s\n", I64(offset + rec_offset),
-             (int)(rec_ptr->next), (int)(rec_ptr->flags), rec_ptr->data.big_rec,
-             id_len, rec_ptr->id);
+        emit("%s: %04X %02X %08lX ........ %.*s\n", I64(offset + rec_offset), (int)(rec_ptr->next), (int)(rec_ptr->flags), rec_ptr->data.big_rec, id_len, rec_ptr->id);
 
         big_offset = GetLink(rec_ptr->data.big_rec);
         first_big = TRUE;
@@ -1949,8 +1850,7 @@ Addr          Next Fl LR Chain Data len Id
             goto exit_show_group;
 
           emit("%s> ", I64(big_offset));
-          if (!read_block(OVERFLOW_SUBFILE, big_offset, DH_BIG_BLOCK_SIZE,
-                          (char*)(&big_block))) {
+          if (!read_block(OVERFLOW_SUBFILE, big_offset, DH_BIG_BLOCK_SIZE, (char *)(&big_block))) {
             emit("Read error at %d.%s\n", OVERFLOW_SUBFILE, I64(big_offset));
             break;
           }
@@ -1966,9 +1866,7 @@ Addr          Next Fl LR Chain Data len Id
           big_offset = GetLink(big_block.next);
         }
       } else {
-        emit("%s: %04X %02X ........ %08lX %.*s\n", I64(offset + rec_offset),
-             (int)(rec_ptr->next), (int)(rec_ptr->flags),
-             rec_ptr->data.data_len, id_len, rec_ptr->id);
+        emit("%s: %04X %02X ........ %08lX %.*s\n", I64(offset + rec_offset), (int)(rec_ptr->next), (int)(rec_ptr->flags), rec_ptr->data.data_len, id_len, rec_ptr->id);
       }
 
       memcpy(id, rec_ptr->id, id_len);
@@ -2008,14 +1906,14 @@ Private void show_node(int32_t group) {
   int64 offset;
   int16_t used_bytes;
   int16_t rec_offset;
-  DH_RECORD* rec_ptr;
+  DH_RECORD *rec_ptr;
   int id_len;
   int32_t big_offset;
   bool first_big;
   DH_BIG_NODE big_node;
   int16_t child_count;
   int64 child_offset;
-  char* p;
+  char *p;
   int16_t i;
   int key_len;
 
@@ -2026,45 +1924,35 @@ Private void show_node(int32_t group) {
     return;
   }
 
-  switch (((DH_INT_NODE*)&buffer)->node_type) {
+  switch (((DH_INT_NODE *)&buffer)->node_type) {
     case AK_FREE_NODE:
-      emit("Free node %ld (x%s): Free space.  Next %ld (x%s).\n", group,
-           I64(offset), GetAKNodeNum(((DH_FREE_NODE*)&buffer)->next),
-           I64(GetAKLink(((DH_FREE_NODE*)&buffer)->next)));
+      emit("Free node %ld (x%s): Free space.  Next %ld (x%s).\n", group, I64(offset), GetAKNodeNum(((DH_FREE_NODE *)&buffer)->next), I64(GetAKLink(((DH_FREE_NODE *)&buffer)->next)));
       break;
 
     case AK_INT_NODE:
-      used_bytes = ((DH_INT_NODE*)&buffer)->used_bytes;
-      child_count = ((DH_INT_NODE*)&buffer)->child_count;
-      emit("Internal node %ld (x%s): Child count %d.\n", group, I64(offset),
-           (int)child_count);
-      emit("Used space %04X, Spare space %04X\n", (int)used_bytes,
-           (int)(DH_AK_NODE_SIZE - used_bytes));
+      used_bytes = ((DH_INT_NODE *)&buffer)->used_bytes;
+      child_count = ((DH_INT_NODE *)&buffer)->child_count;
+      emit("Internal node %ld (x%s): Child count %d.\n", group, I64(offset), (int)child_count);
+      emit("Used space %04X, Spare space %04X\n", (int)used_bytes, (int)(DH_AK_NODE_SIZE - used_bytes));
 
       /*
 Chld   Node NodeAddr     Len Key
 123: 123456 000000000000 123 50xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 */
       emit("Chld   Node NodeAddr     Len Key\n");
-      for (i = 0, p = ((DH_INT_NODE*)&buffer)->keys; i < child_count;
-           i++, p += key_len) {
-        key_len = ((DH_INT_NODE*)&buffer)->key_len[i];
-        child_offset = GetAKLink(((DH_INT_NODE*)&buffer)->child[i]);
-        emit("%3d: %6ld %s %3d %.*s\n", (int)i, OffsetToNode(child_offset),
-             I64(child_offset), key_len, min(50, key_len), p);
+      for (i = 0, p = ((DH_INT_NODE *)&buffer)->keys; i < child_count; i++, p += key_len) {
+        key_len = ((DH_INT_NODE *)&buffer)->key_len[i];
+        child_offset = GetAKLink(((DH_INT_NODE *)&buffer)->child[i]);
+        emit("%3d: %6ld %s %3d %.*s\n", (int)i, OffsetToNode(child_offset), I64(child_offset), key_len, min(50, key_len), p);
       }
       break;
 
     case AK_TERM_NODE:
-      used_bytes = ((DH_TERM_NODE*)&buffer)->used_bytes;
+      used_bytes = ((DH_TERM_NODE *)&buffer)->used_bytes;
       emit("Terminal node %ld (x%s):\n", group, I64(offset));
-      emit("Left = %ld (x%s), Right = %ld (x%s).\n",
-           GetAKNodeNum(((DH_TERM_NODE*)&buffer)->left),
-           I64(GetAKLink(((DH_TERM_NODE*)&buffer)->left)),
-           GetAKNodeNum(((DH_TERM_NODE*)&buffer)->right),
-           I64(GetAKLink(((DH_TERM_NODE*)&buffer)->right)));
-      emit("Used space %04X, Spare space %04X\n", (int)used_bytes,
-           (int)(DH_AK_NODE_SIZE - used_bytes));
+      emit("Left = %ld (x%s), Right = %ld (x%s).\n", GetAKNodeNum(((DH_TERM_NODE *)&buffer)->left), I64(GetAKLink(((DH_TERM_NODE *)&buffer)->left)), GetAKNodeNum(((DH_TERM_NODE *)&buffer)->right),
+           I64(GetAKLink(((DH_TERM_NODE *)&buffer)->right)));
+      emit("Used space %04X, Spare space %04X\n", (int)used_bytes, (int)(DH_AK_NODE_SIZE - used_bytes));
 
       /*
 Addr          Next Fl LR Chain Data len Id
@@ -2079,40 +1967,32 @@ Addr          Next Fl LR Chain Data len Id
 
       emit("Addr          Next Fl LR Chain Data len Id\n");
       while (rec_offset < used_bytes) {
-        rec_ptr = (DH_RECORD*)(buffer + rec_offset);
+        rec_ptr = (DH_RECORD *)(buffer + rec_offset);
 
         id_len = rec_ptr->id_len;
         if (rec_ptr->flags & DH_BIG_REC) {
-          emit("%s: %04X %02X %08lX ........ %.*s\n", I64(offset + rec_offset),
-               (int)(rec_ptr->next), (int)(rec_ptr->flags),
-               GetAKNodeNum(rec_ptr->data.big_rec), min(id_len, 39),
-               rec_ptr->id);
+          emit("%s: %04X %02X %08lX ........ %.*s\n", I64(offset + rec_offset), (int)(rec_ptr->next), (int)(rec_ptr->flags), GetAKNodeNum(rec_ptr->data.big_rec), min(id_len, 39), rec_ptr->id);
 
           big_offset = GetAKLink(rec_ptr->data.big_rec);
           first_big = TRUE;
           while (big_offset != 0) {
             emit("%s> ", I64(big_offset));
-            if (!read_block(subfile, big_offset, DH_AK_BIG_NODE_SIZE,
-                            (char*)(&big_node))) {
+            if (!read_block(subfile, big_offset, DH_AK_BIG_NODE_SIZE, (char *)(&big_node))) {
               emit("Read error at %d.%s\n", (int)subfile, I64(big_offset));
               break;
             }
 
             if (first_big) {
-              emit(".... .. %08lX %08lX (Node %ld)\n", big_node.next,
-                   big_node.data_len, OffsetToNode(big_offset));
+              emit(".... .. %08lX %08lX (Node %ld)\n", big_node.next, big_node.data_len, OffsetToNode(big_offset));
               first_big = FALSE;
             } else {
-              emit(".... .. %08lX          (Node %ld)\n", big_node.next,
-                   OffsetToNode(big_offset));
+              emit(".... .. %08lX          (Node %ld)\n", big_node.next, OffsetToNode(big_offset));
             }
 
             big_offset = GetAKLink(big_node.next);
           }
         } else {
-          emit("%s: %04X %02X ........ %08lX %.*s\n", I64(offset + rec_offset),
-               (int)(rec_ptr->next), (int)(rec_ptr->flags),
-               rec_ptr->data.data_len, min(id_len, 40), rec_ptr->id);
+          emit("%s: %04X %02X ........ %08lX %.*s\n", I64(offset + rec_offset), (int)(rec_ptr->next), (int)(rec_ptr->flags), rec_ptr->data.data_len, min(id_len, 40), rec_ptr->id);
         }
 
         rec_offset += rec_ptr->next;
@@ -2120,23 +2000,17 @@ Addr          Next Fl LR Chain Data len Id
       break;
 
     case AK_ITYPE_NODE:
-      emit(
-          "Node %ld (x%s): I-type buffer.  Used bytes %04X.  Next %ld (x%s).\n",
-          group, I64(offset), (int)(((DH_ITYPE_NODE*)&buffer)->used_bytes),
-          GetAKNodeNum(((DH_ITYPE_NODE*)&buffer)->next),
-          I64(GetAKLink(((DH_ITYPE_NODE*)&buffer)->next)));
+      emit("Node %ld (x%s): I-type buffer.  Used bytes %04X.  Next %ld (x%s).\n", group, I64(offset), (int)(((DH_ITYPE_NODE *)&buffer)->used_bytes), GetAKNodeNum(((DH_ITYPE_NODE *)&buffer)->next),
+           I64(GetAKLink(((DH_ITYPE_NODE *)&buffer)->next)));
       break;
 
     case AK_BIGREC_NODE:
-      emit("Node %ld (x%s): Big record.  Used bytes %04X.  Next %ld (x%s).\n",
-           group, I64(offset), (int)(((DH_BIG_NODE*)&buffer)->used_bytes),
-           GetAKNodeNum(((DH_ITYPE_NODE*)&buffer)->next),
-           I64(GetAKLink(((DH_BIG_NODE*)&buffer)->next)));
+      emit("Node %ld (x%s): Big record.  Used bytes %04X.  Next %ld (x%s).\n", group, I64(offset), (int)(((DH_BIG_NODE *)&buffer)->used_bytes), GetAKNodeNum(((DH_ITYPE_NODE *)&buffer)->next),
+           I64(GetAKLink(((DH_BIG_NODE *)&buffer)->next)));
       break;
 
     default:
-      emit("Unrecognised node type (%d)\n",
-           (int)((DH_INT_NODE*)&buffer)->node_type);
+      emit("Unrecognised node type (%d)\n", (int)((DH_INT_NODE *)&buffer)->node_type);
   }
 
   emit("\n");
@@ -2149,13 +2023,11 @@ bool open_subfile(int16_t sf) {
   char path[MAX_PATHNAME_LEN + 1];  // was hardcoded to 160.
   // converted to snprintf() -gwb 23Feb20
   if ((sf >= AK_BASE_SUBFILE) && (header.akpath[0] != '\0')) {
-    if (snprintf(path, MAX_PATHNAME_LEN + 1, "%s%c~%d", header.akpath, DS,
-                 (int)sf) >= (MAX_PATHNAME_LEN + 1)) {
+    if (snprintf(path, MAX_PATHNAME_LEN + 1, "%s%c~%d", header.akpath, DS, (int)sf) >= (MAX_PATHNAME_LEN + 1)) {
       emit("Overflow of max file/pathname size. Truncated to:\n\"%s\"\n", path);
     }
   } else {
-    if (snprintf(path, MAX_PATHNAME_LEN + 1, "%s%c~%d", filename, DS,
-                 (int)sf) >= (MAX_PATHNAME_LEN + 1)) {
+    if (snprintf(path, MAX_PATHNAME_LEN + 1, "%s%c~%d", filename, DS, (int)sf) >= (MAX_PATHNAME_LEN + 1)) {
       emit("Overflow of max file/pathname size. Truncated to:\n\"%s\"\n", path);
     }
   }
@@ -2167,7 +2039,7 @@ bool open_subfile(int16_t sf) {
 /* ======================================================================
    read_block()  -  Read a data block                                     */
 
-bool read_block(int16_t sf, int64 offset, int16_t bytes, char* buff) {
+bool read_block(int16_t sf, int64 offset, int16_t bytes, char *buff) {
   if (Seek(fu[sf], offset, SEEK_SET) < 0) {
     return FALSE;
   }
@@ -2182,7 +2054,7 @@ bool read_block(int16_t sf, int64 offset, int16_t bytes, char* buff) {
 /* ======================================================================
    write_block()  -  Write a data block                                   */
 
-bool write_block(int16_t sf, int64 offset, int16_t bytes, char* buff) {
+bool write_block(int16_t sf, int64 offset, int16_t bytes, char *buff) {
   if (Seek(fu[sf], offset, SEEK_SET) < 0) {
     return FALSE;
   }
@@ -2198,7 +2070,7 @@ bool write_block(int16_t sf, int64 offset, int16_t bytes, char* buff) {
    read_header()  -  Read primary subfile header                          */
 
 bool read_header() {
-  if (!read_block(PRIMARY_SUBFILE, 0, DH_HEADER_SIZE, (char*)&header)) {
+  if (!read_block(PRIMARY_SUBFILE, 0, DH_HEADER_SIZE, (char *)&header)) {
     return FALSE;
   }
 
@@ -2214,7 +2086,7 @@ bool write_header() {
   header.params.load_bytes = load_bytes & 0xFFFFFFFF;
   header.params.extended_load_bytes = load_bytes >> 32;
 
-  if (!write_block(PRIMARY_SUBFILE, 0, DH_HEADER_SIZE, (char*)&header)) {
+  if (!write_block(PRIMARY_SUBFILE, 0, DH_HEADER_SIZE, (char *)&header)) {
     perror("Error writing primary subfile header");
     return FALSE;
   }
@@ -2229,13 +2101,11 @@ bool delete_subfile(int16_t sf) {
   char path[MAX_PATHNAME_LEN + 1];  // was hardcoded 160
   // converted to snprintf() -gwb 23Feb20
   if ((sf >= AK_BASE_SUBFILE) && (header.akpath[0] != '0')) {
-    if (snprintf(path, MAX_PATHNAME_LEN + 1, "%s%c~%d", header.akpath, DS,
-                 (int)sf) >= (MAX_PATHNAME_LEN + 1)) {
+    if (snprintf(path, MAX_PATHNAME_LEN + 1, "%s%c~%d", header.akpath, DS, (int)sf) >= (MAX_PATHNAME_LEN + 1)) {
       emit("Overflow of max file/pathname size. Truncated to:\n\"%s\"\n", path);
     }
   } else {
-    if (snprintf(path, MAX_PATHNAME_LEN + 1, "%s%c~%d", filename, DS,
-                 (int)sf) >= (MAX_PATHNAME_LEN + 1)) {
+    if (snprintf(path, MAX_PATHNAME_LEN + 1, "%s%c~%d", filename, DS, (int)sf) >= (MAX_PATHNAME_LEN + 1)) {
       emit("Overflow of max file/pathname size. Truncated to:\n\"%s\"\n", path);
     }
   }
@@ -2254,9 +2124,9 @@ bool delete_subfile(int16_t sf) {
 bool read_qmconfig() {
   char path[200 + 1];
   char rec[200 + 1];
-  FILE* ini_file;
+  FILE *ini_file;
   char section[32 + 1];
-  char* p;
+  char *p;
   int n;
 
   if (!GetConfigPath(path))
@@ -2297,10 +2167,7 @@ bool read_qmconfig() {
 /* ======================================================================
    Map a big record                                                       */
 
-bool map_big_rec(int16_t rec_hdr_sf,
-                 int64 rec_hdr_offset,
-                 DH_RECORD* rec_ptr,
-                 int32_t* map) {
+bool map_big_rec(int16_t rec_hdr_sf, int64 rec_hdr_offset, DH_RECORD *rec_ptr, int32_t *map) {
   int64 offset;
   int64 next_offset;
   DH_BIG_BLOCK big_block;
@@ -2312,20 +2179,17 @@ bool map_big_rec(int16_t rec_hdr_sf,
     if (quit)
       return TRUE;
 
-    if (!read_block(OVERFLOW_SUBFILE, offset, DH_BIG_BLOCK_SIZE,
-                    (char*)(&big_block))) {
+    if (!read_block(OVERFLOW_SUBFILE, offset, DH_BIG_BLOCK_SIZE, (char *)(&big_block))) {
       emit("Read error at %d.%s\n", OVERFLOW_SUBFILE, I64(offset));
       return FALSE;
     }
 
     if (big_block.block_type != DHT_BIG_REC) {
-      emit("Big record overflow block x%s has incorrect block type (%d)\n",
-           I64(offset), (int)(big_block.block_type));
+      emit("Big record overflow block x%s has incorrect block type (%d)\n", I64(offset), (int)(big_block.block_type));
 
       if (fix()) {
         big_block.block_type = DHT_BIG_REC;
-        write_block(OVERFLOW_SUBFILE, offset, DH_BIG_BLOCK_SIZE,
-                    (char*)(&big_block));
+        write_block(OVERFLOW_SUBFILE, offset, DH_BIG_BLOCK_SIZE, (char *)(&big_block));
         emit("   Corrected by setting block type\n");
       }
     }
@@ -2343,18 +2207,14 @@ bool map_big_rec(int16_t rec_hdr_sf,
 /* ======================================================================
    tag_block()  -  Construct space map                                    */
 
-void tag_block(int64 offset,
-               int16_t ref_subfile,
-               int64 ref_offset,
-               int16_t usage) {
+void tag_block(int64 offset, int16_t ref_subfile, int64 ref_offset, int16_t usage) {
   int32_t ogrp;
   int32_t ref_grp;
   int32_t n;
   int64 other_offset;
   int32_t other_group;
-  static char* uses[] = {"free block", "overflow block", "big record block",
-                         "ECB"};
-  static char* sf[] = {"primary", "overflow"};
+  static char *uses[] = {"free block", "overflow block", "big record block", "ECB"};
+  static char *sf[] = {"primary", "overflow"};
 
   /* Map cell format:
    uusooooooooooooooooooooooooooooo
@@ -2387,31 +2247,25 @@ void tag_block(int64 offset,
 
   n = map[ogrp - map_offset];
   if (n == 0) {
-    map[ogrp - map_offset] =
-        (((int32_t)usage) << 30) | ((int32_t)ref_subfile << 29) | ref_grp;
+    map[ogrp - map_offset] = (((int32_t)usage) << 30) | ((int32_t)ref_subfile << 29) | ref_grp;
   } else {
     other_group = n & 0x1FFFFFFF;
     other_offset = ((int64)n) * group_bytes + header_bytes;
-    emit("%s %ld (x%s) also referenced as %s from %s group %ld (x%s)\n",
-         uses[usage],         /* Block type from this call */
-         ogrp,                /* Group number */
-         I64(offset),         /* Group offset */
-         uses[n >> 30],       /* Block type already recorded */
-         sf[(n >> 29) & 0x1], /* Subfile of other reference */
-         other_group,         /* Group number of other reference */
-         I64(other_offset));  /* Group offset of other reference */
+    emit("%s %ld (x%s) also referenced as %s from %s group %ld (x%s)\n", uses[usage], /* Block type from this call */
+         ogrp,                                                                        /* Group number */
+         I64(offset),                                                                 /* Group offset */
+         uses[n >> 30],                                                               /* Block type already recorded */
+         sf[(n >> 29) & 0x1],                                                         /* Subfile of other reference */
+         other_group,                                                                 /* Group number of other reference */
+         I64(other_offset));                                                          /* Group offset of other reference */
   }
 }
 
 /* ======================================================================
    map_node()  -  Map an AK node                                          */
 
-void map_node(int16_t sf,
-              int32_t node,
-              char* ak_map,
-              int32_t num_nodes,
-              int32_t parent) {
-  char* buff = NULL;
+void map_node(int16_t sf, int32_t node, char *ak_map, int32_t num_nodes, int32_t parent) {
+  char *buff = NULL;
   int64 offset;
   u_char node_type;
   int16_t i;
@@ -2419,7 +2273,7 @@ void map_node(int16_t sf,
   int16_t used_bytes;
   int16_t rec_offset;
   DH_BIG_NODE big_node;
-  DH_RECORD* rec_ptr;
+  DH_RECORD *rec_ptr;
   int64 big_offset;
   int32_t big_node_no;
 
@@ -2438,11 +2292,10 @@ void map_node(int16_t sf,
     goto exit_map_node;
   }
 
-  node_type = ((DH_INT_NODE*)buff)->node_type;
+  node_type = ((DH_INT_NODE *)buff)->node_type;
 
   if (ak_map[node] != (char)-1) {
-    emit("Type %d node %ld also referenced from node %ld\n", (int)node_type,
-         node, parent);
+    emit("Type %d node %ld also referenced from node %ld\n", (int)node_type, node, parent);
     goto exit_map_node;
   }
 
@@ -2456,8 +2309,8 @@ void map_node(int16_t sf,
     case AK_INT_NODE:
       /* Process all child nodes */
 
-      for (i = 0; i < ((DH_INT_NODE*)buff)->child_count; i++) {
-        child = GetAKNodeNum(((DH_INT_NODE*)buff)->child[i]);
+      for (i = 0; i < ((DH_INT_NODE *)buff)->child_count; i++) {
+        child = GetAKNodeNum(((DH_INT_NODE *)buff)->child[i]);
         map_node(sf, child, ak_map, num_nodes, node);
         if (quit)
           return;
@@ -2465,13 +2318,13 @@ void map_node(int16_t sf,
       break;
 
     case AK_TERM_NODE:
-      used_bytes = ((DH_TERM_NODE*)buff)->used_bytes;
+      used_bytes = ((DH_TERM_NODE *)buff)->used_bytes;
       rec_offset = TERM_NODE_HEADER_SIZE;
       while (rec_offset < used_bytes) {
         if (quit)
           return;
 
-        rec_ptr = (DH_RECORD*)(buff + rec_offset);
+        rec_ptr = (DH_RECORD *)(buff + rec_offset);
         if (rec_ptr->flags & DH_BIG_REC) {
           big_offset = GetAKLink(rec_ptr->data.big_rec);
           while (big_offset != 0) {
@@ -2488,15 +2341,13 @@ void map_node(int16_t sf,
               goto exit_map_node;
             }
 
-            if (!read_block(sf, big_offset, DH_BIG_BLOCK_SIZE,
-                            (char*)(&big_node))) {
+            if (!read_block(sf, big_offset, DH_BIG_BLOCK_SIZE, (char *)(&big_node))) {
               emit("Read error\n");
               break;
             }
 
             if (big_node.node_type != AK_BIGREC_NODE) {
-              emit("Big rec node %ld referenced from node %ld has type %d\n",
-                   big_node_no, parent, big_node.node_type);
+              emit("Big rec node %ld referenced from node %ld has type %d\n", big_node_no, parent, big_node.node_type);
               goto exit_map_node;
             }
 
@@ -2519,8 +2370,7 @@ void map_node(int16_t sf,
 
     default:
       ak_map[node] = -4;
-      emit("Unexpected node type %d in node %ld referenced from node %ld\n",
-           (int)(((DH_INT_NODE*)buff)->node_type), node, parent);
+      emit("Unexpected node type %d in node %ld referenced from node %ld\n", (int)(((DH_INT_NODE *)buff)->node_type), node, parent);
       break;
   }
 
@@ -2532,19 +2382,18 @@ exit_map_node:
 /* ======================================================================
    map_ak_free_chain()  -  Add AK free chain to space map                 */
 
-void map_ak_free_chain(int16_t sf, char* map, int32_t num_nodes) {
+void map_ak_free_chain(int16_t sf, char *map, int32_t num_nodes) {
   char buff[DH_AK_NODE_SIZE];
   DH_AK_HEADER ak_header;
   int64 offset;
   int32_t node;
   int32_t last_node;
 
-  read_block(sf, 0, DH_AK_HEADER_SIZE, (char*)&ak_header);
+  read_block(sf, 0, DH_AK_HEADER_SIZE, (char *)&ak_header);
 
   emit("Checking AK free chain\n");
   last_node = 0;
-  for (offset = GetAKLink(ak_header.free_chain); offset != 0;
-       offset = GetAKLink(((DH_FREE_NODE*)buff)->next)) {
+  for (offset = GetAKLink(ak_header.free_chain); offset != 0; offset = GetAKLink(((DH_FREE_NODE *)buff)->next)) {
     if (quit)
       return;
 
@@ -2556,8 +2405,7 @@ void map_ak_free_chain(int16_t sf, char* map, int32_t num_nodes) {
 
     if (!read_block(sf, offset, DH_AK_NODE_SIZE, buff)) {
       map[node] = -3;
-      emit("Read error on node %ld referenced from node %ld\n", node,
-           last_node);
+      emit("Read error on node %ld referenced from node %ld\n", node, last_node);
       goto exit_map_ak_free_chain;
     }
 
@@ -2568,8 +2416,7 @@ void map_ak_free_chain(int16_t sf, char* map, int32_t num_nodes) {
 
   emit("Checking I-type chain\n");
   last_node = 0;
-  for (offset = GetAKLink(ak_header.itype_ptr); offset != 0;
-       offset = GetAKLink(((DH_ITYPE_NODE*)buff)->next)) {
+  for (offset = GetAKLink(ak_header.itype_ptr); offset != 0; offset = GetAKLink(((DH_ITYPE_NODE *)buff)->next)) {
     if (quit)
       return;
 
@@ -2581,8 +2428,7 @@ void map_ak_free_chain(int16_t sf, char* map, int32_t num_nodes) {
 
     if (!read_block(sf, offset, DH_AK_NODE_SIZE, buff)) {
       map[node] = -3;
-      emit("Read error on node %ld referenced from node %ld\n", node,
-           last_node);
+      emit("Read error on node %ld referenced from node %ld\n", node, last_node);
       goto exit_map_ak_free_chain;
     }
 
@@ -2602,8 +2448,8 @@ bool recover_space() {
   char oldpath[MAX_PATHNAME_LEN + 1];
   char newpath[MAX_PATHNAME_LEN + 1];
   int ofu;                   /* New overflow subfile */
-  DH_BLOCK* buff = NULL;     /* Main buffer for group scan */
-  DH_BLOCK* big_buff = NULL; /* Big record buffer */
+  DH_BLOCK *buff = NULL;     /* Main buffer for group scan */
+  DH_BLOCK *big_buff = NULL; /* Big record buffer */
   int64 overflow_offset;
   int64 offset;
   int64 big_offset;
@@ -2613,14 +2459,14 @@ bool recover_space() {
   int64 rewrite_offset;
   int16_t used_bytes;
   int16_t rec_offset;
-  DH_RECORD* rec_ptr;
+  DH_RECORD *rec_ptr;
   bool rewrite;
   int32_t grp;
   int64 n;
   bool damaged = FALSE;
 
-  buff = (DH_BLOCK*)malloc(group_bytes);
-  big_buff = (DH_BLOCK*)malloc(group_bytes);
+  buff = (DH_BLOCK *)malloc(group_bytes);
+  big_buff = (DH_BLOCK *)malloc(group_bytes);
 
   emit("Recovering space\n");
 
@@ -2640,15 +2486,11 @@ bool recover_space() {
 
   /* ---------- Overflow subfile  -  Create a new overflow subfile */
   // converted to snprintf() -gwb 23Feb20
-  if (snprintf(oldpath, MAX_PATHNAME_LEN + 1, "%s%c~1", filename, DS) >=
-      (MAX_PATHNAME_LEN + 1)) {
-    emit("Overflow of max file/pathname size. Truncated to:\n\"%s\"\n",
-         oldpath);
+  if (snprintf(oldpath, MAX_PATHNAME_LEN + 1, "%s%c~1", filename, DS) >= (MAX_PATHNAME_LEN + 1)) {
+    emit("Overflow of max file/pathname size. Truncated to:\n\"%s\"\n", oldpath);
   }
-  if (snprintf(newpath, MAX_PATHNAME_LEN + 1, "%s%c~~1", filename, DS) >=
-      (MAX_PATHNAME_LEN + 1)) {
-    emit("Overflow of max file/pathname size. Truncated to:\n\"%s\"\n",
-         newpath);
+  if (snprintf(newpath, MAX_PATHNAME_LEN + 1, "%s%c~~1", filename, DS) >= (MAX_PATHNAME_LEN + 1)) {
+    emit("Overflow of max file/pathname size. Truncated to:\n\"%s\"\n", newpath);
   }
   ofu = open(newpath, O_RDWR | O_BINARY | O_CREAT, default_access);
   if (ofu < 0) {
@@ -2664,8 +2506,7 @@ bool recover_space() {
 
   /* Copy overflow header */
 
-  if ((!read_block(OVERFLOW_SUBFILE, 0, header_bytes, (char*)buff)) ||
-      (write(ofu, buff, header_bytes) != header_bytes)) {
+  if ((!read_block(OVERFLOW_SUBFILE, 0, header_bytes, (char *)buff)) || (write(ofu, buff, header_bytes) != header_bytes)) {
     goto exit_recover_space;
   }
   overflow_offset = header_bytes;
@@ -2682,7 +2523,7 @@ bool recover_space() {
     sf = PRIMARY_SUBFILE;
     offset = (((int64)(grp - 1)) * group_bytes) + header_bytes;
     do {
-      if (!read_block(sf, offset, group_bytes, (char*)buff)) {
+      if (!read_block(sf, offset, group_bytes, (char *)buff)) {
         goto exit_recover_space;
       }
 
@@ -2692,12 +2533,11 @@ bool recover_space() {
       rewrite_offset = 0;
       used_bytes = buff->used_bytes;
 
-      for (rec_offset = offsetof(DH_BLOCK, record); rec_offset < used_bytes;
-           rec_offset += rec_ptr->next) {
-        rec_ptr = (DH_RECORD*)(((char*)buff) + rec_offset);
+      for (rec_offset = offsetof(DH_BLOCK, record); rec_offset < used_bytes; rec_offset += rec_ptr->next) {
+        rec_ptr = (DH_RECORD *)(((char *)buff) + rec_offset);
 
         if (rec_ptr->flags & DH_BIG_REC) {
-          rewrite = TRUE; /* Must rewrite this block */
+          rewrite = TRUE;                              /* Must rewrite this block */
           big_offset = GetLink(rec_ptr->data.big_rec); /* Old link */
 
           if (sf == OVERFLOW_SUBFILE) /* 0529 */
@@ -2711,8 +2551,7 @@ bool recover_space() {
               memset(big_buff, 0, group_bytes);
 
               if (verbose) {
-                emit("Block 1.%s moved to 1.%s. Rewrite offset %s\n",
-                     I64(offset), I64(overflow_offset), I64(rewrite_offset));
+                emit("Block 1.%s moved to 1.%s. Rewrite offset %s\n", I64(offset), I64(overflow_offset), I64(rewrite_offset));
               }
 
               if (write(ofu, big_buff, group_bytes) != group_bytes) {
@@ -2731,20 +2570,17 @@ bool recover_space() {
             emit("Processing big record at 1.%s\n", I64(big_offset));
 
           do {
-            if (!read_block(OVERFLOW_SUBFILE, big_offset, group_bytes,
-                            (char*)big_buff)) {
+            if (!read_block(OVERFLOW_SUBFILE, big_offset, group_bytes, (char *)big_buff)) {
               goto exit_recover_space;
             }
 
             next_big_offset = GetLink(big_buff->next);
             if (next_big_offset != 0) {
-              big_buff->next =
-                  SetLink(overflow_offset + group_bytes); /* 0526 */
+              big_buff->next = SetLink(overflow_offset + group_bytes); /* 0526 */
             }
 
             if (verbose) {
-              emit("   Block 1.%s moved to 1.%s\n", I64(big_offset),
-                   I64(overflow_offset));
+              emit("   Block 1.%s moved to 1.%s\n", I64(big_offset), I64(overflow_offset));
             }
 
             if (write(ofu, big_buff, group_bytes) != group_bytes) {
@@ -2774,11 +2610,10 @@ bool recover_space() {
           damaged = TRUE; /* Old file is no longer usable */
 
           if (verbose) {
-            emit("Block 0.%s updated. Next = %s\n", I64(offset),
-                 I64(GetLink(buff->next)));
+            emit("Block 0.%s updated. Next = %s\n", I64(offset), I64(GetLink(buff->next)));
           }
 
-          if (!write_block(sf, offset, group_bytes, (char*)buff)) {
+          if (!write_block(sf, offset, group_bytes, (char *)buff)) {
             goto exit_recover_space;
           }
         } else /* Copy to new overflow subfile */
@@ -2791,11 +2626,9 @@ bool recover_space() {
 
           if (verbose) {
             if (rewrite_offset != 0) {
-              emit("Block 1.%s rewritten at 1.%s\n", I64(offset),
-                   I64(rewrite_offset));
+              emit("Block 1.%s rewritten at 1.%s\n", I64(offset), I64(rewrite_offset));
             } else {
-              emit("Block 1.%s rewritten at 1.%s\n", I64(offset),
-                   I64(overflow_offset));
+              emit("Block 1.%s rewritten at 1.%s\n", I64(offset), I64(overflow_offset));
             }
           }
 
@@ -2863,21 +2696,21 @@ exit_recover_space:
 /* ======================================================================
    write_record()  -  Write a record to the file during group reload      */
 
-bool write_record(DH_RECORD* rec) {
+bool write_record(DH_RECORD *rec) {
   bool status = FALSE;
   char id[MAX_ID_LEN + 1];
   int16_t id_len; /* Record id length */
   int32_t hash_value;
-  int64 offset;                  /* Offset of group buffer in file */
+  int64 offset;                 /* Offset of group buffer in file */
   int32_t group;                /* Group number */
-  DH_BLOCK* buff = NULL;         /* Active buffer */
-  int16_t subfile;             /* Current subfile */
-  int rec_offset;                /* Offset of record in group buffer */
-  DH_RECORD* rec_ptr;            /* Record pointer */
-  int16_t used_bytes;          /* Number of bytes used in this group buffer */
+  DH_BLOCK *buff = NULL;        /* Active buffer */
+  int16_t subfile;              /* Current subfile */
+  int rec_offset;               /* Offset of record in group buffer */
+  DH_RECORD *rec_ptr;           /* Record pointer */
+  int16_t used_bytes;           /* Number of bytes used in this group buffer */
   int32_t old_big_rec_head = 0; /* Head of old big record chain */
   int64 overflow_offset;
-  DH_BLOCK* obuff = NULL;
+  DH_BLOCK *obuff = NULL;
 #ifdef REPLACE_DUPLICATE
   // I moved the rec_size declaration here because it's only used within the
   // REPLACE_DUPLICATE code block below.  Otherwise it throws a variable set but
@@ -2885,14 +2718,14 @@ bool write_record(DH_RECORD* rec) {
   int16_t rec_size; /* Size of current record */
   int16_t space;
   int16_t orec_offset;
-  DH_RECORD* orec_ptr;
+  DH_RECORD *orec_ptr;
   int16_t orec_bytes;
-  char* p;
-  char* q;
+  char *p;
+  char *q;
   int n;
 #endif
 
-  buff = (DH_BLOCK*)malloc(group_bytes);
+  buff = (DH_BLOCK *)malloc(group_bytes);
   if (buff == NULL) {
     emit("Unable to allocate memory for write buffer\n");
     goto exit_write_record;
@@ -2920,7 +2753,7 @@ bool write_record(DH_RECORD* rec) {
   do {
     /* Read group */
 
-    if (!read_block(subfile, offset, group_bytes, (char*)buff)) {
+    if (!read_block(subfile, offset, group_bytes, (char *)buff)) {
       emit("Read error at %d.%s\n", subfile, I64(offset));
       goto exit_write_record;
     }
@@ -2946,12 +2779,11 @@ bool write_record(DH_RECORD* rec) {
     rec_offset = offsetof(DH_BLOCK, record);
 
     while (rec_offset < used_bytes) {
-      rec_ptr = (DH_RECORD*)(((char*)buff) + rec_offset);
+      rec_ptr = (DH_RECORD *)(((char *)buff) + rec_offset);
 #ifdef REPLACE_DUPLICATE
       rec_size = rec_ptr->next;
 #endif
-      if ((id_len == rec_ptr->id_len) &&
-          (memcmp(id, rec_ptr->id, id_len) == 0)) /* Found this record */
+      if ((id_len == rec_ptr->id_len) && (memcmp(id, rec_ptr->id, id_len) == 0)) /* Found this record */
       {
 #ifdef REPLACE_DUPLICATE
         if (rec_ptr->flags & DH_BIG_REC) /* Old record is big */
@@ -2969,7 +2801,7 @@ bool write_record(DH_RECORD* rec) {
 
         /* Delete old record */
 
-        p = (char*)rec_ptr;
+        p = (char *)rec_ptr;
         q = p + rec_size;
         n = used_bytes - (rec_size + rec_offset);
         if (n > 0)
@@ -2980,17 +2812,16 @@ bool write_record(DH_RECORD* rec) {
 
         /* Clear the new slack space */
 
-        memset(((char*)buff) + used_bytes, '\0', rec_size);
+        memset(((char *)buff) + used_bytes, '\0', rec_size);
 
         /* Perform buffer compaction if there is a further overflow block */
 
         if ((overflow_offset = GetLink(buff->next)) != 0) {
-          if ((obuff = (DH_BLOCK*)malloc(group_bytes)) != NULL)
+          if ((obuff = (DH_BLOCK *)malloc(group_bytes)) != NULL)
             ;
           {
             do {
-              if (!read_block(OVERFLOW_SUBFILE, overflow_offset, group_bytes,
-                              (char*)obuff)) {
+              if (!read_block(OVERFLOW_SUBFILE, overflow_offset, group_bytes, (char *)obuff)) {
                 goto exit_write_record;
               }
 
@@ -2999,14 +2830,13 @@ bool write_record(DH_RECORD* rec) {
               space = group_bytes - buff->used_bytes;
               orec_offset = BLOCK_HEADER_SIZE;
               while (orec_offset < obuff->used_bytes) {
-                orec_ptr = (DH_RECORD*)(((char*)obuff) + orec_offset);
+                orec_ptr = (DH_RECORD *)(((char *)obuff) + orec_offset);
                 if ((orec_bytes = orec_ptr->next) > space)
                   break;
 
                 /* Move this record */
 
-                memcpy(((char*)buff) + buff->used_bytes, (char*)orec_ptr,
-                       orec_bytes);
+                memcpy(((char *)buff) + buff->used_bytes, (char *)orec_ptr, orec_bytes);
                 buff->used_bytes += orec_bytes;
                 space -= orec_bytes;
                 orec_offset += orec_bytes;
@@ -3015,8 +2845,8 @@ bool write_record(DH_RECORD* rec) {
               /* Remove moved records from source buffer */
 
               if (orec_offset != BLOCK_HEADER_SIZE) {
-                p = ((char*)obuff) + BLOCK_HEADER_SIZE;
-                q = ((char*)obuff) + orec_offset;
+                p = ((char *)obuff) + BLOCK_HEADER_SIZE;
+                q = ((char *)obuff) + orec_offset;
                 n = obuff->used_bytes - orec_offset;
                 memmove(p, q, n);
 
@@ -3038,11 +2868,11 @@ bool write_record(DH_RECORD* rec) {
               } else {
                 /* Write the target block and make this source block current */
 
-                if (!write_block(subfile, offset, group_bytes, (char*)buff)) {
+                if (!write_block(subfile, offset, group_bytes, (char *)buff)) {
                   goto exit_write_record;
                 }
 
-                memcpy((char*)buff, (char*)obuff, group_bytes);
+                memcpy((char *)buff, (char *)obuff, group_bytes);
 
                 subfile = OVERFLOW_SUBFILE;
                 offset = overflow_offset;
@@ -3086,18 +2916,18 @@ add_record:
 
     buff->next = SetLink(overflow_offset);
 
-    if (!write_block(subfile, offset, group_bytes, (char*)buff)) {
+    if (!write_block(subfile, offset, group_bytes, (char *)buff)) {
       goto exit_write_record;
     }
 
-    memset((char*)buff, '\0', group_bytes);
+    memset((char *)buff, '\0', group_bytes);
     buff->used_bytes = BLOCK_HEADER_SIZE;
 
     subfile = OVERFLOW_SUBFILE;
     offset = overflow_offset;
   }
 
-  rec_ptr = (DH_RECORD*)(((char*)buff) + buff->used_bytes);
+  rec_ptr = (DH_RECORD *)(((char *)buff) + buff->used_bytes);
   memcpy(rec_ptr, rec, rec->next);
   buff->used_bytes += rec->next;
 
@@ -3107,7 +2937,7 @@ record_replaced:
 
   /* Write last affected block */
 
-  if (!write_block(subfile, offset, group_bytes, (char*)buff)) {
+  if (!write_block(subfile, offset, group_bytes, (char *)buff)) {
     goto exit_write_record;
   }
 
@@ -3137,8 +2967,8 @@ void emit(char msg[], ...) {
   va_list arg_ptr;
   char c;
   char text[500];
-  char* p;
-  char* q;
+  char *p;
+  char *q;
 
   va_start(arg_ptr, msg);
   vsprintf(text, msg, arg_ptr);
@@ -3209,7 +3039,7 @@ bool fix() {
 
 /* ====================================================================== */
 
-bool yesno(char* prompt) {
+bool yesno(char *prompt) {
   char c;
 
   printf("%s? ", prompt);
@@ -3234,12 +3064,12 @@ void event_handler(int signum) {
 
 /* ====================================================================== */
 
-char* I64(int64 x) {
+char *I64(int64 x) {
   static char s[8][20];
   static int16_t i = 0;
 
   i = (i + 1) % 8;
-#ifndef __LP64__  
+#ifndef __LP64__
   sprintf(s[i], "%.12llX", x);
 #else
   sprintf(s[i], "%.12lu", x);
@@ -3250,7 +3080,7 @@ char* I64(int64 x) {
 /* ======================================================================
    memupr()  -  Uppercase specified number of bytes                       */
 
-void memupr(char* str, int16_t len) {
+void memupr(char *str, int16_t len) {
   register char c;
 
   while (len--) {
@@ -3262,8 +3092,8 @@ void memupr(char* str, int16_t len) {
 /* ======================================================================
    strupr()  -  Convert string to upper case                              */
 
-char* strupr(char* s) {
-  char* p;
+char *strupr(char *s) {
+  char *p;
   p = s;
   while ((*(p++) = UpperCase(*p)) != '\0') {
   }
@@ -3289,8 +3119,7 @@ void progress_bar(int32_t grp) {
       return; /* Scanning released groups */
 
     pct_done = (int16_t)((((double)grp) * 50) / header.params.modulus);
-    if ((pct_done != last_pct_reported) &&
-        (grp - last_grp_reported >= MIN_BAR_INTERVAL)) {
+    if ((pct_done != last_pct_reported) && (grp - last_grp_reported >= MIN_BAR_INTERVAL)) {
       memset(s, '-', 50);
       memset(s, '*', pct_done);
       sprintf(s + 50, "| %d/%d", grp, header.params.modulus);
@@ -3301,8 +3130,7 @@ void progress_bar(int32_t grp) {
     }
   } else /* End of scan */
   {
-    printf("\r**************************************************| %d/%d\n",
-           header.params.modulus, header.params.modulus);
+    printf("\r**************************************************| %d/%d\n", header.params.modulus, header.params.modulus);
 
     last_pct_reported = -1;
     last_grp_reported = -MIN_BAR_INTERVAL;
