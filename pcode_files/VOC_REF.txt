@@ -1,0 +1,15 @@
+Object Header for VOC_REF
+---------------------------------------
+Magic #...............64 (100)
+Revision..............0 (0)
+Start Offset..........4df (1247)
+# of Arguments........3
+# of variables........22
+Stack Depth...........101
+Symbol Table Offset...0 (0)
+Line Table Offset.....0 (0)
+Object Size (bytes)...1358
+Compile timestamp.....Fri 2009-11-13 10:00:07 -0800
+Flags: 
+  Compiled in Internal Mode.
+  Is a recursive program.

@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 13Jan22 gwb Minor reformatting.
+ * 
  * 27Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  * 
@@ -57,29 +59,29 @@
 
 /* !!CONFIG!! All places requiring changes for config parameters are marked */
 
-struct CONFIG
- {
-  int16_t max_users;             /* User limit */
+struct CONFIG {
+ 
+  int16_t max_users;               /* User limit */
   char sysdir[MAX_PATHNAME_LEN+1];
-  int16_t cmdstack;              /* CMDSTACK: Command stack depth */
+  int16_t cmdstack;                /* CMDSTACK: Command stack depth */
   bool deadlock;                   /* DEADLOCK: Trap deadlocks */
-  u_int16_t debug;        /* DEBUG:    Controls debug features */
+  u_int16_t debug;                 /* DEBUG:    Controls debug features */
   int errlog;                      /* ERRLOG:   Max errlog size in bytes, 0 if disabled */
-  int16_t fds_limit;             /* FDS */
-  int16_t fixusers_base;         /* FIXUSERS: First user number and... */
-  int16_t fixusers_range;        /*          ...Number of users */
-  int16_t jnlmode;               /* JNLMODE:  Journalling mode */
+  int16_t fds_limit;               /* FDS */
+  int16_t fixusers_base;           /* FIXUSERS: First user number and... */
+  int16_t fixusers_range;          /*          ...Number of users */
+  int16_t jnlmode;                 /* JNLMODE:  Journalling mode */
   char jnldir[MAX_PATHNAME_LEN+1]; /* JNLDIR:   Journal file directory */
-  int16_t maxidlen;              /* MAXIDLEN: Maximum record id length */
-  int16_t netfiles;              /* NETFILES:
+  int16_t maxidlen;                /* MAXIDLEN: Maximum record id length */
+  int16_t netfiles;                /* NETFILES:
                                       0x0001    Allow outgoing NFS
                                       0x0002    Allow incoming QMNet   */
-  int16_t numfiles;              /* NUMFILES: Maximum number of files open */
-  int16_t numlocks;              /* NUMLOCKS: Maximum number of record locks */
-  int16_t pdump;                 /* PDUMP:    PDUMP mode flags */
-  int16_t portmap_base_port;     /* PORTMAP: First port number ... */
-  int16_t portmap_base_user;     /*          ...First user number... */
-  int16_t portmap_range;         /*          ...Number of ports/users */
+  int16_t numfiles;                /* NUMFILES: Maximum number of files open */
+  int16_t numlocks;                /* NUMLOCKS: Maximum number of record locks */
+  int16_t pdump;                   /* PDUMP:    PDUMP mode flags */
+  int16_t portmap_base_port;       /* PORTMAP: First port number ... */
+  int16_t portmap_base_user;       /*          ...First user number... */
+  int16_t portmap_range;           /*          ...Number of ports/users */
   char startup[80+1];              /* STARTUP: Startup command */
  };
 
@@ -87,8 +89,8 @@ struct CONFIG
 /* Config parameters loaded per process to allow local changes */
 
 #define MAX_SH_CMD_LEN 80
-struct PCFG
- {
+struct PCFG  {
+
   unsigned int codepage;                /* CODEPAGE: Set console codepage */
   char dumpdir[MAX_PATHNAME_LEN+1];     /* DUMPDIR:  Directory for process dump files */
   bool exclrem;                         /* EXCLREM:  Exclude remote files from ACCOUNT.SAVE? */
@@ -117,7 +119,7 @@ struct PCFG
   char tempdir[MAX_PATHNAME_LEN+1];     /* TEMPDIR */
   char terminfodir[MAX_PATHNAME_LEN+1]; /* TERMINFO */
   bool txchar;                          /* TXCHAR */
-  int16_t yearbase;                   /* YEARBASE: Two digit year start */
+  int16_t yearbase;                     /* YEARBASE: Two digit year start */
  };
 
 Public struct PCFG pcfg;

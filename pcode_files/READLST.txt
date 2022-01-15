@@ -1,0 +1,15 @@
+Object Header for READLST
+---------------------------------------
+Magic #...............64 (100)
+Revision..............0 (0)
+Start Offset..........113 (275)
+# of Arguments........3
+# of variables........6
+Stack Depth...........101
+Symbol Table Offset...0 (0)
+Line Table Offset.....0 (0)
+Object Size (bytes)...373
+Compile timestamp.....Fri 2009-11-13 10:00:07 -0800
+Flags: 
+  Compiled in Internal Mode.
+  Is a recursive program.

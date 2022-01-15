@@ -1,0 +1,15 @@
+Object Header for BREAK
+---------------------------------------
+Magic #...............64 (100)
+Revision..............0 (0)
+Start Offset..........a5 (165)
+# of Arguments........1
+# of variables........2
+Stack Depth...........101
+Symbol Table Offset...0 (0)
+Line Table Offset.....0 (0)
+Object Size (bytes)...199
+Compile timestamp.....Fri 2009-11-13 09:59:59 -0800
+Flags: 
+  Compiled in Internal Mode.
+  Is a recursive program.

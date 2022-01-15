@@ -184,7 +184,7 @@ void* load_object(char* name, bool abort_on_error) {
 
     /* Execute recursive code */
 
-    k_recurse(pcode_voc_cat, 2); /* TODO: Magic numbers are bad, mmkay? */
+    k_recurse(pcode_voc_cat, 2); 
     dh_err = 0; /* 0284 Ensure failure to find program doesn't give an error */
 
     /* Extract result string */

@@ -1,0 +1,15 @@
+Object Header for IN
+---------------------------------------
+Magic #...............64 (100)
+Revision..............0 (0)
+Start Offset..........ce (206)
+# of Arguments........1
+# of variables........4
+Stack Depth...........100
+Symbol Table Offset...0 (0)
+Line Table Offset.....0 (0)
+Object Size (bytes)...304
+Compile timestamp.....Fri 2009-11-13 10:00:06 -0800
+Flags: 
+  Compiled in Internal Mode.
+  Is a recursive program.

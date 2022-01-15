@@ -1,0 +1,15 @@
+Object Header for MESSAGE
+---------------------------------------
+Magic #...............64 (100)
+Revision..............0 (0)
+Start Offset..........2dc (732)
+# of Arguments........0
+# of variables........18
+Stack Depth...........101
+Symbol Table Offset...0 (0)
+Line Table Offset.....0 (0)
+Object Size (bytes)...830
+Compile timestamp.....Fri 2009-11-13 10:00:06 -0800
+Flags: 
+  Compiled in Internal Mode.
+  Is a recursive program.

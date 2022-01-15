@@ -1,0 +1,15 @@
+Object Header for CHAIN
+---------------------------------------
+Magic #...............64 (100)
+Revision..............0 (0)
+Start Offset..........d9 (217)
+# of Arguments........0
+# of variables........3
+Stack Depth...........100
+Symbol Table Offset...0 (0)
+Line Table Offset.....0 (0)
+Object Size (bytes)...315
+Compile timestamp.....Fri 2009-11-13 09:59:59 -0800
+Flags: 
+  Compiled in Internal Mode.
+  Is a recursive program.

@@ -77,7 +77,7 @@ struct OBJECT_HEADER {
 #define HDR_CTYPE            0x4000  /* Is a C-type */
 #define HDR_IS_CLASS         0x8000  /* Is CLASS module */
 
-        int32_t compile_time;     /* Date * 86400 + time */
+        int32_t compile_time;     /* Date * 86400 + time (UNIX Epoch time) */
 /* Extended header : Items differ depending on object type */
         union {
                struct {
@@ -88,7 +88,7 @@ struct OBJECT_HEADER {
                        u_char totals;    /* Number of TOTAL() functions */
                       } i_type;
               } ext_hdr;
-       } ALIGN2;
+} ALIGN2;
 
 #ifdef BIG_ENDIAN_SYSTEM
    #define HDR_MAGIC 0x65

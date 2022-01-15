@@ -1,0 +1,16 @@
+Object Header for KEY
+---------------------------------------
+Magic #...............64 (100)
+Revision..............0 (0)
+Start Offset..........3fd (1021)
+# of Arguments........2
+# of variables........9
+Stack Depth...........100
+Symbol Table Offset...0 (0)
+Line Table Offset.....0 (0)
+Object Size (bytes)...1041
+Compile timestamp.....Fri 2008-05-23 12:48:08 -0700
+Flags: 
+  Compiled in Internal Mode.
+  Is a Basic Function.
+  Is a recursive program.

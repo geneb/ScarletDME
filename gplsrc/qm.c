@@ -21,6 +21,19 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 14Jan22 gwb Created a routine named dump_pcode_file() that will dump
+ *             the contents of /usr/qmsys/bin/pcode into /home/geneb/pcode_files.
+ *             This only works when DEBUG has been defined.  If you want to
+ *             generate the pcode files yourself, just change the hardcoded
+ *             output directory.
+ *             The output of the routine is a dump of the data stored in the 
+ *             OBJECT_HEADER structure as well as the object code itself as
+ *             clipped from the pcode file.  At this time I don't know if the
+ *             object code that's been output is valid in that it's what the
+ *             system actually tries to "run".
+ * 
+ * 13Jan22 gwb Refactored main() to remove "goto" calls.
+ * 
  * 11Jan22 gwb Fix for Issue #15
  * 
  * 10Jan22 gwb Added BUILD_TARGET macro in order to display build target size.
@@ -112,6 +125,8 @@
 #include <time.h>
 #include <stdarg.h>
 
+// #define DEBUG /* enables harcoded diagnostic output */
+
 #define Public
 #define init(a) = a
 
@@ -125,33 +140,37 @@
 #include "options.h"
 #include "locks.h"
 
-#ifdef __LP64__  /* 10Jan22 gwb */
- #define BUILD_TARGET  "64 Bit"
+#ifdef __LP64__ /* 10Jan22 gwb */
+#define BUILD_TARGET "64 Bit"
 #else
- #define BUILD_TARGET  "32 Bit"
+#define BUILD_TARGET "32 Bit"
 #endif
 
-extern char* x_option; /* -x option */
+extern char *x_option; /* -x option */
 
-bool bind_sysseg(bool create, char* errmsg);
+bool bind_sysseg(bool create, char *errmsg);
 void unbind_sysseg(void);
 void dump_sysseg(bool dump_config);
 void show_users(void);
-void kill_user(char* user);
+void kill_user(char *user);
 
 Private jmp_buf qm_exit;
 
-Private void qm_init(int argc, char* argv[]);
+Private void qm_init(int argc, char *argv[]);
 Private void check_admin(void);
-Private bool comlin(int argc, char* argv[]);
-Private bool load_pcode(char* pname, u_char** ptr);
+Private bool comlin(int argc, char *argv[]);
+Private bool load_pcode(char *pname, u_char **ptr);
 
 void suspend_resume(bool suspend);
 void cleanup(void);
+void clean_stop(void);
+void dump_pcode_file(void);
 
 /* ====================================================================== */
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
+  /* 13Jan22 gwb Refactored to remove "goto" calls. */
+
   int status = 1;
   char errmsg[80 + 1];
 
@@ -161,37 +180,51 @@ int main(int argc, char* argv[]) {
   qm_init(argc, argv);
 
   if (!(command_options & CMD_FLASH)) {
-    if (!GetConfigPath(config_path))
-      goto abort; /* Get config file path */
+    /* Get config file path */
+    if (!GetConfigPath(config_path)) {
+      clean_stop();
+      return status; /* TODO: add a custom return value for this failure. */
+    }
+
     fullpath(config_path, config_path);
   }
 
-  if (!comlin(argc, argv))
-    goto abort; /* Process the command line */
+  /* Process the command line */
+  if (!comlin(argc, argv)) {
+    clean_stop();
+    return status; /* TODO: add a custom return value for this failure. */
+  }
 
   if (!bind_sysseg(FALSE, errmsg)) {
     fprintf(stderr, "%s\n", errmsg);
-    goto abort;
+    clean_stop();
+    return status; /* TODO: add a custom return value for this failure. */
   }
 
   if (sysseg->flags & SSF_SUSPEND) {
     fprintf(stderr, "ScarletDME is suspended\n");
-    goto abort;
+    clean_stop();
+    return status; /* TODO: add a custom return value for this failure. */
   }
 
-  if (setjmp(qm_exit))
-    goto abort; /* Disaster exit */
+  /* Disaster exit */
+  if (setjmp(qm_exit)) {
+    clean_stop();
+    return status; /* TODO: add a custom return value for this failure. */
+  }
 
-    /* Set pcode pointers */
+  /* Set pcode pointers */
 
 #undef Pcode
 /* 
  * The block below is kind of interesting.  The #define functions as a function call that works like
  * this:
  * Given a call like Pcode(chain), the preprocessor is going to emit this:
- * if (!load_pcode("chain", &pcode_chain))
- *   goto abort;
- * 
+ * if (!load_pcode("chain", &pcode_chain)) {
+ *   clean_stop();
+ *   return status;
+ * }
+  * 
  * Now the line below where pcode.h is included is going to trigger a call to load_pcode() for each
  * line in the pcode.h file that references the Pcode() macro.  It's clever in that you don't need to 
  * somehow specify a static list of pcode value names, you just add them to the include file and they'll
@@ -207,16 +240,29 @@ int main(int argc, char* argv[]) {
  * -gwb
  * 
  */
-#define Pcode(a)                   \
-  if (!load_pcode(#a, &pcode_##a)) \
-    goto abort;
-#include "pcode.h"  
+#define Pcode(a)                     \
+  if (!load_pcode(#a, &pcode_##a)) { \
+    clean_stop();                    \
+    return status;                   \
+  }
 
-  if (!init_kernel())
-    goto abort; /* Go run the system */
+#include "pcode.h" /* this loads up all the pcode object code from the "pcode" file. */
 
-  if (!load_language(""))
-    goto abort; /* Initialise English messages */
+  /* Go run the system */
+  if (!init_kernel()) {
+    clean_stop();
+    return status; /* TODO: add a custom return value for this failure. */
+  }
+
+  /* Initialize English messages */
+  if (!load_language("")) {
+    clean_stop();
+    return status; /* TODO: add a custom return value for this failure. */
+  }
+
+#ifdef DEBUG
+  dump_pcode_file();
+#endif
 
   kernel(); /* Run the command processor */
 
@@ -224,35 +270,46 @@ int main(int argc, char* argv[]) {
 
   status = exit_status;
 
-abort:
+  // abort:
+  //   dh_shutdown();
+  //   unbind_sysseg();
+  //   shut_console();
+  clean_stop();
+  return status;
+}
+
+void clean_stop(void) {
+  /* these functions were originally called at the end of main().
+   * I've moved them to their own function in order to remove all of the
+   * instances of "goto abort" that were in main().
+   * 13Jan22 gwb */
+
   dh_shutdown();
   unbind_sysseg();
   shut_console();
-
-  return status;
 }
 
 /* ======================================================================
    Initialialisation tasks that need to be done very early                */
 
-Private void qm_init(int argc, char* argv[]) {
+Private void qm_init(int argc, char *argv[]) {
   char cwd[MAX_PATHNAME_LEN + 1];
 
   /* Save the current working directory for use by SYSTEM(1024) */
 
   (void)getcwd(cwd, MAX_PATHNAME_LEN);
-  entry_dir = k_alloc(110, strlen(cwd) + 1);
+  entry_dir = k_alloc(MAX_PATHNAME_LEN, strlen(cwd) + 1); /* was hard coded at 110 -gwb */
   strcpy(entry_dir, cwd);
 }
 
 /* ====================================================================== */
 
-Private bool comlin(int argc, char* argv[]) {
+Private bool comlin(int argc, char *argv[]) {
   int arg;
   int socket_handle = 0;
   char c;
   int16_t bytes;
-  int n;  /* Fix for Issue #15 - 11Jan22 gwb */
+  int n; /* Fix for Issue #15 - 11Jan22 gwb */
   int RxPipe;
   int TxPipe;
 
@@ -445,8 +502,7 @@ help:
   fprintf(stderr, "   qm xxx\n");
   fprintf(stderr, "      Execute QM command xxx\n\n");
   fprintf(stderr, "   qm {options}\n");
-  fprintf(stderr,
-          "      -a          Prompt for account unless forced elsewhere\n");
+  fprintf(stderr, "      -a          Prompt for account unless forced elsewhere\n");
   fprintf(stderr,
           "      -axxx       Enter ScarletDME in account xxx unless forced "
           "elsewhere\n");
@@ -473,7 +529,7 @@ void fatal() {
 /* ======================================================================
    dump()  -  General purpose memory dump function                        */
 
-void dump(u_char* addr, int32_t bytes) {
+void dump(u_char *addr, int32_t bytes) {
   int32_t i;
   int16_t j;
   u_char c;
@@ -481,7 +537,7 @@ void dump(u_char* addr, int32_t bytes) {
   for (i = 0; i < bytes; i += 16) {
     /* Offset */
 
-    printf("%08X: ", i); // was lX -Wformat=2 issue
+    printf("%08X: ", i);  // was lX -Wformat=2 issue
 
     /* Hex */
 
@@ -514,7 +570,7 @@ void dump(u_char* addr, int32_t bytes) {
    check_admin()  -  Check user has admin rights                          */
 
 void check_admin() {
-  int16_t in_group(char* group_name);
+  int16_t in_group(char *group_name);
 
   if ((geteuid() != 0) && !in_group("admin")) {
     fprintf(stderr, "Command requires administrator privileges\n");
@@ -522,15 +578,103 @@ void check_admin() {
   }
 }
 
+void dump_pcode_file(void) {
+  OBJECT_HEADER *obj;
+  int i;
+  u_char *pcode;
+  u_char **ptr;
+  bool okMagicCheck = TRUE;
+  pcode = ((u_char *)sysseg) + sysseg->pcode_offset;
+  printf("Dumping pcode file.\n\r");
+
+  /* iterate through the entire pcode library */
+  for (i = 0; i < sysseg->pcode_len; i += (obj->object_size + 3) & ~3) {
+    obj = (OBJECT_HEADER *)(pcode + i);
+    if (obj->magic == HDR_MAGIC_INVERSE) {
+      convert_object_header(obj);
+    } else if (obj->magic != HDR_MAGIC) {
+      fprintf(stderr, "Pcode is corrupt (%s)\n", obj->ext_hdr.prog.program_name);
+      okMagicCheck = FALSE;
+    }
+    if (okMagicCheck) {
+      ptr = malloc(4096);
+      *ptr = pcode + i;
+      printf("Dumping object & info for %s\r\n", obj->ext_hdr.prog.program_name);
+      time_t epochTime = obj->compile_time;
+      struct tm ts;
+      char timeBuf[90];
+      ts = *localtime(&epochTime);
+      strftime(timeBuf, sizeof(timeBuf), "%a %Y-%m-%d %H:%M:%S %z", &ts);
+      int pcode_fd;
+      FILE *info_fd;
+
+      char path[MAX_PATHNAME_LEN];
+      sprintf(path, "/home/geneb/pcode_files/%s", obj->ext_hdr.prog.program_name);
+      pcode_fd = open(path, O_CREAT | O_RDWR, S_IWUSR | S_IRUSR);
+      write(pcode_fd, ptr, obj->object_size);
+      close(pcode_fd);
+      sprintf(path, "/home/geneb/pcode_files/%s.txt", obj->ext_hdr.prog.program_name);
+      info_fd = fopen(path, "w+");
+      fprintf(info_fd, "Object Header for %s\n", obj->ext_hdr.prog.program_name);
+      fprintf(info_fd, "---------------------------------------\n");
+      fprintf(info_fd, "Magic #...............%x (%d)\n", obj->magic, obj->magic);
+      fprintf(info_fd, "Revision..............%x (%d)\n", obj->rev, obj->rev);
+      fprintf(info_fd, "Start Offset..........%x (%d)\n", obj->start_offset, obj->start_offset);
+      fprintf(info_fd, "# of Arguments........%d\n", obj->args);
+      fprintf(info_fd, "# of variables........%d\n", obj->no_vars);
+      fprintf(info_fd, "Stack Depth...........%d\n", obj->stack_depth);
+      fprintf(info_fd, "Symbol Table Offset...%x (%d)\n", obj->sym_tab_offset, obj->sym_tab_offset);
+      fprintf(info_fd, "Line Table Offset.....%x (%d)\n", obj->line_tab_offset, obj->line_tab_offset);
+      fprintf(info_fd, "Object Size (bytes)...%d\n", obj->object_size);
+      fprintf(info_fd, "Compile timestamp.....%s\n", timeBuf);
+      fprintf(info_fd, "Flags: \n");
+      if (obj->flags & HDR_IS_CPROC)
+        fprintf(info_fd, "  CPROC Command Processor.\n");
+      if (obj->flags & HDR_INTERNAL)
+        fprintf(info_fd, "  Compiled in Internal Mode.\n");
+      if (obj->flags & HDR_DEBUG)
+        fprintf(info_fd, "  Compiled in Debug Mode.\n");
+      if (obj->flags & HDR_IS_DEBUGGER)
+        fprintf(info_fd, "  Debugger.\n");
+      if (obj->flags & HDR_NOCASE)
+        fprintf(info_fd, "  Case Insensitive String Operations.\n");
+      if (obj->flags & HDR_IS_FUNCTION)
+        fprintf(info_fd, "  Is a Basic Function.\n");
+      if (obj->flags & HDR_VAR_ARGS)
+        fprintf(info_fd, "  Variable argument count (args = max).\n");
+      if (obj->flags & HDR_RECURSIVE)
+        fprintf(info_fd, "  Is a recursive program.\n");
+      if (obj->flags & HDR_ITYPE)
+        fprintf(info_fd, "  Is an A/S/C/I-Type.\n");
+      if (obj->flags & HDR_ALLOW_BREAK)
+        fprintf(info_fd, "  Allow Break key in recursive.\n");
+      if (obj->flags & HDR_IS_TRUSTED)
+        fprintf(info_fd, "  Trusted program.\n");
+      if (obj->flags & HDR_NETFILES)
+        fprintf(info_fd, "  Allow remote files by NFS.\n");
+      if (obj->flags & HDR_CASE_SENSITIVE)
+        fprintf(info_fd, "  Program uses case sensitive names.\n");
+      if (obj->flags & HDR_QMCALL_ALLOWED)
+        fprintf(info_fd, "  Can be called via QMCall().\n");
+      if (obj->flags & HDR_CTYPE)
+        fprintf(info_fd, "  Is a C-Type.\n");
+      if (obj->flags & HDR_IS_CLASS)
+        fprintf(info_fd, "  Is a Class module.\n");
+      fflush(info_fd);
+      fclose(info_fd);
+      free(ptr);
+    }
+  }
+}
 /* ====================================================================== */
 
-Private bool load_pcode(char* pname, u_char** ptr) {
+Private bool load_pcode(char *pname, u_char **ptr) {
   char u_pname[MAX_PROGRAM_NAME_LEN + 1];
-  OBJECT_HEADER* obj;
+  OBJECT_HEADER *obj;
   int i;
-  u_char* pcode;
+  u_char *pcode;
 
-  pcode = ((u_char*)sysseg) + sysseg->pcode_offset;
+  pcode = ((u_char *)sysseg) + sysseg->pcode_offset;
 
   /* Take a local copy of the pcode name and force it to uppercase */
 
@@ -538,9 +682,8 @@ Private bool load_pcode(char* pname, u_char** ptr) {
   UpperCaseString(u_pname);
 
   /* Search for this item in the pcode library */
-
   for (i = 0; i < sysseg->pcode_len; i += (obj->object_size + 3) & ~3) {
-    obj = (OBJECT_HEADER*)(pcode + i);
+    obj = (OBJECT_HEADER *)(pcode + i);
     if (obj->magic == HDR_MAGIC_INVERSE) {
       convert_object_header(obj);
     } else if (obj->magic != HDR_MAGIC) {
@@ -548,8 +691,7 @@ Private bool load_pcode(char* pname, u_char** ptr) {
       return FALSE;
     }
 
-    if (!strcmp(obj->ext_hdr.prog.program_name, u_pname)) /* Found it */
-    {
+    if (!strcmp(obj->ext_hdr.prog.program_name, u_pname)) { /* Found it */
       *ptr = pcode + i;
       return TRUE;
     }

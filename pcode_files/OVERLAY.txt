@@ -1,0 +1,15 @@
+Object Header for OVERLAY
+---------------------------------------
+Magic #...............64 (100)
+Revision..............0 (0)
+Start Offset..........c0 (192)
+# of Arguments........1
+# of variables........3
+Stack Depth...........101
+Symbol Table Offset...0 (0)
+Line Table Offset.....0 (0)
+Object Size (bytes)...290
+Compile timestamp.....Fri 2009-11-13 10:00:06 -0800
+Flags: 
+  Compiled in Internal Mode.
+  Is a recursive program.

@@ -1,6 +1,36 @@
 ******************************************************************************
 *            THIS CHANGE LOG ONLY APPLIES TO THE "DEV" BRANCH                *
 ******************************************************************************
+14Jan22 -gwb
+------------
+
+There was an issue when trying to access the MESSAGES file from within ScarleDME.
+Somehow after Diccon T. converted MESSAGES from a dynamic file to a directory file,
+the dynamic file stores (~0 and ~1) were still present and it confused the hell
+out of the system.  I've removed those from the MESSAGES directory and things
+appear to be working well again.  It didn't affect how system programs read the
+messages, only when trying to list or edit entries in the MESSAGES file.
+
+I'm now putting misc things like TODO items research notes, etc. in a file called
+info/notes.txt.
+
+Most of the changes in tonight's commit are mostly cleanup as I did research into
+the "SH" problem that some users have.  I'm no closer to understanding what the
+precise issue is, but I've gained a greater understanding of how the system loads
+pcode objects, which is an important step to understanding the landscape.
+
+IMPORTANT NOTE:
+I've noticed that compiling code under the 64 bit build results in larger binary
+object files.  This is to be expected.  However, I do not think these larger
+object files will function at all with the 32 bit build, so extreme care must
+be taken to not contaminate the 32 bit object repository.  For this reason I may
+end up having to create two different packages of installation files in order to
+enforce that separation.
+
+info/setup.txt got updated with more instructions - thanks Wol!
+
+===============================================================================
+
 12Jan22 -gwb
 ------------
 Makefile fixes!

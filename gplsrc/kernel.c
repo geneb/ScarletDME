@@ -259,8 +259,7 @@ bool init_kernel() {
 
     /* Ensure file map table is all zero */
 
-    memset((char*)(my_uptr->file_map), 0,
-           sysseg->numfiles * sizeof(u_int16_t));
+    memset((char*)(my_uptr->file_map), 0, sysseg->numfiles * sizeof(u_int16_t));
 
     if (is_phantom)
       my_uptr->flags |= USR_PHANTOM;
@@ -768,8 +767,8 @@ void k_return() {
     else
       tio.dsp.flags &= ~PU_PAGINATE;
     in_debugger = FALSE;
-  } else /* Not returning from debugger to program being debugged */
-  {
+  } else { /* Not returning from debugger to program being debugged */
+  
   }
 }
 
@@ -779,12 +778,10 @@ void k_return() {
    If the code_ptr argument is null, we perform a search for this object
    name.  Otherwise we simply call the object at that address.             */
 
-void k_call(
-    char* name,
-    int num_args,
-    u_char* code_ptr,    /* For in-line code items */
-    int16_t stack_adj) /* No of stack items to be removed before running */
-{
+void k_call(char* name, int num_args, u_char* code_ptr, int16_t stack_adj) {
+  /* code_ptr - For in-line code items */
+  /* stack_adj - No of stack items to be removed before running */
+
   struct OBJECT_HEADER* hdr;
   unsigned int mem_reqd;
   int i;
@@ -800,18 +797,17 @@ void k_call(
   /* Find the program. We omit this step for recursive calls as the program
     pointers will already be set.                                          */
 
-  if (code_ptr == NULL) /* Dynamically loaded object */
-  {
+  if (code_ptr == NULL) { /* Dynamically loaded object */
     hdr = (OBJECT_HEADER*)load_object(name, FALSE);
     if (hdr == NULL)
       k_error(sysmsg(1002), name);
+
     hdr->ext_hdr.prog.refs++;
 
     if (hdr->flags & HDR_IS_CLASS) {
       k_error(sysmsg(3450)); /* A CLASS routine may not be used in this way */
     }
-  } else /* In-line object, recursive or call via SUBR */
-  {
+  } else { /* In-line object, recursive or call via SUBR */
     hdr = (struct OBJECT_HEADER*)code_ptr;
   }
 
@@ -821,6 +817,7 @@ void k_call(
     prg = (struct PROGRAM*)k_alloc(18, sizeof(struct PROGRAM));
     if (prg == NULL)
       k_error(sysmsg(1003));
+
     process.program.saved_pc_offset = pc - c_base;
     process.program.saved_prompt_char = tio.prompt_char;
     *prg = process.program;
@@ -1426,8 +1423,8 @@ void fatal_signal_handler(int signum) {
 
     for (i = 4; i >= -4; i--) {
       descr = e_stack + i;
-//#warning "Casting to int64_t may not be the right solution for this."      
-#ifndef __LP64__   /* 09Jan22 gwb: use int64_t for 64 bit builds. */
+//#warning "Casting to int64_t may not be the right solution for this."
+#ifndef __LP64__ /* 09Jan22 gwb: use int64_t for 64 bit builds. */
       printf("%2d %08X: %02X %02X %08X %08X\n", i, (int32_t)descr, descr->type,
              descr->flags, descr->data.dbg.w1, descr->data.dbg.w2);
 #else

@@ -1,0 +1,16 @@
+Object Header for INPUT
+---------------------------------------
+Magic #...............64 (100)
+Revision..............0 (0)
+Start Offset..........2b4 (692)
+# of Arguments........4
+# of variables........15
+Stack Depth...........101
+Symbol Table Offset...0 (0)
+Line Table Offset.....0 (0)
+Object Size (bytes)...790
+Compile timestamp.....Fri 2009-11-13 10:00:06 -0800
+Flags: 
+  Compiled in Internal Mode.
+  Is a recursive program.
+  Allow Break key in recursive.

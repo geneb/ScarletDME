@@ -16,6 +16,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 13Jan22 gwb Fixed issue #29 (QMCONFIG environment variable still being referenced)
+ * 
  * 09Jan22 gwb Fixes to warnings related out output specifiers in printf().
  *             (mostly changing %ld to %d)
  *
@@ -3388,7 +3390,7 @@ Private char* sysdir() {
   FILE* fu;
   char* p;
 
-  p = getenv("QMCONFIG");
+  p = getenv("SCARLET_CONFIG");  /* was QMCONFIG */ /* Issue #29 */
   if (p != NULL)
     strcpy(inipath, p);
   else

@@ -679,6 +679,15 @@ char socket_byte() {
 /* ======================================================================
    login_user()  -  Perform checks and login as specified user            */
 
+#warning "Needs to be updated according to the notes at login_user()"
+//
+// Message that details the change is here: https://groups.google.com/g/scarletdme/c/Xza0TPEVqb8
+// 
+// Summarized:
+//  change this line: if (memcmp(p, "$1$", 3) == 0) /* MD5 algorithm */
+//  to: if ((memcmp(p, "$1$", 3) == 0) || /* MD5 algorithm */
+//         (memcmp(p, "$6$", 3) == 0)
+//
 bool login_user(username, password) char* username;
 char* password;
 {

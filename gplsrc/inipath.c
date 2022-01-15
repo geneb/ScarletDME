@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 13Jan22 gwb Converted the GetConfigPath() function declaration to ansi from k&r.
+ * 
  * 20Jun12 gwb Rebranded to ScarletDME
  *
  * START-HISTORY (OpenQM):
@@ -39,8 +41,8 @@
 
 /* ====================================================================== */
 
-bool GetConfigPath(inipath) char* inipath;
-{
+bool GetConfigPath(char *inipath) { 
+
   char* p;
 
   p = getenv("SCARLET_CONFIG");

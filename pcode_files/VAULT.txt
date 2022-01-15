@@ -1,0 +1,16 @@
+Object Header for VAULT
+---------------------------------------
+Magic #...............64 (100)
+Revision..............0 (0)
+Start Offset..........a5 (165)
+# of Arguments........5
+# of variables........11
+Stack Depth...........100
+Symbol Table Offset...0 (0)
+Line Table Offset.....0 (0)
+Object Size (bytes)...389
+Compile timestamp.....Fri 2009-05-08 03:52:25 -0700
+Flags: 
+  Compiled in Internal Mode.
+  Variable argument count (args = max).
+  Is a recursive program.

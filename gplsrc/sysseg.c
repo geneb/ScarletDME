@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 13Jan22 gwb Changed bind_sysseg() so that it returns a full error message if 
+ *             the pcode load fails.  A numeric error doesn't help anyone.
+ * 
  * 09Feb20 gwb Format specifier changes to clear out warnings.
  *
  * 27Feb20 gwb Changed integer declarations to be portable across address
@@ -89,10 +92,15 @@ Private bool create_shared_segment(int32_t bytes,
 /* ====================================================================== */
 
 bool bind_sysseg(bool create, char* errmsg) {
+  /* 13Jan22 gwb A bit of refactoring.
+   *         renamed "pcode_fu" to "pcode_fd"  It holds a file descriptor, 
+   *         not whatever the hell "fu" is. :)
+   */
+
   /* Linux only - Create rather than attach to existing? */
 
   bool status = FALSE;
-  int32_t bytes;
+  int32_t sharedMemSize;
   int32_t offset;
   int16_t num_glocks;
   struct CONFIG* cfg = NULL;
@@ -101,8 +109,8 @@ bool bind_sysseg(bool create, char* errmsg) {
   int16_t hi_user_no;
   int user_map_size;
   char path[MAX_PATHNAME_LEN + 1];
-  int pcode_fu;
-  struct stat st;
+  int pcode_fd;
+  struct stat statBuf;
   int pcode_len;
   int16_t user_entry_size;
 
@@ -112,10 +120,12 @@ bool bind_sysseg(bool create, char* errmsg) {
   if (!get_semaphores(create, errmsg))
     return FALSE;
 
-  /* Try to open existing shared segment.
-    Use SHORT_CODE semaphore to prevent two users trying to create the
-    shared segment at once.  We cannot use StartExclusive as this uses
-    the shared segment.                                                */
+  /* 
+   * Try to open existing shared segment.
+   * Use SHORT_CODE semaphore to prevent two users trying to create the
+   * shared segment at once.  We cannot use StartExclusive as this uses
+   * the shared segment.                      
+   */
 
   LockSemaphore(SHORT_CODE);
 
@@ -160,19 +170,19 @@ bool bind_sysseg(bool create, char* errmsg) {
 
   num_glocks = max_users * 3; /* Worst case in split, src, tgt, grp 0 */
 
-  bytes = sizeof(SYSSEG);
-  bytes += cfg->numfiles * sizeof(struct FILE_ENTRY);
+  sharedMemSize = sizeof(SYSSEG);
+  sharedMemSize += cfg->numfiles * sizeof(struct FILE_ENTRY);
 
   rlock_entry_size = (offsetof(RLOCK_ENTRY, id) + MAX_ID_LEN + 3) & ~3;
-  bytes += cfg->numlocks * rlock_entry_size;
+  sharedMemSize += cfg->numlocks * rlock_entry_size;
 
-  bytes += num_glocks * sizeof(struct GLOCK_ENTRY);
+  sharedMemSize += num_glocks * sizeof(struct GLOCK_ENTRY);
 
-  bytes += NUM_SEMAPHORES * sizeof(SEMAPHORE_ENTRY);
+  sharedMemSize += NUM_SEMAPHORES * sizeof(SEMAPHORE_ENTRY);
 
   user_entry_size =
       sizeof(struct USER_ENTRY) + (cfg->numfiles * sizeof(int16_t));
-  bytes += max_users * user_entry_size;
+  sharedMemSize += max_users * user_entry_size;
 
   /* Work out size of user map based on highest user number. Users are
     allocated user numbers in a cycle from 1 to hi_user_no. This upper
@@ -181,38 +191,37 @@ bool bind_sysseg(bool create, char* errmsg) {
 
   hi_user_no = max(max_users, MIN_HI_USER_NO);
   user_map_size = (hi_user_no + 1) * sizeof(int16_t);
-  bytes += user_map_size;
+  sharedMemSize += user_map_size;
 
   /* Find size of pcode */
   /* converted to snprintf() -gwb 22Feb20 */
-  if (snprintf(path, MAX_PATHNAME_LEN + 1, "%s%cbin%cpcode", cfg->sysdir, DS,
-               DS) >= (MAX_PATHNAME_LEN + 1)) {
+  if (snprintf(path, MAX_PATHNAME_LEN + 1, "%s%cbin%cpcode", cfg->sysdir, DS, DS) >= (MAX_PATHNAME_LEN + 1)) {
     fprintf(stderr, "Overflowed file/pathname length in bind_sysseg())!\n");
     goto exit_bind_sysseg;
   }
-  if (((pcode_fu = open(path, O_RDONLY | O_BINARY)) < 0) ||
-      fstat(pcode_fu, &st)) {
-    sprintf(errmsg, "Cannot access pcode [%d].", errno);
+  if (((pcode_fd = open(path, O_RDONLY | O_BINARY)) < 0) || fstat(pcode_fd, &statBuf)) {
+    /* return an error message, not a number that has to be looked up! */
+    sprintf(errmsg, "Cannot read pcode file - %s.", strerror(errno)); 
     goto exit_bind_sysseg;
   }
 
-  pcode_len = st.st_size;
-  bytes += pcode_len;
+  pcode_len = statBuf.st_size;
+  sharedMemSize += pcode_len;
 
   /* Make space for template pcfg structure */
 
-  bytes += sizeof(struct PCFG);
+  sharedMemSize += sizeof(struct PCFG);
 
   /* Create the shared segment */
 
-  if (!create_shared_segment(bytes, cfg, errmsg)) {
+  if (!create_shared_segment(sharedMemSize, cfg, errmsg)) {
     goto exit_bind_sysseg;
   }
 
-  memset((char*)sysseg, '\0', bytes);
+  memset((char*)sysseg, '\0', sharedMemSize);
 
   sysseg->revstamp = SYSSEG_REVSTAMP;
-  sysseg->shmem_size = bytes;
+  sysseg->shmem_size = sharedMemSize;
 
   sysseg->flags |= SSF_SECURE; /* Secure until we know otherwise */
   sysseg->prtjob = 1;
@@ -274,12 +283,12 @@ bool bind_sysseg(bool create, char* errmsg) {
   sysseg->pcode_offset = offset;
   sysseg->pcode_len = pcode_len;
 
-  if (read(pcode_fu, ((char*)sysseg) + offset, pcode_len) != pcode_len) {
+  if (read(pcode_fd, ((char*)sysseg) + offset, pcode_len) != pcode_len) {
     sprintf(errmsg, "Unable to load pcode [%d].\n", errno);
     goto exit_bind_sysseg;
   }
 
-  close(pcode_fu);
+  close(pcode_fd);
   offset += pcode_len;
 
   /* Copy our pcfg to become the template for new processes */
@@ -309,6 +318,7 @@ exit_bind_sysseg:
 
   if (!status)
     stop_qm();
+
   return status;
 }
 

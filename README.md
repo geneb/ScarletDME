@@ -24,7 +24,8 @@ xinetd.
 Before you build ScarletDME, you should create a user named "qmsys" and
 a group named "qmuser".  Make sure you add the qmuser group to any user
 that will be using ScarletDME, /including/ the "root" and "qmsys" users!
-See info/setup.txt for more information on creating users & groups.
+See info/setup.txt for more information on creating users & groups as well
+as starting ScarletDME up for the first time.
 
 You should be able to build the system by just typing "make' in the directory
 where the Makefile lives.  Enter "sudo make install" to install the result of the
