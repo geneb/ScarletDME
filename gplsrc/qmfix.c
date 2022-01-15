@@ -708,7 +708,7 @@ void L_command(char *id, int16_t id_len) {
       grp = (hash_value % (header.params.mod_value >> 1)) + 1;
     }
 
-    emit("Hash value %08lX, Group %d, Address x%s\n", hash_value, grp, I64(((int64)(grp - 1) * header.group_size) + header_bytes));
+    emit("Hash value %08X, Group %d, Address x%s\n", hash_value, grp, I64(((int64)(grp - 1) * header.group_size) + header_bytes));
   }
 }
 
@@ -1844,7 +1844,7 @@ Addr          Next Fl LR Chain Data len Id
 
       id_len = rec_ptr->id_len;
       if (rec_ptr->flags & DH_BIG_REC) {
-        emit("%s: %04X %02X %08lX ........ %.*s\n", I64(offset + rec_offset), (int)(rec_ptr->next), (int)(rec_ptr->flags), rec_ptr->data.big_rec, id_len, rec_ptr->id);
+        emit("%s: %04X %02X %08X ........ %.*s\n", I64(offset + rec_offset), (int)(rec_ptr->next), (int)(rec_ptr->flags), rec_ptr->data.big_rec, id_len, rec_ptr->id);
 
         big_offset = GetLink(rec_ptr->data.big_rec);
         first_big = TRUE;
@@ -1859,17 +1859,17 @@ Addr          Next Fl LR Chain Data len Id
           }
 
           if (first_big) {
-            emit(".... .. %08lX %08lX\n", big_block.next, big_block.data_len);
+            emit(".... .. %08X %08X\n", big_block.next, big_block.data_len);
             first_big = FALSE;
           } else {
-            emit(".... .. %08lX\n", big_block.next);
+            emit(".... .. %08X\n", big_block.next);
             //           emit(".... .. %s\n", I64(big_block.next));
           }
 
           big_offset = GetLink(big_block.next);
         }
       } else {
-        emit("%s: %04X %02X ........ %08lX %.*s\n", I64(offset + rec_offset), (int)(rec_ptr->next), (int)(rec_ptr->flags), rec_ptr->data.data_len, id_len, rec_ptr->id);
+        emit("%s: %04X %02X ........ %08X %.*s\n", I64(offset + rec_offset), (int)(rec_ptr->next), (int)(rec_ptr->flags), rec_ptr->data.data_len, id_len, rec_ptr->id);
       }
 
       memcpy(id, rec_ptr->id, id_len);
@@ -1986,16 +1986,16 @@ Private void show_node(int32_t group) {
             }
 
             if (first_big) {
-              emit(".... .. %08lX %08lX (Node %d)\n", big_node.next, big_node.data_len, OffsetToNode(big_offset));
+              emit(".... .. %08X %08X (Node %d)\n", big_node.next, big_node.data_len, OffsetToNode(big_offset));
               first_big = FALSE;
             } else {
-              emit(".... .. %08lX          (Node %d)\n", big_node.next, OffsetToNode(big_offset));
+              emit(".... .. %08X          (Node %d)\n", big_node.next, OffsetToNode(big_offset));
             }
 
             big_offset = GetAKLink(big_node.next);
           }
         } else {
-          emit("%s: %04X %02X ........ %08lX %.*s\n", I64(offset + rec_offset), (int)(rec_ptr->next), (int)(rec_ptr->flags), rec_ptr->data.data_len, min(id_len, 40), rec_ptr->id);
+          emit("%s: %04X %02X ........ %08X %.*s\n", I64(offset + rec_offset), (int)(rec_ptr->next), (int)(rec_ptr->flags), rec_ptr->data.data_len, min(id_len, 40), rec_ptr->id);
         }
 
         rec_offset += rec_ptr->next;
