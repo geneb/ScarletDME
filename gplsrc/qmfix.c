@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 15Jan22 gwb Fixed dozens of instances of "Wrong type of arguments to fomatting
+ *             function" that were reported by CodeQL. Tagged as CWE-686 by CodeQL.
+ * 
  * 09Jan22 gwb Various fixes for sscanf() and printf() format codes that needed
  *             adjusting in order to stop throwing warnings under 32 and 64 bit
  *             target builds.
@@ -643,22 +646,22 @@ void H_command() {
   emit("%04X: File version  %d\n", offsetof(DH_HEADER, file_version), (int)header.file_version);
   emit("      Header size   %d (x%04X)\n", header_bytes, header_bytes);
   emit("%04X: Group size    %d (x%04X)\n", offsetof(DH_HEADER, group_size), (int)(header.group_size), (int)(header.group_size));
-  emit("%04X: Modulus       %ld\n", offsetof(DH_HEADER, params.modulus), header.params.modulus);
-  emit("%04X: Min modulus   %ld\n", offsetof(DH_HEADER, params.min_modulus), header.params.min_modulus);
-  emit("%04X: Big record    %ld\n", offsetof(DH_HEADER, params.big_rec_size), header.params.big_rec_size);
+  emit("%04X: Modulus       %d\n", offsetof(DH_HEADER, params.modulus), header.params.modulus);
+  emit("%04X: Min modulus   %d\n", offsetof(DH_HEADER, params.min_modulus), header.params.min_modulus);
+  emit("%04X: Big record    %d\n", offsetof(DH_HEADER, params.big_rec_size), header.params.big_rec_size);
   emit("%04X: Split load    %d\n", offsetof(DH_HEADER, params.split_load), (int)header.params.split_load);
   emit("%04X: Merge load    %d\n", offsetof(DH_HEADER, params.merge_load), (int)header.params.merge_load);
   emit("      Load bytes    %s (%d%%)\n", I64(load_bytes), load);
-  emit("%04X: Mod value     %ld\n", offsetof(DH_HEADER, params.mod_value), header.params.mod_value);
+  emit("%04X: Mod value     %d\n", offsetof(DH_HEADER, params.mod_value), header.params.mod_value);
   emit("%04X: Longest id    %d\n", offsetof(DH_HEADER, params.longest_id), header.params.longest_id);
-  emit("%04X: Free chain    %08lX  x%s\n", offsetof(DH_HEADER, params.free_chain), header.params.free_chain, I64(GetLink(header.params.free_chain)));
+  emit("%04X: Free chain    %08X  x%s\n", offsetof(DH_HEADER, params.free_chain), header.params.free_chain, I64(GetLink(header.params.free_chain)));
   emit("%04X: Flags         x%04X\n", offsetof(DH_HEADER, flags), (int)header.flags);
-  emit("%04X: AK map        %08lX  x%s\n", offsetof(DH_HEADER, ak_map), header.ak_map, I64(GetLink(header.ak_map)));
+  emit("%04X: AK map        %08X  x%s\n", offsetof(DH_HEADER, ak_map), header.ak_map, I64(GetLink(header.ak_map)));
   emit("%04X: Trigger name  '%s'\n", offsetof(DH_HEADER, trigger_name), header.trigger_name);
   emit("%04X: Trigger modes x%02X\n", offsetof(DH_HEADER, trigger_modes), header.trigger_modes);
   emit("%04X: Journal file  %d\n", offsetof(DH_HEADER, jnl_fno), header.jnl_fno);
   emit("%04X: AK path       '%s'\n", offsetof(DH_HEADER, akpath), (header.akpath[0] == '\0') ? "" : header.akpath);
-  emit("%04X: Creation time %ld\n", offsetof(DH_HEADER, creation_timestamp), header.creation_timestamp);
+  emit("%04X: Creation time %d\n", offsetof(DH_HEADER, creation_timestamp), header.creation_timestamp);
   emit("%04X: Record count  x%s (actual count is one less)\n", offsetof(DH_HEADER, record_count), I64(header.record_count));
   emit("\n");
 
@@ -673,7 +676,7 @@ void H_command() {
     emit("%04X: Field number %d\n", offsetof(DH_AK_HEADER, fno), (int)ak_header.fno);
     ak_node_offset = GetAKLink(ak_header.free_chain);
     emit("%04X: Free chain   x%s, Node %ld\n", offsetof(DH_AK_HEADER, free_chain), I64(ak_node_offset), OffsetToNode(ak_node_offset));
-    emit("%04X: I-type bytes %ld\n", offsetof(DH_AK_HEADER, itype_len), ak_header.itype_len);
+    emit("%04X: I-type bytes %d\n", offsetof(DH_AK_HEADER, itype_len), ak_header.itype_len);
     ak_node_offset = GetAKLink(ak_header.itype_ptr);
     emit("%04X: I-type ptr   x%s, Node %ld\n", offsetof(DH_AK_HEADER, itype_ptr), I64(ak_node_offset), OffsetToNode(ak_node_offset));
     emit("      AK name      '%s'\n", ak_header.ak_name);
@@ -705,7 +708,7 @@ void L_command(char *id, int16_t id_len) {
       grp = (hash_value % (header.params.mod_value >> 1)) + 1;
     }
 
-    emit("Hash value %08lX, Group %ld, Address x%s\n", hash_value, grp, I64(((int64)(grp - 1) * header.group_size) + header_bytes));
+    emit("Hash value %08lX, Group %d, Address x%s\n", hash_value, grp, I64(((int64)(grp - 1) * header.group_size) + header_bytes));
   }
 }
 
@@ -790,15 +793,15 @@ void W_command(char *cmnd) {
 
     switch (n) {
       case 2:
-        emit("Was %02lX\n", old_data);
+        emit("Was %02X\n", old_data);
         break;
       case 4:
         old_data = ((old_data & 0x0000FF00L) >> 8) | ((old_data & 0x000000FFL) << 8);
-        emit("Was %04lX\n", old_data);
+        emit("Was %04X\n", old_data);
         break;
       case 8:
         old_data = (old_data >> 24) | ((old_data & 0x00FF0000L) >> 8) | ((old_data & 0x0000FF00L) << 8) | ((old_data & 0x000000FFL) << 24);
-        emit("Was %08lX\n", old_data);
+        emit("Was %08X\n", old_data);
         break;
     }
 
@@ -839,18 +842,18 @@ w_format_error:
    Z_command()  -  Show file statistics                                   */
 
 void Z_command() {
-  emit("Reset time       %ld\n", header.stats.reset);
-  emit("Open count       %ld\n", header.stats.opens);
-  emit("Read count       %ld\n", header.stats.reads);
-  emit("Write count      %ld\n", header.stats.writes);
-  emit("Delete count     %ld\n", header.stats.deletes);
-  emit("Clear count      %ld\n", header.stats.clears);
-  emit("Select count     %ld\n", header.stats.selects);
-  emit("Split count      %ld\n", header.stats.splits);
-  emit("Merge count      %ld\n", header.stats.merges);
-  emit("AK read count    %ld\n", header.stats.ak_reads);
-  emit("AK write count   %ld\n", header.stats.ak_writes);
-  emit("AK delete count  %ld\n", header.stats.ak_deletes);
+  emit("Reset time       %d\n", header.stats.reset);
+  emit("Open count       %d\n", header.stats.opens);
+  emit("Read count       %d\n", header.stats.reads);
+  emit("Write count      %d\n", header.stats.writes);
+  emit("Delete count     %d\n", header.stats.deletes);
+  emit("Clear count      %d\n", header.stats.clears);
+  emit("Select count     %d\n", header.stats.selects);
+  emit("Split count      %d\n", header.stats.splits);
+  emit("Merge count      %d\n", header.stats.merges);
+  emit("AK read count    %d\n", header.stats.ak_reads);
+  emit("AK write count   %d\n", header.stats.ak_writes);
+  emit("AK delete count  %d\n", header.stats.ak_deletes);
 }
 
 /* ====================================================================== */
@@ -977,7 +980,7 @@ bool check_file() {
   /* Check group size is valid */
 
   if ((group_bytes & (DH_GROUP_MULTIPLIER - 1)) || (group_bytes < DH_GROUP_MULTIPLIER) || (group_bytes > DH_MAX_GROUP_SIZE_BYTES)) {
-    emit("Invalid group size (%ld bytes)\n", group_bytes);
+    emit("Invalid group size (%d bytes)\n", group_bytes);
     goto exit_check;
   }
 
@@ -998,7 +1001,7 @@ bool check_file() {
   /* Check big record size */
 
   if ((header.params.big_rec_size < 0) || (header.params.big_rec_size > (header.group_size - BLOCK_HEADER_SIZE))) {
-    emit("Large record size is invalid (%ld)\n", header.params.big_rec_size);
+    emit("Large record size is invalid (%d)\n", header.params.big_rec_size);
     if (fix()) {
       header.params.big_rec_size = header.group_size - BLOCK_HEADER_SIZE;
       if (!write_header())
@@ -1104,7 +1107,7 @@ bool check_file() {
     } else /* Looks like an active group */
     {
       if (released_group != 0) {
-        emit("Active group %ld found after released group(s)!\n", grp);
+        emit("Active group %d found after released group(s)!\n", grp);
         if (fix()) {
           if (ebuff == NULL) {
             ebuff = (DH_BLOCK *)malloc(group_bytes);
@@ -1125,7 +1128,7 @@ bool check_file() {
       }
 
       if (buff->block_type != DHT_DATA) {
-        emit("Group %ld has incorrect block type (%d)\n", grp, (int)(buff->block_type));
+        emit("Group %d has incorrect block type (%d)\n", grp, (int)(buff->block_type));
         if (fix()) {
           buff->block_type = DHT_DATA;
           write_block(sf, offset, group_bytes, (char *)buff);
@@ -1167,8 +1170,8 @@ bool check_file() {
           if ((hgroup != grp) && (hash_errors < HASH_ERROR_LIMIT)) {
             hash_errors++;
             emit(
-                "Record '%s' mis-hashed into group %ld. Should be in group "
-                "%ld\n",
+                "Record '%s' mis-hashed into group %d. Should be in group "
+                "%d\n",
                 id, grp, hgroup);
 
             /* Add group to list of groups to dump */
@@ -1185,7 +1188,7 @@ bool check_file() {
           if (rec_ptr->flags & DH_BIG_REC) {
             if (!map_big_rec(sf, offset, rec_ptr, map)) {
               emit(
-                  "Error in large record. Group %ld, %d.%s, id '%s'.\nRecord "
+                  "Error in large record. Group %d, %d.%s, id '%s'.\nRecord "
                   "cannot be recovered.\n",
                   grp, (int)sf, I64(offset + rec_offset), id);
               if (fix()) {
@@ -1247,7 +1250,7 @@ bool check_file() {
   /* Check modulus */
 
   if (apparent_modulus != header.params.modulus) {
-    emit("Apparent modulus %ld differs from recorded modulus %ld\n", apparent_modulus, header.params.modulus);
+    emit("Apparent modulus %d differs from recorded modulus %d\n", apparent_modulus, header.params.modulus);
     if (fix()) {
       header.params.modulus = apparent_modulus;
       if (!write_header())
@@ -1261,19 +1264,19 @@ bool check_file() {
   for (n = 1; n < header.params.modulus; n = n << 1) {
   }
   if (header.params.mod_value != n) {
-    emit("Incorrect mod_value (%ld), expected %ld\n", header.params.mod_value, n);
+    emit("Incorrect mod_value (%d), expected %d\n", header.params.mod_value, n);
     if (fix()) {
       header.params.mod_value = n;
       if (!write_header())
         goto exit_check;
-      emit("   Corrected by setting to %ld\n", n);
+      emit("   Corrected by setting to %d\n", n);
     }
   }
 
   /* Check minimum modulus */
 
   if ((header.params.min_modulus < 1) || (header.params.min_modulus > header.params.modulus)) {
-    emit("Minimum modulus is invalid (%ld)\n", header.params.min_modulus);
+    emit("Minimum modulus is invalid (%d)\n", header.params.min_modulus);
     if (fix()) {
       header.params.min_modulus = 1;
       if (!write_header())
@@ -1354,7 +1357,7 @@ bool check_file() {
 
     if (header.file_version < 2) {
       if (buff->next & ((int32_t)(group_bytes - 1))) {
-        emit("Faulty next block pointer x%08lX at 1.%s\n", buff->next, I64(offset));
+        emit("Faulty next block pointer x%08X at 1.%s\n", buff->next, I64(offset));
         break;
       }
     }
@@ -1403,7 +1406,7 @@ bool check_file() {
           goto exit_check;
 
         if (ak_map[n] == (char)-1) {
-          emit("AK %d node %ld unreferenced\n", (int)akno, n);
+          emit("AK %d node %d unreferenced\n", (int)akno, n);
           if (fix()) {
             /* Add to AK free node chain */
 
@@ -1435,7 +1438,7 @@ bool check_file() {
 
     if (map[n] == 0) {
       offset = (((int64)(n - 1 + map_offset)) * group_bytes) + header_bytes;
-      emit("Overflow block %ld (x%s) unreferenced\n", n + map_offset, I64(offset));
+      emit("Overflow block %d (x%s) unreferenced\n", n + map_offset, I64(offset));
       if (fix()) {
         /* Add to free chain */
 
@@ -1449,7 +1452,7 @@ bool check_file() {
     }
   }
 
-  emit("%ld overflow blocks allocated, %ld on free chain\n", num_overflow_blocks, free_blocks);
+  emit("%d overflow blocks allocated, %d on free chain\n", num_overflow_blocks, free_blocks);
 
   /* Perform automatic dump and rebuild of faulty groups */
 
@@ -1618,12 +1621,12 @@ bool dump_group(int32_t grp) {
   offset = (((int64)(grp - 1)) * group_bytes) + header_bytes;
   do {
     if (!read_block(sf, offset, group_bytes, (char *)buff)) {
-      emit("Error reading group %ld for dump and rebuild\n", grp);
+      emit("Error reading group %d for dump and rebuild\n", grp);
       goto exit_dump_group;
     }
 
     if (write(dump_fu, (char *)buff, group_bytes) != group_bytes) {
-      emit("Error writing group %ld to temporary file for dump and rebuild\n", grp);
+      emit("Error writing group %d to temporary file for dump and rebuild\n", grp);
       goto exit_dump_group;
     }
 
@@ -1653,7 +1656,7 @@ bool clear_group(int32_t grp) {
 
   offset = (((int64)(grp - 1)) * group_bytes) + header_bytes;
   if (!read_block(PRIMARY_SUBFILE, offset, group_bytes, (char *)buff)) {
-    emit("Error reading group %ld for dump and rebuild\n", grp);
+    emit("Error reading group %d for dump and rebuild\n", grp);
     goto exit_clear_group;
   }
 
@@ -1880,7 +1883,7 @@ Addr          Next Fl LR Chain Data len Id
       }
 
       if (hgroup != group) {
-        emit("  ** Above record should be in group %ld **\n", hgroup);
+        emit("  ** Above record should be in group %d **\n", hgroup);
       }
 
       rec_offset += rec_ptr->next;
@@ -1926,42 +1929,42 @@ Private void show_node(int32_t group) {
 
   switch (((DH_INT_NODE *)&buffer)->node_type) {
     case AK_FREE_NODE:
-      emit("Free node %ld (x%s): Free space.  Next %ld (x%s).\n", group, I64(offset), GetAKNodeNum(((DH_FREE_NODE *)&buffer)->next), I64(GetAKLink(((DH_FREE_NODE *)&buffer)->next)));
+      emit("Free node %d (x%s): Free space.  Next %ld (x%s).\n", group, I64(offset), GetAKNodeNum(((DH_FREE_NODE *)&buffer)->next), I64(GetAKLink(((DH_FREE_NODE *)&buffer)->next)));
       break;
 
     case AK_INT_NODE:
       used_bytes = ((DH_INT_NODE *)&buffer)->used_bytes;
       child_count = ((DH_INT_NODE *)&buffer)->child_count;
-      emit("Internal node %ld (x%s): Child count %d.\n", group, I64(offset), (int)child_count);
+      emit("Internal node %d (x%s): Child count %d.\n", group, I64(offset), (int)child_count);
       emit("Used space %04X, Spare space %04X\n", (int)used_bytes, (int)(DH_AK_NODE_SIZE - used_bytes));
 
       /*
-Chld   Node NodeAddr     Len Key
-123: 123456 000000000000 123 50xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-*/
+       * Chld   Node NodeAddr     Len Key
+       * 123: 123456 000000000000 123 50xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+       */
       emit("Chld   Node NodeAddr     Len Key\n");
       for (i = 0, p = ((DH_INT_NODE *)&buffer)->keys; i < child_count; i++, p += key_len) {
         key_len = ((DH_INT_NODE *)&buffer)->key_len[i];
         child_offset = GetAKLink(((DH_INT_NODE *)&buffer)->child[i]);
-        emit("%3d: %6ld %s %3d %.*s\n", (int)i, OffsetToNode(child_offset), I64(child_offset), key_len, min(50, key_len), p);
+        emit("%3d: %6d %s %3d %.*s\n", (int)i, OffsetToNode(child_offset), I64(child_offset), key_len, min(50, key_len), p);
       }
       break;
 
     case AK_TERM_NODE:
       used_bytes = ((DH_TERM_NODE *)&buffer)->used_bytes;
-      emit("Terminal node %ld (x%s):\n", group, I64(offset));
-      emit("Left = %ld (x%s), Right = %ld (x%s).\n", GetAKNodeNum(((DH_TERM_NODE *)&buffer)->left), I64(GetAKLink(((DH_TERM_NODE *)&buffer)->left)), GetAKNodeNum(((DH_TERM_NODE *)&buffer)->right),
+      emit("Terminal node %d (x%s):\n", group, I64(offset));
+      emit("Left = %d (x%s), Right = %d (x%s).\n", GetAKNodeNum(((DH_TERM_NODE *)&buffer)->left), I64(GetAKLink(((DH_TERM_NODE *)&buffer)->left)), GetAKNodeNum(((DH_TERM_NODE *)&buffer)->right),
            I64(GetAKLink(((DH_TERM_NODE *)&buffer)->right)));
       emit("Used space %04X, Spare space %04X\n", (int)used_bytes, (int)(DH_AK_NODE_SIZE - used_bytes));
 
       /*
-Addr          Next Fl LR Chain Data len Id
-000000000400: 0030 00 ........ 00000016 nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn
-000000000430: 0035 01 00002000 ........ nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn
-000000002000> .... .. 00002400 00000884 (Node 4)
-000000002400> .... .. 00000000 ........ (Node 7)
-000000000465: 1234 00 ........ 00000018 nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn
-*/
+       * Addr          Next Fl LR Chain Data len Id
+       * 000000000400: 0030 00 ........ 00000016 nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn
+       * 000000000430: 0035 01 00002000 ........ nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn
+       * 000000002000> .... .. 00002400 00000884 (Node 4)
+       * 000000002400> .... .. 00000000 ........ (Node 7)
+       * 000000000465: 1234 00 ........ 00000018 nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn
+       */
 
       rec_offset = offsetof(DH_TERM_NODE, record);
 
@@ -1971,7 +1974,7 @@ Addr          Next Fl LR Chain Data len Id
 
         id_len = rec_ptr->id_len;
         if (rec_ptr->flags & DH_BIG_REC) {
-          emit("%s: %04X %02X %08lX ........ %.*s\n", I64(offset + rec_offset), (int)(rec_ptr->next), (int)(rec_ptr->flags), GetAKNodeNum(rec_ptr->data.big_rec), min(id_len, 39), rec_ptr->id);
+          emit("%s: %04X %02X %08X ........ %.*s\n", I64(offset + rec_offset), (int)(rec_ptr->next), (int)(rec_ptr->flags), GetAKNodeNum(rec_ptr->data.big_rec), min(id_len, 39), rec_ptr->id);
 
           big_offset = GetAKLink(rec_ptr->data.big_rec);
           first_big = TRUE;
@@ -1983,10 +1986,10 @@ Addr          Next Fl LR Chain Data len Id
             }
 
             if (first_big) {
-              emit(".... .. %08lX %08lX (Node %ld)\n", big_node.next, big_node.data_len, OffsetToNode(big_offset));
+              emit(".... .. %08lX %08lX (Node %d)\n", big_node.next, big_node.data_len, OffsetToNode(big_offset));
               first_big = FALSE;
             } else {
-              emit(".... .. %08lX          (Node %ld)\n", big_node.next, OffsetToNode(big_offset));
+              emit(".... .. %08lX          (Node %d)\n", big_node.next, OffsetToNode(big_offset));
             }
 
             big_offset = GetAKLink(big_node.next);
@@ -2000,12 +2003,12 @@ Addr          Next Fl LR Chain Data len Id
       break;
 
     case AK_ITYPE_NODE:
-      emit("Node %ld (x%s): I-type buffer.  Used bytes %04X.  Next %ld (x%s).\n", group, I64(offset), (int)(((DH_ITYPE_NODE *)&buffer)->used_bytes), GetAKNodeNum(((DH_ITYPE_NODE *)&buffer)->next),
+      emit("Node %d (x%s): I-type buffer.  Used bytes %04X.  Next %d (x%s).\n", group, I64(offset), (int)(((DH_ITYPE_NODE *)&buffer)->used_bytes), GetAKNodeNum(((DH_ITYPE_NODE *)&buffer)->next),
            I64(GetAKLink(((DH_ITYPE_NODE *)&buffer)->next)));
       break;
 
     case AK_BIGREC_NODE:
-      emit("Node %ld (x%s): Big record.  Used bytes %04X.  Next %ld (x%s).\n", group, I64(offset), (int)(((DH_BIG_NODE *)&buffer)->used_bytes), GetAKNodeNum(((DH_ITYPE_NODE *)&buffer)->next),
+      emit("Node %d (x%s): Big record.  Used bytes %04X.  Next %d (x%s).\n", group, I64(offset), (int)(((DH_BIG_NODE *)&buffer)->used_bytes), GetAKNodeNum(((DH_ITYPE_NODE *)&buffer)->next),
            I64(GetAKLink(((DH_BIG_NODE *)&buffer)->next)));
       break;
 
@@ -2251,7 +2254,7 @@ void tag_block(int64 offset, int16_t ref_subfile, int64 ref_offset, int16_t usag
   } else {
     other_group = n & 0x1FFFFFFF;
     other_offset = ((int64)n) * group_bytes + header_bytes;
-    emit("%s %ld (x%s) also referenced as %s from %s group %ld (x%s)\n", uses[usage], /* Block type from this call */
+    emit("%s %d (x%s) also referenced as %s from %s group %d (x%s)\n", uses[usage], /* Block type from this call */
          ogrp,                                                                        /* Group number */
          I64(offset),                                                                 /* Group offset */
          uses[n >> 30],                                                               /* Block type already recorded */
@@ -2278,7 +2281,7 @@ void map_node(int16_t sf, int32_t node, char *ak_map, int32_t num_nodes, int32_t
   int32_t big_node_no;
 
   if (node > num_nodes) {
-    emit("Non-existant node %ld referenced from node %ld\n", node, parent);
+    emit("Non-existant node %d referenced from node %d\n", node, parent);
     goto exit_map_node;
   }
 
@@ -2288,14 +2291,14 @@ void map_node(int16_t sf, int32_t node, char *ak_map, int32_t num_nodes, int32_t
 
   if (!read_block(sf, offset, DH_AK_NODE_SIZE, buff)) {
     ak_map[node] = -3;
-    emit("Read error on node %ld referenced from node %ld\n", node, parent);
+    emit("Read error on node %d referenced from node %d\n", node, parent);
     goto exit_map_node;
   }
 
   node_type = ((DH_INT_NODE *)buff)->node_type;
 
   if (ak_map[node] != (char)-1) {
-    emit("Type %d node %ld also referenced from node %ld\n", (int)node_type, node, parent);
+    emit("Type %d node %d also referenced from node %d\n", (int)node_type, node, parent);
     goto exit_map_node;
   }
 
@@ -2303,7 +2306,7 @@ void map_node(int16_t sf, int32_t node, char *ak_map, int32_t num_nodes, int32_t
 
   switch (node_type) {
     case AK_FREE_NODE:
-      emit("Free node %ld referenced from node %ld\n", node, parent);
+      emit("Free node %d referenced from node %d\n", node, parent);
       break;
 
     case AK_INT_NODE:
@@ -2335,8 +2338,8 @@ void map_node(int16_t sf, int32_t node, char *ak_map, int32_t num_nodes, int32_t
 
             if (ak_map[big_node_no] != (char)-1) {
               emit(
-                  "Type %d node %ld also referenced as big record from node "
-                  "%ld\n",
+                  "Type %d node %d also referenced as big record from node "
+                  "%d\n",
                   (int)node_type, node, parent);
               goto exit_map_node;
             }
@@ -2347,7 +2350,7 @@ void map_node(int16_t sf, int32_t node, char *ak_map, int32_t num_nodes, int32_t
             }
 
             if (big_node.node_type != AK_BIGREC_NODE) {
-              emit("Big rec node %ld referenced from node %ld has type %d\n", big_node_no, parent, big_node.node_type);
+              emit("Big rec node %d referenced from node %d has type %d\n", big_node_no, parent, big_node.node_type);
               goto exit_map_node;
             }
 
@@ -2361,16 +2364,16 @@ void map_node(int16_t sf, int32_t node, char *ak_map, int32_t num_nodes, int32_t
       break;
 
     case AK_ITYPE_NODE:
-      emit("I-type node %ld referenced from node %ld\n", node, parent);
+      emit("I-type node %d referenced from node %d\n", node, parent);
       break;
 
     case AK_BIGREC_NODE:
-      emit("Big record node %ld referenced from node %ld\n", node, parent);
+      emit("Big record node %d referenced from node %d\n", node, parent);
       break;
 
     default:
       ak_map[node] = -4;
-      emit("Unexpected node type %d in node %ld referenced from node %ld\n", (int)(((DH_INT_NODE *)buff)->node_type), node, parent);
+      emit("Unexpected node type %d in node %d referenced from node %d\n", (int)(((DH_INT_NODE *)buff)->node_type), node, parent);
       break;
   }
 
@@ -2399,13 +2402,13 @@ void map_ak_free_chain(int16_t sf, char *map, int32_t num_nodes) {
 
     node = OffsetToNode(offset);
     if ((node < 1) || (node > num_nodes)) {
-      emit("Invalid forward pointer in free node %ld\n", last_node);
+      emit("Invalid forward pointer in free node %d\n", last_node);
       break;
     }
 
     if (!read_block(sf, offset, DH_AK_NODE_SIZE, buff)) {
       map[node] = -3;
-      emit("Read error on node %ld referenced from node %ld\n", node, last_node);
+      emit("Read error on node %d referenced from node %d\n", node, last_node);
       goto exit_map_ak_free_chain;
     }
 
@@ -2422,13 +2425,13 @@ void map_ak_free_chain(int16_t sf, char *map, int32_t num_nodes) {
 
     node = OffsetToNode(offset);
     if ((node < 1) || (node > num_nodes)) {
-      emit("Invalid forward pointer in itype node %ld\n", last_node);
+      emit("Invalid forward pointer in itype node %d\n", last_node);
       break;
     }
 
     if (!read_block(sf, offset, DH_AK_NODE_SIZE, buff)) {
       map[node] = -3;
-      emit("Read error on node %ld referenced from node %ld\n", node, last_node);
+      emit("Read error on node %d referenced from node %d\n", node, last_node);
       goto exit_map_ak_free_chain;
     }
 
