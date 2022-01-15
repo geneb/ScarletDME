@@ -100,9 +100,11 @@ else
 	endif
 endif
 
-#C_FLAGS  := -Wall -Wformat=2 -Wno-format-nonliteral -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH)
-# -Wformat=0 turns off the format specifier warnings so other warnings don't get lost.
+# The -Wno-format-nonliteral flag prevents the compiler warning us about being unable to check the format
+# strings the system uses for error message text.
 C_FLAGS  := -Wall -Wformat=2 -Wno-format-nonliteral -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH)
+
+
 
 ifeq (Darwin,$(OSNAME))
 	L_FLAGS  := -lm -ldl
