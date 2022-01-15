@@ -483,7 +483,7 @@ void op_fileinfo() {
           ts_init(&str, 5 * FILESTATS_COUNTERS);
           for (i = 0, q = (int32_t*)&(fptr->stats.reset);
                i < FILESTATS_COUNTERS; i++, q++) {
-            ts_printf("%ld\xfe", *q);
+            ts_printf("%d\xfe", *q);
           }
           (void)ts_terminate();
           k_dismiss(); /* 0363 */
@@ -1088,7 +1088,7 @@ Private STRING_CHUNK* get_file_status(FILE_VAR* fvar) {
   ts_printf("%lld\xfe", file_size);
 
   /*  7  Hard links */
-  ts_printf("%d\xfe", statbuf.st_nlink);
+  ts_printf("%u\xfe", statbuf.st_nlink);
 
   /*  8  UID of owner */
   ts_printf("%d\xfe", statbuf.st_uid);
@@ -1097,10 +1097,10 @@ Private STRING_CHUNK* get_file_status(FILE_VAR* fvar) {
   ts_printf("%d\xfe", statbuf.st_gid);
 
   /* 10  Inode number */
-  ts_printf("%d\xfe", statbuf.st_ino);
+  ts_printf("%u\xfe", statbuf.st_ino);
 
   /* 11  Device number */
-  ts_printf("%d\xfe", statbuf.st_dev);
+  ts_printf("%u\xfe", statbuf.st_dev);
 
   /* 12  Not used */
   ts_printf("\xfe");
