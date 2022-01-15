@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  *
  * START-HISTORY (ScarletDME):
+ * 15Jan22 gwb Fixed argument formatting issues (CwE-686) 
+ * 
  * 29Feb20 gwb Changed LONG_MAX to INT32_MAX.  When building for a 64 bit 
  *             platform, the LONG_MAX constant overflows the size of the
  *             int32_t variable type.  This change needed to be made across
@@ -325,7 +327,7 @@ bool dh_read_group(DH_FILE* dh_file,
   if (Seek(dh_file->sf[subfile].fu, offset, SEEK_SET) < 0) {
     process.os_error = OSError;
     fptr = FPtr(dh_file->file_id);
-    log_printf("DH_READ_GROUP: Seek error %d on %s subfile %d, group %ld.\n",
+    log_printf("DH_READ_GROUP: Seek error %d on %s subfile %d, group %d.\n",
                process.os_error, fptr->pathname, (int)subfile, group);
     dh_err = DHE_SEEK_ERROR;
     return FALSE;
@@ -334,7 +336,7 @@ bool dh_read_group(DH_FILE* dh_file,
   if (Read(dh_file->sf[subfile].fu, buff, bytes) < 0) {
     process.os_error = OSError;
     fptr = FPtr(dh_file->file_id);
-    log_printf("DH_READ_GROUP: Read error %d on %s subfile %d, group %ld.\n",
+    log_printf("DH_READ_GROUP: Read error %d on %s subfile %d, group %d.\n",
                process.os_error, fptr->pathname, (int)subfile, group);
     dh_err = DHE_READ_ERROR;
     return FALSE;
@@ -378,7 +380,7 @@ bool dh_write_group(DH_FILE* dh_file,
 
   if (Seek(dh_file->sf[subfile].fu, offset, SEEK_SET) < 0) {
     process.os_error = OSError;
-    log_printf("DH_WRITE_GROUP: Seek error %d on %s subfile %d, group %ld.\n",
+    log_printf("DH_WRITE_GROUP: Seek error %d on %s subfile %d, group %d.\n",
                process.os_error, FPtr(dh_file->file_id)->pathname, (int)subfile,
                group);
     dh_err = DHE_SEEK_ERROR;
@@ -387,7 +389,7 @@ bool dh_write_group(DH_FILE* dh_file,
 
   if (Write(dh_file->sf[subfile].fu, buff, bytes) < 0) {
     process.os_error = OSError;
-    log_printf("DH_WRITE_GROUP: Write error %d on %s subfile %d, group %ld.\n",
+    log_printf("DH_WRITE_GROUP: Write error %d on %s subfile %d, group %d.\n",
                process.os_error, FPtr(dh_file->file_id)->pathname, (int)subfile,
                group);
     dh_err = DHE_WRITE_ERROR;

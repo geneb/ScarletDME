@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  *
  * START-HISTORY (Scarlet DME):
+ * 15Jan22 gwb Fixed argument formatting issues (CwE-686) 
+ * 
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  * 22Feb20 gwb Turned off a warning via #pragma in delete_ak().
@@ -2169,7 +2171,7 @@ Private bool ak_write(DH_FILE* dh_file, /* File descriptor */
 
     if (tail->node.int_node.node_type != AK_INT_NODE) {
       log_printf(
-          "DH_AK: Invalid node type (x%04X) at subfile %d node %ld\nof file "
+          "DH_AK: Invalid node type (x%04X) at subfile %d node %d\nof file "
           "%s.\n",
           (int)(tail->node.int_node.node_type), (int)subfile, node_num,
           fptr->pathname);
@@ -2217,7 +2219,7 @@ Private bool ak_write(DH_FILE* dh_file, /* File descriptor */
 
   if ((used_bytes == 0) || (used_bytes > DH_AK_NODE_SIZE)) {
     log_printf(
-        "AK_WRITE: Invalid byte count (x%04X) at subfile %d node %ld\nof file "
+        "AK_WRITE: Invalid byte count (x%04X) at subfile %d node %d\nof file "
         "%s.\n",
         used_bytes, (int)subfile, node_num, fptr->pathname);
     dh_err = DHE_POINTER_ERROR;
@@ -3020,7 +3022,7 @@ Private void ak_delete(DH_FILE* dh_file, /* File descriptor */
 
     if (tail->node.int_node.node_type != AK_INT_NODE) {
       log_printf(
-          "AK_DELETE: Invalid node type (x%04X) at subfile %d node %ld\nof "
+          "AK_DELETE: Invalid node type (x%04X) at subfile %d node %d\nof "
           "file %s.\n",
           (int)(tail->node.int_node.node_type), (int)subfile, node_num,
           fptr->pathname);
@@ -3061,7 +3063,7 @@ Private void ak_delete(DH_FILE* dh_file, /* File descriptor */
   used_bytes = tail->node.term_node.used_bytes;
   if ((used_bytes == 0) || (used_bytes > DH_AK_NODE_SIZE)) {
     log_printf(
-        "AK_DELETE: Invalid byte count (x%04X) at subfile %d node %ld\nof file "
+        "AK_DELETE: Invalid byte count (x%04X) at subfile %d node %d\nof file "
         "%s.\n",
         used_bytes, (int)subfile, node_num, fptr->pathname);
     dh_err = DHE_POINTER_ERROR;
@@ -3293,7 +3295,7 @@ Private STRING_CHUNK* ak_read(
 
     if (node->int_node.node_type != AK_INT_NODE) {
       log_printf(
-          "AK_READ: Invalid node type (x%04X) at subfile %d node %ld\nof file "
+          "AK_READ: Invalid node type (x%04X) at subfile %d node %d\nof file "
           "%s.\n",
           (int)(node->int_node.node_type), (int)subfile, node_num,
           fptr->pathname);
@@ -3346,7 +3348,7 @@ Private STRING_CHUNK* ak_read(
   used_bytes = node->term_node.used_bytes;
   if ((used_bytes == 0) || (used_bytes > DH_AK_NODE_SIZE)) {
     log_printf(
-        "AK_READ: Invalid byte count (x%04X) at subfile %d node %ld\nof file "
+        "AK_READ: Invalid byte count (x%04X) at subfile %d node %d\nof file "
         "%s.\n",
         used_bytes, (int)subfile, node_num, fptr->pathname);
     dh_err = DHE_POINTER_ERROR;

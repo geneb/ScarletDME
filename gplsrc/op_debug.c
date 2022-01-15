@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 15Jan22 gwb Fixed argument formatting issues (CwE-686)
+ * 
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
@@ -362,7 +364,7 @@ void op_dbginf() {
       break;
 
     case 4: /* Return system variables */
-      ts_printf("%ld%c%ld%c%ld%c%ld%c%ld", debug_status, FIELD_MARK,
+      ts_printf("%d%c%d%c%d%c%d%c%d", debug_status, FIELD_MARK,
                 debug_inmat, FIELD_MARK, process.program.prev->col1, FIELD_MARK,
                 process.program.prev->col2, FIELD_MARK, debug_os_error);
       break;

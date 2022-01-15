@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 15Jan22 gwb Fixed argument formatting issues (CwE-686), reformmated
+ *             entire source file.
+ * 
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
@@ -55,12 +58,12 @@
 
 Public bool case_sensitive;
 
-int help(char* key);
+int help(char *key);
 bool IsAdmin(void);
 bool recover_users(void);
 void set_date(int32_t);
 
-Private bool run_exe(char* exe_name, char* cmd_line);
+Private bool run_exe(char *exe_name, char *cmd_line);
 
 /* ======================================================================
    op_kernel()  -  KERNEL()  -  Miscellaneous kernel functions            */
@@ -118,17 +121,17 @@ void op_kernel() {
      K$MAP.DIR.IDS        Enable/disable dir file id mapping
  */
 
-  DESCRIPTOR* descr;
+  DESCRIPTOR *descr;
   int action;
   DESCRIPTOR result;
   int32_t n;
   char s[(MAX_PATHNAME_LEN * 2) + 1];
   int16_t i;
   int16_t j;
-  char* p;
-  int32_t* q;
-  USER_ENTRY* uptr;
-  STRING_CHUNK* str;
+  char *p;
+  int32_t *q;
+  USER_ENTRY *uptr;
+  STRING_CHUNK *str;
 
   InitDescr(&result, INTEGER);
   result.data.value = 0;
@@ -147,6 +150,7 @@ void op_kernel() {
         result.data.value = internal_mode;
       else
         internal_mode = (descr->data.value != 0);
+
       break;
 
     case K_SECURE:
@@ -162,6 +166,7 @@ void op_kernel() {
         else
           sysseg->flags &= ~SSF_SECURE;
       }
+
       break;
 
     case K_LPTRHIGH: /* Same as SYSTEM(3) */
@@ -169,6 +174,7 @@ void op_kernel() {
         result.data.value = tio.lptr_0.lines_per_page;
       else
         result.data.value = tio.dsp.lines_per_page;
+
       break;
 
     case K_LPTRWIDE: /* Same as SYSTEM(2) */
@@ -176,14 +182,13 @@ void op_kernel() {
         result.data.value = tio.lptr_0.width;
       else
         result.data.value = tio.dsp.width;
+
       break;
 
     case K_PAGINATE:
-      if ((n = descr->data.value) < 0) /* Enquiry */
-      {
+      if ((n = descr->data.value) < 0) { /* Enquiry */
         result.data.value = (tio.dsp.flags & PU_PAGINATE) != 0;
-      } else /* Set pagination state */
-      {
+      } else { /* Set pagination state */
         if (n) {
           tio.dsp.flags |= PU_PAGINATE;
           tio.dsp.line = 0;
@@ -262,11 +267,9 @@ void op_kernel() {
         if (((n == 0) && (uptr->uid > 0)) || ((n != 0) && (uptr->uid == n))) {
           if (result.data.str.saddr != NULL)
             ts_copy_byte(FIELD_MARK);
-          ts_printf("%d%c%ld%c%s%c%d%c%d%c%s%c%s%c%d", (int)(uptr->uid),
-                    VALUE_MARK, (int)(uptr->pid), VALUE_MARK, uptr->ip_addr,
-                    VALUE_MARK, (int)(uptr->flags), VALUE_MARK, uptr->puid,
-                    VALUE_MARK, uptr->username, VALUE_MARK, uptr->ttyname,
-                    VALUE_MARK, uptr->login_time);
+            ts_printf("%d%c%d%c%s%c%d%c%d%c%s%c%s%c%d", (int)(uptr->uid), VALUE_MARK, (int)(uptr->pid), VALUE_MARK, 
+                    uptr->ip_addr, VALUE_MARK, (int)(uptr->flags), VALUE_MARK, uptr->puid, VALUE_MARK,
+                    uptr->username, VALUE_MARK, uptr->ttyname, VALUE_MARK, uptr->login_time);
           if (n)
             break;
         }
@@ -305,11 +308,9 @@ void op_kernel() {
       break;
 
     case K_SUPPRESS_COMO:
-      if ((n = descr->data.value) < 0) /* Enquiry */
-      {
+      if ((n = descr->data.value) < 0) { /* Enquiry */
         result.data.value = (tio.suppress_como);
-      } else /* Set suppression state */
-      {
+      } else { /* Set suppression state */
         tio.suppress_como = (n != 0);
       }
       break;
@@ -321,8 +322,7 @@ void op_kernel() {
     case K_ADMINISTRATOR:
       GetInt(descr);
       n = descr->data.value;
-      if (n >= 0) /* Setting / clearing */
-      {
+      if (n >= 0) { /* Setting / clearing */
         if ((n > 0) || IsAdmin())
           my_uptr->flags |= USR_ADMIN;
         else
@@ -333,29 +333,28 @@ void op_kernel() {
 
     case K_FILESTATS:
       GetInt(descr);
-      if (descr->data.value) /* Reset counters */
-      {
-        memset((char*)&(sysseg->global_stats), 0, sizeof(struct FILESTATS));
+      if (descr->data.value) { /* Reset counters */
+        memset((char *)&(sysseg->global_stats), 0, sizeof(struct FILESTATS));
         sysseg->global_stats.reset = qmtime();
       } else {
         InitDescr(&result, STRING);
         result.data.str.saddr = NULL;
         ts_init(&(result.data.str.saddr), 5 * FILESTATS_COUNTERS);
-        for (i = 0, q = (int32_t*)&(sysseg->global_stats.reset);
-             i < FILESTATS_COUNTERS; i++, q++) {
-          ts_printf("%ld\xfe", *q);
+        for (i = 0, q = (int32_t *)&(sysseg->global_stats.reset); i < FILESTATS_COUNTERS; i++, q++) {
+          ts_printf("%d\xfe", *q);
         }
         (void)ts_terminate();
       }
       break;
 
     case K_TTY:
-      k_put_c_string((char*)(my_uptr->ttyname), &result);
+      k_put_c_string((char *)(my_uptr->ttyname), &result);
       break;
 
     case K_GET_OPTIONS:
       for (i = 0; i < NumOptions; i++)
         s[i] = option_flags[i] + '0';
+
       s[NumOptions] = '\0';
       k_put_c_string(s, &result);
       break;
@@ -364,6 +363,7 @@ void op_kernel() {
       j = k_get_c_string(descr, s, 200);
       for (i = 0; (i < j) && (i < NumOptions); i++)
         SetOption(i, s[i] == '1');
+
       break;
 
     case K_PRIVATE_CATALOGUE:
@@ -558,7 +558,7 @@ void op_option() {
      |================================|=============================|
  */
 
-  DESCRIPTOR* descr;
+  DESCRIPTOR *descr;
   int opt;
 
   descr = e_stack - 1;
@@ -584,7 +584,7 @@ void op_phantom() {
  */
 
   int16_t i;
-  USER_ENTRY* uptr;
+  USER_ENTRY *uptr;
   int16_t phantom_user_index;
   int16_t phantom_uid = 0;
   char path[MAX_PATHNAME_LEN + 1];
@@ -602,7 +602,7 @@ void op_phantom() {
       phantom_uid = assign_user_no(i);
       uptr->uid = phantom_uid;
       uptr->puid = process.user_no;
-      strcpy((char*)(uptr->username), (char*)(my_uptr->username));
+      strcpy((char *)(uptr->username), (char *)(my_uptr->username));
       phantom_user_index = i;
       break;
     }
@@ -615,8 +615,7 @@ void op_phantom() {
   /* Construct command for CreateProcess */
 
   cpid = fork();
-  if (cpid == 0) /* Child process */
-  {
+  if (cpid == 0) { /* Child process */
     //0387   close(0);
     //0387   close(1);
     //0387   close(2);
@@ -625,8 +624,7 @@ void op_phantom() {
 
     daemon(1, 1);
     /* converted to snprintf() -gwb 22Feb20 */
-    if (snprintf(path, MAX_PATHNAME_LEN + 1, "%s/bin/qm", sysseg->sysdir) >=
-        (MAX_PATHNAME_LEN + 1)) {
+    if (snprintf(path, MAX_PATHNAME_LEN + 1, "%s/bin/qm", sysseg->sysdir) >= (MAX_PATHNAME_LEN + 1)) {
       /* TODO: this should also be logged with more detail */
       k_error("Overflowed path/filename length in op_phantom()!");
       goto exit_op_phantom;
@@ -687,7 +685,7 @@ void op_cnctport() {
      |================================|=============================|
  */
 
-  DESCRIPTOR* descr;
+  DESCRIPTOR *descr;
   int stop_bits;
   int bits_per_byte;
   /* int parity; variable set but not used */
@@ -762,7 +760,7 @@ void op_login() {
  */
 
   bool ok;
-  DESCRIPTOR* descr;
+  DESCRIPTOR *descr;
   char username[32 + 1];
   char password[32 + 1];
 
@@ -781,7 +779,7 @@ void op_login() {
   InitDescr(e_stack, INTEGER);
   ok = login_user(username, password);
   if (ok) {
-    strcpy((char*)(my_uptr->username), username);
+    strcpy((char *)(my_uptr->username), username);
     strcpy(process.username, username);
   }
   (e_stack++)->data.value = ok;
@@ -802,7 +800,7 @@ void op_logout() {
      |================================|=============================|
  */
 
-  DESCRIPTOR* descr;
+  DESCRIPTOR *descr;
   int user;
   int status = 0;
   bool immediate;
@@ -851,10 +849,10 @@ void op_events() {
  STATUS() = 0 if user found, non-zero if user not found
  */
 
-  DESCRIPTOR* descr;
+  DESCRIPTOR *descr;
   int32_t flags;
   int user;
-  USER_ENTRY* uptr;
+  USER_ENTRY *uptr;
   int16_t i;
 
   /* Get flag values */
@@ -921,7 +919,7 @@ void op_userno() {
 /* ======================================================================
    run_exe()  -  Run executable from QM session                           */
 
-Private bool run_exe(char* exe_name, char* cmd_line) {
+Private bool run_exe(char *exe_name, char *cmd_line) {
   //* NIX implementation to follow
   process.status = ER_FAILED;
   return FALSE;

@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 15Jan22 gwb Fixed argument formatting issues (CwE-686)
+ *  
  * 09Jan22 gwb Added a 64 bit target check to fatal_signal_handler() in order
  *             to clear a warning when casting descr to int32_t on 64 bit builds.
  *
@@ -1190,9 +1192,9 @@ void show_stack() {
   do {
     line = k_line_no(offset, prg->saved_c_base);
     if (line < 0) {
-      tio_printf("%s (%08lX)\n", ProgramName(prg->saved_c_base), offset);
+      tio_printf("%s (%08X)\n", ProgramName(prg->saved_c_base), offset);
     } else {
-      tio_printf("%s %d (%08lX)\n", ProgramName(prg->saved_c_base), line,
+      tio_printf("%s %d (%08X)\n", ProgramName(prg->saved_c_base), line,
                  offset);
     }
 
@@ -1203,9 +1205,9 @@ void show_stack() {
       offset = prg->gosub_stack[i] - 1; /* Back up to GOSUB (etc) */
       line = k_line_no(offset, prg->saved_c_base);
       if (line < 0)
-        tio_printf("  (%08lX)\n", offset);
+        tio_printf("  (%08X)\n", offset);
       else
-        tio_printf("  %d (%08lX)\n", line, offset);
+        tio_printf("  %d (%08X)\n", line, offset);
     }
 
     if ((prg = prg->prev) == NULL)

@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 15Jan22 gwb Fixed argument formatting issues (CwE-686) 
+ * 
  * 10Jan22 gwb Fixed a format specifier warning.
  *
  * 28Feb20 gwb Changed integer declarations to be portable across address
@@ -91,7 +93,7 @@ bool recover_users() {
     if (uptr->uid) {
       if (!process_exists(pid)) {
         remove_user(uptr);
-        tio_printf("Removed user %d (pid %ld)\n", (int)user_no, pid);
+        tio_printf("Removed user %d (pid %d)\n", (int)user_no, pid);
         status = TRUE;
       }
     }

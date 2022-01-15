@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 15Jan22 gwb Fixed argument formatting issues (CwE-686) 
+ * 
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  * 
@@ -188,7 +190,7 @@ bool dh_write(DH_FILE* dh_file,       /* File descriptor */
     used_bytes = buff->used_bytes;
     if ((used_bytes == 0) || (used_bytes > group_bytes)) {
       log_printf(
-          "DH_WRITE: Invalid byte count (x%04X) in subfile %d, group %ld\nof "
+          "DH_WRITE: Invalid byte count (x%04X) in subfile %d, group %d\nof "
           "file %s\n",
           used_bytes, (int)subfile, grp, fptr->pathname);
       dh_err = DHE_POINTER_ERROR;

@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 15Jan22 gwb Fixed argument formatting issues (CwE-686) 
+ * 
  * 11Jan22 gwb Fix for Issue #13 ("Uncontrolled format string")
  * 
  * 28Feb20 gwb Changed integer declarations to be portable across address
@@ -222,7 +224,7 @@ void k_error(char* message, ...) {
     pgm = &process.program;
     while (pgm->flags & HDR_RECURSIVE) {
       if (internal_mode) {
-        tio_printf("%08lX in %s \n", xpc_offset - 1,
+        tio_printf("%08X in %s \n", xpc_offset - 1,
                    ((OBJECT_HEADER*)xcbase)->ext_hdr.prog.program_name);
       }
 

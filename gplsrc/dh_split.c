@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 15Jan22 gwb Fixed argument formatting issues (CwE-686) 
+ * 
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  * 
@@ -175,7 +177,7 @@ void dh_split(DH_FILE* dh_file) {
     used_bytes = src_buff->used_bytes;
     if ((used_bytes == 0) || (used_bytes > group_bytes)) {
       log_printf(
-          "DH_SPLIT: Invalid byte count (x%04X) in subfile %d, group %ld\nof "
+          "DH_SPLIT: Invalid byte count (x%04X) in subfile %d, group %d\nof "
           "file %s\n",
           used_bytes, (int)subfile, sgrp, fptr->pathname);
       dh_err = DHE_POINTER_ERROR;
@@ -396,7 +398,7 @@ void dh_merge(DH_FILE* dh_file) {
     src_used_bytes = src_buff->used_bytes;
     if ((src_used_bytes == 0) || (src_used_bytes > group_bytes)) {
       log_printf(
-          "DH_MERGE: Invalid byte count (x%04X) in subfile %d group %ld\nof "
+          "DH_MERGE: Invalid byte count (x%04X) in subfile %d group %d\nof "
           "file %s\n",
           src_used_bytes, (int)src_subfile, sgrp, fptr->pathname);
       dh_err = DHE_POINTER_ERROR;

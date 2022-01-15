@@ -1811,7 +1811,7 @@ Addr          Next Fl LR Chain Data len Id
     if (sf == OVERFLOW_SUBFILE) {
       emit("Overflow block x%s", I64(offset));
     } else {
-      emit("Group %ld (x%s)", group, I64(offset));
+      emit("Group %d (x%s)", group, I64(offset));
     }
 
     if (!read_block(sf, offset, group_bytes, buffer)) {
