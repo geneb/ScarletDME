@@ -267,7 +267,8 @@ void op_kernel() {
         if (((n == 0) && (uptr->uid > 0)) || ((n != 0) && (uptr->uid == n))) {
           if (result.data.str.saddr != NULL)
             ts_copy_byte(FIELD_MARK);
-            ts_printf("%d%c%d%c%s%c%d%c%d%c%s%c%s%c%d", (int)(uptr->uid), VALUE_MARK, (int)(uptr->pid), VALUE_MARK, 
+
+          ts_printf("%d%c%d%c%s%c%d%c%d%c%s%c%s%c%d", (int)(uptr->uid), VALUE_MARK, (int)(uptr->pid), VALUE_MARK, 
                     uptr->ip_addr, VALUE_MARK, (int)(uptr->flags), VALUE_MARK, uptr->puid, VALUE_MARK,
                     uptr->username, VALUE_MARK, uptr->ttyname, VALUE_MARK, uptr->login_time);
           if (n)

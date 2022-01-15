@@ -16,6 +16,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 15Jan22 gwb Fixed issue #26 - resolves CWE-197 check, "Comparison of narrow type with wide type in loop condition." 
+ * 
  * 13Jan22 gwb Fixed issue #29 (QMCONFIG environment variable still being referenced)
  * 
  * 09Jan22 gwb Fixes to warnings related out output specifiers in printf().
@@ -1300,7 +1302,7 @@ char* DLLEntry QMIns(char* src, int fno, int vno, int svno, char* new) {
   int32_t new_len;
   char* new_str;
   char* p;
-  int16_t i;
+  int i;   /* resolves CWE-197 check, "Comparison of narrow type with wide type in loop condition." */
   int32_t n;
   int16_t fm = 0;
   int16_t vm = 0;
@@ -1322,8 +1324,7 @@ char* DLLEntry QMIns(char* src, int fno, int vno, int svno, char* new) {
   if (svno < 0)
     svno = 0;
 
-  if (src_len == 0) /* Inserting in null string */
-  {
+  if (src_len == 0) { /* Inserting in null string */
     if (fno > 1)
       fm = fno - 1;
     if (vno > 1)
@@ -1337,8 +1338,7 @@ char* DLLEntry QMIns(char* src, int fno, int vno, int svno, char* new) {
 
   for (i = 1; i < fno; i++) {
     p = memchr(pos, FIELD_MARK, bytes);
-    if (p == NULL) /* No such field */
-    {
+    if (p == NULL) { /* No such field */
       fm = fno - i;
       if (vno > 1)
         vm = vno - 1;
@@ -1355,8 +1355,7 @@ char* DLLEntry QMIns(char* src, int fno, int vno, int svno, char* new) {
   if (p != NULL)
     bytes = p - pos; /* Length of field */
 
-  if (vno == 0) /* Inserting field */
-  {
+  if (vno == 0) { /* Inserting field */
     postmark = FIELD_MARK;
     goto done;
   }
@@ -1365,8 +1364,7 @@ char* DLLEntry QMIns(char* src, int fno, int vno, int svno, char* new) {
 
   for (i = 1; i < vno; i++) {
     p = memchr(pos, VALUE_MARK, bytes);
-    if (p == NULL) /* No such value */
-    {
+    if (p == NULL) { /* No such value */
       vm = vno - i;
       if (svno > 1)
         sm = svno - 1;
@@ -1381,8 +1379,7 @@ char* DLLEntry QMIns(char* src, int fno, int vno, int svno, char* new) {
   if (p != NULL)
     bytes = p - pos; /* Length of value, excluding end mark */
 
-  if (svno == 0) /* Inserting value */
-  {
+  if (svno == 0) { /* Inserting value */
     postmark = VALUE_MARK;
     goto done;
   }
@@ -1391,8 +1388,7 @@ char* DLLEntry QMIns(char* src, int fno, int vno, int svno, char* new) {
 
   for (i = 1; i < svno; i++) {
     p = memchr(pos, SUBVALUE_MARK, bytes);
-    if (p == NULL) /* No such subvalue */
-    {
+    if (p == NULL) { /* No such subvalue */
       sm = svno - i;
       pos += bytes;
       goto done;
@@ -1408,8 +1404,7 @@ done:
     at 'pos'.                                                           */
 
   n = pos - src; /* Length of leading substring */
-  if ((n == src_len) || (IsDelim(src[n]) && src[n] > postmark)) /* 0380 */
-  {
+  if ((n == src_len) || (IsDelim(src[n]) && src[n] > postmark)) { /* 0380 */
     postmark = '\0';
   }
 

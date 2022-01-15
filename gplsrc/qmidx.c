@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 15Jan22 gwb Reformatted code.
+ * 
  * 27Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
@@ -78,18 +80,18 @@ char buffer[BUFFER_SIZE];
 
 bool open_primary(void);
 bool write_primary_header(void);
-bool cross_check(char* path);
+bool cross_check(char *path);
 bool copy_indices(void);
 bool yesno(void);
-bool delete_path(char* path);
-bool make_path(char* tgt);
+bool delete_path(char *path);
+bool make_path(char *tgt);
 bool attach_shared_memory(void);
 void unbind_sysseg(void);
-bool fullpath(char* path, char* name);
+bool fullpath(char *path, char *name);
 
 /* ====================================================================== */
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
   int status = 1;
   int arg;
   char mode;
@@ -170,10 +172,8 @@ int main(int argc, char* argv[]) {
         for (ak = 0; ak < MAX_INDICES; ak++) {
           if (header.ak_map & (1 << ak)) {
             // converted to snprintf() -gwb 25Feb20
-            if (snprintf(path, MAX_ACCOUNT_NAME_LEN + 1, "%s%c~%d", data_path,
-                         DS, SF(ak)) >= (MAX_ACCOUNT_NAME_LEN + 1)) {
-              printf("Overflowed path/filename buffer.  Truncated to:\n%s%c~%d",
-                     data_path, DS, SF(ak));
+            if (snprintf(path, MAX_ACCOUNT_NAME_LEN + 1, "%s%c~%d", data_path, DS, SF(ak)) >= (MAX_ACCOUNT_NAME_LEN + 1)) {
+              printf("Overflowed path/filename buffer.  Truncated to:\n%s%c~%d", data_path, DS, SF(ak));
             }
             remove(path);
           }
@@ -247,10 +247,8 @@ int main(int argc, char* argv[]) {
         for (ak = 0; ak < MAX_INDICES; ak++) {
           if (header.ak_map & (1 << ak)) {
             // converted to snprintf() -gwb 25Feb20
-            if (snprintf(path, MAX_ACCOUNT_NAME_LEN + 1, "%s%c~%d", data_path,
-                         DS, SF(ak)) >= (MAX_ACCOUNT_NAME_LEN + 1)) {
-              printf("Overflowed path/filename buffer.  Truncated to:\n%s%c~%d",
-                     data_path, DS, SF(ak));
+            if (snprintf(path, MAX_ACCOUNT_NAME_LEN + 1, "%s%c~%d", data_path, DS, SF(ak)) >= (MAX_ACCOUNT_NAME_LEN + 1)) {
+              printf("Overflowed path/filename buffer.  Truncated to:\n%s%c~%d", data_path, DS, SF(ak));
             }
             remove(path);
           }
@@ -348,12 +346,10 @@ bool open_primary() {
   bool status = FALSE;
   char pathname[MAX_PATHNAME_LEN + 1];
   int fno;
-  FILE_ENTRY* fptr;
+  FILE_ENTRY *fptr;
   // converted to snprintf() -gwb 25Feb20
-  if (snprintf(pathname, MAX_PATHNAME_LEN + 1, "%s%c~0", data_path, DS) >=
-      (MAX_PATHNAME_LEN + 1)) {
-    printf("Overflowed path/filename buffer.  Truncated to:\n%s%c~0\n",
-           data_path, DS);
+  if (snprintf(pathname, MAX_PATHNAME_LEN + 1, "%s%c~0", data_path, DS) >= (MAX_PATHNAME_LEN + 1)) {
+    printf("Overflowed path/filename buffer.  Truncated to:\n%s%c~0\n", data_path, DS);
   }
 
   /* Check that this file is not currently in use within QM */
@@ -362,7 +358,7 @@ bool open_primary() {
     for (fno = 1; fno <= sysseg->used_files; fno++) {
       fptr = FPtr(fno);
       if (fptr->ref_ct != 0) {
-        if (strcmp((char*)(fptr->pathname), data_path) == 0) {
+        if (strcmp((char *)(fptr->pathname), data_path) == 0) {
           printf("File is currently open within QM\n");
           goto exit_open_primary;
         }
@@ -377,7 +373,7 @@ bool open_primary() {
     goto exit_open_primary;
   }
 
-  if (read(pfu, (u_char*)&header, DH_HEADER_SIZE) != DH_HEADER_SIZE) {
+  if (read(pfu, (u_char *)&header, DH_HEADER_SIZE) != DH_HEADER_SIZE) {
     printf("Read error in primary subfile [%d]\n", errno);
     goto exit_open_primary;
   }
@@ -400,12 +396,11 @@ exit_open_primary:
 
 bool write_primary_header() {
   if (Seek(pfu, 0, SEEK_SET) < 0) {
-    printf("Seek error positioning to write primary subfile header [%d]\n",
-           errno);
+    printf("Seek error positioning to write primary subfile header [%d]\n", errno);
     return FALSE;
   }
 
-  if (write(pfu, (char*)&header, DH_HEADER_SIZE) != DH_HEADER_SIZE) {
+  if (write(pfu, (char *)&header, DH_HEADER_SIZE) != DH_HEADER_SIZE) {
     printf("Error writing primary subfile header [%d]\n", errno);
     return FALSE;
   }
@@ -416,7 +411,7 @@ bool write_primary_header() {
 /* ======================================================================
    cross_check()  -  Cross-check index subfile                            */
 
-bool cross_check(char* path) {
+bool cross_check(char *path) {
   bool status = FALSE;
   char pathname[MAX_PATHNAME_LEN + 1];
   int16_t ak;
@@ -425,16 +420,14 @@ bool cross_check(char* path) {
 
   for (ak = 0; ak < MAX_INDICES; ak++) {
     if (header.ak_map & (1 << ak)) {
-      sprintf(pathname, "%s%c~%d", (path[0] != '\0') ? path : data_path, DS,
-              SF(ak));
+      sprintf(pathname, "%s%c~%d", (path[0] != '\0') ? path : data_path, DS, SF(ak));
       akfu = open(pathname, (int)(O_RDONLY | O_BINARY), default_access);
       if (akfu < 0) {
         printf("Cannot open index subfile %d [%d]\n", SF(ak), errno);
         goto exit_cross_check;
       }
 
-      if (read(akfu, (u_char*)&ak_header, DH_AK_HEADER_SIZE) !=
-          DH_AK_HEADER_SIZE) {
+      if (read(akfu, (u_char *)&ak_header, DH_AK_HEADER_SIZE) != DH_AK_HEADER_SIZE) {
         printf("Read error in index subfile %d [%d]\n", SF(ak), errno);
         goto exit_cross_check;
       }
@@ -449,8 +442,7 @@ bool cross_check(char* path) {
       /* Cross-check with primary subfile */
 
       if (ak_header.data_creation_timestamp != header.creation_timestamp) {
-        printf("Index subfile %d does not appear to belong to the data file\n",
-               SF(ak));
+        printf("Index subfile %d does not appear to belong to the data file\n", SF(ak));
         goto exit_cross_check;
       }
 
@@ -486,9 +478,7 @@ bool copy_indices() {
 
       /* Form source path and open subfile */
 
-      sprintf(src, "%s%c~%d",
-              (header.akpath[0] != '\0') ? header.akpath : data_path, DS,
-              SF(ak));
+      sprintf(src, "%s%c~%d", (header.akpath[0] != '\0') ? header.akpath : data_path, DS, SF(ak));
 
       src_fu = open(src, (int)(O_RDONLY | O_BINARY), default_access);
       if (src_fu < 0) {
@@ -498,11 +488,9 @@ bool copy_indices() {
 
       /* Form target path and open subfile */
 
-      sprintf(tgt, "%s%c~%d", (ak_path[0] != '\0') ? ak_path : data_path, DS,
-              SF(ak));
+      sprintf(tgt, "%s%c~%d", (ak_path[0] != '\0') ? ak_path : data_path, DS, SF(ak));
 
-      tgt_fu = open(tgt, (int)(O_RDWR | O_CREAT | O_EXCL | O_BINARY),
-                    default_access);
+      tgt_fu = open(tgt, (int)(O_RDWR | O_CREAT | O_EXCL | O_BINARY), default_access);
       if (tgt_fu < 0) {
         printf("Cannot create new index subfile %d [%d]\n", SF(ak), errno);
         goto exit_copy_indices;
@@ -551,9 +539,9 @@ bool yesno() {
 /* ======================================================================
    delete_path()  -  Delete DOS file/directory path                       */
 
-bool delete_path(char* path) {
-  DIR* dfu;
-  struct dirent* dp;
+bool delete_path(char *path) {
+  DIR *dfu;
+  struct dirent *dp;
   struct stat stat_buf;
   char parent_path[MAX_PATHNAME_LEN + 1];
   int parent_len;
@@ -570,7 +558,7 @@ bool delete_path(char* path) {
     if (dfu == NULL)
       return FALSE;
 
-    strcpy(parent_path, (char*)path);
+    strcpy(parent_path, (char *)path);
     parent_len = strlen(parent_path);
     if (parent_path[parent_len - 1] == DS)
       parent_path[parent_len - 1] = '\0';
@@ -581,10 +569,8 @@ bool delete_path(char* path) {
       if (strcmp(dp->d_name, "..") == 0)
         continue;
       // converted to snprintf() -gwb 25Feb20
-      if (snprintf(sub_path, MAX_PATHNAME_LEN + 1, "%s%c%s", parent_path, DS,
-                   dp->d_name) >= (MAX_PATHNAME_LEN + 1)) {
-        printf("Overflow of path/filename buffer.  Truncated to:\n%s%c%s\n",
-               parent_path, DS, dp->d_name);
+      if (snprintf(sub_path, MAX_PATHNAME_LEN + 1, "%s%c%s", parent_path, DS, dp->d_name) >= (MAX_PATHNAME_LEN + 1)) {
+        printf("Overflow of path/filename buffer.  Truncated to:\n%s%c%s\n", parent_path, DS, dp->d_name);
       }
       if (!delete_path(sub_path))
         return FALSE;
@@ -592,9 +578,8 @@ bool delete_path(char* path) {
     closedir(dfu);
 
     if (rmdir(path) != 0)
-      return FALSE;                      /* Delete the directory */
-  } else if (stat_buf.st_mode & S_IFREG) /* It's a file */
-  {
+      return FALSE;                        /* Delete the directory */
+  } else if (stat_buf.st_mode & S_IFREG) { /* It's a file */
     if (remove(path) != 0)
       return FALSE;
   }
@@ -605,12 +590,12 @@ bool delete_path(char* path) {
 /* ======================================================================
    make_path()  -  Recursive mkdir to make directory path                 */
 
-bool make_path(char* tgt) {
+bool make_path(char *tgt) {
   char path[MAX_PATHNAME_LEN + 1];
   char new_path[MAX_PATHNAME_LEN + 1];
   struct stat statbuf;
-  char* p;
-  char* q;
+  char *p;
+  char *q;
 
   strcpy(path, tgt);
 
@@ -650,7 +635,7 @@ bool attach_shared_memory() {
   int shmid;
 
   if ((shmid = shmget(QM_SHM_KEY, 0, 0666)) != -1) {
-    if ((sysseg = (SYSSEG*)shmat(shmid, NULL, 0)) == (void*)(-1)) {
+    if ((sysseg = (SYSSEG *)shmat(shmid, NULL, 0)) == (void *)(-1)) {
       printf("Error %d attaching to shared segment\n", errno);
       return FALSE;
     }
@@ -663,14 +648,14 @@ bool attach_shared_memory() {
 /* ====================================================================== */
 
 void unbind_sysseg() {
-  shmdt((void*)sysseg);
+  shmdt((void *)sysseg);
 }
 
 /* ======================================================================
    fullpath()  -  Map a pathname to its absolute form                     */
 
-bool fullpath(char* path, char* name) {
-   //char* path; /* Out */
+bool fullpath(char *path, char *name) {
+  //char* path; /* Out */
   // char* name; /* In */
 
   bool ok;
