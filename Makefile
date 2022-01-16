@@ -226,14 +226,14 @@ sysseg.o: sysseg.c revstamp.h
 
 install:  
 
-    ifeq ($(QMUSERS),)
-        @echo Creating qm system user and group
-        @groupadd --system qmusers
-        @usermod -a -G qmusers root
-        ifeq ($(QMSYS),)
-            @useradd --system qmsys --gid qmusers
-        endif
-    endif
+ifeq ($(QMUSERS),)
+	@echo Creating qm system user and group
+	@groupadd --system qmusers
+	@usermod -a -G qmusers root
+	ifeq ($(QMSYS),)
+		@useradd --system qmsys --gid qmusers
+	endif
+endif
 
 	@echo Installing to $(INSTROOT)
 	@test -d $(INSTROOT) || mkdir $(INSTROOT)
