@@ -250,12 +250,12 @@ install:
 	@test -f /usr/bin/qm || ln -s /usr/qmsys/bin/qm /usr/bin/qm
 
 #	Install systemd configuration file if needed.
-	ifneq (Darwin,$(OSNAME))
-		@echo Installing scarletdme.service for systemd.
-		@test -d /etc/systemd/system && _
+	@echo Installing scarletdme.service for systemd.
+	@test -d /etc/systemd/system && \
 			cp etc/systemd/system/scarletdme.service /etc/systemd/system
-		@chown root.root /etc/systemd/system/scarletdme.service
-	endif
+	@chown root.root /etc/systemd/system/scarletdme.service
+	@chmod 755 /etc/systemd/system/scarletdme.service
+
 
 datafiles:
 	@echo Installing data files...
