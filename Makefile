@@ -1,20 +1,10 @@
 # ScarletDME Makefile
 #
-#   Copyright (C) 2008, Andruk Tatum.  Licensed under the GNU GPLv2, with 
-#   an exception for selling anything and everything that includes this file.
-#   You may not sell, lend, lease, or otherwise distribute this file, in any 
-#   form, within any collection of files that uses or is based upon any 
-#   monetary exchange between two or more parties whatsoever.  You may not 
-#   automate the distribution, collection, transferrence, or receipt of this 
-#   file in any way.  If you wish to do any of the above, consult the author 
-#   at <firstname>DOT<lastname>@gmail.com (obfuscated to reduce spam) for 
-#   individual licensing agreements.
-#   
-#   You are allowed to modify this file, so long as the derived file is 
-#   licensed under the same license as this file.  You are allowed to copy 
-#   and distribute verbatim copies of this document so long as you follow 
+#   You are allowed to modify this file, so long as the derived file can
+#   be distributed under the same license as this file.  You are allowed to copy
+#   and distribute verbatim copies of this document so long as you follow
 #   the licensing agreements contained within this document.
-#   
+#
 #   This program is free software; you can redistribute it and/or modify it
 #   under the terms of the GNU General Public License as published by the Free
 #   Software Foundation; either version 3 of the License, or (at your option)
@@ -34,6 +24,10 @@
 #
 # Changelog
 # ---------
+# 15Jan22 awy Adding code to create qmsys and qmuser if they don't exist.
+#             Adding qm32 target to build 32-bit if required.
+#             Adding scarletdme.service file to install target
+#
 # 12Jan22 gwb Fixed a typo that resulted in the $IPC directory being a mess and 
 #             not having the dynamic files it needed.
 #             Cleaned up the datafiles installation process to make sure the things
@@ -71,6 +65,7 @@
 # ---------------
 # dat - Diccon Tesson
 # gwb - Gene Buckle (geneb@deltasoft.com)
+# awy - Anthony (Wol) Youngman
 
 # Set BUILD64 to N to build a 32 bit target.
 #
@@ -90,6 +85,9 @@ COMP     := gcc
 ifeq (Darwin,$(OSNAME))
 	ARCH :=
 	BITSIZE := 64
+	L_FLAGS  := -lm -ldl
+	INSTROOT := /opt/qmsys
+	SONAME_OPT := -install_name
 else
 	ifeq (Y,$(BUILD64))
 		ARCH :=
@@ -98,6 +96,9 @@ else
 		ARCH := -m32
 		BITSIZE := 32
 	endif
+	L_FLAGS  := -Wl,--no-as-needed -lm -lcrypt -ldl
+	INSTROOT := /usr/qmsys
+	SONAME_OPT := -soname
 endif
 
 # The -Wno-format-nonliteral flag prevents the compiler warning us about being unable to check the format
@@ -105,12 +106,6 @@ endif
 C_FLAGS  := -Wall -Wformat=2 -Wno-format-nonliteral -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH)
 
 
-
-ifeq (Darwin,$(OSNAME))
-	L_FLAGS  := -lm -ldl
-else
-	L_FLAGS  := -Wl,--no-as-needed -lm -lcrypt -ldl
-endif
 RM       := rm
 
 QMHDRS   := $(wildcard *.h)
@@ -122,18 +117,19 @@ TEMPSRCS := $(wildcard *.c)
 SRCS     := $(TEMPSRCS:qmclient.c=)
 OBJS     := $(SRCS:.c=.o)
 DIROBJS  := $(addprefix $(GPLOBJ),$(OBJS))
+QMSYS   := $(shell cat /etc/passwd | grep qmsys)
+QMUSERS := $(shell cat /etc/group | grep qmusers)
 
-ifeq (Darwin,$(OSNAME))
-	INSTROOT := /opt/qmsys
-	SONAME_OPT = -install_name
-else
-	INSTROOT := /usr/qmsys
-	SONAME_OPT = -soname
-endif
+# ifeq (Darwin,$(OSNAME))
+# 	INSTROOT := /opt/qmsys
+# 	SONAME_OPT = -install_name
+# else
+# 	INSTROOT := /usr/qmsys
+# 	SONAME_OPT = -soname
+# endif
 
-#TEMPOBJS := $(SRCS:.c=.o)
-#OBJS     := $(addprefix $(GPLOBJ),$(TEMPOBJS))
 
+#
 qm: $(QMOBJS) qmclilib.so qmtic qmfix qmconv qmidx qmlnxd terminfo
 	@echo Linking $@
 	@cd $(GPLOBJ)
@@ -143,8 +139,7 @@ qmclilib.so: qmclilib.o
 	@echo Linking $@
 	@$(COMP) -shared -Wl,$(SONAME_OPT),qmclilib.so -lc $(ARCH) $(GPLOBJ)qmclilib.o -o $(GPLBIN)qmclilib.so
 	@$(COMP) -shared -Wl,$(SONAME_OPT),libqmcli.so -lc $(ARCH) $(GPLOBJ)qmclilib.o -o $(GPLBIN)libqmcli.so
-#	@cp $(GPLOBJ)qmclilib.o $(GPLBIN)qmclilib.o
-#	@cp $(GPLOBJ)qmclilib.so $(GPLBIN)qmclilib.so
+
 
 qmtic: qmtic.o inipath.o
 	@echo Linking $@
@@ -230,13 +225,22 @@ sysseg.o: sysseg.c revstamp.h
 .PHONY: clean distclean install datafiles
 
 install:  
+
+    ifeq ($(QMUSERS),)
+        @echo Creating qm system user and group
+        @groupadd --system qmusers
+        @usermod -a -G qmusers root
+        ifeq ($(QMSYS),)
+            @useradd --system qmsys --gid qmusers
+        endif
+    endif
+
 	@echo Installing to $(INSTROOT)
 	@test -d $(INSTROOT) || mkdir $(INSTROOT)
 	@test -d $(INSTROOT)/bin || mkdir $(INSTROOT)/bin
 	@for qm_prog in $(GPLBIN)*; do \
 	  install -m 775 -o qmsys -g qmusers $$qm_prog $(INSTROOT)/bin; \
 	done
-#	@chmod -R 775 $(INSTROOT)
 
 	@echo Writing scarlet.conf file
 	@cp $(main)scarlet.conf /etc/scarlet.conf
@@ -244,6 +248,14 @@ install:
 
 #	Create symbolic link if it does not exist
 	@test -f /usr/bin/qm || ln -s /usr/qmsys/bin/qm /usr/bin/qm
+
+#	Install systemd configuration file if needed.
+	ifneq (Darwin,$(OSNAME))
+		@echo Installing scarletdme.service for systemd.
+		@test -d /etc/systemd/system && _
+			cp etc/systemd/system/scarletdme.service /etc/systemd/system
+		@chown root.root /etc/systemd/system/scarletdme.service
+	endif
 
 datafiles:
 	@echo Installing data files...

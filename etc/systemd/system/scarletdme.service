@@ -1,0 +1,9 @@
+[Unit]
+Description=ScarletDME service start
+
+[Service]
+ExecStart=/usr/bin/qm -start
+ExecStop=/usr/bin/qm -stop
+
+[Install]
+WantedBy=default.target
