@@ -53,6 +53,9 @@ Some files have been reformatted, most have not.  However, eventually they all
 will be.  There's also instances of K&R-style function parameter declarations
 and those will be converted to ANSI-style as I discover them.
 
+There's a mailing list available at https://groups.google.com/g/scarletdme. 
+Both developers and regular users are welcome!
+
 [27Feb20] A Discord server is now available (basically a tarted up version of IRC) at
           https://discord.gg/djzBBbp5 - if this link doesn't work for you,
           please reach out to me (geneb@deltasoft.com) and I'll get you a working
