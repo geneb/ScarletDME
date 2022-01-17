@@ -25,15 +25,6 @@ group you've been added to.
 If the system doesn't recognize you in the new qmusers group, you WILL see 
 an error 3018 when starting a session that needs to create a new account:
 
-Once you've got Scarlet built & you've done the "sudo make install" and 
-"sudo make datafiles" steps, you can start the system like so:
-    sudo qm -start
-    
-You can then start a normal user session by issuing the command "qm".
-The makefile creates a symbolic link from /usr/qmsys/bin/qm to /usr/bin/qm,
-so if you have /usr/bin in your path, you won't need to specify the full 
-path to start or use the system.
-
 Building and Installing
 -----------------------
 Make sure you're in the ScarletDME directory and then follow the instructions
@@ -52,8 +43,12 @@ After building and installing successfully, you can start ScarletDME by issuing
 this command:
 "sudo qm -start"
 
-You can then cd to your home directory and start a normal user session like so:
-"qm"
+You can then change to your home directory and start a normal user session by 
+issuing the command "qm".
+
+The makefile creates a symbolic link from /usr/qmsys/bin/qm to /usr/bin/qm,
+so if you have /usr/bin in your path, you won't need to specify the full 
+path to start or use the system.
 
 If you want to be able to compile the "internal" programs in GPL.BP, you'll need
 to start ScarletDME in "internal" mode:
