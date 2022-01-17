@@ -33,3 +33,33 @@ You can then start a normal user session by issuing the command "qm".
 The makefile creates a symbolic link from /usr/qmsys/bin/qm to /usr/bin/qm,
 so if you have /usr/bin in your path, you won't need to specify the full 
 path to start or use the system.
+
+Building and Installing
+-----------------------
+Make sure you're in the ScarletDME directory and then follow the instructions
+below.
+
+To build for a 32 bit system:
+"make qm32"
+
+To build for a 64 bit system:
+"make"
+
+"sudo make install" to install the binary files.
+"sudo make datafiles" to install the data files.
+
+After building and installing successfully, you can start ScarletDME by issuing
+this command:
+"sudo qm -start"
+
+You can then cd to your home directory and start a normal user session like so:
+"qm"
+
+If you want to be able to compile the "internal" programs in GPL.BP, you'll need
+to start ScarletDME in "internal" mode:
+"qm -internal"
+
+If you don't, you'll get compiler errors when attempting to compile any program that
+has the "$internal" compiler option listed.
+
+
