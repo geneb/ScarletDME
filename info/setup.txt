@@ -6,6 +6,10 @@ Users & Groups
 ScarletDME is set up to be "owned" by the qmsys user under the group 
 qmusers.  Users of ScarletDME must belong to the qmusers group.
 
+*** Note that if you don't want to do this manually, the Makefile will create
+*** the qmsys user and qmusers group when you run "sudo make install", but you
+*** will still need to add the qmusers group to your account.
+
 Add the qmsys user:
 sudo useradd qmsys
 
@@ -18,7 +22,7 @@ sudo usermod -a -G qmusers qmsys
 sudo usermod -a -G qmusers <userid>
 
 Note that once you've added yourself to the qmusers group, you'll need to log 
-out in order for the group addition to "take".  You also have the option of
+out in order for the group addition to be recognized. You also have the option of
 entering "su <userid>", which will create a new shell that is aware of the new
 group you've been added to.
 
