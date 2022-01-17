@@ -24,8 +24,8 @@
 #
 # Changelog
 # ---------
+# 16Jan22 awy Adding qm32 target to build 32-bit if required. BUILD64 now obsolete.
 # 15Jan22 awy Adding code to create qmsys and qmuser if they don't exist.
-#             Adding qm32 target to build 32-bit if required.
 #             Adding scarletdme.service file to install target
 #
 # 12Jan22 gwb Fixed a typo that resulted in the $IPC directory being a mess and 
@@ -67,9 +67,8 @@
 # gwb - Gene Buckle (geneb@deltasoft.com)
 # awy - Anthony (Wol) Youngman
 
-# Set BUILD64 to N to build a 32 bit target.
-#
-BUILD64  := Y
+# default target builds 64-bit, build qm32 target for a 32-bit build
+
 MAIN     := ./
 GPLSRC   := $(MAIN)gplsrc/
 GPLDOTSRC := $(MAIN)gpl.src
@@ -85,17 +84,11 @@ COMP     := gcc
 ifeq (Darwin,$(OSNAME))
 	ARCH :=
 	BITSIZE := 64
+	C_FLAGS  := -Wall -Wformat=2 -Wno-format-nonliteral -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH)
 	L_FLAGS  := -lm -ldl
 	INSTROOT := /opt/qmsys
 	SONAME_OPT := -install_name
 else
-	ifeq (Y,$(BUILD64))
-		ARCH :=
-		BITSIZE := 64
-	else
-		ARCH := -m32
-		BITSIZE := 32
-	endif
 	L_FLAGS  := -Wl,--no-as-needed -lm -lcrypt -ldl
 	INSTROOT := /usr/qmsys
 	SONAME_OPT := -soname
@@ -103,7 +96,7 @@ endif
 
 # The -Wno-format-nonliteral flag prevents the compiler warning us about being unable to check the format
 # strings the system uses for error message text.
-C_FLAGS  := -Wall -Wformat=2 -Wno-format-nonliteral -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH)
+# C_FLAGS  := -Wall -Wformat=2 -Wno-format-nonliteral -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH)
 
 
 RM       := rm
@@ -120,17 +113,18 @@ DIROBJS  := $(addprefix $(GPLOBJ),$(OBJS))
 QMSYS   := $(shell cat /etc/passwd | grep qmsys)
 QMUSERS := $(shell cat /etc/group | grep qmusers)
 
-# ifeq (Darwin,$(OSNAME))
-# 	INSTROOT := /opt/qmsys
-# 	SONAME_OPT = -install_name
-# else
-# 	INSTROOT := /usr/qmsys
-# 	SONAME_OPT = -soname
-# endif
-
-
-#
+qm: ARCH :=
+qm: BITSIZE := 64
+qm: C_FLAGS  := -Wall -Wformat=2 -Wno-format-nonliteral -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH)
 qm: $(QMOBJS) qmclilib.so qmtic qmfix qmconv qmidx qmlnxd terminfo
+	@echo Linking $@
+	@cd $(GPLOBJ)
+	@$(COMP) $(ARCH) $(L_FLAGS) $(QMOBJSD) -o $(GPLBIN)qm
+
+qm32: ARCH := -m32
+qm32: BITSIZE := 32
+qm32: C_FLAGS  := -Wall -Wformat=2 -Wno-format-nonliteral -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH)
+qm32: $(QMOBJS) qmclilib.so qmtic qmfix qmconv qmidx qmlnxd terminfo
 	@echo Linking $@
 	@cd $(GPLOBJ)
 	@$(COMP) $(ARCH) $(L_FLAGS) $(QMOBJSD) -o $(GPLBIN)qm
