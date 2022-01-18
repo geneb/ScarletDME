@@ -61,4 +61,5 @@ to start ScarletDME in "internal" mode:
 If you don't, you'll get compiler errors when attempting to compile any program that
 has the "$internal" compiler option listed.
 
-
+If you started ScarletDME via "qm -start" and instantly get the error:
+"Global catalogue missing or corrupt.", you've forgotten to run "sudo make datafiles".

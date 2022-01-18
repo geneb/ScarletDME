@@ -21,6 +21,10 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 17Jan22 gwb Added a fix to login_user() to be able to grok SHA-512
+ *             hashes ($6$) along with the exiting MD5 hashes ($1$).
+ *             Thanks to Tom D. for the fix.
+ * 
  * 05Mar20 gwb Added an include for crypt in order to eliminate a warning.
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
@@ -98,7 +102,7 @@
 #include <sched.h>
 
 #ifndef __APPLE__
-#define _GNU_SOURCE  /* eliminates the warning when we call crypt() below */
+#define _GNU_SOURCE /* eliminates the warning when we call crypt() below */
 #include <crypt.h>
 #endif
 
@@ -146,7 +150,7 @@ bool start_connection(int unused) {
   if (connection_type == CN_SOCKET) {
     if (is_QMVbSrvr) {
       flag = TRUE;
-      setsockopt(0, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, sizeof(int));
+      setsockopt(0, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int));
 
       /* Fire an Ack character up the connection to start the conversation.
          This is necessary because Linux loses anything we send before the
@@ -164,16 +168,16 @@ bool start_connection(int unused) {
     }
 
     n = sizeof(sa);
-    getpeername(0, (struct sockaddr*)&sa, &n);
-    strcpy(ip_addr, (char*)inet_ntoa(sa.sin_addr));
+    getpeername(0, (struct sockaddr *)&sa, &n);
+    strcpy(ip_addr, (char *)inet_ntoa(sa.sin_addr));
 
     n = sizeof(sa);
-    getsockname(0, (struct sockaddr*)&sa, &n);
+    getsockname(0, (struct sockaddr *)&sa, &n);
     port_no = ntohs(sa.sin_port);
 
     /* Create output buffer */
 
-    outbuf = (char*)malloc(OUTBUF_SIZE);
+    outbuf = (char *)malloc(OUTBUF_SIZE);
     if (outbuf == NULL) {
       printf("Unable to allocate socket output buffer\n");
       return FALSE; /* Error */
@@ -327,7 +331,7 @@ void set_new_tty_modes() {
 
 /* ====================================================================== */
 
-bool write_console(char* p, int bytes) {
+bool write_console(char *p, int bytes) {
   int n;
 
   while (bytes) {
@@ -579,11 +583,11 @@ again:
 /* ======================================================================
    inblk()  -  Input a block from the ring buffer                         */
 
-STRING_CHUNK* inblk(int max_bytes) {
+STRING_CHUNK *inblk(int max_bytes) {
   int n;
   int16_t actual_size;
-  STRING_CHUNK* str = NULL;
-  char* p;
+  STRING_CHUNK *str = NULL;
+  char *p;
   int bytes;
 
   n = (ring_in + RING_SIZE - ring_out) % RING_SIZE; /* Bytes in buffer */
@@ -598,14 +602,14 @@ STRING_CHUNK* inblk(int max_bytes) {
 
     bytes = min(RING_SIZE - ring_out, n); /* Portion up to end of ring buffer */
     p = str->data;
-    memcpy(p, ((char*)ring_buff) + ring_out, bytes);
+    memcpy(p, ((char *)ring_buff) + ring_out, bytes);
     ring_out = (ring_out + bytes) % RING_SIZE;
     n -= bytes;
 
     if (n) /* More at start of buffer */
     {
       p += bytes;
-      memcpy(p, (char*)ring_buff, n);
+      memcpy(p, (char *)ring_buff, n);
       ring_out = n;
     }
   }
@@ -616,14 +620,14 @@ STRING_CHUNK* inblk(int max_bytes) {
 /* ======================================================================
    save_screen()  -  Save screen image                                    */
 
-bool save_screen(scrn, x, y, w, h) SCREEN_IMAGE* scrn;
+bool save_screen(scrn, x, y, w, h) SCREEN_IMAGE *scrn;
 int16_t x;
 int16_t y;
 int16_t w;
 int16_t h;
 {
-  char* p;
-  char* q;
+  char *p;
+  char *q;
   static int32_t image_id = 0;
   int n;
 
@@ -641,18 +645,17 @@ int16_t h;
 
 /* ====================================================================== */
 
-void restore_screen(scrn, restore_cursor) SCREEN_IMAGE* scrn;
+void restore_screen(scrn, restore_cursor) SCREEN_IMAGE *scrn;
 bool restore_cursor;
 {
-  char* p;
-  char* q;
+  char *p;
+  char *q;
   int n;
 
   if (connection_type == CN_SOCKET) {
     p = qmtgetstr("rreg");
     if (p != NULL) {
-      q = tparm(&n, p, (int)(scrn->id), (int)(scrn->x), (int)(scrn->y),
-                (int)restore_cursor);
+      q = tparm(&n, p, (int)(scrn->id), (int)(scrn->x), (int)(scrn->y), (int)restore_cursor);
       write_socket(q, n, TRUE);
     }
   }
@@ -660,7 +663,7 @@ bool restore_cursor;
 
 /* Interludes to map onto Windows style interfaces */
 
-bool read_socket(str, bytes) char* str;
+bool read_socket(str, bytes) char *str;
 int bytes;
 {
   while (bytes--)
@@ -679,24 +682,22 @@ char socket_byte() {
 /* ======================================================================
    login_user()  -  Perform checks and login as specified user            */
 
-#warning "Needs to be updated according to the notes at login_user()"
 //
 // Message that details the change is here: https://groups.google.com/g/scarletdme/c/Xza0TPEVqb8
-// 
+//
 // Summarized:
 //  change this line: if (memcmp(p, "$1$", 3) == 0) /* MD5 algorithm */
 //  to: if ((memcmp(p, "$1$", 3) == 0) || /* MD5 algorithm */
 //         (memcmp(p, "$6$", 3) == 0)
-//
-bool login_user(username, password) char* username;
-char* password;
-{
-  FILE* fu;
-  struct passwd* pwd;
+// 17Jan22 gwb Added above change
+
+bool login_user(char *username, char *password) {
+  FILE *fu;
+  struct passwd *pwd;
   char pw_rec[200 + 1];
   int16_t len;
-  char* p = NULL;
-  char* q;
+  char *p = NULL;
+  char *q;
 
   if ((fu = fopen(PASSWD_FILE_NAME, "r")) == NULL) {
     tio_printf("%s\n", sysmsg(1007));
@@ -714,13 +715,12 @@ char* password;
   fclose(fu);
 
   if (p != NULL) {
-    if (memcmp(p, "$1$", 3) == 0) /* MD5 algorithm */
-    {
+    if ((memcmp(p, "$1$", 3) == 0) || /* MD5 algorithm */
+        (memcmp(p, "$6$", 3) == 0)) { /* SHA512 */
       if ((q = strchr(p, ':')) != NULL)
         *q = '\0';
-      if (strcmp((char*)crypt(password, p), p) == 0) {
-        if (((pwd = getpwnam(username)) != NULL) &&
-            (setgid(pwd->pw_gid) == 0) && (setuid(pwd->pw_uid) == 0)) {
+      if (strcmp((char *)crypt(password, p), p) == 0) {
+        if (((pwd = getpwnam(username)) != NULL) && (setgid(pwd->pw_gid) == 0) && (setuid(pwd->pw_uid) == 0)) {
           //         set_groups();
           return TRUE;
         }

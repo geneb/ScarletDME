@@ -1,8 +1,56 @@
 This is just a file of random thoughts, TODO items, ideas, and documentation for how some
 things work within ScarletDME.  Because like all programmers, I'm a lazy jerk and will refer to
 ScarletDME as simply, Scarlet.  Ya'll know what I'm talking about anyway. :)
-
 --------------------------------------------------------
+
+[17Jan22] gwb
+Notes on the "SH Problem" - this only applies to the 64 bit build of ScarletDME.
+Issuing the "SH" command at TCL results in an error on some systems.  On further 
+investigation it was found that the QMBasic compiler was also finding invalid 
+syntax and other errors in the following programs (-internal require to compile)
+QDISP
+QMPKG
+MODIFY
+DEMO 
+SCRB 
+FMTSUB 
+SCREEN 
+SHOW 
+
+On systems without the SH problem, those programs compile without error.
+It was also found that doing:
+SELECT VOC WITH F2 = "CS"
+
+Would result in two items being found - "SH" and "!", both of which have "OS"
+in attribute (field) #2.  In a default installstallation of ScarletDME, there 
+are no "CS" verbs in the VOC file.
+
+I've attempted to find out the differences between 64 bit systems that work fine
+and those that have problems.  The issue MAY be related to the version of libc
+that is used on a system.  I'm compiling a list of systems & versions that work 
+and don't work to see if a pattern can be discerned.  The version # shown is 
+obtained via "ldd --version".
+
+[SH] - System has SH problem
+[OK] - System works without issue.
+
+Here's the list of working and non-working systems as of 01/17/22.
+[SH] Bunsen Labs (Debian 10) - Debian GLIBC 2.28.10/2.28 (Don M.)
+[SH] Debian 11 - Debian GLIBC 2.31-13+deb11u2/2.31 (Don M.)
+[OK] Ubuntu Server 21.10 - Ubuntu GLIBC 2.34-0ubuntu3)/2.34 (Don M.)
+[OK] Ubuntu Workstation 21.10 - Ubuntu GLIBC 2.34-0ubuntu3)/2.34 (Don M.)
+[OK] Suse Tumbleweed (rolling release), glibc 2.34 (Don M.)
+[SH] Suse 15.3.2 glibc 2.31 (Don M.)
+[SH] Fedora 34 - glibc v2.33 (Don M.)
+[OK] Fedora 35 - glibc v2.34 (Don M.)
+[OK] Debian 11 (phyllis) (Upgraded from Debian 10) - Debian GLIBC 2.31-13+deb11u2)/2.31 (Gene B.)
+[OK] CentOS 8 - GNU libc 2.28 (Gene B.)
+[OK] Debian 11 (annex) - Debian GLIBC 2.31-13+deb11u2)/2.31 (Gene B.)
+[SH] Rocky Linux v8.5 - GNU libc 2.28 (Gene B.)
+[SH] Ubuntu/WSL2 - Ubuntu GLIBC 2.31-0ubuntu9.2/2.31 (Gene B.)
+[OK] Gentoo - Gentoo 2.34-r6 p11)/2.34 (Wol)
+
+--
 [14Jan22] gwb
 With regard to the SH/SH1 problem, does it occur on systems that do have 32 bit libraries installed?
 --

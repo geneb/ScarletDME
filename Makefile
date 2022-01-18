@@ -173,43 +173,46 @@ qmclilib.o: qmclilib.c revstamp.h
 # We need to make sure that anything that includes revstamp.h gets built if revstamp.h 
 # changes.
 
-config.o: config.c revstamp.h
+config.o: config.c config.h qm.h revstamp.h
 	@$(COMP) $(C_FLAGS) -c $< -o $(GPLOBJ)config.o
 
-kernel.o: kernel.c revstamp.h
+kernel.o: kernel.c qm.h revstamp.h header.h tio.h debug.h keys.h syscom.h config.h \
+	options.h dh_int.h locks.h
 	@$(COMP) $(C_FLAGS) -c $< -o $(GPLOBJ)kernel.o
 
-op_kernel.o: op_kernel.c revstamp.h
+op_kernel.o: op_kernel.c qm.h revstamp.h header.h tio.h debug.h keys.h syscom.h \
+	config.h options.h dh_int.h locks.h
 	@$(COMP) $(C_FLAGS) -c $< -o $(GPLOBJ)op_kernel.o
 
-op_sys.o: op_sys.c revstamp.h
+op_sys.o: op_sys.c qm.h header.h tio.h syscom.h dh_int.h revstamp.h config.h
 	@$(COMP) $(C_FLAGS) -c $< -o $(GPLOBJ)op_sys.o
 
-pdump.o: pdump.c revstamp.h
+pdump.o: pdump.c qm.h header.h syscom.h config.h revstamp.h locks.h dh_int.h
 	@$(COMP) $(C_FLAGS) -c $< -o $(GPLOBJ)pdump.o
 
-qm.o:	qm.c revstamp.h
+qm.o:	qm.c qm.h revstamp.h header.h debug.h dh_int.h tio.h config.h options.h \
+	locks.h
 	@$(COMP) $(C_FLAGS) -c $< -o $(GPLOBJ)qm.o 
 
-qmclient.o: qmclient.c revstamp.h
+qmclient.o: qmclient.c qmdefs.h revstamp.h qmclient.h err.h
 	@$(COMP) $(C_FLAGS) -c $< -o $(GPLOBJ)qmclient.o
 
-qmconv.o: qmconv.c revstamp.h
+qmconv.o: qmconv.c qm.h dh_int.h header.h revstamp.h
 	@$(COMP) $(C_FLAGS) -c $< -o $(GPLOBJ)qmconv.o
 
-qmfix.o: qmfix.c revstamp.h
+qmfix.o: qmfix.c qm.h dh_int.h revstamp.h
 	@$(COMP) $(C_FLAGS) -c $< -o $(GPLOBJ)qmfix.o
 
-qmidx.o: qmidx.c revstamp.h
+qmidx.o: qmidx.c qm.h dh_int.h revstamp.h
 	@$(COMP) $(C_FLAGS) -c $< -o $(GPLOBJ)qmidx.o
 
-qmtic.o: qmtic.c revstamp.h
+qmtic.o: qmtic.c ti_names.h revstamp.h
 	@$(COMP) $(C_FLAGS) -c $< -o $(GPLOBJ)qmtic.o
 
-sysdump.o: sysdump.c revstamp.h
+sysdump.o: sysdump.c qm.h locks.h revstamp.h config.h
 	@$(COMP) $(C_FLAGS) -c $< -o $(GPLOBJ)sysdump.o
 
-sysseg.o: sysseg.c revstamp.h
+sysseg.o: sysseg.c qm.h locks.h config.h revstamp.h
 	@$(COMP) $(C_FLAGS) -c $< -o $(GPLOBJ)sysseg.o
 
 .c.o:
@@ -224,9 +227,9 @@ ifeq ($(QMUSERS),)
 	@echo Creating qm system user and group
 	@groupadd --system qmusers
 	@usermod -a -G qmusers root
-	ifeq ($(QMSYS),)
-		@useradd --system qmsys --gid qmusers
-	endif
+ifeq ($(QMSYS),)
+	@useradd --system qmsys --gid qmusers
+endif
 endif
 
 	@echo Installing to $(INSTROOT)
