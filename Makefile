@@ -219,7 +219,7 @@ sysseg.o: sysseg.c qm.h locks.h config.h revstamp.h
 	@echo Compiling $@, $(BITSIZE) bit target.
 	@$(COMP) $(C_FLAGS) -c $< -o $(GPLOBJ)$@
 
-.PHONY: clean distclean install datafiles
+.PHONY: clean distclean install datafiles docs
 
 install:  
 
@@ -329,6 +329,9 @@ distclean: clean
 	@$(RM) $(GPLOBJ)*.o
 	@$(RM) $(GPLBIN)*
 	@$(RM) $(GPLSRC)terminfo
+
+docs:
+	$(MAKE) -C docs html
 
 # Additional stop and start for developers, wraps qm build
 # Unfortunatly this requires root/sudo access -dat

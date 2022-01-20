@@ -41,6 +41,10 @@ account to /usr/qmsys
 setup that will recompile from scratch if required. You MUST do this if
 switching between 32-bit and 64-bit builds.
 
+**docs:** If Sphinx is installed, it will build the html docs. See the
+Sphinx section for more details. To create anything other than html you
+will have to explicitly build it in the docs directory.
+
 **qmdev:** **qmstop:** invoke sudo to start and stop the ScarletDME
 service.
 
