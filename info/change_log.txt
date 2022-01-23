@@ -1,6 +1,15 @@
 ******************************************************************************
 *            THIS CHANGE LOG ONLY APPLIES TO THE "DEV" BRANCH                *
 ******************************************************************************
+27Jan22 -gwb
+------------
+
+The build was failing on macOS because the ioctl() call in lnxport.c resulted
+in an error because sys/ioctl.h was not included.  Added #ifdef __APPLE__ to
+fix that.
+
+===============================================================================
+
 14Jan22 -gwb
 ------------
 
