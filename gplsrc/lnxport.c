@@ -22,6 +22,7 @@
  * 
  * START-HISTORY (ScarletDME):
  * 23Jan22 gwb macOS requires sys/ioctl.h to be included.
+ *             Fixed #include references to use "" instead of <>
  * 
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
@@ -48,8 +49,8 @@
  * START-CODE
  */
 
-#include <qm.h>
-#include <qmnet.h>
+#include "qm.h"
+#include "qmnet.h"
 
 #ifdef __APPLE__
   #include <sys/ioctl.h>

@@ -57,9 +57,10 @@ There's a mailing list available at https://groups.google.com/g/scarletdme.
 Both developers and regular users are welcome!
 
 [27Feb20] A Discord server is now available (basically a tarted up version of IRC) at
-          https://discord.gg/djzBBbp5 - if this link doesn't work for you,
+          https://discord.gg/H7MPapC2hK - if this link doesn't work for you,
           please reach out to me (geneb@deltasoft.com) and I'll get you a working
-          link.  They do age out periodically.
+          link.  They do age out periodically. [24Jan22 - the Discord link should
+          now be permanent.]
 
 [26Feb20 gwb]
 
