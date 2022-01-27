@@ -1,0 +1,24 @@
+# This service supports connections QMClient connections
+# to the ScarletDME database server.
+# If your ScarletDME binary is located in a place other
+# than /usr/qmsys/bin, you'll need to update the server
+# entry below to reflect that new path.
+#
+# Port #4243 is normally used for this.
+
+service qmclient
+{
+        protocol        = tcp
+        flags           = REUSE
+        socket_type     = stream
+        wait            = no
+        groups          = yes
+        user            = root
+        group           = qmusers
+        umask           = 002
+        server          = /usr/qmsys/bin/qm
+        server_args     = -n -q
+        log_on_failure  += USERID
+        disable         = no
+}
+
