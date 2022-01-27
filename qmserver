@@ -1,0 +1,23 @@
+# This service supports connections to the ScarletDME
+# database server from telnet clients.
+# If your ScarletDME binary is located in a place other
+# than /usr/qmsys/bin, you'll need to update the server
+# entry below to reflect that new path.
+#
+# Port #4242 is normally used for this.
+
+service qmserver
+{
+	protocol 	= tcp
+	flags		= REUSE
+	socket_type	= stream
+	wait		= no
+	groups		= yes
+	user		= root
+	group		= qmusers
+	umask		= 002
+	server		= /usr/qmsys/bin/qm
+	server_args	= -n
+	log_on_failure	+= USERID
+	disable		= no
+}
