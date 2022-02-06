@@ -1,6 +1,17 @@
 ******************************************************************************
 *            THIS CHANGE LOG ONLY APPLIES TO THE "DEV" BRANCH                *
 ******************************************************************************
+06Feb22 -gwb
+------------
+I ran ScarleDME through valgrind and discovered a few function calls that were
+acting upon variables that had not been initialized.
+
+When running ScarleDME via valgrind, I discovered that the "SH" problem doesn't
+happen on systems that are normally affected by it.  This tells me that we may
+have a Heisenbug on our hands.
+
+===============================================================================
+
 27Jan22 -gwb
 ------------
 

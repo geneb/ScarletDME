@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 06Feb20 gwb Fixed a variable that was being used in an uninitialized state
+ *             as reported by valgrind.
+ * 
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
@@ -82,11 +85,11 @@ void op_alpha() {
      |=============================|=============================|
  */
 
-  DESCRIPTOR* descr;
+  DESCRIPTOR *descr;
   bool is_alpha = FALSE;
-  STRING_CHUNK* src_str;
+  STRING_CHUNK *src_str;
   int16_t src_bytes;
-  char* src;
+  char *src;
 
   descr = e_stack - 1;
   k_get_string(descr);
@@ -147,29 +150,29 @@ void op_index() {
      |=============================|=============================|
  */
 
-  DESCRIPTOR* descr;
+  DESCRIPTOR *descr;
 
   int32_t occurrence;
 
 #define MAX_SUBSTRING_LEN 256
   char substring[MAX_SUBSTRING_LEN + 1];
   int16_t substring_len;
-  char* substr;
+  char *substr;
 
   /* Outer loop control */
-  STRING_CHUNK* src_str;
+  STRING_CHUNK *src_str;
   int16_t src_bytes_remaining;
-  char* src;
+  char *src;
   int32_t offset = 0;
 
   /* Inner loop control */
-  STRING_CHUNK* isrc_str;
+  STRING_CHUNK *isrc_str;
   int16_t isrc_bytes_remaining;
-  char* isrc;
+  char *isrc;
   int32_t ioffset;
   bool nocase;
   int16_t i_len;
-  char* p;
+  char *p;
 
   nocase = (process.program.flags & HDR_NOCASE) != 0;
 
@@ -217,9 +220,9 @@ void op_index() {
 
     while (src_bytes_remaining > 0) {
       if (nocase) {
-        p = (char*)memichr(src, substring[0], src_bytes_remaining);
+        p = (char *)memichr(src, substring[0], src_bytes_remaining);
       } else {
-        p = (char*)memchr(src, substring[0], src_bytes_remaining);
+        p = (char *)memchr(src, substring[0], src_bytes_remaining);
       }
       if (p == NULL)
         break;
@@ -321,20 +324,20 @@ void op_matbuild() {
      |=============================|=============================|
  */
 
-  DESCRIPTOR* mat_descr;
-  DESCRIPTOR* com_descr;
-  DESCRIPTOR* descr; /* Various descriptors */
+  DESCRIPTOR *mat_descr;
+  DESCRIPTOR *com_descr;
+  DESCRIPTOR *descr; /* Various descriptors */
 
-  STRING_CHUNK* delim_str;
-  PMATRIX_HEADER* pm_hdr;
+  STRING_CHUNK *delim_str;
+  PMATRIX_HEADER *pm_hdr;
 
-  ARRAY_HEADER* a_hdr;
+  ARRAY_HEADER *a_hdr;
   int32_t num_elements;
   int32_t indx;
-  ARRAY_CHUNK* a_chunk;
+  ARRAY_CHUNK *a_chunk;
 
   DESCRIPTOR src_descr;
-  STRING_CHUNK* src_str;
+  STRING_CHUNK *src_str;
 
   int32_t start_index;
   int32_t end_index;
@@ -438,8 +441,7 @@ void op_matbuild() {
     if (src_descr.type != UNASSIGNED) {
       k_get_string(&src_descr);
 
-      for (src_str = src_descr.data.str.saddr; src_str != NULL;
-           src_str = src_str->next) {
+      for (src_str = src_descr.data.str.saddr; src_str != NULL; src_str = src_str->next) {
         ts_copy(src_str->data, src_str->bytes);
       }
       k_release(&src_descr); /* Release local copy */
@@ -468,8 +470,7 @@ void op_matbuild() {
 
       /* Copy zero element to target string */
 
-      for (src_str = src_descr.data.str.saddr; src_str != NULL;
-           src_str = src_str->next) {
+      for (src_str = src_descr.data.str.saddr; src_str != NULL; src_str = src_str->next) {
         ts_copy(src_str->data, src_str->bytes);
       }
 
@@ -519,28 +520,28 @@ void op_matparse() {
      |=============================|=============================|
  */
 
-  DESCRIPTOR* descr; /* Various descriptors */
+  DESCRIPTOR *descr; /* Various descriptors */
 
-  char s[256 + 1];         /* Delimiter string from program */
-  char delimiters[256];    /* Boolean map of delimiter characters */
+  char s[256 + 1];       /* Delimiter string from program */
+  char delimiters[256];  /* Boolean map of delimiter characters */
   int16_t no_delimiters; /* No of delimiters */
 
-  DESCRIPTOR* array_descr; /* Target array */
-  ARRAY_HEADER* a_hdr;
-  PMATRIX_HEADER* pm_hdr;
+  DESCRIPTOR *array_descr; /* Target array */
+  ARRAY_HEADER *a_hdr;
+  PMATRIX_HEADER *pm_hdr;
   int lo_index;
   int32_t hi_index; /* Index of last element */
   int32_t indx;     /* Current target element number */
 
-  STRING_CHUNK* src_str;
+  STRING_CHUNK *src_str;
   int16_t src_bytes_remaining;
-  char* src;
+  char *src;
 
-  DESCRIPTOR* tgt_descr; /* Target array element descriptor */
-  STRING_CHUNK* tgt_str;
+  DESCRIPTOR *tgt_descr; /* Target array element descriptor */
+  STRING_CHUNK *tgt_str;
   u_int16_t last_char = 256;
 
-  DESCRIPTOR* com_descr;
+  DESCRIPTOR *com_descr;
   int rows;
   int cols;
   bool pick_style;
@@ -699,8 +700,7 @@ void op_matparse() {
 
 assign_excess_data:
 
-  if ((!pick_style) ||
-      (src_str == NULL)) /* Nothing to append to final element */
+  if ((!pick_style) || (src_str == NULL)) /* Nothing to append to final element */
   {
     ts_terminate(); /* Terminate final element */
     Element(a_hdr, indx + offset)->data.str.saddr = tgt_str;
@@ -754,7 +754,7 @@ void op_num() {
      |=============================|=============================|
  */
 
-  DESCRIPTOR* descr;
+  DESCRIPTOR *descr;
   bool is_num = FALSE;
 
   descr = e_stack - 1;
@@ -785,10 +785,10 @@ void op_soundex() {
      |=============================|=============================|
  */
 
-  DESCRIPTOR* descr;
-  STRING_CHUNK* src_str;
+  DESCRIPTOR *descr;
+  STRING_CHUNK *src_str;
   int16_t src_bytes;
-  char* src;
+  char *src;
   register u_char c;
   char last = '\0';
   char code;
@@ -800,8 +800,7 @@ void op_soundex() {
   k_get_string(descr);
 
   i = 0;
-  for (src_str = descr->data.str.saddr; src_str != NULL;
-       src_str = src_str->next) {
+  for (src_str = descr->data.str.saddr; src_str != NULL; src_str = src_str->next) {
     src = src_str->data;
     for (src_bytes = src_str->bytes; src_bytes > 0; src_bytes--) {
       c = *(src++);
@@ -840,10 +839,10 @@ void op_soundex() {
    op_trim()  -  Trim leading, embedded and trailing spaces from string   */
 
 void op_trim() {
-  DESCRIPTOR* src_descr;         /* Source string descriptor */
-  DESCRIPTOR result;             /* Result string descriptor */
-  STRING_CHUNK* src_str;         /* Current source chunk */
-  char* src;                     /* Ptr to current byte */
+  DESCRIPTOR *src_descr;       /* Source string descriptor */
+  DESCRIPTOR result;           /* Result string descriptor */
+  STRING_CHUNK *src_str;       /* Current source chunk */
+  char *src;                   /* Ptr to current byte */
   int16_t src_bytes_remaining; /* Remaining bytes in this chunk */
 
   bool front_of_string;
@@ -933,10 +932,10 @@ void op_trimb() {
      |=============================|=============================|
  */
 
-  DESCRIPTOR* src_descr;         /* Source string descriptor */
-  DESCRIPTOR result;             /* Result string descriptor */
-  STRING_CHUNK* src_str;         /* Current source chunk */
-  char* src;                     /* Ptr to current byte */
+  DESCRIPTOR *src_descr;       /* Source string descriptor */
+  DESCRIPTOR result;           /* Result string descriptor */
+  STRING_CHUNK *src_str;       /* Current source chunk */
+  char *src;                   /* Ptr to current byte */
   int16_t src_bytes_remaining; /* Remaining bytes in this chunk */
 
   int32_t space_count;
@@ -1002,10 +1001,10 @@ exit_trimb:
    op_trimf()  -  Trim leading spaces from string                         */
 
 void op_trimf() {
-  DESCRIPTOR* src_descr;         /* Source string descriptor */
-  DESCRIPTOR result;             /* Result string descriptor */
-  STRING_CHUNK* src_str;         /* Current source chunk */
-  char* src;                     /* Ptr to current byte */
+  DESCRIPTOR *src_descr;       /* Source string descriptor */
+  DESCRIPTOR result;           /* Result string descriptor */
+  STRING_CHUNK *src_str;       /* Current source chunk */
+  char *src;                   /* Ptr to current byte */
   int16_t src_bytes_remaining; /* Remaining bytes in this chunk */
 
   bool front_of_string;
@@ -1102,15 +1101,15 @@ void op_trimx() {
        L   Remove leading occurences of character
  */
 
-  DESCRIPTOR* descr;
+  DESCRIPTOR *descr;
   char mode;
   char ch;
-  STRING_CHUNK* str;
+  STRING_CHUNK *str;
 
-  DESCRIPTOR* src_descr;         /* Source string descriptor */
-  DESCRIPTOR result;             /* Result string descriptor */
-  STRING_CHUNK* src_str;         /* Current source chunk */
-  char* src;                     /* Ptr to current byte */
+  DESCRIPTOR *src_descr;       /* Source string descriptor */
+  DESCRIPTOR result;           /* Result string descriptor */
+  STRING_CHUNK *src_str;       /* Current source chunk */
+  char *src;                   /* Ptr to current byte */
   int16_t src_bytes_remaining; /* Remaining bytes in this chunk */
 
   bool front_of_string;
@@ -1288,27 +1287,27 @@ Private void count(bool dcount) /* Doing DCOUNT? */
      |=============================|=============================|
  */
 
-  DESCRIPTOR* src_descr;       /* Source string to search */
-  DESCRIPTOR* substring_descr; /* Substring / Delimiter */
+  DESCRIPTOR *src_descr;       /* Source string to search */
+  DESCRIPTOR *substring_descr; /* Substring / Delimiter */
 #define MAX_SUBSTRING_LEN 256
   char substring[MAX_SUBSTRING_LEN + 1];
   int16_t substring_len;
-  char* substr;
+  char *substr;
 
   /* Outer loop control */
-  STRING_CHUNK* src_str;
+  STRING_CHUNK *src_str;
   int16_t src_bytes_remaining;
-  char* src;
+  char *src;
 
   /* Inner loop control */
-  STRING_CHUNK* isrc_str;
+  STRING_CHUNK *isrc_str;
   int16_t isrc_bytes_remaining;
   int16_t ilen;
-  char* isrc;
+  char *isrc;
 
   bool nocase;
   int32_t ct = 0;
-  char* p;
+  char *p;
 
   nocase = (process.program.flags & HDR_NOCASE) != 0;
 
@@ -1345,9 +1344,9 @@ Private void count(bool dcount) /* Doing DCOUNT? */
 
     while (src_bytes_remaining) {
       if (nocase) {
-        p = (char*)memichr(src, substring[0], src_bytes_remaining);
+        p = (char *)memichr(src, substring[0], src_bytes_remaining);
       } else {
-        p = (char*)memchr(src, substring[0], src_bytes_remaining);
+        p = (char *)memchr(src, substring[0], src_bytes_remaining);
       }
       if (p == NULL)
         break;
@@ -1423,8 +1422,8 @@ exit_count:
 /* ======================================================================
    matches()  -  Common path for MATCHES and MATCHFLD opcodes             */
 
-Private char* component_start;
-Private char* component_end;
+Private char *component_start;
+Private char *component_end;
 
 Private void matches(bool matchfield) {
   /* Stack:
@@ -1442,22 +1441,23 @@ Private void matches(bool matchfield) {
 
 #define MAX_TEMPLATE_LEN 256
 
-  DESCRIPTOR* descr;
+  DESCRIPTOR *descr;
   char template_string[MAX_TEMPLATE_LEN + 1];
-  char* src_string;
-  char* p;
-  char* q;
+  char *src_string;
+  char *p;
+  char *q;
   int16_t return_component; /* Component number for MATCHFIELD */
   bool match = FALSE;
 
   if (matchfield) {
     descr = e_stack - 1;
     GetInt(descr);
-    return_component = (int16_t)(descr->data.value);
+    return_component = (int16_t)(descr->data.value);  // value is int32_t (descr.h) -gwb
     if (return_component < 1)
       return_component = 1;
     k_pop(1);
-  }
+  } else
+    return_component = -1; /* initializing this to satisfy valgrind 06feb22 -gwb */
 
   descr = e_stack - 1;
   if (k_get_c_string(descr, template_string, MAX_TEMPLATE_LEN) < 0) {
@@ -1509,19 +1509,18 @@ Private void matches(bool matchfield) {
 /* ======================================================================
    match_template()  -  Match string against template                     */
 
-bool match_template(
-    char* string,
-    char* template_string,
-    int16_t component,        /* Current component number - 1 (incremented) */
-    int16_t return_component) /* Required component number */
+bool match_template(char *string,
+                    char *template_string,
+                    int16_t component,        /* Current component number - 1 (incremented) */
+                    int16_t return_component) /* Required component number */
 {
-  bool not;
+  bool not ;
   int16_t n;
   int16_t m;
   int16_t z;
-  char* p;
+  char *p;
   char delimiter;
-  char* start;
+  char *start;
 
   while (*template_string != '\0') {
     component++;
@@ -1554,7 +1553,7 @@ bool match_template(
            * compiler complains about potential ambiguity.
            * -gwb 22Feb20
            */
-          if ((!memcmp(start, string, n)) == not)
+          if ((!memcmp(start, string, n)) == not )
             return FALSE;
           string += n;
           break;
@@ -1564,16 +1563,16 @@ bool match_template(
             while (n--) {
               if (*string == '\0')
                 return FALSE;
-              if ((IsAlpha(*string) != 0) == not)
+              if ((IsAlpha(*string) != 0) == not )
                 return FALSE;
               string++;
             }
-          } else { /* 0A */
+          } else {                          /* 0A */
             if (*template_string != '\0') { /* Further template items exist */
               /* Match as many as possible further characters */
 
               for (z = 0, p = string;; z++, p++) {
-                if ((*p == '\0') || ((IsAlpha(*p) != 0) == not))
+                if ((*p == '\0') || ((IsAlpha(*p) != 0) == not ))
                   break;
               }
 
@@ -1583,14 +1582,13 @@ bool match_template(
                  string matches the remainder of the template.               */
 
               for (p = string + z; z-- >= 0; p--) {
-                if (match_template(p, template_string, component,
-                                   return_component)) {
+                if (match_template(p, template_string, component, return_component)) {
                   goto match_found;
                 }
               }
               return FALSE;
             } else {
-              while ((*string != '\0') && ((IsAlpha(*string) != 0) != not)) {
+              while ((*string != '\0') && ((IsAlpha(*string) != 0) != not )) {
                 string++;
               }
             }
@@ -1602,16 +1600,16 @@ bool match_template(
             while (n--) {
               if (*string == '\0')
                 return FALSE;
-              if ((IsDigit(*string) != 0) == not)
+              if ((IsDigit(*string) != 0) == not )
                 return FALSE;
               string++;
             }
-          } else { /* 0N */
+          } else {                          /* 0N */
             if (*template_string != '\0') { /* Further template items exist */
               /* Match as many as possible further chaarcters */
 
               for (z = 0, p = string;; z++, p++) {
-                if ((*p == '\0') || ((IsDigit(*p) != 0) == not))
+                if ((*p == '\0') || ((IsDigit(*p) != 0) == not ))
                   break;
               }
 
@@ -1621,14 +1619,13 @@ bool match_template(
                  string matches the remainder of the template.               */
 
               for (p = string + z; z-- >= 0; p--) {
-                if (match_template(p, template_string, component,
-                                   return_component)) {
+                if (match_template(p, template_string, component, return_component)) {
                   goto match_found;
                 }
               }
               return FALSE;
             } else {
-              while ((*string != '\0') && ((IsDigit(*string) != 0) != not)) {
+              while ((*string != '\0') && ((IsDigit(*string) != 0) != not )) {
                 string++;
               }
             }
@@ -1641,13 +1638,12 @@ bool match_template(
               if (*(string++) == '\0')
                 return FALSE;
             }
-          } else { /* 0X */
+          } else {                          /* 0X */
             if (*template_string != '\0') { /* Further template items exist */
               /* Match as few as possible further characters */
 
               do {
-                if (match_template(string, template_string, component,
-                                   return_component)) {
+                if (match_template(string, template_string, component, return_component)) {
                   goto match_found;
                 }
               } while (*(string++) != '\0');
@@ -1672,7 +1668,7 @@ bool match_template(
             case '\0': /* String longer than template */
               n = --template_string - start;
               if (n) { /* We have found a trailing unquoted literal */
-                if ((memcmp(start, string, n) == 0) != not)
+                if ((memcmp(start, string, n) == 0) != not )
                   return TRUE;
               }
               return FALSE;
@@ -1683,7 +1679,7 @@ bool match_template(
               while (n--) {
                 if (*string == '\0')
                   return FALSE;
-                if ((IsAlpha(*string) != 0) == not)
+                if ((IsAlpha(*string) != 0) == not )
                   return FALSE;
                 string++;
               }
@@ -1694,7 +1690,7 @@ bool match_template(
                   matches against the remaining template (if any).           */
 
               for (z = 0, p = string; z < m; z++, p++) {
-                if ((*p == '\0') || ((IsAlpha(*p) != 0) == not))
+                if ((*p == '\0') || ((IsAlpha(*p) != 0) == not ))
                   break;
               }
 
@@ -1704,8 +1700,7 @@ bool match_template(
 
               if (*template_string != '\0') { /* Further template items exist */
                 for (p = string + z; z-- >= 0; p--) {
-                  if (match_template(p, template_string, component,
-                                     return_component)) {
+                  if (match_template(p, template_string, component, return_component)) {
                     goto match_found;
                   }
                 }
@@ -1720,7 +1715,7 @@ bool match_template(
               while (n--) {
                 if (*string == '\0')
                   return FALSE;
-                if ((IsDigit(*string) != 0) == not)
+                if ((IsDigit(*string) != 0) == not )
                   return FALSE;
                 string++;
               }
@@ -1731,7 +1726,7 @@ bool match_template(
                   matches against the remaining template (if any).           */
 
               for (z = 0, p = string; z < m; z++, p++) {
-                if ((*p == '\0') || ((IsDigit(*p) != 0) == not))
+                if ((*p == '\0') || ((IsDigit(*p) != 0) == not ))
                   break;
               }
 
@@ -1741,8 +1736,7 @@ bool match_template(
 
               if (*template_string != '\0') { /* Further template items exist */
                 for (p = string + z; z-- >= 0; p--) {
-                  if (match_template(p, template_string, component,
-                                     return_component)) {
+                  if (match_template(p, template_string, component, return_component)) {
                     goto match_found;
                   }
                 }
@@ -1763,8 +1757,7 @@ bool match_template(
 
               if (*template_string != '\0') {
                 while (m--) {
-                  if (match_template(string, template_string, component,
-                                     return_component)) {
+                  if (match_template(string, template_string, component, return_component)) {
                     goto match_found;
                   }
                   string++;
@@ -1779,7 +1772,7 @@ bool match_template(
             default:
               /* We have found an unquoted literal */
               n = --template_string - start;
-              if ((memcmp(start, string, n) == 0) == not)
+              if ((memcmp(start, string, n) == 0) == not )
                 return FALSE;
               string += n;
               break;
@@ -1789,21 +1782,20 @@ bool match_template(
         default:
           /* We have found an unquoted literal */
           n = --template_string - start;
-          if ((memcmp(start, string, n) == 0) == not)
+          if ((memcmp(start, string, n) == 0) == not )
             return FALSE;
           string += n;
           break;
       }
     } else if (memcmp(template_string, "...", 3) == 0) { /* ... same as 0X */
       template_string += 3;
-      if (not)
+      if (not )
         return FALSE;
       if (*template_string != '\0') { /* Further template items exist */
         /* Match as few as possible further characters */
 
         while (*string != '\0') {
-          if (match_template(string, template_string, component,
-                             return_component)) {
+          if (match_template(string, template_string, component, return_component)) {
             goto match_found;
           }
           string++;
@@ -1820,13 +1812,13 @@ bool match_template(
           return FALSE;
         n = p - template_string;
         if (n) {
-          if ((memcmp(template_string, string, n) == 0) == not)
+          if ((memcmp(template_string, string, n) == 0) == not )
             return FALSE;
           string += n;
         }
         template_string += n + 1;
       } else { /* Unquoted literal. Treat as single character */
-        if ((*(template_string++) == *(string++)) == not)
+        if ((*(template_string++) == *(string++)) == not )
           return FALSE;
       }
     }

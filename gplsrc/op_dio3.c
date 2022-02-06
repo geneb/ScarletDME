@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 06Feb22 gwb Initialized a char array in read_record() in order to clear a warning
+ *             reported by valgrind.  Reformatted code.
+ * 
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
@@ -98,24 +101,24 @@
 #include "qmclient.h"
 
 #define MAX_T1_BUFFER_SIZE 31744
-Private char* t1_buffer = NULL;
+Private char *t1_buffer = NULL;
 Private int t1_buffer_size;
 Private int16_t t1_space;
-Private char* t1_ptr;
+Private char *t1_ptr;
 Private OSFILE t1_fu;
 
-void t1in(char* src, char* dst, int16_t inct, int16_t* outct);
+void t1in(char *src, char *dst, int16_t inct, int16_t *outct);
 
 void op_write(void); /* Necessary for internal call */
 void op_dspnl(void);
 void op_matparse(void);
 
 Private void t1_buffer_alloc(int32_t size);
-Private bool t1_write(char* p, int16_t bytes);
+Private bool t1_write(char *p, int16_t bytes);
 Private bool t1_flush(void);
 Private void t1_buffer_free(void);
 Private void read_record(bool matread);
-Private bool valid_id(char* id, int16_t id_len);
+Private bool valid_id(char *id, int16_t id_len);
 
 /* ======================================================================
    op_clrfile()  -  Clear File                                            */
@@ -133,16 +136,16 @@ void op_clrfile() {
     call to CLRFILE.
  */
 
-  DESCRIPTOR* fvar_descr;
-  FILE_VAR* fvar;
+  DESCRIPTOR *fvar_descr;
+  FILE_VAR *fvar;
   char pathname[MAX_PATHNAME_LEN + 1];
   int path_len;
   char subfilename[MAX_PATHNAME_LEN + 1];
-  DIR* dfu;
-  struct dirent* dp;
+  DIR *dfu;
+  struct dirent *dp;
   u_int16_t op_flags;
-  FILE_ENTRY* fptr;
-  DH_FILE* dh_file;
+  FILE_ENTRY *fptr;
+  DH_FILE *dh_file;
   bool took_lock = FALSE; /* Did we aquire lock here? */
 
   op_flags = process.op_flags;
@@ -207,8 +210,7 @@ void op_clrfile() {
         /* Call pre-clearfile trigger function if required */
 
         if (dh_file->trigger_modes & TRG_PRE_CLEAR) {
-          if (!call_trigger(fvar_descr, TRG_PRE_CLEAR, NULL, NULL,
-                            op_flags & P_ON_ERROR, FALSE)) {
+          if (!call_trigger(fvar_descr, TRG_PRE_CLEAR, NULL, NULL, op_flags & P_ON_ERROR, FALSE)) {
             process.status = -ER_TRIGGER;
             goto exit_op_clrfile;
           }
@@ -222,8 +224,7 @@ void op_clrfile() {
         /* Call post-clearfile trigger function if required */
 
         if (dh_file->trigger_modes & TRG_POST_CLEAR) {
-          if (!call_trigger(fvar_descr, TRG_POST_CLEAR, NULL, NULL,
-                            op_flags & P_ON_ERROR, FALSE)) {
+          if (!call_trigger(fvar_descr, TRG_POST_CLEAR, NULL, NULL, op_flags & P_ON_ERROR, FALSE)) {
             process.status = -ER_TRIGGER;
             goto exit_op_clrfile;
           }
@@ -231,7 +232,7 @@ void op_clrfile() {
         break;
 
       case DIRECTORY_FILE:
-        strcpy(pathname, (char*)(fptr->pathname));
+        strcpy(pathname, (char *)(fptr->pathname));
         if ((dfu = opendir(pathname)) == NULL) {
           process.status = -ER_RNF;
           goto exit_op_clrfile;
@@ -247,8 +248,7 @@ void op_clrfile() {
           if (strcmp(dp->d_name, "..") == 0)
             continue;
           /* converted to snprintf() -gwb 22Feb20 */
-          if (snprintf(subfilename, MAX_PATHNAME_LEN + 1, "%s%c%s", pathname,
-                       DS, dp->d_name) >= (MAX_PATHNAME_LEN + 1)) {
+          if (snprintf(subfilename, MAX_PATHNAME_LEN + 1, "%s%c%s", pathname, DS, dp->d_name) >= (MAX_PATHNAME_LEN + 1)) {
             /* TODO: this should also be logged with more detail */
             k_error("Overflowed path/filename length in op_clrfile()!");
             goto exit_op_clrfile;
@@ -300,18 +300,18 @@ void op_delete() {
     call to DELETE.
  */
 
-  DESCRIPTOR* fvar_descr;
-  DESCRIPTOR* rid_descr;
+  DESCRIPTOR *fvar_descr;
+  DESCRIPTOR *rid_descr;
   char id[MAX_ID_LEN + 1];
   char mapped_id[2 * MAX_ID_LEN + 1];
   int16_t id_len;
-  FILE_VAR* fvar;
-  DH_FILE* dh_file;
+  FILE_VAR *fvar;
+  DH_FILE *dh_file;
   u_int16_t op_flags;
   char subfilename[MAX_PATHNAME_LEN + 1];
   char pathname[MAX_PATHNAME_LEN + 1];
   int16_t path_len;
-  FILE_ENTRY* fptr;
+  FILE_ENTRY *fptr;
   bool keep_lock;
   u_int32_t txn_id;
   struct stat statbuf;
@@ -367,8 +367,7 @@ void op_delete() {
       /* Call pre-delete trigger function if required */
 
       if (dh_file->trigger_modes & TRG_PRE_DELETE) {
-        if (!call_trigger(fvar_descr, TRG_PRE_DELETE, rid_descr, NULL,
-                          op_flags & P_ON_ERROR, FALSE)) {
+        if (!call_trigger(fvar_descr, TRG_PRE_DELETE, rid_descr, NULL, op_flags & P_ON_ERROR, FALSE)) {
           process.status = -ER_TRIGGER;
           goto exit_op_delete;
         }
@@ -377,8 +376,7 @@ void op_delete() {
       if (txn_id != 0) {
         txn_delete(fvar, id, id_len);
       } else {
-        if ((!dh_delete(dh_file, id, id_len)) &&
-            (dh_err != DHE_RECORD_NOT_FOUND)) {
+        if ((!dh_delete(dh_file, id, id_len)) && (dh_err != DHE_RECORD_NOT_FOUND)) {
           process.status = -dh_err;
         }
       }
@@ -386,8 +384,7 @@ void op_delete() {
       /* Call post-delete trigger function if required */
 
       if (dh_file->trigger_modes & TRG_POST_DELETE) {
-        if (!call_trigger(fvar_descr, TRG_POST_DELETE, rid_descr, NULL,
-                          op_flags & P_ON_ERROR, FALSE)) {
+        if (!call_trigger(fvar_descr, TRG_POST_DELETE, rid_descr, NULL, op_flags & P_ON_ERROR, FALSE)) {
           process.status = -ER_TRIGGER;
           goto exit_op_delete;
         }
@@ -412,13 +409,12 @@ void op_delete() {
         fptr->upd_ct++;
         EndExclusive(FILE_TABLE_LOCK);
 
-        strcpy(pathname, (char*)(fptr->pathname));
+        strcpy(pathname, (char *)(fptr->pathname));
         path_len = strlen(pathname);
         if (pathname[path_len - 1] == DS)
           pathname[path_len - 1] = '\0'; /* 0214 */
         /* converted to snprintf() -gwb 22Feb20 */
-        if (snprintf(subfilename, MAX_PATHNAME_LEN + 1, "%s%c%s", pathname, DS,
-                     mapped_id) >= (MAX_PATHNAME_LEN + 1)) {
+        if (snprintf(subfilename, MAX_PATHNAME_LEN + 1, "%s%c%s", pathname, DS, mapped_id) >= (MAX_PATHNAME_LEN + 1)) {
           /* TODO: this should also be logged with more detail */
           k_error("Overflowed path/filename length in op_delete()!");
           goto exit_op_delete;
@@ -459,8 +455,7 @@ exit_op_delete:
 
   if (process.status >= 0) {
     /* Release record lock if non-transactional DELETE */
-    if (!keep_lock && (txn_id == 0) && (id_len != 0) &&
-        (fvar->type != NET_FILE)) {
+    if (!keep_lock && (txn_id == 0) && (id_len != 0) && (fvar->type != NET_FILE)) {
       unlock_record(fvar, id, id_len);
     }
   } else if (!(op_flags & P_ON_ERROR))
@@ -504,8 +499,8 @@ void op_readv() {
     call to READV.
  */
 
-  DESCRIPTOR* descr;
-  DESCRIPTOR* rid_descr;
+  DESCRIPTOR *descr;
+  DESCRIPTOR *rid_descr;
   char id[MAX_ID_LEN + 1];
   char mapped_id[2 * MAX_ID_LEN + 1];
   char actual_id[MAX_ID_LEN + 1];
@@ -514,10 +509,10 @@ void op_readv() {
   char pathname[MAX_PATHNAME_LEN + 1];
   int16_t path_len;
   int16_t id_len;
-  FILE_VAR* fvar;
-  DH_FILE* dh_file;
+  FILE_VAR *fvar;
+  DH_FILE *dh_file;
   u_int16_t op_flags;
-  STRING_CHUNK* str;
+  STRING_CHUNK *str;
   int32_t status = 0;
   u_int32_t txn_id;
 
@@ -607,9 +602,7 @@ void op_readv() {
 
         if (op_flags & P_REC_LOCKS) /* READL or READU */
         {
-          process.status =
-              lock_record(fvar, id, id_len, (op_flags & P_ULOCK) != 0, txn_id,
-                          (op_flags & P_LOCKED) != 0);
+          process.status = lock_record(fvar, id, id_len, (op_flags & P_ULOCK) != 0, txn_id, (op_flags & P_LOCKED) != 0);
           switch (process.status) {
             case 0: /* Got the lock */
               break;
@@ -619,8 +612,8 @@ void op_readv() {
                 k_deadlock();
               /* **** FALL THROUGH **** */
 
-            case -1: /* Lock table is full */
-            default: /* Conflicting lock is held by another user */
+            case -1:                   /* Lock table is full */
+            default:                   /* Conflicting lock is held by another user */
               if (op_flags & P_LOCKED) /* LOCKED clause present */
               {
                 status = ER_LCK;
@@ -663,13 +656,12 @@ void op_readv() {
             break;
 
           case DIRECTORY_FILE:
-            strcpy(pathname, (char*)(FPtr(fvar->file_id)->pathname));
+            strcpy(pathname, (char *)(FPtr(fvar->file_id)->pathname));
             path_len = strlen(pathname);
             if (pathname[path_len - 1] == DS)
               pathname[path_len - 1] = '\0'; /* 0214 */
             /* converted to snprintf() -gwb 22Feb20 */
-            if (snprintf(subfilename, MAX_PATHNAME_LEN + 1, "%s%c%s", pathname,
-                         DS, mapped_id) >= (MAX_PATHNAME_LEN + 1)) {
+            if (snprintf(subfilename, MAX_PATHNAME_LEN + 1, "%s%c%s", pathname, DS, mapped_id) >= (MAX_PATHNAME_LEN + 1)) {
               /* TODO: this should also be logged with more detail */
               k_error("Overflowed path/filename length in op_readv()!");
               goto exit_op_readv;
@@ -721,8 +713,8 @@ void op_mapmarks() {
      This operation is ignored if not a directory file.                    
  */
 
-  DESCRIPTOR* descr;
-  FILE_VAR* fvar;
+  DESCRIPTOR *descr;
+  FILE_VAR *fvar;
   bool state;
 
   /* Get file variable */
@@ -771,16 +763,16 @@ void op_write() {
     call to WRITE.
  */
 
-  DESCRIPTOR* fvar_descr;
-  DESCRIPTOR* rid_descr;
-  DESCRIPTOR* src_descr;
+  DESCRIPTOR *fvar_descr;
+  DESCRIPTOR *rid_descr;
+  DESCRIPTOR *src_descr;
   char id[MAX_ID_LEN + 1];
   char lock_id[MAX_ID_LEN + 1];
   char mapped_id[2 * MAX_ID_LEN + 1];
   int16_t id_len;
-  FILE_VAR* fvar;
-  DH_FILE* dh_file;
-  STRING_CHUNK* str;
+  FILE_VAR *fvar;
+  DH_FILE *dh_file;
+  STRING_CHUNK *str;
   u_int16_t op_flags;
   bool keep_lock;
   u_int32_t txn_id;
@@ -844,8 +836,7 @@ void op_write() {
       /* Call pre-write trigger function if required */
 
       if (dh_file->trigger_modes & TRG_PRE_WRITE) {
-        if (!call_trigger(fvar_descr, TRG_PRE_WRITE, rid_descr, src_descr,
-                          (op_flags & P_ON_ERROR), TRUE)) {
+        if (!call_trigger(fvar_descr, TRG_PRE_WRITE, rid_descr, src_descr, (op_flags & P_ON_ERROR), TRUE)) {
           process.status = -ER_TRIGGER;
           goto exit_op_write;
         }
@@ -865,8 +856,7 @@ void op_write() {
       /* Call post-write trigger function if required */
 
       if (dh_file->trigger_modes & TRG_POST_WRITE) {
-        if (!call_trigger(fvar_descr, TRG_POST_WRITE, rid_descr, src_descr,
-                          (op_flags & P_ON_ERROR), FALSE)) {
+        if (!call_trigger(fvar_descr, TRG_POST_WRITE, rid_descr, src_descr, (op_flags & P_ON_ERROR), FALSE)) {
           process.status = -ER_TRIGGER;
           goto exit_op_write;
         }
@@ -893,8 +883,7 @@ void op_write() {
       break;
 
     case NET_FILE:
-      net_write(fvar, id, id_len, src_descr->data.str.saddr,
-                keep_lock); /* 0295 */
+      net_write(fvar, id, id_len, src_descr->data.str.saddr, keep_lock); /* 0295 */
       break;
   }
 
@@ -988,18 +977,19 @@ Private void read_record(bool matread) {
     call to READ.
  */
 
-  DESCRIPTOR* fvar_descr;
-  DESCRIPTOR* rid_descr;
-  DESCRIPTOR* tgt_descr;
+  DESCRIPTOR *fvar_descr;
+  DESCRIPTOR *rid_descr;
+  DESCRIPTOR *tgt_descr;
   char id[MAX_ID_LEN + 1];
   char mapped_id[2 * MAX_ID_LEN + 1];
-  char actual_id[MAX_ID_LEN + 1]; /* Returned as recorded in file */
+  /* initializing actual_id to clear a valgrind warning. 06feb22 -gwb */
+  char actual_id[MAX_ID_LEN + 1] = {0}; /* Returned as recorded in file */
   int16_t id_len;
   char pathname[MAX_PATHNAME_LEN + 1];
   int16_t path_len;
   char record_path[MAX_PATHNAME_LEN + 1];
-  FILE_VAR* fvar;
-  DH_FILE* dh_file;
+  FILE_VAR *fvar;
+  DH_FILE *dh_file;
   int32_t bytes;
   u_int16_t op_flags;
   OSFILE t1_fu;
@@ -1007,12 +997,12 @@ Private void read_record(bool matread) {
   int16_t n;
   int16_t status;
   DESCRIPTOR temp_descr; /* Temporary string used by MATREAD */
-  DESCRIPTOR* str_descr; /* Descriptor into which to perform string read */
-  STRING_CHUNK* str;
+  DESCRIPTOR *str_descr; /* Descriptor into which to perform string read */
+  STRING_CHUNK *str;
   bool is_net_file;
   u_int32_t txn_id;
-  char* p;
-  char* q;
+  char *p;
+  char *q;
   struct stat statbuf;
 
   op_flags = process.op_flags;
@@ -1074,8 +1064,7 @@ Private void read_record(bool matread) {
 
     if (op_flags & P_REC_LOCKS) /* READL or READU */
     {
-      process.status = lock_record(fvar, id, id_len, (op_flags & P_ULOCK) != 0,
-                                   txn_id, (op_flags & P_LOCKED) != 0);
+      process.status = lock_record(fvar, id, id_len, (op_flags & P_ULOCK) != 0, txn_id, (op_flags & P_LOCKED) != 0);
       switch (process.status) {
         case 0: /* Got the lock */
           break;
@@ -1085,8 +1074,8 @@ Private void read_record(bool matread) {
             k_deadlock();
           /* **** FALL THROUGH **** */
 
-        case -1: /* Lock table is full */
-        default: /* Conflicting lock is held by another user */
+        case -1:                   /* Lock table is full */
+        default:                   /* Conflicting lock is held by another user */
           if (op_flags & P_LOCKED) /* LOCKED clause present */
           {
             status = ER_LCK;
@@ -1146,8 +1135,7 @@ Private void read_record(bool matread) {
           /* Call read trigger function if required */
 
           if (dh_file->trigger_modes & TRG_READ) {
-            if (!call_trigger(fvar_descr, TRG_READ, rid_descr, str_descr,
-                              (op_flags & P_ON_ERROR), TRUE)) {
+            if (!call_trigger(fvar_descr, TRG_READ, rid_descr, str_descr, (op_flags & P_ON_ERROR), TRUE)) {
               process.status = -ER_TRIGGER;
               goto exit_op_read;
             }
@@ -1176,13 +1164,12 @@ Private void read_record(bool matread) {
       sysseg->global_stats.reads++;
       EndExclusive(FILE_TABLE_LOCK);
 
-      strcpy(pathname, (char*)(FPtr(fvar->file_id)->pathname));
+      strcpy(pathname, (char *)(FPtr(fvar->file_id)->pathname));
       path_len = strlen(pathname);
       if (pathname[path_len - 1] == DS)
         pathname[path_len - 1] = '\0'; /* 0214 */
       /* converted to snprintf() -gwb 22Feb20 */
-      if (snprintf(record_path, MAX_PATHNAME_LEN + 1, "%s%c%s", pathname, DS,
-                   mapped_id) >= (MAX_PATHNAME_LEN + 1)) {
+      if (snprintf(record_path, MAX_PATHNAME_LEN + 1, "%s%c%s", pathname, DS, mapped_id) >= (MAX_PATHNAME_LEN + 1)) {
         /* TODO: this should also be logged with more detail */
         k_error("Overflowed path/filename length in read_record()!");
         goto exit_op_read;
@@ -1341,10 +1328,10 @@ exit_op_read:
 /* ======================================================================
    map_t1_id()  -  Perform name mapping for directory files               */
 
-bool map_t1_id(char* id, int16_t id_len, char* mapped_id) {
-  char* p;
-  char* q;
-  char* r;
+bool map_t1_id(char *id, int16_t id_len, char *mapped_id) {
+  char *p;
+  char *q;
+  char *r;
   char c;
 
   p = id;
@@ -1382,14 +1369,14 @@ bool map_t1_id(char* id, int16_t id_len, char* mapped_id) {
 /* ======================================================================
    dir_write()  -  Write record to directory file                         */
 
-bool dir_write(FILE_VAR* fvar, char* mapped_id, STRING_CHUNK* str) {
+bool dir_write(FILE_VAR *fvar, char *mapped_id, STRING_CHUNK *str) {
   char pathname[MAX_PATHNAME_LEN + 1];
   int16_t path_len;
   char record_path[MAX_PATHNAME_LEN + 1];
   char temp_path[MAX_PATHNAME_LEN + 1];
   int16_t bytes_remaining;
-  char* p;
-  char* q;
+  char *p;
+  char *q;
   int16_t n;
   struct stat statbuf;
 
@@ -1405,13 +1392,12 @@ bool dir_write(FILE_VAR* fvar, char* mapped_id, STRING_CHUNK* str) {
 
   /* Open and truncate the file */
 
-  strcpy(pathname, (char*)(FPtr(fvar->file_id)->pathname));
+  strcpy(pathname, (char *)(FPtr(fvar->file_id)->pathname));
   path_len = strlen(pathname);
   if (pathname[path_len - 1] == DS)
     pathname[path_len - 1] = '\0'; /* 0214 */
   /* converted to snprintf() -gwb 22Feb20 */
-  if (snprintf(record_path, MAX_PATHNAME_LEN + 1, "%s%c%s", pathname, DS,
-               mapped_id) >= (MAX_PATHNAME_LEN + 1)) {
+  if (snprintf(record_path, MAX_PATHNAME_LEN + 1, "%s%c%s", pathname, DS, mapped_id) >= (MAX_PATHNAME_LEN + 1)) {
     /* TODO: this should also be logged with more detail */
     k_error("Overflowed path/filename length in dir_write()!");
     goto exit_dir_write;
@@ -1419,8 +1405,7 @@ bool dir_write(FILE_VAR* fvar, char* mapped_id, STRING_CHUNK* str) {
 
   if (pcfg.safedir) {
     /* converted to snprintf() -gwb 22Feb20 */
-    if (snprintf(temp_path, MAX_PATHNAME_LEN + 1, "%s%c~~%d", pathname, DS,
-                 my_uptr->uid) >= (MAX_PATHNAME_LEN + 1)) {
+    if (snprintf(temp_path, MAX_PATHNAME_LEN + 1, "%s%c~~%d", pathname, DS, my_uptr->uid) >= (MAX_PATHNAME_LEN + 1)) {
       /* TODO: this should also be logged with more detail */
       k_error("Overflowed path/filename length in dir_write()!");
       goto exit_dir_write;
@@ -1461,7 +1446,7 @@ bool dir_write(FILE_VAR* fvar, char* mapped_id, STRING_CHUNK* str) {
         p = str->data;
         bytes_remaining = str->bytes;
         while (bytes_remaining) {
-          q = (char*)memchr(p, FIELD_MARK, bytes_remaining);
+          q = (char *)memchr(p, FIELD_MARK, bytes_remaining);
           if (q == NULL) {
             if (!t1_write(p, bytes_remaining))
               goto exit_dir_write;
@@ -1516,13 +1501,13 @@ exit_dir_write:
 Private void t1_buffer_alloc(int32_t size) {
   if (size > MAX_T1_BUFFER_SIZE)
     size = MAX_T1_BUFFER_SIZE;
-  t1_buffer = (char*)k_alloc(8, size);
+  t1_buffer = (char *)k_alloc(8, size);
   t1_ptr = t1_buffer;
   t1_buffer_size = size;
   t1_space = (int16_t)size;
 }
 
-Private bool t1_write(char* p, int16_t bytes) {
+Private bool t1_write(char *p, int16_t bytes) {
   while (bytes) {
     if (bytes < t1_space) /* Fits with at least one byte to spare */
     {
@@ -1570,17 +1555,12 @@ Private void t1_buffer_free() {
 /* ======================================================================
    call_trigger()  -  Call trigger function                               */
 
-bool call_trigger(DESCRIPTOR* fvar_descr,
-                  int16_t mode,
-                  DESCRIPTOR* id_descr,
-                  DESCRIPTOR* data_descr,
-                  bool on_error,
-                  bool updatable) /* Allow data to be modified? */
+bool call_trigger(DESCRIPTOR *fvar_descr, int16_t mode, DESCRIPTOR *id_descr, DESCRIPTOR *data_descr, bool on_error, bool updatable) /* Allow data to be modified? */
 {
-  FILE_VAR* fvar;
-  DESCRIPTOR* trg_descr; /* @TRIGGER.RETURN.CODE */
-  STRING_CHUNK* str;
-  DH_FILE* dh_file;
+  FILE_VAR *fvar;
+  DESCRIPTOR *trg_descr; /* @TRIGGER.RETURN.CODE */
+  STRING_CHUNK *str;
+  DH_FILE *dh_file;
   bool error;
   int16_t args;
 
@@ -1590,13 +1570,12 @@ bool call_trigger(DESCRIPTOR* fvar_descr,
   /* Check trigger function was loaded on open */
 
   if (dh_file->trigger == NULL) {
-    k_error(sysmsg(1409), dh_file->trigger_name,
-            FPtr(dh_file->file_id)->pathname);
+    k_error(sysmsg(1409), dh_file->trigger_name, FPtr(dh_file->file_id)->pathname);
   }
 
   /* Check argument count */
 
-  args = ((OBJECT_HEADER*)(dh_file->trigger))->args;
+  args = ((OBJECT_HEADER *)(dh_file->trigger))->args;
   if ((args < 4) || (args > 5))
     k_error(sysmsg(1410));
 
@@ -1677,7 +1656,7 @@ void op_pickread() {
 /* ======================================================================
    valid_id()  -  Validate record id                                      */
 
-Private bool valid_id(char* id, int16_t id_len) {
+Private bool valid_id(char *id, int16_t id_len) {
   register char c;
 
   if ((id_len <= 0) /* Handle k_get_c_string() failure here */

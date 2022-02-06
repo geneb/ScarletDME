@@ -64,14 +64,7 @@ Private void ins(bool compatible);
 Private void insert(bool compatible);
 Private void rep(bool compatible);
 Private void replace(bool compatible);
-Private void rdi(DESCRIPTOR* src_descr,
-                 int32_t field,
-                 int32_t value,
-                 int32_t subvalue,
-                 int16_t mode,
-                 DESCRIPTOR* new_descr,
-                 DESCRIPTOR* result_descr,
-                 bool compatible);
+Private void rdi(DESCRIPTOR *src_descr, int32_t field, int32_t value, int32_t subvalue, int16_t mode, DESCRIPTOR *new_descr, DESCRIPTOR *result_descr, bool compatible);
 
 /* ======================================================================
    op_col1()  -  Fetch COL1 value                                         */
@@ -108,8 +101,8 @@ void op_del() {
      |=============================|=============================|
  */
 
-  DESCRIPTOR* descr;       /* Position descriptors */
-  DESCRIPTOR* src_descr;   /* Source string */
+  DESCRIPTOR *descr;       /* Position descriptors */
+  DESCRIPTOR *src_descr;   /* Source string */
   DESCRIPTOR result_descr; /* Result string */
   int32_t field;
   int32_t value;
@@ -137,8 +130,7 @@ void op_del() {
     k_dismiss();
     k_dismiss();
   } else {
-    rdi(src_descr, field, value, subvalue, DYN_DELETE, NULL, &result_descr,
-        FALSE);
+    rdi(src_descr, field, value, subvalue, DYN_DELETE, NULL, &result_descr, FALSE);
 
     k_dismiss();
     k_dismiss();
@@ -168,20 +160,20 @@ void op_extract() {
      |=============================|=============================|
  */
 
-  DESCRIPTOR* field_descr;    /* Position descriptor */
-  DESCRIPTOR* value_descr;    /* Position descriptor */
-  DESCRIPTOR* subvalue_descr; /* Position descriptor */
-  DESCRIPTOR* src_descr;      /* Source string */
+  DESCRIPTOR *field_descr;    /* Position descriptor */
+  DESCRIPTOR *value_descr;    /* Position descriptor */
+  DESCRIPTOR *subvalue_descr; /* Position descriptor */
+  DESCRIPTOR *src_descr;      /* Source string */
   DESCRIPTOR result_descr;    /* Result string */
   int32_t field;
   int32_t value;
   int32_t subvalue;
   int16_t offset;
-  STRING_CHUNK* str_hdr;
+  STRING_CHUNK *str_hdr;
   int16_t bytes_remaining;
   int16_t len;
-  char* p;
-  char* q;
+  char *p;
+  char *q;
   bool end_on_value_mark;
   bool end_on_subvalue_mark;
   register char c;
@@ -246,9 +238,7 @@ void op_extract() {
 
         for (q = p; bytes_remaining-- > 0; q++) {
           c = *q;
-          if ((IsDelim(c)) &&
-              ((c == FIELD_MARK) || ((c == VALUE_MARK) && end_on_value_mark) ||
-               ((c == SUBVALUE_MARK) && end_on_subvalue_mark))) {
+          if ((IsDelim(c)) && ((c == FIELD_MARK) || ((c == VALUE_MARK) && end_on_value_mark) || ((c == SUBVALUE_MARK) && end_on_subvalue_mark))) {
             /* Copy up to mark */
 
             len = q - p;
@@ -299,16 +289,16 @@ void op_field() {
      |=============================|=============================|
  */
 
-  DESCRIPTOR* descr; /* Various descriptors */
+  DESCRIPTOR *descr; /* Various descriptors */
   int32_t num_fields;
   int32_t occurrence;
   char delimiter;
-  STRING_CHUNK* delim_str;
+  STRING_CHUNK *delim_str;
   DESCRIPTOR result_descr; /* Result string */
-  STRING_CHUNK* src_str;
+  STRING_CHUNK *src_str;
   int16_t src_bytes_remaining;
-  char* src;
-  char* p;
+  char *src;
+  char *p;
   int16_t len;
   bool nocase;
 
@@ -377,9 +367,9 @@ void op_field() {
     process.program.col1 += src_str->bytes;
     while (src_bytes_remaining) {
       if (nocase) {
-        p = (char*)memichr(src, delimiter, src_bytes_remaining);
+        p = (char *)memichr(src, delimiter, src_bytes_remaining);
       } else {
-        p = (char*)memchr(src, delimiter, src_bytes_remaining);
+        p = (char *)memchr(src, delimiter, src_bytes_remaining);
       }
       if (p == NULL)
         break; /* No delimiter in this chunk */
@@ -411,9 +401,9 @@ found_start:
 
     while (src_bytes_remaining) {
       if (nocase) {
-        p = (char*)memichr(src, delimiter, src_bytes_remaining);
+        p = (char *)memichr(src, delimiter, src_bytes_remaining);
       } else {
-        p = (char*)memchr(src, delimiter, src_bytes_remaining);
+        p = (char *)memchr(src, delimiter, src_bytes_remaining);
       }
       if (p != NULL) /* Found delimiter */
       {
@@ -482,9 +472,9 @@ Private void ins(bool compatible) {
      |=============================|=============================|
  */
 
-  DESCRIPTOR* descr;       /* Position descriptors */
-  DESCRIPTOR* tgt_descr;   /* Target string */
-  DESCRIPTOR* new_descr;   /* Replacement string */
+  DESCRIPTOR *descr;       /* Position descriptors */
+  DESCRIPTOR *tgt_descr;   /* Target string */
+  DESCRIPTOR *new_descr;   /* Replacement string */
   DESCRIPTOR result_descr; /* Result string */
   int32_t field;
   int32_t value;
@@ -516,8 +506,7 @@ Private void ins(bool compatible) {
   new_descr = e_stack - 1;
   k_get_string(new_descr);
 
-  rdi(tgt_descr, field, value, subvalue, DYN_INSERT, new_descr, &result_descr,
-      compatible);
+  rdi(tgt_descr, field, value, subvalue, DYN_INSERT, new_descr, &result_descr, compatible);
 
   k_release(tgt_descr);
   *tgt_descr = result_descr;
@@ -554,9 +543,9 @@ Private void insert(bool compatible) {
      |=============================|=============================|
  */
 
-  DESCRIPTOR* descr;       /* Position descriptors */
-  DESCRIPTOR* src_descr;   /* Source string */
-  DESCRIPTOR* new_descr;   /* Replacement string */
+  DESCRIPTOR *descr;       /* Position descriptors */
+  DESCRIPTOR *src_descr;   /* Source string */
+  DESCRIPTOR *new_descr;   /* Replacement string */
   DESCRIPTOR result_descr; /* Result string */
   int32_t field;
   int32_t value;
@@ -580,8 +569,7 @@ Private void insert(bool compatible) {
   src_descr = e_stack - 5;
   k_get_string(src_descr);
 
-  rdi(src_descr, field, value, subvalue, DYN_INSERT, new_descr, &result_descr,
-      compatible);
+  rdi(src_descr, field, value, subvalue, DYN_INSERT, new_descr, &result_descr, compatible);
 
   k_dismiss(); /* Insertion string */
   k_pop(3);    /* Subvalue, value, field and ADDR to source */
@@ -635,21 +623,21 @@ Private void rep(bool compatible) {
      |=============================|=============================|
  */
 
-  DESCRIPTOR* descr; /* Position descriptors */
+  DESCRIPTOR *descr; /* Position descriptors */
   int32_t field;
   int32_t value;
   int32_t subvalue;
 
-  DESCRIPTOR* str_descr; /* String to update */
-  STRING_CHUNK* str_first_chunk;
-  STRING_CHUNK* str_hdr;
-  STRING_CHUNK* str_prev;
+  DESCRIPTOR *str_descr; /* String to update */
+  STRING_CHUNK *str_first_chunk;
+  STRING_CHUNK *str_hdr;
+  STRING_CHUNK *str_prev;
   int16_t chunk_size;
 
-  STRING_CHUNK* new_str_hdr; /* For copying replaced chunk */
+  STRING_CHUNK *new_str_hdr; /* For copying replaced chunk */
 
-  DESCRIPTOR* rep_descr; /* Replacement string */
-  STRING_CHUNK* rep_str_hdr;
+  DESCRIPTOR *rep_descr; /* Replacement string */
+  STRING_CHUNK *rep_str_hdr;
   int32_t rep_len; /* Length of inserted data */
   int32_t s_len;   /* New length of result string */
 
@@ -737,8 +725,7 @@ Private void rep(bool compatible) {
           str_hdr->data[str_hdr->bytes++] = FIELD_MARK;
 
         while (rep_str_hdr != NULL) {
-          memcpy(str_hdr->data + str_hdr->bytes, rep_str_hdr->data,
-                 rep_str_hdr->bytes);
+          memcpy(str_hdr->data + str_hdr->bytes, rep_str_hdr->data, rep_str_hdr->bytes);
           str_hdr->bytes += rep_str_hdr->bytes;
           rep_str_hdr = rep_str_hdr->next;
         }
@@ -777,14 +764,11 @@ Private void rep(bool compatible) {
       /* Append field mark and new data */
 
       if (add_fm) {
-        str_hdr = copy_string(str_hdr, &(str_descr->data.str.saddr),
-                              FIELD_MARK_STRING, 1, &chunk_size);
+        str_hdr = copy_string(str_hdr, &(str_descr->data.str.saddr), FIELD_MARK_STRING, 1, &chunk_size);
       }
 
       while (rep_str_hdr != NULL) {
-        str_hdr =
-            copy_string(str_hdr, &(str_descr->data.str.saddr),
-                        rep_str_hdr->data, rep_str_hdr->bytes, &chunk_size);
+        str_hdr = copy_string(str_hdr, &(str_descr->data.str.saddr), rep_str_hdr->data, rep_str_hdr->bytes, &chunk_size);
         rep_str_hdr = rep_str_hdr->next;
       }
 
@@ -792,8 +776,7 @@ Private void rep(bool compatible) {
     }
   }
 
-  rdi(str_descr, field, value, subvalue, DYN_REPLACE, rep_descr, &result_descr,
-      compatible);
+  rdi(str_descr, field, value, subvalue, DYN_REPLACE, rep_descr, &result_descr, compatible);
   k_release(str_descr);
   InitDescr(str_descr, STRING);
   str_descr->data.str.saddr = result_descr.data.str.saddr;
@@ -903,9 +886,9 @@ Private void replace(bool compatible) {
      |=============================|=============================|
  */
 
-  DESCRIPTOR* descr;       /* Position descriptors */
-  DESCRIPTOR* src_descr;   /* Source string */
-  DESCRIPTOR* new_descr;   /* Replacement string */
+  DESCRIPTOR *descr;       /* Position descriptors */
+  DESCRIPTOR *src_descr;   /* Source string */
+  DESCRIPTOR *new_descr;   /* Replacement string */
   DESCRIPTOR result_descr; /* Result string */
   int32_t field;
   int32_t value;
@@ -929,8 +912,7 @@ Private void replace(bool compatible) {
   src_descr = e_stack - 5;
   k_get_string(src_descr);
 
-  rdi(src_descr, field, value, subvalue, DYN_REPLACE, new_descr, &result_descr,
-      compatible);
+  rdi(src_descr, field, value, subvalue, DYN_REPLACE, new_descr, &result_descr, compatible);
 
   k_dismiss();
   k_pop(3); /* subvalue, value and field positions */
@@ -1018,15 +1000,14 @@ void op_repsubst() {
 /* ======================================================================
   copy_string()  -  Copy string to string chunk chain                     */
 
-STRING_CHUNK* copy_string(
-    STRING_CHUNK* tail,    /* Last chunk, may be null */
-    STRING_CHUNK** head,   /* Ptr to head of string chunk chain */
-    char* src,             /* Ptr to data to append */
-    int16_t len,         /* Length of data to append */
-    int16_t* chunk_size) /* Desired (in), actual (out) chunk size */
+STRING_CHUNK *copy_string(STRING_CHUNK *tail,  /* Last chunk, may be null */
+                          STRING_CHUNK **head, /* Ptr to head of string chunk chain */
+                          char *src,           /* Ptr to data to append */
+                          int16_t len,         /* Length of data to append */
+                          int16_t *chunk_size) /* Desired (in), actual (out) chunk size */
 {
-  STRING_CHUNK* str_hdr; /* Ptr to current string chunk */
-  int16_t space;       /* Bytes remaining in current chunk */
+  STRING_CHUNK *str_hdr; /* Ptr to current string chunk */
+  int16_t space;         /* Bytes remaining in current chunk */
   int16_t bytes_to_move;
 
   if (tail == NULL)
@@ -1072,25 +1053,19 @@ STRING_CHUNK* copy_string(
    Returns TRUE if item found; chunk = ptr to chunk (may be NULL)
            FALSE if not found.                                              */
 
-bool find_item(STRING_CHUNK* str,
-               int32_t field,
-               int32_t value,
-               int32_t subvalue,
-               STRING_CHUNK** chunk,
-               int16_t* offset) {
+bool find_item(STRING_CHUNK *str, int32_t field, int32_t value, int32_t subvalue, STRING_CHUNK **chunk, int16_t *offset) {
   int32_t f, v, sv;
-  STRING_CHUNK* first_chunk;
+  STRING_CHUNK *first_chunk;
   int16_t bytes_remaining;
-  char* p;
-  char* q;
+  char *p;
+  char *q;
   register char c;
   int32_t hint_field;
   int32_t hint_offset;
   int32_t new_hint_offset = -1;
   int32_t skip;
 
-  if ((field == 1) && (value == 1) &&
-      (subvalue == 1)) { /* <1,0,0> or <1,1,0> or <1,1,1> */
+  if ((field == 1) && (value == 1) && (subvalue == 1)) { /* <1,0,0> or <1,1,0> or <1,1,1> */
     *chunk = str;
     *offset = 0;
 
@@ -1160,7 +1135,7 @@ bool find_item(STRING_CHUNK* str,
     v = 1;
     do {
       while (bytes_remaining) {
-        q = (char*)memchr(p, FIELD_MARK, bytes_remaining);
+        q = (char *)memchr(p, FIELD_MARK, bytes_remaining);
         if (q == NULL)
           break; /* No mark in this chunk */
 
@@ -1243,28 +1218,28 @@ exit_find_item:
 /* ======================================================================
    rdi()  -  Common path for replace, delete and insert                   */
 
-Private void rdi(DESCRIPTOR* src_descr, /* Source string */
+Private void rdi(DESCRIPTOR *src_descr, /* Source string */
                  int32_t field,
                  int32_t value,
                  int32_t subvalue,
                  int16_t mode,
-                 DESCRIPTOR* new_descr,    /* Replacement / insertion string */
-                 DESCRIPTOR* result_descr, /* Resultant string */
-                 bool compatible) /* Append style ($MODE COMPATIBLE.APPEND) */
+                 DESCRIPTOR *new_descr,    /* Replacement / insertion string */
+                 DESCRIPTOR *result_descr, /* Resultant string */
+                 bool compatible)          /* Append style ($MODE COMPATIBLE.APPEND) */
 {
   int32_t f, v, sv;
-  STRING_CHUNK* str_hdr;
+  STRING_CHUNK *str_hdr;
   int16_t bytes_remaining;
-  STRING_CHUNK* new_str;
+  STRING_CHUNK *new_str;
   int16_t len;
-  char* p;
+  char *p;
   bool done;
   char c;
   char mark;
   bool mark_skipped = FALSE;
   bool end_on_value_mark;
   bool end_on_subvalue_mark;
-  bool item_found;
+  bool item_found = FALSE; /* initialized to a default value to clear a valgrind warning - 06feb22 -gwb */
   char last_char = '\0';
 
   str_hdr = src_descr->data.str.saddr;
@@ -1273,8 +1248,7 @@ Private void rdi(DESCRIPTOR* src_descr, /* Source string */
 
   InitDescr(result_descr, STRING);
   result_descr->data.str.saddr = NULL;
-  ts_init(&(result_descr->data.str.saddr),
-          (str_hdr == NULL) ? 64 : str_hdr->string_len);
+  ts_init(&(result_descr->data.str.saddr), (str_hdr == NULL) ? 64 : str_hdr->string_len);
 
   if (field == 0)
     field = 1;
@@ -1306,8 +1280,7 @@ Private void rdi(DESCRIPTOR* src_descr, /* Source string */
 
   /* Copy to start of selected item */
 
-  if ((field == 1) && (value == 1) &&
-      (subvalue == 1)) { /* <1,0,0> or <1,1,0> or <1,1,1> */
+  if ((field == 1) && (value == 1) && (subvalue == 1)) { /* <1,0,0> or <1,1,0> or <1,1,1> */
     if (str_hdr != NULL) {
       p = str_hdr->data;
       bytes_remaining = str_hdr->bytes;
@@ -1378,8 +1351,7 @@ found:
 
     len = p - str_hdr->data;
 
-    if ((mode == DYN_DELETE) && (len > 0) &&
-        (c == mark)) /* Don't copy this mark */
+    if ((mode == DYN_DELETE) && (len > 0) && (c == mark)) /* Don't copy this mark */
     {
       mark_skipped = TRUE;
       len--;
@@ -1406,10 +1378,7 @@ found:
 
               do {
                 c = *p;
-                if ((IsDelim(c)) &&
-                    ((c == FIELD_MARK) ||
-                     ((c == VALUE_MARK) && end_on_value_mark) ||
-                     ((c == SUBVALUE_MARK) && end_on_subvalue_mark))) {
+                if ((IsDelim(c)) && ((c == FIELD_MARK) || ((c == VALUE_MARK) && end_on_value_mark) || ((c == SUBVALUE_MARK) && end_on_subvalue_mark))) {
                   done = TRUE;
                   break;
                 }
@@ -1502,8 +1471,7 @@ found:
 
       /* Insert replacement item */
 
-      for (new_str = new_descr->data.str.saddr; new_str != NULL;
-           new_str = new_str->next) {
+      for (new_str = new_descr->data.str.saddr; new_str != NULL; new_str = new_str->next) {
         ts_copy(new_str->data, new_str->bytes);
       }
 
