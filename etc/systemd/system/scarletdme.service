@@ -2,6 +2,7 @@
 Description=ScarletDME service start
 
 [Service]
+Type=forking
 ExecStart=/usr/bin/qm -start
 ExecStop=/usr/bin/qm -stop
 
