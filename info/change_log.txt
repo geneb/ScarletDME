@@ -10,6 +10,9 @@ When running ScarleDME via valgrind, I discovered that the "SH" problem doesn't
 happen on systems that are normally affected by it.  This tells me that we may
 have a Heisenbug on our hands.
 
+Fixed the use of LONG_MIN in op_dec() (op_arith.c).  These should have been
+changed to INT32_MIN when the original 64 bit conversion work was being done.
+
 ===============================================================================
 
 27Jan22 -gwb

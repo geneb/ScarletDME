@@ -21,6 +21,10 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 06Feb22 gwb Changed comparisions of LONG_MIN to INT32_MIN in op_dec().
+ *             The comparision to LONG_MIN would always be true due to the
+ *             fact that LONG_MIN is out of range for the int32_t data type.
+ * 
  * 29Feb20 gwb Changed LONG_MAX to INT32_MAX.  When building for a 64 bit 
  *             platform, the LONG_MAX constant overflows the size of the
  *             int32_t variable type.  This change needed to be made across
@@ -343,12 +347,12 @@ void op_dec() {
   arg->flags &= ~DF_CHANGE;
 
   if (arg->type == INTEGER) {
-    if (arg->data.value > LONG_MIN) {
+    if (arg->data.value > INT32_MIN) {
       arg->data.value--;
     } else /* Must convert to float */
     {
       arg->type = FLOATNUM;
-      arg->data.float_value = ((double)LONG_MIN) - 1;
+      arg->data.float_value = ((double)INT32_MIN) - 1;
     }
   } else {
     arg->data.float_value -= 1.0;
