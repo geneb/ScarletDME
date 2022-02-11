@@ -76,6 +76,7 @@ GPLOBJ   := $(MAIN)gplobj/
 GPLBIN   := $(MAIN)bin/
 TERMINFO := $(MAIN)terminfo/
 VPATH    := $(GPLOBJ):$(GPLBIN):$(GPLSRC)
+SYSTEMDPATH := /lib/systemd/system
 
 OSNAME   := $(shell uname -s)
 
@@ -247,12 +248,28 @@ endif
 	@test -f /usr/bin/qm || ln -s /usr/qmsys/bin/qm /usr/bin/qm
 
 #	Install systemd configuration file if needed.
-ifneq ($(wildcard /etc/systemd/system/.),)
+ifneq ($(wildcard $(SYSTEMDPATH)/.),)
 	@echo Installing scarletdme.service for systemd.
-	@cp etc/systemd/system/scarletdme.service /etc/systemd/system
-	@chown root.root /etc/systemd/system/scarletdme.service
-	@chmod 644 /etc/systemd/system/scarletdme.service
+	@cp etc/systemd/system/* $(SYSTEMDPATH)
+	@chown root.root $(SYSTEMDPATH)/scarletdme.service
+	@chown root.root $(SYSTEMDPATH)/scarletdme.socket
+	@chown root.root $(SYSTEMDPATH)/scarletdme@.service
+	@chmod 644 $(SYSTEMDPATH)/scarletdme.service
+	@chmod 644 $(SYSTEMDPATH)/scarletdme.socket
+	@chmod 644 $(SYSTEMDPATH)/scarletdme@.service
 endif
+
+#	Install xinetd files if required
+ifneq ($(wildcard /etc/xinetd.d/.),)
+	@cp etc/xinetd.d/qmclient /etc/xinetd.d
+	@cp etc/xinetd.d/qmserver /etc/xinetd.d
+ifneq ($(wildcard /etc/services),)
+ifeq ($(shell cat /etc/services | grep qmclient),)
+	cat etc/xinetd.d/services >> /etc/services
+endif
+endif
+endif
+
 
 datafiles:
 	@echo Installing data files...

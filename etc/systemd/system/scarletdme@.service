@@ -1,0 +1,7 @@
+[Unit]
+Description=ScarletDME Per-Connection Server
+
+[Service]
+ExecStart=/usr/qmsys/bin/qm -n -q
+StandardInput=socket
+

@@ -1,0 +1,10 @@
+[Unit]
+Description=ScarletDME Per-Connection Server
+
+[Socket]
+ListenStream=4242
+Accept=yes
+
+[Install]
+WantedBy=sockets.target
+
