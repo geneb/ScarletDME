@@ -247,12 +247,12 @@ endif
 	@test -f /usr/bin/qm || ln -s /usr/qmsys/bin/qm /usr/bin/qm
 
 #	Install systemd configuration file if needed.
+ifneq ($(wildcard /etc/systemd/system/.),)
 	@echo Installing scarletdme.service for systemd.
-	@test -d /etc/systemd/system && \
-			cp etc/systemd/system/scarletdme.service /etc/systemd/system
+	@cp etc/systemd/system/scarletdme.service /etc/systemd/system
 	@chown root.root /etc/systemd/system/scarletdme.service
-	@chmod 755 /etc/systemd/system/scarletdme.service
-
+	@chmod 644 /etc/systemd/system/scarletdme.service
+endif
 
 datafiles:
 	@echo Installing data files...
