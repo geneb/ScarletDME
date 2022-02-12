@@ -261,11 +261,12 @@ endif
 
 #	Install xinetd files if required
 ifneq ($(wildcard /etc/xinetd.d/.),)
+	@echo Installing xinetd files
 	@cp etc/xinetd.d/qmclient /etc/xinetd.d
 	@cp etc/xinetd.d/qmserver /etc/xinetd.d
 ifneq ($(wildcard /etc/services),)
 ifeq ($(shell cat /etc/services | grep qmclient),)
-	cat etc/xinetd.d/services >> /etc/services
+	@cat etc/xinetd.d/services >> /etc/services
 endif
 endif
 endif
