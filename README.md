@@ -3,7 +3,7 @@
 
 Currently ScarletDME is a 32 bit-only application - you'll need to
 compile it using 32 bit libraries on your system.  This is pretty
-easy to do.
+easy to do. Check out the dev branch for 64-bit support.
 
 These packages are needed to build ScarletDME for most Linux distributions:
 libgcc.i686
@@ -24,8 +24,8 @@ lib32gcc-10-dev (maybe)
 Raspberry Pi users should check out info/raspberry-pi.txt.
 
 If you would like to support remote access to your ScarletDME system
-via the QMClient API or telnet services, you'll need to install:
-xinetd
+via the QMClient API or telnet services, you'll need to install
+xinetd or systemd.
 
 See README.md in the xinetd.d directory for instructions on the further use of 
 xinetd.
@@ -33,6 +33,7 @@ xinetd.
 Before you build ScarletDME, you should create a user named "qmsys" and
 a group named "qmuser".  Make sure you add the qmuser group to any user
 that will be using ScarletDME, /including/ the "root" and "qmsys" users!
+This is now done for you in the dev branch.
 
 ** see info/setup.txt for details on creating the needed users & groups.
 
@@ -42,8 +43,8 @@ first "make" command.  You'll need to be root do this.  "make install" will
 fail if the qmsys user and qmuser group doesn't exist.
 
 The install portion of the makefile may be tweaked to do additional things like
-copying the xinetd files to thier required locations and a fancy sed edit of
-the /etc/services file.
+copying the xinetd files to their required locations and a fancy sed edit of
+the /etc/services file. Again this is now done for you in the dev branch.
 
 Run "make datafiles" to copy the "production" data files to their operating 
 location.
@@ -88,7 +89,8 @@ you just glance at an issue without actually digging into it.
 
 This means that a 64 bit version of ScarletDME isn't that far fetched after
 all.  Time well tell I suppose.  I know what needs to be done and how to do 
-it, so at least I've got that going for me. :)
+it, so at least I've got that going for me. :) (Time has told. The dev
+branch is 64-bit.)
 
 I would also like to finish the "re-branding" of OpenQM to ScarletDME.
 While some things will forever be "OpenQM-isms" like the names of the binaries,
@@ -97,7 +99,7 @@ re-branding effort complete.
 
 I've got a 66 page document that's all of the release notes I could find for
 the commercial releases of OpenQM.  That's going to act as a starting point
-for improvments and/or bug fixes.  I think.  We'll see.
+for improvements and/or bug fixes.  I think.  We'll see.
 
 I'm going to end this document by thanking Martin Phillips for the original
 GPL release of OpenQM.  We've not always seen eye to eye on things, but his
