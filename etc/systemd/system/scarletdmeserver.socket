@@ -3,7 +3,7 @@ Description=ScarletDME Per-Connection Server
 
 [Socket]
 ListenStream=4242
-Accept=yes
+Accept=true
 
 [Install]
 WantedBy=sockets.target
