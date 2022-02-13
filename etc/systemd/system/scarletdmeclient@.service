@@ -1,5 +1,5 @@
 [Unit]
-Description=ScarletDME Per-Connection Server
+Description=ScarletDME Per-Connection Telnet Server
 
 [Service]
 ExecStart=/usr/qmsys/bin/qm -n -q

@@ -32,7 +32,10 @@ root to it. Then it creates the user qmsys and adds that too.
 
 Next it copies all the executables to /bin or equivalent.
 
-Lastly, if it detects systemd, it copies the systemd service file.
+If it detects systemd, it copies the systemd service files.
+
+If it detects xindetd, it copies the xinetd files and updates the
+/etc/services file.
 
 **datafiles:** copies all the files required for the master system
 account to /usr/qmsys

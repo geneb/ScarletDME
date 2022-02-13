@@ -220,7 +220,7 @@ sysseg.o: sysseg.c qm.h locks.h config.h revstamp.h
 	@echo Compiling $@, $(BITSIZE) bit target.
 	@$(COMP) $(C_FLAGS) -c $< -o $(GPLOBJ)$@
 
-.PHONY: clean distclean install datafiles docs
+.PHONY: clean distclean install datafiles docs systemd
 
 install:  
 
@@ -252,24 +252,33 @@ ifneq ($(wildcard $(SYSTEMDPATH)/.),)
 	@echo Installing scarletdme.service for systemd.
 	@cp etc/systemd/system/* $(SYSTEMDPATH)
 	@chown root.root $(SYSTEMDPATH)/scarletdme.service
-	@chown root.root $(SYSTEMDPATH)/scarletdme.socket
-	@chown root.root $(SYSTEMDPATH)/scarletdme@.service
+	@chown root.root $(SYSTEMDPATH)/scarletdmeclient.socket
+	@chown root.root $(SYSTEMDPATH)/scarletdmeclient@.service
+	@chown root.root $(SYSTEMDPATH)/scarletdmeserver.socket
+	@chown root.root $(SYSTEMDPATH)/scarletdmeserver@.service
 	@chmod 644 $(SYSTEMDPATH)/scarletdme.service
-	@chmod 644 $(SYSTEMDPATH)/scarletdme.socket
-	@chmod 644 $(SYSTEMDPATH)/scarletdme@.service
+	@chmod 644 $(SYSTEMDPATH)/scarletdmeclient.socket
+	@chmod 644 $(SYSTEMDPATH)/scarletdmeclient@.service
+	@chmod 644 $(SYSTEMDPATH)/scarletdmeserver.socket
+	@chmod 644 $(SYSTEMDPATH)/scarletdmeserver@.service
 endif
 
 #	Install xinetd files if required
 ifneq ($(wildcard /etc/xinetd.d/.),)
+	@echo Installing xinetd files
 	@cp etc/xinetd.d/qmclient /etc/xinetd.d
 	@cp etc/xinetd.d/qmserver /etc/xinetd.d
 ifneq ($(wildcard /etc/services),)
 ifeq ($(shell cat /etc/services | grep qmclient),)
-	cat etc/xinetd.d/services >> /etc/services
+	@cat etc/xinetd.d/services >> /etc/services
 endif
 endif
 endif
 
+systemd:
+	@systemctl enable scarletdme.service
+	@systemctl enable scarletdmeclient.socket
+	@systemctl enable scarletdmeserver.socket
 
 datafiles:
 	@echo Installing data files...
