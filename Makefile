@@ -220,7 +220,7 @@ sysseg.o: sysseg.c qm.h locks.h config.h revstamp.h
 	@echo Compiling $@, $(BITSIZE) bit target.
 	@$(COMP) $(C_FLAGS) -c $< -o $(GPLOBJ)$@
 
-.PHONY: clean distclean install datafiles docs systemd
+.PHONY: clean distclean install datafiles docs systemd qmdev qmstop
 
 install:  
 

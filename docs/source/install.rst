@@ -51,6 +51,9 @@ will have to explicitly build it in the docs directory.
 **qmdev:** **qmstop:** invoke sudo to start and stop the ScarletDME
 service.
 
+**systemd:** Activates the service/socket files so that ScarletDME will
+run on boot.
+
 systemd
 -------
 
