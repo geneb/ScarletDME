@@ -5,6 +5,9 @@ As of January 10th, 2022, ScarletDME can be built as a fully native 64 bit
 application!  More testing needs to be done, but the 64 bit build appears
 to function identically to the 32 bit build.
 
+The 64-bit version is the default for the dev branch, but there is a
+qm32 target to build the 32-bit version on the dev branch.
+
 These packages are needed to build ScarletDME as a 32 bit application,
 for most Linux distributions:
 libgcc.i686
@@ -14,31 +17,29 @@ For proper terminal operation, you'll need to install:
 ncurses-devel
 ncurses-compat-libs
 
-If you would like to support remote access to your ScarletDME system
-via the QMClient API or telnet services, you'll need to install:
-xinetd
+If you would like to support remote access to your ScarletDME system via
+the QMClient API or telnet services, you'll need to install xinetd, or
+debug the systemd .socket implementation. See the README.md in the
+xinetd.d directory for instructions on the further use of xinetd.
 
-See README.md in the xinetd.d directory for instructions on the further use of 
-xinetd.
+ScarletDME requires a user named "qmsys" and a group named "qmusers".
+These will be created for you automatically by the "install" target. But
+make sure you add the qmuser group to any user that will be using
+ScarletDME.
 
-Before you build ScarletDME, you should create a user named "qmsys" and
-a group named "qmusers".  Make sure you add the qmuser group to any user
-that will be using ScarletDME, /including/ the "root" and "qmsys" users!
-See info/setup.txt for more information on creating users & groups as well
-as starting ScarletDME up for the first time.
-
-You should be able to build the system by just typing "make' in the directory
-where the Makefile lives.  Enter "sudo make install" to install the result of the
-first "make" command.  Note that the make install command will fail if the 
-qmsys user and qmusers group doesn't exist.
-
-The install portion of the makefile may be tweaked to do additional things like
-copying the xinetd files to their required locations and a fancy sed edit of
-the /etc/services file.
+You should be able to build the system by just typing "make' in the
+directory where the Makefile lives. Enter "sudo make install" to install
+the result of the first "make" command. 
 
 Run "sudo make datafiles" to copy the "production" data files to their operating 
 location.  This MUST be done before starting ScarletDME.  The system cannot 
 function without these files.
+
+The system has adopted Sphinx for documentation - install Sphinx then
+"make docs" to build the html documentation locally. This will create
+the document root as docs/build/html/index. To build other formats (pdf,
+epub) read the Sphinx documentation, then run the Sphinx makefile fron
+inside the docs directory.
 
 Code formatting notes:
 I'm using Visual Studio code with the Microsoft C/C++ IntelliSense, debugging,
