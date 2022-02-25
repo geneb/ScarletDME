@@ -7,11 +7,12 @@ Welcome to ScarletDME's documentation!
 ======================================
 
 .. toctree::
-   :titlesonly:
+   :maxdepth: 2
    :caption: Contents:
-   
-   install
-   SMA/index
+
+   SMA
+   SMA301
+
 
 Indices and tables
 ==================
