@@ -234,10 +234,21 @@ endif
 endif
 
 	@echo Installing to $(INSTROOT)
-	@test -d $(INSTROOT) || mkdir $(INSTROOT)
+ifeq ($(wildcard $(INSTROOT)/.),)
+	cp -R qmsys $(INSTROOT)
+	chown -R qmsys:qmusers $(INSTROOT)
+	chmod -R 664 $(INSTROOT)
+	find $(INSTROOT) -type d -print0 | xargs -0 chmod 775
+endif
+#       copy bin files and make them executable
 	@test -d $(INSTROOT)/bin || mkdir $(INSTROOT)/bin
 	@for qm_prog in $(GPLBIN)*; do \
 	  install -m 775 -o qmsys -g qmusers $$qm_prog $(INSTROOT)/bin; \
+	done
+
+#	copy the contents of NEWVOC so the account will upgrade
+	@for qm_partfile in qmsys/NEWVOC/*; do \
+	  install -m 664 -o qmsys -g qmusers $$qm_partfile $(INSTROOT)/NEWVOC; \
 	done
 
 	@echo Writing scarlet.conf file
@@ -282,8 +293,6 @@ systemd:
 
 datafiles:
 	@echo Installing data files...
-	@cp -r $(MAIN)\$$COMO/ $(INSTROOT)/\$$COMO
-	@chmod 775 $(INSTROOT)/\$$COMO/*
 	@cp -r $(MAIN)\$$FORMS/ $(INSTROOT)/\$$FORMS
 	@chmod 775 $(INSTROOT)/\$$FORMS/*
 	@cp -r $(MAIN)\$$HOLD.DIC/ $(INSTROOT)/\$$HOLD.DIC
