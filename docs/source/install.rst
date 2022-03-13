@@ -30,7 +30,10 @@ master
 Firstly if they don't exist, it creates the group "qmusers" and adds
 root to it. Then it creates the user qmsys and adds that too.
 
-Next it copies all the executables to /bin or equivalent.
+Next if it doesn't find a master qmsys account it copies the template.
+
+After that, it copies/updates all the executables in qmsys/bin and then
+links them to /bin. It also updates NEWVOC.
 
 If it detects systemd, it copies the systemd service files.
 
@@ -38,11 +41,15 @@ If it detects xindetd, it copies the xinetd files and updates the
 /etc/services file.
 
 **datafiles:** copies all the files required for the master system
-account to /usr/qmsys
+account to /usr/qmsys. This should normally never be used, it's done for
+you in the install target, and invoking it will trash your live state.
 
-**clean:** deletes all the files created by the make, leaving a clean
-setup that will recompile from scratch if required. You MUST do this if
-switching between 32-bit and 64-bit builds.
+**clean:** deletes many of the files created by the make, leaving a
+clean setup that will recompile from scratch if required. You MUST do
+this if switching between 32-bit and 64-bit builds.
+
+**distclean:** is a more aggressive version of clean, deleting all? the
+files created by the make.
 
 **docs:** If Sphinx is installed, it will build the html docs. See the
 Sphinx section for more details. To create anything other than html you
