@@ -1,9 +1,8 @@
 
-SMA:201 MAGNETIC MEDIA INTERCHANGE STANDARD
-===========================================
+SMA 201: MAGNETIC MEDIA INTERCHANGE STANDARD
+============================================
 
 Foreword:
-
 
 The purpose of this document is to establish a
 standard for interchangeable magnetic media within the Spectrum
@@ -41,12 +40,12 @@ individuals and organizations for their contributions to the
 preparation of this document:
 
 |    D. Credicott, Nixdorf Computer Software Co.
-|    I. Sandler, CIE Syatems, Inc.
-|    J. Gallant, Prime Computer, Inc.
-|    D. Harman, Systems Management, Inc.
-|    C. Saunders, Fujitsu Microsystems Of America, Inc.
-|    C. Wilson, General Automation, Inc.
-|    T. Steforos, Altos Computer, Inc.
+|    I. Sandler,   CIE Syatems, Inc.
+|    J. Gallant,   Prime Computer, Inc.
+|    D. Harman,    Systems Management, Inc.
+|    C. Saunders,  Fujitsu Microsystems Of America, Inc.
+|    C. Wilson,    General Automation, Inc.
+|    T. Steforos,  Altos Computer, Inc.
 
 1.0 Introduction
 ----------------
@@ -695,11 +694,10 @@ T-WTLBL: When the label is created by the T-WTLBL command, the
 ..........
 
 This section identifies the media capabilities of the various magnetic
-devices supported under SMA implementations,. Only those gross
-categories allowing off-line interchanges are considered: tape,
-cartridge tape, and floppy diskette. Details pertaining to the ~pecific
-device usage on a given implementation should be obtained directly from
-the manufacturer.
+devices supported under SMA implementations. Only those gross categories
+allowing off-line interchanges are considered: tape, cartridge tape, and
+floppy diskette. Details pertaining to the specific device usage on a
+given implementation should be obtained directly from the manufacturer.
 
 This chapter also identifies the hardware characteristics and usage
 conventions which will maximize portability across different systems.
@@ -754,13 +752,12 @@ conventions which will maximize portability across different systems.
      Label Block Size:
           80 bytes logical, 1 physical 512 byte block where the
           first 80 bytes of the physical block is the logical
-          label record and the remaining bytes are unused~
-          Logical data blocks do not include label blocks ..
+          label record and the remaining bytes are unused.
+          Logical data blocks do not include label blocks.
 
      Filemark indicator:
-          QIC 24 standard tape mark.
-          include filemarks ..
-          Logical data blocks do not
+          QIC 24 standard tape mark. Logical data blocks do not
+          include filemarks.
 
      TCL Verb Usage Restriction:
           The verb "T-BCK" is not supported. The hardware

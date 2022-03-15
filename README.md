@@ -31,9 +31,10 @@ You should be able to build the system by just typing "make' in the
 directory where the Makefile lives. Enter "sudo make install" to install
 the result of the first "make" command. 
 
-Run "sudo make datafiles" to copy the "production" data files to their operating 
-location.  This MUST be done before starting ScarletDME.  The system cannot 
-function without these files.
+If you need to re-install the master system directory, run "sudo make
+datafiles", but this should normally never be done, as it is done for
+you on initial install, and overwriting the files will destroy your live
+system status.
 
 The system has adopted Sphinx for documentation - install Sphinx then
 "make docs" to build the html documentation locally. This will create

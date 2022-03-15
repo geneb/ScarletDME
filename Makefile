@@ -24,6 +24,9 @@
 #
 # Changelog
 # ---------
+# 13Mar22 awy Update install target to create master account if required,
+#             and update NEWVOC
+#             $COMO is created on first use so remove it from master account.
 # 16Jan22 awy Adding qm32 target to build 32-bit if required. BUILD64 now obsolete.
 # 15Jan22 awy Adding code to create qmsys and qmuser if they don't exist.
 #             Adding scarletdme.service file to install target
