@@ -11,6 +11,7 @@ Welcome to ScarletDME's documentation!
    :caption: Contents:
 
    SMA
+   SMA101
    SMA201
    SMA301
 
