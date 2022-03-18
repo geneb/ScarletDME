@@ -19,6 +19,7 @@
 * Ladybridge Systems can be contacted via the www.openqm.com web site.
 * 
 * START-HISTORY:
+* 18 Mar 22 rdm Added OPTIONAL.THEN.ELSE mode.
 * 09 Jun 09 gdw Allow dynamic var field reference in EQUATE (gdw001) Gary D. Walborn
 * 14 Apr 09 gcb Added @FILENAME synonym for @FILE.NAME
 * 06 Apr 09 gcb Added NOCASEINVERT option to @INPUT and INPUT
@@ -317,6 +318,7 @@ $define M.UNASSIGNED.COMMON    17
 $define M.HEADING.NO.EJECT     18
 $define M.NO.ECHO.DATA         19
 $define M.NO.CASE.INVERT       20
+$define M.OPTIONAL.THEN.ELSE   21; *rdm
 ** End New Modes
 
 * Corresponding names, value delimited, first name is bit 0 of mode flags
@@ -326,6 +328,7 @@ mode.names := "ýCASE.SENSITIVEýPICK.MATRIXýPICK.JUMP.RANGEýPICK.READ"
 mode.names := "ýOPTIONAL.FINAL.ENDýPICK.SUBSTRýCOMPATIBLE.APPEND"
 mode.names := "ýPICK.ENTERýTRAP.UNUSEDýPICK.SUBSTR.ASSIGN"
 mode.names := "ýUNASSIGNED.COMMONýHEADING.NO.EJECTýNO.ECHO.DATAýNO.CASE.INVERT"
+mode.names := "ýOPTIONAL.THEN.ELSE"
 
 *****************************************************************************
 
@@ -10374,7 +10377,13 @@ st.read.common:
 
    ins '1' before onerror.stack<1>      ;* Optional ON ERROR clause
    ins (lock.opcode # 0) before testlock.stack<1>  ;* LOCKED clause allowed?
-   ins '1' before thenelse.stack<1>     ;* THEN / ELSE required
+   *rdm
+   if bittest(mode, M.OPTIONAL.THEN.ELSE) then
+     ins '2' before thenelse.stack<1>     ;* THEN / ELSE optional
+   end else
+     ins '1' before thenelse.stack<1>     ;* THEN / ELSE required
+   end
+   
    goto back.end
 
 *****************************************************************************
