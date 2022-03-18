@@ -1,0 +1,30 @@
+*Brandon Robinons RDM Infinity, LLC
+*
+*03/18/2
+*
+* Without MODE OPTIONAL.THEN.ELSE The following will compile 
+* with the following issues:
+*  Compiling BP TEST.THEN.ELSE
+*
+*   10: Expected THEN or ELSE
+*   WARNING
+*    : Final END statement is missing
+*     1 error(s)
+*   Compiled 1 program(s) with errors in:
+*   TEST.THEN.ELSE
+*
+* With the option set:
+*    Compiling BP TEST.THEN.ELSE
+*     0 error(s)
+*      Compiled 1 program(s) with no errors
+
+*MODE TO ALLOW MV COMPATIBLE READ WITHOUT THEN/ELSE
+$MODE OPTIONAL.THEN.ELSE    
+   
+OPEN "","MD" TO F.MD ELSE STOP 201, "MD FILE"
+
+READ DUMMY FROM F.MD, "BP"
+
+PRINT DUMMY<1>
+
+END
