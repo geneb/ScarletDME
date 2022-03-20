@@ -14,6 +14,7 @@ Welcome to ScarletDME's documentation!
    SMA101
    SMA201
    SMA301
+   SMA401
 
 
 Indices and tables
