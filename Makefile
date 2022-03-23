@@ -295,68 +295,16 @@ systemd:
 	@systemctl enable scarletdmeserver.socket
 
 datafiles:
-	@echo Installing data files...
-	@cp -r $(MAIN)\$$FORMS/ $(INSTROOT)/\$$FORMS
-	@chmod 775 $(INSTROOT)/\$$FORMS/*
-	@cp -r $(MAIN)\$$HOLD.DIC/ $(INSTROOT)/\$$HOLD.DIC
-	@cp -r $(MAIN)\$$HOLD/ $(INSTROOT)/\$$HOLD
-	@chmod 665 $(INSTROOT)/\$$HOLD.DIC/*
-	@cp -r $(MAIN)\$$IPC/ $(INSTROOT)/\$$IPC
-	@chmod 665 $(INSTROOT)/\$$IPC/*
-	@cp -r $(MAIN)\$$LOGINS/ $(INSTROOT)/\$$LOGINS
-	@chmod 665 $(INSTROOT)/\$$LOGINS/*
-	@cp -r $(MAIN)\$$MAP/ $(INSTROOT)/\$$MAP
-	@chmod 665 $(INSTROOT)/\$$MAP/*
-	@cp -r $(MAIN)\$$MAP.DIC/ $(INSTROOT)/\$$MAP.DIC
-	@chmod 665 $(INSTROOT)/\$$MAP.DIC/*
-	@cp -r $(MAIN)\$$SCREENS/ $(INSTROOT)/\$$SCREENS
-	@chmod 665 $(INSTROOT)/\$$SCREENS/*
-	@cp -r $(MAIN)\$$SCREENS.DIC/ $(INSTROOT)/\$$SCREENS.DIC
-	@chmod 665 $(INSTROOT)/\$$SCREENS.DIC/*
-	@cp -r $(MAIN)\$$SVLISTS/ $(INSTROOT)/\$$SVLISTS
-#
-	@cp -r $(MAIN)ACCOUNTS/ $(INSTROOT)/ACCOUNTS
-	@chmod 665 $(INSTROOT)/ACCOUNTS/*
-	@cp -r $(MAIN)ACCOUNTS.DIC/ $(INSTROOT)/ACCOUNTS.DIC
-	@chmod 665 $(INSTROOT)/ACCOUNTS.DIC/*
-	@cp -r $(MAIN)BP/ $(INSTROOT)/BP
-	@chmod 665 $(INSTROOT)/BP/*
-	@cp -r $(MAIN)BP.OUT/ $(INSTROOT)/BP.OUT
-	@chmod 665 $(INSTROOT)/BP.OUT/*
-	@cp -r $(MAIN)cat/ $(INSTROOT)/cat
-	@cp -r $(MAIN)DICT.DIC/ $(INSTROOT)/DICT.DIC
-	@chmod 665 $(INSTROOT)/DICT.DIC/*
-	@cp -r $(MAIN)DIR_DICT/ $(INSTROOT)/DIR_DICT
-	@chmod 665 $(INSTROOT)/DIR_DICT/*
-	@cp -r $(MAIN)ERRMSG/ $(INSTROOT)/ERRMSG
-	@chmod 665 $(INSTROOT)/ERRMSG/*
-	@cp -r $(MAIN)ERRMSG.DIC/ $(INSTROOT)/ERRMSG.DIC
-	@chmod 665 $(INSTROOT)/ERRMSG.DIC/*
-	@cp -r $(MAIN)gcat/ $(INSTROOT)/gcat
-	@chmod 665 $(INSTROOT)/gcat/*
-	@cp -r $(MAIN)GPL.BP/ $(INSTROOT)/GPL.BP
-	@chmod 665 $(INSTROOT)/GPL.BP/*	
-	@cp -r $(MAIN)GPL.BP.OUT/ $(INSTROOT)/GPL.BP.OUT
-	@chmod 665 $(INSTROOT)/GPL.BP.OUT/*	
-	@cp -r $(MAIN)MESSAGES/ $(INSTROOT)/MESSAGES
-	@chmod 665 $(INSTROOT)/MESSAGES/*	
-	@cp -r $(MAIN)NEWVOC/ $(INSTROOT)/NEWVOC
-	@chmod 665 $(INSTROOT)/NEWVOC/*	
-	@cp -r $(MAIN)prt/ $(INSTROOT)/prt
-	@cp -r $(MAIN)QM.VOCLIB/ $(INSTROOT)/QM.VOCLIB
-	@chmod 665 $(INSTROOT)/QM.VOCLIB/*	
-	@cp -r $(MAIN)SYSCOM/ $(INSTROOT)/SYSCOM
-	@chmod 665 $(INSTROOT)/SYSCOM/*
-	@cp -r $(MAIN)terminfo/ $(INSTROOT)/terminfo
-	@cp -r $(MAIN)TEST/ $(INSTROOT)/TEST
-	@cp -r $(MAIN)tools/ $(INSTROOT)/tools
-	@cp -r $(MAIN)VOC/ $(INSTROOT)/VOC
-	@chmod 665 $(INSTROOT)/VOC/*
-	@cp -r $(MAIN)VOC.DIC/ $(INSTROOT)/VOC.DIC
-	@chmod 665 $(INSTROOT)/VOC.DIC/*
-	@chown -R qmsys.qmusers $(INSTROOT)
-	@chmod 775 $(INSTROOT)
-	@chmod 775 $(INSTROOT)/*
+# you should never need this target ...
+ifeq ($(wildcard $(INSTROOT)/.),)
+	cp -R qmsys $(INSTROOT)
+else
+	cp -R qmsys/* $(INSTROOT)
+endif
+	chown -R qmsys:qmusers $(INSTROOT)
+	chmod -R 664 $(INSTROOT)
+	find $(INSTROOT) -type d -print0 | xargs -0 chmod 775
+
 	@echo Data file copy completed!
 clean:
 	@$(RM) $(GPLOBJ)*.o
