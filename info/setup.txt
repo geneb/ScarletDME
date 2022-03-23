@@ -1,24 +1,21 @@
 This file covers some setup & configuration topics you'll need in order
 to build and run ScarletDME on your system.
 
+Documentation
+-------------
+In order to build the documentation you will need to have Sphinx
+installed. Use your distrp package manager to install it, and "sudo make
+docs". Then open docs/build/html/index.
+
 Users & Groups
 --------------
 ScarletDME is set up to be "owned" by the qmsys user under the group 
 qmusers.  Users of ScarletDME must belong to the qmusers group.
 
-*** Note that if you don't want to do this manually, the Makefile will create
-*** the qmsys user and qmusers group when you run "sudo make install", but you
-*** will still need to add the qmusers group to your account.
+These (qmsys, qmusers) are added automatically by the "make install"
+target, which also adds root to the qmusers group.
 
-Add the qmsys user:
-sudo useradd qmsys
-
-Add the qmusers group:
-sudo groupadd qmusers
-
-Assign the qmusers group to qmsys, root, and any others that may need it:
-sudo usermod -a -G qmusers root
-sudo usermod -a -G qmusers qmsys
+After installation, add qmusers to the appropriate users.
 sudo usermod -a -G qmusers <userid>
 
 Note that once you've added yourself to the qmusers group, you'll need to log 
@@ -41,7 +38,6 @@ To build for a 64 bit system:
 "make"
 
 "sudo make install" to install the binary files.
-"sudo make datafiles" to install the data files.
 
 After building and installing successfully, you can start ScarletDME by issuing
 this command:
@@ -50,16 +46,17 @@ this command:
 You can then change to your home directory and start a normal user session by 
 issuing the command "qm".
 
-The makefile creates a symbolic link from /usr/qmsys/bin/qm to /usr/bin/qm,
-so if you have /usr/bin in your path, you won't need to specify the full 
-path to start or use the system.
+The makefile creates a symbolic link from /usr/qmsys/bin/qm to
+/usr/bin/qm, so if you have /usr/bin in your path, you won't need to
+specify the full path to start or use the system.
 
-If you want to be able to compile the "internal" programs in GPL.BP, you'll need
-to start ScarletDME in "internal" mode:
+If you want to be able to compile the "internal" programs in GPL.BP,
+you'll need to start ScarletDME in "internal" mode:
 "qm -internal"
 
-If you don't, you'll get compiler errors when attempting to compile any program that
-has the "$internal" compiler option listed.
+If you don't, you'll get compiler errors when attempting to compile any
+program that has the "$internal" compiler option listed.
 
-If you started ScarletDME via "qm -start" and instantly get the error:
-"Global catalogue missing or corrupt.", you've forgotten to run "sudo make datafiles".
+To get a systemd-based distro to start qm on boot "sudo make systemd".
+(Note that this has "issues".) For other distros please can you create
+an appropriate target?
