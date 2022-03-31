@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  *
  * START-HISTORY (ScarletDME):
+ * 31Mar22 rdm Updated sysmsg to close the msg_rec with returning to 
+ *             prevent max open files error
  * 11Jan22 gwb Removed goto calls.
  * 
  * 09Jan22 gwb Fixed a format specifier warning.
@@ -241,6 +243,10 @@ char* sysmsg(int msg_no) {
     }
     p++;
   }
+   /* rdm - 03/31/22
+   *If you don't close the message recs at this point they will stay open forever
+   *and give you greif causing the system into run into max open files*/
+  close(msg_rec);
 
   return message;
 }
