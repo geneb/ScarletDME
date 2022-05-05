@@ -19,6 +19,8 @@
 * Ladybridge Systems can be contacted via the www.openqm.com web site.
 * 
 * START-HISTORY:
+* 05 May 22 NJS convert mode.names to use @VM not hard coded hex fd
+*           NJS convert various local reserved.names<2> to use @VM not hard coded hex fd
 * 18 Mar 22 rdm Added OPTIONAL.THEN.ELSE mode.
 * 09 Jun 09 gdw Allow dynamic var field reference in EQUATE (gdw001) Gary D. Walborn
 * 14 Apr 09 gcb Added @FILENAME synonym for @FILE.NAME
@@ -322,13 +324,28 @@ $define M.OPTIONAL.THEN.ELSE   21; *rdm
 ** End New Modes
 
 * Corresponding names, value delimited, first name is bit 0 of mode flags
-mode.names = "UV.LOCATEýPICK.ERRMSGýSTRING.LOCATEýCOMPOSITE.READNEXTýSELECTV"
-mode.names := "ýPRCLOSE.DEFAULT.0ýFOR.STORE.BEFORE.TEST"
-mode.names := "ýCASE.SENSITIVEýPICK.MATRIXýPICK.JUMP.RANGEýPICK.READ"
-mode.names := "ýOPTIONAL.FINAL.ENDýPICK.SUBSTRýCOMPATIBLE.APPEND"
-mode.names := "ýPICK.ENTERýTRAP.UNUSEDýPICK.SUBSTR.ASSIGN"
-mode.names := "ýUNASSIGNED.COMMONýHEADING.NO.EJECTýNO.ECHO.DATAýNO.CASE.INVERT"
-mode.names := "ýOPTIONAL.THEN.ELSE"
+* NJS remove hard coded fd hex, use @VM
+mode.names = "UV.LOCATE"
+mode.names := @VM:"PICK.ERRMSG"
+mode.names := @VM:"STRING.LOCATE"
+mode.names := @VM:"COMPOSITE.READNEXT"
+mode.names := @VM:"SELECTV"
+mode.names := @VM:"PRCLOSE.DEFAULT.0"
+mode.names := @VM:"FOR.STORE.BEFORE.TEST"
+mode.names := @VM:"CASE.SENSITIVE"
+mode.names := @VM:"PICK.MATRIX"
+mode.names := @VM:"PICK.JUMP.RANGE"
+mode.names := @VM:"PICK.READ"
+mode.names := @VM:"OPTIONAL.FINAL.END"
+mode.names := @VM:"PICK.SUBSTR"
+mode.names := @VM:"COMPATIBLE.APPEND"
+mode.names := @VM:"PICK.ENTER"
+mode.names := @VM:"TRAP.UNUSED"
+mode.names := @VM:"PICK.SUBSTR.ASSIGN"
+mode.names := @VM:"UNASSIGNED.COMMON"
+mode.names := @VM:"HEADING.NO.EJECT"
+mode.names := @VM:"NO.ECHO.DATA"
+mode.names := @VM:"NO.CASE.INVERT"
 
 *****************************************************************************
 
@@ -7509,7 +7526,8 @@ st.execute:
    gosub emit.ldsys
 
    * 0265 Add local reserved names
-   reserved.names<2> = "CAPTURINGýPASSLISTýRETURNINGýRTNLISTýTRAPPINGýCURRENT.LEVEL"
+   * NJS use @VM
+   reserved.names<2> = "CAPTURING":@VM:"PASSLIST":@VM:"RETURNING":@VM:"RTNLIST":@VM:"TRAPPING":@VM:"CURRENT.LEVEL"
 
    gosub exprf
    opcode.byte = OP.STOR ; gosub emit.simple
@@ -8443,7 +8461,8 @@ st.input.common:
          input.flags += IN$NOLF
       end
 
-      reserved.names<2> = "APPENDýEDITýFORýHIDDENýOVERLAYýPANNINGýTIMEOUTýUPCASEýWAITINGýNOCASEINVERT"
+* NJS use @VM
+      reserved.names<2> = "APPEND":@VM:"EDIT":@VM:"FOR":@VM:"HIDDEN":@VM:"OVERLAY":@VM:"PANNING":@VM:"TIMEOUT":@VM:"UPCASEï¿½":@VM:"WAITING":@VM:"NOCASEINVERT"
 
       * Check for mask
 
@@ -8502,7 +8521,8 @@ st.input.common:
       gosub simple.lvar.reference
       if err then return
 
-      reserved.names<2> = "FORýHIDDENýTIMEOUTýUPCASEýWAITINGýNOCASEINVERT"
+  * NJS use @vm
+      reserved.names<2> = "FOR":@VM:"HIDDEN":@VM:"TIMEOUT":@VM:"UPCASE":@VM:"WAITING":@VM:"NOCASEINVERT"
 
       * Emit maximum input string length
 
@@ -9619,7 +9639,8 @@ st.null:
 st.on:
    * Emit value expression
 
-   reserved.names<2> = "GOSUBýGOTOýGO"  ;* 0265
+   * NJS use @vm
+   reserved.names<2> = "GOSUB":@VM:"GOTO":@VM:"GO"  ;* 0265
    gosub exprf
    del reserved.names<2>
 
@@ -9759,7 +9780,8 @@ open.common:
 st.openseq:
    opcode = OP.OPENSEQ
 
-   reserved.names<2> = "APPENDýOVERWRITEýREADONLY"
+* NJS use @vm
+   reserved.names<2> = "APPEND":@VM:"OVERWRITE":@VM:"READONLY"
 
    * Emit file expresssion
    gosub exprf
