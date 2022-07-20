@@ -2,7 +2,12 @@ This is just a file of random thoughts, TODO items, ideas, and documentation for
 things work within ScarletDME.  Because like all programmers, I'm a lazy jerk and will refer to
 ScarletDME as simply, Scarlet.  Ya'll know what I'm talking about anyway. :)
 --------------------------------------------------------
+[20Jul22] gwb
+Thanks to James M., we can add Manjaro 23.3.3 and Fedora 36 to the list of 
+distros that have a libc version that does not trigger the SH bug.
+Thanks James!
 
+-- 
 [17Jan22] gwb
 Notes on the "SH Problem" - this only applies to the 64 bit build of ScarletDME.
 Issuing the "SH" command at TCL results in an error on some systems.  On further 
