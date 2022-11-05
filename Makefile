@@ -24,7 +24,6 @@
 #
 # Changelog
 # ---------
-# 05Nov22 awy Fix systemd install for unified /usr
 # 13Mar22 awy Update install target to create master account if required,
 #             and update NEWVOC
 #             $COMO is created on first use so remove it from master account.
@@ -80,12 +79,7 @@ GPLOBJ   := $(MAIN)gplobj/
 GPLBIN   := $(MAIN)bin/
 TERMINFO := $(MAIN)terminfo/
 VPATH    := $(GPLOBJ):$(GPLBIN):$(GPLSRC)
-
-ifneq ($(wildcard /usr/lib/systemd/system/.),)
-	SYSTEMDPATH := /usr/lib/systemd/system
-else
-	SYSTEMDPATH := /lib/systemd/system
-endif
+SYSTEMDPATH := /lib/systemd/system
 
 OSNAME   := $(shell uname -s)
 
@@ -148,8 +142,7 @@ qmclilib.so: qmclilib.o
 qmtic: qmtic.o inipath.o
 	@echo Linking $@
 	@cd $(GPLOBJ)
-	@$(COMP) $(C_FLAGS) -lc $(GPfind . -type f -name \* | grep -e "Brass Bands" | grep -v Christmas | grep -v m3u > "Brass Bands.m3u"
-LOBJ)qmtic.o $(GPLOBJ)inipath.o -o $(GPLBIN)qmtic
+	@$(COMP) $(C_FLAGS) -lc $(GPLOBJ)qmtic.o $(GPLOBJ)inipath.o -o $(GPLBIN)qmtic
 
 qmfix: qmfix.o ctype.o linuxlb.o dh_hash.o inipath.o
 	@echo Linking $@
