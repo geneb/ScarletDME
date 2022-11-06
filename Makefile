@@ -270,11 +270,11 @@ endif
 ifneq ($(wildcard $(SYSTEMDPATH)/.),)
 	@echo Installing scarletdme.service for systemd.
 	@cp etc/systemd/system/* $(SYSTEMDPATH)
-	@chown root.root $(SYSTEMDPATH)/scarletdme.service
-	@chown root.root $(SYSTEMDPATH)/scarletdmeclient.socket
-	@chown root.root $(SYSTEMDPATH)/scarletdmeclient@.service
-	@chown root.root $(SYSTEMDPATH)/scarletdmeserver.socket
-	@chown root.root $(SYSTEMDPATH)/scarletdmeserver@.service
+	@chown root:root $(SYSTEMDPATH)/scarletdme.service
+	@chown root:root $(SYSTEMDPATH)/scarletdmeclient.socket
+	@chown root:root $(SYSTEMDPATH)/scarletdmeclient@.service
+	@chown root:root $(SYSTEMDPATH)/scarletdmeserver.socket
+	@chown root:root $(SYSTEMDPATH)/scarletdmeserver@.service
 	@chmod 644 $(SYSTEMDPATH)/scarletdme.service
 	@chmod 644 $(SYSTEMDPATH)/scarletdmeclient.socket
 	@chmod 644 $(SYSTEMDPATH)/scarletdmeclient@.service
