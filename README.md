@@ -39,8 +39,8 @@ system status.
 The system has adopted Sphinx for documentation - install Sphinx then
 "make docs" to build the html documentation locally. This will create
 the document root as docs/build/html/index. To build other formats (pdf,
-epub) read the Sphinx documentation, then run the Sphinx makefile fron
-inside the docs directory.
+epub) read the Sphinx documentation, then run the Sphinx makefile from
+inside the docs directory. (Make sure you get the right Sphinx - www.sphinx-doc.org)
 
 Code formatting notes:
 I'm using Visual Studio code with the Microsoft C/C++ IntelliSense, debugging,
@@ -91,7 +91,7 @@ re-branding effort complete.
 
 I've got a 66 page document that's all of the release notes I could find for
 the commercial releases of OpenQM.  That's going to act as a starting point
-for improvments and/or bug fixes.  I think.  We'll see.
+for improvements and/or bug fixes.  I think.  We'll see.
 
 I'm going to end this document by thanking Martin Phillips for the original
 GPL release of OpenQM.  We've not always seen eye to eye on things, but his

@@ -24,6 +24,7 @@
 #
 # Changelog
 # ---------
+# 05Nov22 awy Fix systemd install for unified /usr
 # 13Mar22 awy Update install target to create master account if required,
 #             and update NEWVOC
 #             $COMO is created on first use so remove it from master account.
@@ -79,7 +80,12 @@ GPLOBJ   := $(MAIN)gplobj/
 GPLBIN   := $(MAIN)bin/
 TERMINFO := $(MAIN)terminfo/
 VPATH    := $(GPLOBJ):$(GPLBIN):$(GPLSRC)
-SYSTEMDPATH := /lib/systemd/system
+
+ifneq ($(wildcard /usr/lib/systemd/system/.),)
+	SYSTEMDPATH := /usr/lib/systemd/system
+else
+	SYSTEMDPATH := /lib/systemd/system
+endif
 
 OSNAME   := $(shell uname -s)
 
@@ -137,7 +143,6 @@ qmclilib.so: qmclilib.o
 	@echo Linking $@
 	@$(COMP) -shared -Wl,$(SONAME_OPT),qmclilib.so -lc $(ARCH) $(GPLOBJ)qmclilib.o -o $(GPLBIN)qmclilib.so
 	@$(COMP) -shared -Wl,$(SONAME_OPT),libqmcli.so -lc $(ARCH) $(GPLOBJ)qmclilib.o -o $(GPLBIN)libqmcli.so
-
 
 qmtic: qmtic.o inipath.o
 	@echo Linking $@
@@ -265,11 +270,11 @@ endif
 ifneq ($(wildcard $(SYSTEMDPATH)/.),)
 	@echo Installing scarletdme.service for systemd.
 	@cp etc/systemd/system/* $(SYSTEMDPATH)
-	@chown root.root $(SYSTEMDPATH)/scarletdme.service
-	@chown root.root $(SYSTEMDPATH)/scarletdmeclient.socket
-	@chown root.root $(SYSTEMDPATH)/scarletdmeclient@.service
-	@chown root.root $(SYSTEMDPATH)/scarletdmeserver.socket
-	@chown root.root $(SYSTEMDPATH)/scarletdmeserver@.service
+	@chown root:root $(SYSTEMDPATH)/scarletdme.service
+	@chown root:root $(SYSTEMDPATH)/scarletdmeclient.socket
+	@chown root:root $(SYSTEMDPATH)/scarletdmeclient@.service
+	@chown root:root $(SYSTEMDPATH)/scarletdmeserver.socket
+	@chown root:root $(SYSTEMDPATH)/scarletdmeserver@.service
 	@chmod 644 $(SYSTEMDPATH)/scarletdme.service
 	@chmod 644 $(SYSTEMDPATH)/scarletdmeclient.socket
 	@chmod 644 $(SYSTEMDPATH)/scarletdmeclient@.service
