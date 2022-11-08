@@ -29,7 +29,13 @@ ScarletDME.
 
 You should be able to build the system by just typing "make' in the
 directory where the Makefile lives. Enter "sudo make install" to install
-the result of the first "make" command. 
+the result of the first "make" command.
+
+This does not activate ScarletDME - "sudo make qmdev" will start the
+server for you as a one-off, you need to do that every boot. Or "sudo
+make systemd" will activate the systemd service files so ScarletDME will
+start on boot. If you don't run systemd, please modify the makefile to
+detect and configure your init system.
 
 If you need to re-install the master system directory, run "sudo make
 datafiles", but this should normally never be done, as it is done for
