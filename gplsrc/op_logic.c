@@ -434,7 +434,7 @@ Private bool compare_values(int16_t mode, bool dismiss) {
   int32_t len2;
   int16_t bytes2;
   char* p2;
-  int16_t diff;
+  int diff;   /* int16_t diff will cause truncate issue with SortCompare (MemCompareNoCase / memcmp) */
   bool eq = FALSE; /* TRUE if arg1 = arg2 */
   bool gt = FALSE; /* TRUE if arg1 > arg2 */
   int16_t n;
