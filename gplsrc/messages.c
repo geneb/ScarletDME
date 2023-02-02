@@ -21,6 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  *
  * START-HISTORY (ScarletDME):
+ * 01Feb23 njs sysmsg replace new line characters with @FM in message
+ *             remove trailing new line if present
+ *             remove problematic use of strcpy in sysmsg
  * 31Mar22 rdm Updated sysmsg to close the msg_rec with returning to 
  *             prevent max open files error
  * 11Jan22 gwb Removed goto calls.
@@ -147,6 +150,7 @@ char* sysmsg(int msg_no) {
   int n;            /* A random tmp var by Ladybridge */
   int msg_rec = -1; /* The message record FileHandle */
   char* p;
+  char* q;
   /* STRING_CHUNK* q; unused variable */
   struct stat msg_stat; /* Holds Dir records files stats */
   int status;
@@ -227,22 +231,51 @@ char* sysmsg(int msg_no) {
   if (msg_rec < 0 || status < 0) { /* Either open or read failed */
     sprintf(message, "[%s] Message not found", id);
   }
+  /* njs - 01Feb23 mimic how basic program would read DIRECTORY_FILE via VM */
+  /* consult op_dio3.2 read_record() */
+  /* first remove trailing new line  */
+  message_len = strlen(message);
+   if (message[message_len-1] == '\n')
+    message[message_len-1] = '\0';
+  /* njs - 01Feb23 Walk through and replace newlines by field marks. */
+  p = message;
+  n = strlen(message);
+  do{
+    q = memchr(p, '\n', n);
+    if (q == NULL)
+       break;
+    *q = FIELD_MARK;
+    n -= (q + 1 - p);  /* bytes remaining */
+    p = q + 1;         /* next byte to start memchr at */
+    } while (n);
 
   /* Replace any embedded newline and tab codes */
+  /* njs 01Feb23 note old code violates:       */
+  /*  char *strcpy(char *restrict s1, const char *restrict s2) */
+  /* restrict in this case indicates that the caller promises  */
+  /* that the two buffers in question do not overlap.          */
+  /* And it does fail on 64bit linux! (atleast ubuntu 22.04    */
   p = message;
   while ((p = strchr(p, '\\')) != NULL) {
     switch (*(p + 1)) {
       case 'n':
         *p = '\n';
-        strcpy(p + 1, p + 2);
+      /*  strcpy(p + 1, p + 2); */
+        memmove(p + 1, p + 2, strlen(p+2));
+      /* get ride of dublicate last character */
+        p[strlen(p)-1] = '\0';
         break;
       case 't':
         *p = '\t';
-        strcpy(p + 1, p + 2);
+        /*  strcpy(p + 1, p + 2); */
+        memmove(p + 1, p + 2, strlen(p+2));
+        /* get ride of dublicate last character */
+        p[strlen(p)-1] = '\0';
         break;
     }
     p++;
   }
+
    /* rdm - 03/31/22
    *If you don't close the message recs at this point they will stay open forever
    *and give you greif causing the system into run into max open files*/
