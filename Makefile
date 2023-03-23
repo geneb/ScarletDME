@@ -257,7 +257,7 @@ else
 	@chown qmsys:qmusers $(INSTROOT)/NEWVOC/*
 	@chmod 664 $(INSTROOT)/NEWVOC/*
 
-#	copy the contents of NEWVOC so the account will upgrade
+#	copy the contents of MESSAGES so the account will upgrade
 	@rm $(INSTROOT)/MESSAGES/*
 	@cp qmsys/MESSAGES/* $(INSTROOT)/MESSAGES
 	@chown qmsys:qmusers $(INSTROOT)/MESSAGES/*
@@ -265,11 +265,11 @@ else
 endif
 #       copy bin files and make them executable
 	@test -d $(INSTROOT)/bin || mkdir $(INSTROOT)/bin
-#	now empty the directory before refilling it ...
-	@for qm_prog in $(GPLBIN)*; do \
-	  install -m 775 -o qmsys -g qmusers $$qm_prog $(INSTROOT)/bin; \
-	done
-
+#	copy the contents of bin so the account will upgrade
+	@rm $(INSTROOT)/bin/*
+	@cp bin/* $(INSTROOT)/bin
+	chown qmsys:qmusers $(INSTROOT)/bin $(INSTROOT)/bin/*
+	chmod 775 $(INSTROOT)/bin $(INSTROOT)/bin/*
 
 	@echo Writing scarlet.conf file
 	@cp $(main)scarlet.conf /etc/scarlet.conf
@@ -337,11 +337,10 @@ docs:
 	$(MAKE) -C docs html
 
 # Additional stop and start for developers, wraps qm build
-# Unfortunatly this requires root/sudo access -dat
 qmdev: qmstop qm
 	@echo Attempting to start server
-	sudo bin/qm -start
+	qm -start
 qmstop:
 	@echo Attempting to stop server
-	sudo qm -stop
+	qm -stop
 
