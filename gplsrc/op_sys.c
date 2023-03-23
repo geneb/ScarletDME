@@ -21,6 +21,7 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 13Feb23 njs Add SYSTEM(1050) is administrator
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
@@ -474,6 +475,10 @@ void op_system() {
       descr->data.value = break_pending;
       break_pending = FALSE;
       break;
+    /* njs 13Feb23 */  
+    case 1050: /* admin flag user */
+      descr->data.value = (my_uptr->flags & USR_ADMIN) != 0;
+      break;   
 
     default:
       k_recurse(pcode_system, 1); /* Execute recursive code */
