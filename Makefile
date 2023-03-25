@@ -243,21 +243,33 @@ endif
 
 	@echo Installing to $(INSTROOT)
 ifeq ($(wildcard $(INSTROOT)/.),)
+#	qmsys doesn't exist, so copy it to the live location
 	cp -R qmsys $(INSTROOT)
 	chown -R qmsys:qmusers $(INSTROOT)
 	chmod -R 664 $(INSTROOT)
 	find $(INSTROOT) -type d -print0 | xargs -0 chmod 775
+#	else update everything that's changed, eg NEWVOC, MESSAGES, all that sort of stuff.
+else
+#	copy FILEs that need updating
+#	copy the contents of NEWVOC so the account will upgrade
+	@rm $(INSTROOT)/NEWVOC/*
+	@cp qmsys/NEWVOC/* $(INSTROOT)/NEWVOC
+	@chown qmsys:qmusers $(INSTROOT)/NEWVOC/*
+	@chmod 664 $(INSTROOT)/NEWVOC/*
+
+#	copy the contents of MESSAGES so the account will upgrade
+	@rm $(INSTROOT)/MESSAGES/*
+	@cp qmsys/MESSAGES/* $(INSTROOT)/MESSAGES
+	@chown qmsys:qmusers $(INSTROOT)/MESSAGES/*
+	@chmod 664 $(INSTROOT)/MESSAGES/*
 endif
 #       copy bin files and make them executable
 	@test -d $(INSTROOT)/bin || mkdir $(INSTROOT)/bin
-	@for qm_prog in $(GPLBIN)*; do \
-	  install -m 775 -o qmsys -g qmusers $$qm_prog $(INSTROOT)/bin; \
-	done
-
-#	copy the contents of NEWVOC so the account will upgrade
-	@for qm_partfile in qmsys/NEWVOC/*; do \
-	  install -m 664 -o qmsys -g qmusers $$qm_partfile $(INSTROOT)/NEWVOC; \
-	done
+#	copy the contents of bin so the account will upgrade
+	@rm $(INSTROOT)/bin/*
+	@cp bin/* $(INSTROOT)/bin
+	chown qmsys:qmusers $(INSTROOT)/bin $(INSTROOT)/bin/*
+	chmod 775 $(INSTROOT)/bin $(INSTROOT)/bin/*
 
 	@echo Writing scarlet.conf file
 	@cp $(main)scarlet.conf /etc/scarlet.conf
@@ -269,7 +281,7 @@ endif
 #	Install systemd configuration file if needed.
 ifneq ($(wildcard $(SYSTEMDPATH)/.),)
 	@echo Installing scarletdme.service for systemd.
-	@cp etc/systemd/system/* $(SYSTEMDPATH)
+	@cp usr/lib/systemd/system/* $(SYSTEMDPATH)
 	@chown root:root $(SYSTEMDPATH)/scarletdme.service
 	@chown root:root $(SYSTEMDPATH)/scarletdmeclient.socket
 	@chown root:root $(SYSTEMDPATH)/scarletdmeclient@.service
@@ -325,11 +337,10 @@ docs:
 	$(MAKE) -C docs html
 
 # Additional stop and start for developers, wraps qm build
-# Unfortunatly this requires root/sudo access -dat
 qmdev: qmstop qm
 	@echo Attempting to start server
-	sudo bin/qm -start
+	qm -start
 qmstop:
 	@echo Attempting to stop server
-	sudo qm -stop
+	qm -stop
 
