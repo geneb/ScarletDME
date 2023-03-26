@@ -73,12 +73,13 @@
 
 # default target builds 64-bit, build qm32 target for a 32-bit build
 
-MAIN     := ./
+# MAIN     := ./
+MAIN     := $(shell pwd)/
 GPLSRC   := $(MAIN)gplsrc/
 GPLDOTSRC := $(MAIN)gpl.src
 GPLOBJ   := $(MAIN)gplobj/
 GPLBIN   := $(MAIN)bin/
-TERMINFO := $(MAIN)terminfo/
+TERMINFO := $(MAIN)qmsys/terminfo/
 VPATH    := $(GPLOBJ):$(GPLBIN):$(GPLSRC)
 
 ifneq ($(wildcard /usr/lib/systemd/system/.),)
@@ -125,7 +126,7 @@ QMUSERS := $(shell cat /etc/group | grep qmusers)
 
 qm: ARCH :=
 qm: BITSIZE := 64
-qm: C_FLAGS  := -Wall -Wformat=2 -Wno-format-nonliteral -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH)
+qm: C_FLAGS  := -Wall -Wformat=2 -Wno-format-nonliteral -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH) -fPIE
 qm: $(QMOBJS) qmclilib.so qmtic qmfix qmconv qmidx qmlnxd terminfo
 	@echo Linking $@
 	@cd $(GPLOBJ)
@@ -136,7 +137,6 @@ qm32: BITSIZE := 32
 qm32: C_FLAGS  := -Wall -Wformat=2 -Wno-format-nonliteral -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH)
 qm32: $(QMOBJS) qmclilib.so qmtic qmfix qmconv qmidx qmlnxd terminfo
 	@echo Linking $@
-	@cd $(GPLOBJ)
 	@$(COMP) $(ARCH) $(L_FLAGS) $(QMOBJSD) -o $(GPLBIN)qm
 
 qmclilib.so: qmclilib.o
@@ -146,34 +146,23 @@ qmclilib.so: qmclilib.o
 
 qmtic: qmtic.o inipath.o
 	@echo Linking $@
-	@cd $(GPLOBJ)
 	@$(COMP) $(C_FLAGS) -lc $(GPLOBJ)qmtic.o $(GPLOBJ)inipath.o -o $(GPLBIN)qmtic
 
 qmfix: qmfix.o ctype.o linuxlb.o dh_hash.o inipath.o
 	@echo Linking $@
-	@cd $(GPLOBJ)
 	@$(COMP) $(C_FLAGS) -lc $(GPLOBJ)qmfix.o $(GPLOBJ)ctype.o $(GPLOBJ)linuxlb.o $(GPLOBJ)dh_hash.o $(GPLOBJ)inipath.o -o $(GPLBIN)qmfix
 
 qmconv: qmconv.o ctype.o linuxlb.o dh_hash.o
 	@echo Linking $@
-	@cd $(GPLOBJ)
 	@$(COMP) $(C_FLAGS) -lc $(GPLOBJ)qmconv.o $(GPLOBJ)ctype.o $(GPLOBJ)linuxlb.o $(GPLOBJ)dh_hash.o -o $(GPLBIN)qmconv
 
 qmidx: qmidx.o
 	@echo Linking $@
-	@cd $(GPLOBJ)
 	@$(COMP) $(C_FLAGS) -lc $(GPLOBJ)qmidx.o -o $(GPLBIN)qmidx
 
 qmlnxd: qmlnxd.o qmsem.o
 	@echo Linking $@
-	@cd $(GPLOBJ)
 	@$(COMP) $(C_FLAGS) -lc $(GPLOBJ)qmlnxd.o $(GPLOBJ)qmsem.o -o $(GPLBIN)qmlnxd
-
-terminfo:
-	@echo Compiling terminfo library
-	@cd $(GPLSRC)
-	@mkdir $(TERMINFO)
-	@$(GPLBIN)qmtic -pterminfo $(MAIN)terminfo.src
 
 qmclilib.o: qmclilib.c revstamp.h
 	@echo Compiling $@ with -fPIC
@@ -241,6 +230,10 @@ ifeq ($(QMSYS),)
 endif
 endif
 
+	@echo Compiling terminfo library
+	@test -d qmsys/terminfo || mkdir qmsys/terminfo
+	cd qmsys && $(GPLBIN)qmtic -pterminfo $(MAIN)terminfo.src
+
 	@echo Installing to $(INSTROOT)
 ifeq ($(wildcard $(INSTROOT)/.),)
 #	qmsys doesn't exist, so copy it to the live location
@@ -262,6 +255,13 @@ else
 	@cp qmsys/MESSAGES/* $(INSTROOT)/MESSAGES
 	@chown qmsys:qmusers $(INSTROOT)/MESSAGES/*
 	@chmod 664 $(INSTROOT)/MESSAGES/*
+
+#	copy the contents of terminfo so the account will upgrade
+	@rm -Rf $(INSTROOT)/terminfo/*
+	@cp -R qmsys/terminfo/* $(INSTROOT)/terminfo
+	@chown qmsys:qmusers $(INSTROOT)/terminfo/*
+	@chmod 664 $(INSTROOT)/terminfo/*
+
 endif
 #       copy bin files and make them executable
 	@test -d $(INSTROOT)/bin || mkdir $(INSTROOT)/bin
