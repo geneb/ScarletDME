@@ -241,9 +241,9 @@ ifeq ($(wildcard $(INSTROOT)/.),)
 	chown -R qmsys:qmusers $(INSTROOT)
 	chmod -R 664 $(INSTROOT)
 	find $(INSTROOT) -type d -print0 | xargs -0 chmod 775
-#	else update everything that's changed, eg NEWVOC, MESSAGES, all that sort of stuff.
 else
-#	copy FILEs that need updating
+#	else update everything that's changed, eg NEWVOC, MESSAGES, all that sort of stuff.
+
 #	copy the contents of NEWVOC so the account will upgrade
 	@rm $(INSTROOT)/NEWVOC/*
 	@cp qmsys/NEWVOC/* $(INSTROOT)/NEWVOC
@@ -261,6 +261,8 @@ else
 	@cp -R qmsys/terminfo/* $(INSTROOT)/terminfo
 	@chown qmsys:qmusers $(INSTROOT)/terminfo/*
 	@chmod 664 $(INSTROOT)/terminfo/*
+#	make sure all directories are readable
+	find $(INSTROOT) -type d -print0 | xargs -0 chmod 775
 
 endif
 #       copy bin files and make them executable
