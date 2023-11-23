@@ -85,6 +85,8 @@ void UnlockSemaphore(int semno);
 
 void dump_config(void);
 
+const char default_pid_path[] = "/run/scarletdme.pid";
+
 Private bool create_shared_segment(int32_t bytes,
                                    struct CONFIG* cfg,
                                    char* errmsg);
@@ -250,6 +252,7 @@ bool bind_sysseg(bool create, char* errmsg) {
   sysseg->portmap_range = cfg->portmap_range;         /* PORTMAP */
   strcpy((char*)(sysseg->sysdir), cfg->sysdir);       /* QMSYS */
   strcpy((char*)(sysseg->startup), cfg->startup);     /* STARTUP */
+  strcpy((char*)(sysseg->pid_file_path), cfg->pid_file_path);  /* PIDFILE */
 
   /* Create dynamically sized parts of segment */
 
@@ -370,21 +373,27 @@ void unbind_sysseg() {
    start_qm()                                                             */
 
 bool start_qm() {
-  char errmsg[80 + 1];
-  int cpid;
+  char errmsg_sysseg[80 + 1];
   int i;
   char path[MAX_PATHNAME_LEN + 1];
 
-  if (!bind_sysseg(TRUE, errmsg)) {
-    fprintf(stderr, "%s\n", errmsg);
+  if (!bind_sysseg(TRUE, errmsg_sysseg)) {
+    fprintf(stderr, "%s\n", errmsg_sysseg);
+    return FALSE;
+  }
+
+  const char* pid_path = (const char*) (sysseg->pid_file_path [0] ? sysseg->pid_file_path : default_pid_path);
+
+  FILE* pid_file = fopen(pid_path, "w");
+  if (!pid_file) {
+    fprintf(stderr, "Error %d opening %s pid file!\n", errno, pid_path);
     return FALSE;
   }
 
   /* Start qmlnxd dameon */
 
   sysseg->qmlnxd_pid = -1; /* Stays -ve if fails to start */
-  cpid = fork();
-  if (cpid == 0) { /* Child process */
+  if (fork() == 0) { /* Child process */
     for (i = 3; i < 1024; i++)
       close(i);
     daemon(1, 1);
@@ -393,28 +402,42 @@ bool start_qm() {
         (MAX_PATHNAME_LEN + 1)) {
       fprintf(stderr, "Overflowed file/pathname length in start_qm()!\n");
       return FALSE;
-    } else
-      execl(path, path, NULL);
-  } else /* Parent process */
-      // {
-      // Moved to qmlnxd:   sysseg->qmlnxd_pid = cpid;   /* -ve if failed to start */
-      // }
+    }
+    execl(path, path, NULL);
 
-      /* Run startup command, if defined */
+    char errmsg_qmlnxd [MAX_PATHNAME_LEN + 23];
 
-      if (sysseg->startup[0] != '\0') {
-    cpid = fork();
-    if (cpid == 0) { /* Child process */
-      for (i = 3; i < 1024; i++)
-        close(i);
-      daemon(1, 1);
-      /* converted to snprintf() -gwb 22Feb20 */
-      if (snprintf(path, MAX_PATHNAME_LEN + 1, "%s/bin/qm", sysseg->sysdir) >=
-          (MAX_PATHNAME_LEN + 1)) {
-        fprintf(stderr, "Overflowed file/pathname length in start_qm()!\n");
-        return FALSE;
-      } else
+    snprintf(errmsg_qmlnxd, sizeof (errmsg_qmlnxd), "Error %d starting %s!", errno, path);
+    log_message (errmsg_qmlnxd);
+  } else { /* Parent process */
+    /* Waiting qmlnxd is started, time-out in 1s */
+    int sleep_count;
+    for (sleep_count = 0; sysseg->qmlnxd_pid == -1 && sleep_count < 100; ++sleep_count) {
+      usleep (10000); /* 10 ms */
+    }
+    if (fprintf(pid_file, "%d\n", sysseg->qmlnxd_pid) < 0) {
+      fclose(pid_file);
+      unlink(pid_path);
+      fprintf(stderr, "Error writing %s pid file!\n", pid_path);
+      return FALSE;
+    }
+    fclose(pid_file);
+
+    /* Run startup command, if defined */
+
+    if (sysseg->startup[0] != '\0') {
+      if (fork() == 0) { /* Child process */
+        for (i = 3; i < 1024; i++)
+          close(i);
+        daemon(1, 1);
+        /* converted to snprintf() -gwb 22Feb20 */
+        if (snprintf(path, MAX_PATHNAME_LEN + 1, "%s/bin/qm", sysseg->sysdir) >=
+            (MAX_PATHNAME_LEN + 1)) {
+          fprintf(stderr, "Overflowed file/pathname length in start_qm()!\n");
+          return FALSE;
+        }
         execl(path, path, "-aQMSYS", sysseg->startup, NULL);
+      }
     }
   }
 
@@ -449,8 +472,10 @@ bool stop_qm() {
 
         /* Shutdown the qmlnxd daemon if it is running */
 
-        if (sysseg->qmlnxd_pid)
+        if (sysseg->qmlnxd_pid) {
           kill(sysseg->qmlnxd_pid, SIGTERM);
+          unlink((const char*) (sysseg->pid_file_path [0] ? sysseg->pid_file_path : default_pid_path));
+        }
 
         /* Dettach the shared memory */
 

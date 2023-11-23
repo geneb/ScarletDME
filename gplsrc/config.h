@@ -61,28 +61,29 @@
 
 struct CONFIG {
  
-  int16_t max_users;               /* User limit */
+  int16_t max_users;                      /* User limit */
   char sysdir[MAX_PATHNAME_LEN+1];
-  int16_t cmdstack;                /* CMDSTACK: Command stack depth */
-  bool deadlock;                   /* DEADLOCK: Trap deadlocks */
-  u_int16_t debug;                 /* DEBUG:    Controls debug features */
-  int errlog;                      /* ERRLOG:   Max errlog size in bytes, 0 if disabled */
-  int16_t fds_limit;               /* FDS */
-  int16_t fixusers_base;           /* FIXUSERS: First user number and... */
-  int16_t fixusers_range;          /*          ...Number of users */
-  int16_t jnlmode;                 /* JNLMODE:  Journalling mode */
-  char jnldir[MAX_PATHNAME_LEN+1]; /* JNLDIR:   Journal file directory */
-  int16_t maxidlen;                /* MAXIDLEN: Maximum record id length */
-  int16_t netfiles;                /* NETFILES:
-                                      0x0001    Allow outgoing NFS
-                                      0x0002    Allow incoming QMNet   */
-  int16_t numfiles;                /* NUMFILES: Maximum number of files open */
-  int16_t numlocks;                /* NUMLOCKS: Maximum number of record locks */
-  int16_t pdump;                   /* PDUMP:    PDUMP mode flags */
-  int16_t portmap_base_port;       /* PORTMAP: First port number ... */
-  int16_t portmap_base_user;       /*          ...First user number... */
-  int16_t portmap_range;           /*          ...Number of ports/users */
-  char startup[80+1];              /* STARTUP: Startup command */
+  int16_t cmdstack;                       /* CMDSTACK: Command stack depth */
+  bool deadlock;                          /* DEADLOCK: Trap deadlocks */
+  u_int16_t debug;                        /* DEBUG:    Controls debug features */
+  int errlog;                             /* ERRLOG:   Max errlog size in bytes, 0 if disabled */
+  int16_t fds_limit;                      /* FDS */
+  int16_t fixusers_base;                  /* FIXUSERS: First user number and... */
+  int16_t fixusers_range;                 /*          ...Number of users */
+  int16_t jnlmode;                        /* JNLMODE:  Journalling mode */
+  char jnldir[MAX_PATHNAME_LEN+1];        /* JNLDIR:   Journal file directory */
+  int16_t maxidlen;                       /* MAXIDLEN: Maximum record id length */
+  int16_t netfiles;                       /* NETFILES:
+                                             0x0001    Allow outgoing NFS
+                                             0x0002    Allow incoming QMNet   */
+  int16_t numfiles;                       /* NUMFILES: Maximum number of files open */
+  int16_t numlocks;                       /* NUMLOCKS: Maximum number of record locks */
+  int16_t pdump;                          /* PDUMP:    PDUMP mode flags */
+  int16_t portmap_base_port;              /* PORTMAP: First port number ... */
+  int16_t portmap_base_user;              /*          ...First user number... */
+  int16_t portmap_range;                  /*          ...Number of ports/users */
+  char pid_file_path[MAX_PATHNAME_LEN+1]; /* PIDFILE:  Replace the default file path containing qnlnxd process id, used by systemctl to check whether ScarletDME is started or not */
+  char startup[80+1];                     /* STARTUP: Startup command */
  };
 
 
