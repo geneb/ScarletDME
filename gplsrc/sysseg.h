@@ -111,6 +111,7 @@ struct SYSSEG {
    int32_t pcode_offset;        /* Pcode */
    int32_t pcfg_offset;         /* Offset to template pcfg structure */
    int pcode_len;
+   char pid_file_path[MAX_PATHNAME_LEN+1]; /* PIDFILE:  Replace the default file path containing qnlnxd process id, used by systemctl to check whether ScarletDME is started or not */
 };
 
 Public SYSSEG * sysseg init(NULL);   /* 0234 */
