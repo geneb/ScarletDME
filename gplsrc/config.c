@@ -63,31 +63,32 @@
  *
  * Handles parsing of the configuration file.
  * 
- *  DEADLOCK=n    Trap deadlocks?
- *  DEBUG=n       Debug features enabled? (bit flags)
- *  FDS=n         Set FDS limit (default is no limit)
- *  FLTDIFF=f     Wide zero value
- *  GDI=n         Select default API calls for printing
- *  GRPSIZE=n     Default group size when creating a dynamic file
- *  MAXIDLEN=63   Maximum record id len
- *  MUSTLOCK=1    Must hold update or file lock to write or delete record
- *  NETFILES=0    Allow remote files?
- *                  0x0001   Allow outgoing NFS
- *                  0x0002   Allow incoming QMNet
- *  NUMFILES=n    Maximum number of files open (all users)
- *  NUMLOCKS=n    Maximum number of record locks
- *  OBJECTS=n     Limit on loaded object code count (0 = no limit)
- *  OBJMEM=n      Limit on locade object size (kb, 0 = no limit)
- *  QMCLIENT=n    QMClient rules (0=all, 1=no call/exec, 2=restricted call)
- *  QMSYS=path    QMSYS directory path
- *  SAFEDIR=1     Use careful update to directory files
- *  SORTMEM=n     Threshold for disk based sort (units of 1kb)
- *  SORTWORK=path Pathname of sort workfile directory
- *  STARTUP=cmd   Run command on starting QM
- *  TEMPDIR=path  Pathname of temporary directory
- *  TERMINFO=path Pathname of terminfo directory
- *  TXCHAR=1      Enable ansi/oem character translation (default = 1)
- *  YEARBASE=n    Two digit year base (default = 1930)
+ *  DEADLOCK=n       Trap deadlocks?
+ *  DEBUG=n          Debug features enabled? (bit flags)
+ *  FDS=n            Set FDS limit (default is no limit)
+ *  FLTDIFF=f        Wide zero value
+ *  GDI=n            Select default API calls for printing
+ *  GRPSIZE=n        Default group size when creating a dynamic file
+ *  MAXIDLEN=63      Maximum record id len
+ *  MUSTLOCK=1       Must hold update or file lock to write or delete record
+ *  NETFILES=0       Allow remote files?
+ *                     0x0001   Allow outgoing NFS
+ *                     0x0002   Allow incoming QMNet
+ *  NUMFILES=n       Maximum number of files open (all users)
+ *  NUMLOCKS=n       Maximum number of record locks
+ *  OBJECTS=n        Limit on loaded object code count (0 = no limit)
+ *  OBJMEM=n         Limit on locade object size (kb, 0 = no limit)
+ *  PIDFILE=filepath Replace the default file path containing qnlnxd process id, used by systemctl to check whether ScarletDME is started or not
+ *  QMCLIENT=n       QMClient rules (0=all, 1=no call/exec, 2=restricted call)
+ *  QMSYS=path       QMSYS directory path
+ *  SAFEDIR=1        Use careful update to directory files
+ *  SORTMEM=n        Threshold for disk based sort (units of 1kb)
+ *  SORTWORK=path    Pathname of sort workfile directory
+ *  STARTUP=cmd      Run command on starting QM
+ *  TEMPDIR=path     Pathname of temporary directory
+ *  TERMINFO=path    Pathname of terminfo directory
+ *  TXCHAR=1         Enable ansi/oem character translation (default = 1)
+ *  YEARBASE=n       Two digit year base (default = 1930)
  *
  *
  * END-DESCRIPTION
@@ -134,10 +135,10 @@ struct CONFIG* read_config(char* errmsg) {
   /* Set defaults for private configuration parameters */
   /* !!CONFIG!! */
 
-  pcfg.codepage = 0;      /* CODEPAGE: Console code page */
-  pcfg.dumpdir[0] = '\0'; /* DUMPDIR:  Directory for process dump files */
-  pcfg.exclrem = 0;       /* EXCLREM:  Exclude remote files in ACCOUNT.SAVE? */
-  pcfg.filerule = 0;      /* FILERULE: File name rules (special forms) */
+  pcfg.codepage = 0;              /* CODEPAGE: Console code page */
+  pcfg.dumpdir[0] = '\0';         /* DUMPDIR:  Directory for process dump files */
+  pcfg.exclrem = 0;               /* EXCLREM:  Exclude remote files in ACCOUNT.SAVE? */
+  pcfg.filerule = 0;              /* FILERULE: File name rules (special forms) */
   pcfg.fltdiff = 0.0000000000291; /* FLTDIFF: Wide zero for float eq test */
   pcfg.fsync = 0;                 /* FSYNC:    Controls when to do fsync() */
   pcfg.gdi = 0;                   /* GDI:      Default GDI spool API? */
@@ -152,17 +153,17 @@ struct CONFIG* read_config(char* errmsg) {
   pcfg.qmclient_mode = 0;         /* QMCLIENT: Client capabilities */
   pcfg.reccache = 0;              /* RECCACHE: Record cache size */
   pcfg.ringwait = TRUE;           /* RINGWAIT: Wait if ring buffer full */
-  pcfg.safedir = FALSE;       /* SAFE_DIR: User careful update to dir files */
-  pcfg.sh[0] = '\0';          /* SH:       Command to run interactive shell */
-  pcfg.sh1[0] = '\0';         /* SH1:      Command to run single shell */
-  pcfg.sortmem = 1048576;     /* SORTMEM:  1Mb default switch to disk sort */
-  pcfg.sortmrg = 4;           /* SORTMRG:  Files merged in one pass */
-  pcfg.sortworkdir[0] = '\0'; /* SORTWORK: Use QMSYS directory */
-  pcfg.tempdir[0] = '\0';     /* TEMPDIR:  Temporary directory */
-  pcfg.spooler[0] = '\0';     /* SPOOLER:  Default spooler name */
-  pcfg.terminfodir[0] = '\0'; /* TERMINFO: Use default location */
-  pcfg.txchar = TRUE;         /* TXCHAR:   Enable ansi/oem translation */
-  pcfg.yearbase = 1930;       /* YEARBASE: Two digit year base */
+  pcfg.safedir = FALSE;           /* SAFE_DIR: User careful update to dir files */
+  pcfg.sh[0] = '\0';              /* SH:       Command to run interactive shell */
+  pcfg.sh1[0] = '\0';             /* SH1:      Command to run single shell */
+  pcfg.sortmem = 1048576;         /* SORTMEM:  1Mb default switch to disk sort */
+  pcfg.sortmrg = 4;               /* SORTMRG:  Files merged in one pass */
+  pcfg.sortworkdir[0] = '\0';     /* SORTWORK: Use QMSYS directory */
+  pcfg.tempdir[0] = '\0';         /* TEMPDIR:  Temporary directory */
+  pcfg.spooler[0] = '\0';         /* SPOOLER:  Default spooler name */
+  pcfg.terminfodir[0] = '\0';     /* TERMINFO: Use default location */
+  pcfg.txchar = TRUE;             /* TXCHAR:   Enable ansi/oem translation */
+  pcfg.yearbase = 1930;           /* YEARBASE: Two digit year base */
 
   /* Set any non-zero defaults for shared configuration parameters */
 
@@ -256,7 +257,13 @@ struct CONFIG* read_config(char* errmsg) {
         pcfg.objmem = n * 1024L;
       else if (sscanf(rec, "PDUMP=%d", &n) == 1)
         cfg->pdump |= n;
-      else if (sscanf(rec, "PORTMAP=%d,%d,%d", &n, &n2, &n3) == 3) {
+      else if (strncmp(rec, "PIDFILE=", 8) == 0) {
+        if (strlen (rec) - 8 > MAX_PATHNAME_LEN) {
+          sprintf(errmsg, "PIDFILE file name too long");
+          goto exit_read_config;
+        }
+        strcpy(cfg->pid_file_path, rec + 8);
+      } else if (sscanf(rec, "PORTMAP=%d,%d,%d", &n, &n2, &n3) == 3) {
         cfg->portmap_base_port = n;
         cfg->portmap_base_user = n2;
         cfg->portmap_range = n3;

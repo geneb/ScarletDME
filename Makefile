@@ -127,7 +127,7 @@ QMUSERS := $(shell cat /etc/group | grep qmusers)
 qm: ARCH :=
 qm: BITSIZE := 64
 qm: C_FLAGS  := -Wall -Wformat=2 -Wno-format-nonliteral -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH) -fPIE
-qm: $(QMOBJS) qmclilib.so qmtic qmfix qmconv qmidx qmlnxd terminfo
+qm: $(QMOBJS) qmclilib.so qmtic qmfix qmconv qmidx qmlnxd
 	@echo Linking $@
 	@cd $(GPLOBJ)
 	@$(COMP) $(ARCH) $(L_FLAGS) $(QMOBJSD) -o $(GPLBIN)qm
@@ -135,7 +135,7 @@ qm: $(QMOBJS) qmclilib.so qmtic qmfix qmconv qmidx qmlnxd terminfo
 qm32: ARCH := -m32
 qm32: BITSIZE := 32
 qm32: C_FLAGS  := -Wall -Wformat=2 -Wno-format-nonliteral -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH)
-qm32: $(QMOBJS) qmclilib.so qmtic qmfix qmconv qmidx qmlnxd terminfo
+qm32: $(QMOBJS) qmclilib.so qmtic qmfix qmconv qmidx qmlnxd
 	@echo Linking $@
 	@$(COMP) $(ARCH) $(L_FLAGS) $(QMOBJSD) -o $(GPLBIN)qm
 
@@ -231,7 +231,8 @@ endif
 endif
 
 	@echo Compiling terminfo library
-	@test -d qmsys/terminfo || mkdir qmsys/terminfo
+	@test -d qmsys/terminfo && rm -Rf qmsys/terminfo
+	@mkdir qmsys/terminfo
 	cd qmsys && $(GPLBIN)qmtic -pterminfo $(MAIN)terminfo.src
 
 	@echo Installing to $(INSTROOT)
@@ -259,8 +260,9 @@ else
 #	copy the contents of terminfo so the account will upgrade
 	@rm -Rf $(INSTROOT)/terminfo/*
 	@cp -R qmsys/terminfo/* $(INSTROOT)/terminfo
-	@chown qmsys:qmusers $(INSTROOT)/terminfo/*
-	@chmod 664 $(INSTROOT)/terminfo/*
+	@chown -R qmsys:qmusers $(INSTROOT)/terminfo
+	@find $(INSTROOT)/terminfo -type d -print0 | xargs -0 chmod 775
+	@find $(INSTROOT)/terminfo -type f -print0 | xargs -0 chmod 664
 
 endif
 #       copy bin files and make them executable
