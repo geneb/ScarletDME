@@ -1,0 +1,399 @@
+*GARDENA IS A CARD GAME
+     DIM DEAL(52,2)
+     DIM SUIT(4)
+     DIM CRD(14)
+     DIM HAND(8,13)
+     DIM HAMD(8,13)
+     DIM RANK(11)
+     DIM PLRNK(8)
+     DIM MNY(8)
+     DIM PSOPT(8)
+     DIM PR(7)
+     DIM PP(8)
+     DIM PT(8)
+     DIM STH(8)
+     DIM FL(7)
+     DIM FF(8)
+     DIM CP(7)
+     DIM CF(7)
+     DIM ST(14)
+     DIM SS(8)
+     DIM CDRW(8,7)
+     BL='     '
+     SL='  '
+     TL='   '
+     OL=' '
+     OP='OPEN'
+     Z6=0
+     SUIT(1)='S'
+     SUIT(2)='H'
+     SUIT(3)='D'
+     SUIT(4)='C'
+     CRD(1)=' A'
+     CRD(2)=' K'
+     CRD(3)=' Q'
+     CRD(4)=' J'
+     CRD(5)='10'
+     CRD(6)=' 9'
+     CRD(7)=' 8'
+     CRD(8)=' 7'
+     CRD(9)=' 6'
+     CRD(10)=' 5'
+     CRD(11)=' 4'
+     CRD(12)=' 3'
+     CRD(13)=' 2'
+     CRD(14)=' A'
+     RANK(1)='HCRD'
+     RANK(2)='PAIR'
+     RANK(3)='2PAR'
+     RANK(4)='3KND'
+     RANK(5)='STRT'
+     RANK(6)='FLSH'
+     RANK(7)='FUHS'
+     RANK(8)='4KND'
+     RANK(9)='STFL'
+     RANK(10)='5KND'
+     RANK(11)='FOLD'
+     PRINT @(-1)
+     PRINT CHAR(1)
+     PRINT @(10,10):"WELCOME TO OUR FRIENDLY POKER GAME, WE'RE JUST GETTING"
+     PRINT @(10,11):"STARTED. THE NAME OF THE GAME IS 5-CARD DRAW NOTHING WILD."
+     PRINT @(10,12):"WE PLAY BY GARDENA CLUB RULES,THAT MEANS THAT IT'S 25 CENT"
+     PRINT @(10,13):"ANTE AND YOU CAN OPEN FOR A DOLLAR WITH A PAIR OF JACKS OR"
+     PRINT @(10,14):"BETTER. YOU WILL BE PLAYING POSITION 8. EVERYONE ELSE HAS"
+     PRINT @(10,15):"$10.00, HOW MUCH DID YOU BRING":
+     SEQN=8
+     FOR J1=1 TO 8
+       MNY(J1)=10.00
+     NEXT J1
+     INPUT MNY(SEQN)
+     PRINT @(-1)
+     PRINT CHAR(1)
+     POT=0
+     FW=0
+     NUM=8
+     HASZ=5
+     OPT=1
+3    MAT DEAL =OL
+     MAT HAND ='  '
+     MAT HAMD =OL
+     MAT PLRNK =0
+     MAT PSOPT ='    '
+     MAT CDRW =0
+     MAT PP =OL
+     MAT PT =OL
+     MAT STH=OL
+     MAT SS =0
+     D=52
+     FOR K1=1 TO NUM
+       IF MNY(K1) < 0.25 THEN GOTO 4
+       POT=POT+0.25
+       MNY(K1)=MNY(K1)-0.25
+4    NEXT K1
+     PRINT @(10,2):"THE CARDS ARE BEING SHUFFLED           "
+     FOR E=1 TO 4
+       FOR F=1 TO 13
+5        PLC=RND(D)+1
+         IF DEAL(PLC,1)#OL THEN GOTO 5
+         DEAL(PLC,1)=SUIT(E)
+         DEAL(PLC,2)=CRD(F)
+       NEXT F
+     NEXT E
+     FOR G=1 TO HASZ
+       FOR H=1 TO NUM
+         DC=(G-1)*NUM+H
+         IF DC > 52 THEN GOTO 30
+         HAMD(H,G)=DEAL(DC,1)
+         HAND(H,G)=DEAL(DC,2)
+       NEXT H
+     NEXT G
+     PRINT @(10,2):"YOUR HAND IS - ":HAND(SEQN,1):HAMD(SEQN,1):SL:HAND(SEQN,2):
+     PRINT HAMD(SEQN,2):SL:HAND(SEQN,3):HAMD(SEQN,3):SL:HAND(SEQN,4):
+     PRINT HAMD(SEQN,4):SL:HAND(SEQN,5):HAMD(SEQN,5):'   ':
+     FG=1
+     XIN=1
+     PRINT @(16,6):"THE HANDS ARE BEING ANALYZED.                         "
+     PRINT @(60,2):
+     GOSUB 40
+     IF OPT='N' THEN GOTO 20
+     FOR I=1 TO OPT
+       FOR J=1 TO NUM
+         IF PLRNK(J)=11 AND J#SEQN THEN GOTO 13
+         DANS=0
+         IF J#SEQN THEN GOTO 8
+         PRINT @(16,6):
+         FOR Z5=1 TO 7
+           IF Z6=1 THEN OP="CALL"
+           IF PLRNK(Z5)=11 THEN PRINT RANK(11):'    ': ELSE PRINT OP:'    ':
+           IF PLRNK(Z5)#11 THEN Z6=1
+         NEXT Z5
+         PRINT @(5,8):POT 'R2#####   '
+         IF Z6=1 THEN PRINT @(10,10):"CALL(Y/N)": ELSE PRINT @(10,10):"OPEN(Y/N)":
+         Z6=0
+         OP="OPEN"
+         INPUT ANSR
+         IF ANSR='N' THEN GOTO 13
+         PRINT @(10,10):"HOW MANY CARDS(0-5)":
+         INPUT DANS
+         PRINT @(10,10):STR(' ',25)
+         IF DANS='0' THEN GOTO 15
+         POT=POT+1.00
+         MNY(J)=MNY(J)-1.00
+         FOR K=1 TO DANS
+           DC=DC+1
+           IF DC > 52 THEN GOTO 30
+           PRINT @(10,12):"CARD NO.":
+           INPUT SEQ
+           PRINT @(10,12):STR(' ',10)
+           HAND(J,SEQ)=DEAL(DC,2)
+           HAMD(J,SEQ)=DEAL(DC,1)
+         NEXT K
+         GOTO 15
+8        IF PSOPT(J)='    ' THEN IF PLRNK(J)=1 THEN DANS='F'
+         IF PSOPT(J)='    ' THEN IF PLRNK(J)=2 THEN IF PP(J)<'A' THEN DANS='F'
+         IF DANS='F' THEN GOTO 13
+         IF MNY(J)< 1.00 THEN GOTO 13
+         POT=POT+1.00
+         MNY(J)=MNY(J)-1.00
+         FOR Y=1 TO HASZ
+           IF CDRW(J,Y)=0 THEN GOTO 9
+           DC=DC+1
+           IF DC > 52 THEN GOTO 30
+           HAND(J,Y)=DEAL(DC,2)
+           HAMD(J,Y)=DEAL(DC,1)
+9        NEXT Y
+         IF DANS#'F' THEN GOTO 15
+13       FOR L=1 TO HASZ
+           HAND(J,L)='  '
+           HAMD(J,L)=OL
+         NEXT L
+         PLRNK(J)=11
+15     NEXT J
+       IF OPT#I THEN GOSUB 40
+     NEXT I
+     FOR M=1 TO HASZ
+       PRINT @(16,13+M): HAND(1,M):HAMD(1,M):BL:HAND(2,M):HAMD(2,M):BL:HAND(3,M):HAMD(3,M):
+       PRINT BL:HAND(4,M):HAMD(4,M):BL:HAND(5,M):HAMD(5,M):BL:HAND(6,M):
+       PRINT HAMD(6,M):BL:HAND(7,M):HAMD(7,M):BL:HAND(8,M):HAMD(8,M)
+     NEXT M
+     FG=1
+     FW=1
+     GOSUB 40
+20   PRINT
+30   IF DC>52 THEN PRINT @(10,2):"OUT OF CARDS             "
+     PRINT @(10,2):STR(' ',60)
+     PRINT 'PLAY ME AGAIN LATER'
+     RQM;RQM;RQM;RQM;RQM; STOP ;*STOP FINISH
+40   REM SUBROUTINE
+     IF FG=1 AND XIN#1 THEN PRINT @(16,20):
+     FOR X=1 TO 8
+       IF PLRNK(X)#11 THEN PLRNK(X)=0
+     NEXT X
+     MAT PP=OL
+     MAT PT=OL
+     MAT STH=OL
+     MAT PP=OL
+     FOR N=1 TO NUM
+       D1=0
+       D2=0
+       D3=0
+       D4=0
+       S1=0
+       S2=0
+       S3=0
+       S4=0
+       F1=0
+       F2=0
+       F3=0
+       F4=0
+       I1=0
+       MAT FL=0
+       MAT PR=0
+       MAT ST=0
+       FOR O=1 TO HASZ
+         IF HAND(N,O)='  ' THEN GOTO 57
+         IF HAMD(N,O)=OL THEN GOTO 57
+         CN=0
+         CO=0
+         FOR U=1 TO 14
+           IF HAND(N,O)=CRD(U) THEN ST(U)=ST(U)+1
+         NEXT U
+         Q=O+1
+         FOR P=Q TO HASZ
+           IF FL(O)#0 THEN GOTO 45
+           FL(O)=0
+           IF HAMD(N,O)#HAMD(N,P) THEN GOTO 45
+           FL(P)=O
+           FF(N)=O
+           CO=CO+1
+45         IF PR(O)#0 THEN GOTO 50
+           PR(O)=0
+           IF HAND(N,O)#HAND(N,P) THEN GOTO 50
+           PR(P)=O
+           CN=CN+1
+50       NEXT P
+         CP(O)=CN
+         CF(O)=CO
+         IF CN=1 THEN D1=D1+1
+         IF CN=1 THEN IF PP(N)=OL THEN PP(N)=HAND(N,O)[2,1]
+         IF CN=1 THEN IF PP(N)#OL THEN PT(N)=HAND(N,O)[2,1]
+         IF CN=2 THEN D2=D2+1
+         IF CN=2 THEN IF PP(N)=OL THEN PP(N)=HAND(N,O)[2,1]
+         IF CN=2 THEN IF PP(N)#OL THEN PT(N)=HAND(N,O)[2,1]
+         IF CN=3 THEN D3=D3+1
+         IF CN=3 THEN IF PP(N)=OL THEN PP(N)=HAND(N,O)[2,1]
+         IF CN=3 THEN IF PP(N)#OL THEN PT(N)=HAND(N,O)[2,1]
+         IF CN=4 THEN D4=D4+1
+         IF CN=4THEN IF PP(N)=OL THEN PP(N)=HAND(N,O)[2,1]
+         IF CN=4 THEN IF PP(N)#OL THEN PT(N)=HAND(N,O)[2,1]
+         IF CO=1 THEN F1=F1+1
+         IF CO=2 THEN F2=F2+1
+         IF CO=3 THEN F3=F3+1
+         IF CO=4 THEN F4=F4+1
+       NEXT O
+       FOR X=1 TO HASZ
+         IF PR(X)>0 THEN CDRW(N,PR(X))=0
+         IF PR(X)>0 THEN GOTO 51
+         CDRW(N,X)=1
+51     NEXT X
+       FOR V=1 TO 4
+         CC=14-V
+         FOR W=1 TO CC
+           IF V=1 THEN IF ST(W)#0 THEN IF ST(W+1)#0 THEN S1=S1+1
+           IF V=2 THEN IF ST(W)#0 THEN IF ST(W+1)#0 THEN IF ST(W+2)#0 THEN S2=S2+1
+           IF V=3 THEN IF ST(W)#0 THEN IF ST(W+1)#0 THEN IF ST(W+2)#0 THEN IF ST(W+3)#0 THEN GOTO 52
+           IF V=4 THEN IF ST(W)#0 THEN IF ST(W+1)#0 THEN IF ST(W+2)#0 THEN IF ST(W+3)#0 THEN IF ST(W+4)#0 THEN GOTO 54
+           GOTO 55
+52         IF W=1 THEN GOTO 55
+           IF W=11 THEN GOTO 55
+           S3=S3+1
+           SS(N)=W
+           GOTO 55
+54         STH(N)=W
+           S4=S4+1
+55       NEXT W
+       NEXT V
+       IF D4#0 THEN IF PLRNK(N)=0 THEN PLRNK(N)=10
+       IF S4#0 THEN IF F4#0 THEN IF PLRNK(N)=0 THEN PLRNK(N)=9
+       IF PLRNK(N)=9 THEN GOTO 60
+       IF D3#0 THEN IF PLRNK(N)=0 THEN PLRNK(N)=8
+       IF D2#0 THEN IF D1#0 THEN IF PLRNK(N)=0 THEN PLRNK(N)=7
+       IF PLRNK(N)=7 THEN GOTO 60
+       IF F4#0 THEN IF PLRNK(N)=0 THEN PLRNK(N)=6
+       IF PLRNK(N)=6 THEN GOTO 60
+       IF S4#0 THEN IF PLRNK(N)=0 THEN PLRNK(N)=5
+       IF PLRNK(N)=5 THEN GOTO 60
+       IF D2#0 THEN IF PLRNK(N)=0 THEN PLRNK(N)=4
+       IF D1>1 THEN IF PLRNK(N)=0 THEN PLRNK(N)=3
+       IF F3#0 THEN PSOPT(N)='PFLH'
+       IF F3#0 THEN GOTO 58
+       IF S3#0 THEN IF PSOPT(N)='    ' THEN PSOPT(N)='PSTR'
+       IF S3#0 THEN IF PSOPT(N)='PSTR' THEN GOTO 62
+56     IF D1#0 THEN IF PLRNK(N)=0 THEN PLRNK(N)=2
+       IF PLRNK(N)=0 THEN PLRNK(N)=1
+57     IF XIN=1 AND N#SEQN THEN GOTO 65
+       IF FG=1 THEN PRINT RANK(PLRNK(N)):'    ':
+       GOTO 65
+58     FOR D5=1 TO HASZ
+         CDRW(N,D5)=0
+       NEXT D5
+       FOR A1=1 TO HASZ
+         IF FL(A1)>0 THEN CDRW(N,FL(A1))=0
+         IF FL(A1)>0 THEN GOTO 59
+         IF FF(N)#A1 THEN CDRW(N,A1)=1
+59     NEXT A1
+       GOTO 56
+60     FOR Z=1 TO HASZ
+         CDRW(N,Z)=0
+       NEXT Z
+       IF I1=1 THEN CDRW(N,E1)=1
+       I1=0
+       GOTO 56
+62     FOR E1=1 TO HASZ
+         IF HAND(N,E1)[2,1]=PP(N) THEN I1=1
+         IF I1=1 THEN GOTO 60
+         FOR H1=1 TO 13
+           IF HAND(N,E1)=CRD(H1) THEN GOTO 64
+         NEXT H1
+64       IF ABS(H1-(SS(N)+1))>2 THEN CDRW(N,E1)=1 ELSE CDRW(N,E1)=0
+       NEXT E1
+       GOTO 56
+65   NEXT N
+     XIN=0
+     IF FW=1 THEN GOSUB 75
+     PRINT @(5,7):"  POT"
+     PRINT @(5,8):POT 'R2#####   ':SL:
+     FOR L1=1 TO NUM
+       PRINT MNY(L1) 'R2#####   ':
+     NEXT L1
+     FW=0
+     FG=0
+     RETURN
+75   REM SUBROUTINE
+     MAX=1
+     FOR M1=1 TO NUM
+       IF PLRNK(M1)=11 THEN PLRNK(M1)=0
+       IF PLRNK(M1)>PLRNK(MAX) THEN MAX=M1
+       IF PLRNK(M1)#0 THEN IF MAX#M1 THEN IF PLRNK(M1)=PLRNK(MAX) THEN GOSUB 90
+     NEXT M1
+     FOR N1=1 TO NUM
+       IF PLRNK(N1)=0 THEN PLRNK(N1)=11
+     NEXT N1
+     IF PLRNK(MAX)=11 THEN GOTO 80
+     IF PLRNK(MAX)=1 THEN GOTO 80
+     IF PLRNK(MAX)=2 AND PP(MAX)<'A' THEN GOTO 80
+     MNY(MAX)=MNY(MAX)+POT
+     POT=0
+80   RETURN
+90   REM SUBROUTINE
+     IF PLRNK(MAX)>1 THEN GOTO 95
+91   FOR O1=1 TO 13
+       MO=0
+       MX=0
+       FOR P1=1 TO HASZ
+         IF HAND(P1,MAX)=CRD(O1) THEN MX=1
+       NEXT P1
+       FOR Q1=1 TO HASZ
+         IF HAND(Q1,M1)=CRD(O1) THEN MO=1
+       NEXT Q1
+       IF MX=MO THEN GOTO 92
+       IF MO=1 THEN MAX=M1
+       GOTO 150
+92   NEXT O1
+95   IF PLRNK(MAX)>2 THEN GOTO 100
+96   FOR R1=1 TO 13
+       IF PP(MAX)=CRD(R1)[2,1] THEN PA=14-R1
+       IF PP(M1)=CRD(R1)[2,1] THEN PB=14-R1
+     NEXT R1
+     IF PA=PB THEN GOTO 91
+     IF PB>PA THEN MAX=M1
+     GOTO 150
+100  IF PLRNK(MAX)>3 THEN GOTO 110
+101  FOR U1=1 TO 13
+       CR=CRD(U1)[2,1]
+       IF PP(MAX)=CR THEN P1M=U1
+       IF PP(M1)=CR THEN P1O=U1
+       IF PT(MAX)=CR THEN P2M=U1
+       IF PT(M1)=CR THEN P2O=U1
+     NEXT U1
+     IF P1M<P2M THEN GOTO 102 ELSE GOTO 104
+102  IF P1M>P1O THEN MAX=M1
+     IF P1M>P2O THEN MAX=M1
+     IF P1M=P1O THEN IF P2M>P2O THEN MAX=M1
+     IF P1M=P2O THEN IF P2M>P1O THEN MAX=M1
+     GOTO 150
+104  IF P2M>P1O THEN MAX=M1
+     IF P2M>P2O THEN MAX=M1
+     IF P2M=P1O THEN IF P1M>P2O THEN MAX=M1
+     IF P2M=P2O THEN IF P1M>P1O THEN MAX=M1
+     GOTO 150
+110  IF PLRNK(MAX)>4 THEN GOTO 115 ELSE GOTO 96
+115  IF PLRNK(MAX)>5 THEN GOTO 120
+117  IF STH(MAX)>STH(M1) THEN MAX=M1
+     GOTO 150
+120  IF PLRNK(MAX)>6 THEN GOTO 125 ELSE GOTO 91
+125  IF PLRNK(MAX)>7 THEN GOTO 130 ELSE GOTO 101
+130  IF PLRNK(MAX)>8 THEN GOTO 135 ELSE GOTO 96
+135  IF PLRNK(MAX)>9 THEN GOTO 96 ELSE GOTO 117
+150  RETURN
+END

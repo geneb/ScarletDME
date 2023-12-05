@@ -1,0 +1,307 @@
+*FLEET1 PGM. TEST IT. NEEDS VARIABLE FILE
+     DIM B(10,10), P(4), TYPE(6), C(6,4)
+     MAT B=''; BUF=''
+     ID='COMMUNICATIONITM'; AM=CHAR(254); VM=CHAR(253); TURN=1
+*  COMBAT RESULTS TABLE
+     C(1,1)=3; C(1,2)=1; C(1,3)=5; C(1,4)=5
+     C(2,1)=5; C(2,2)=3; C(2,3)=5; C(2,4)=5
+     C(3,1)=1; C(3,2)=1; C(3,3)=3; C(3,4)=5
+     C(4,1)=1; C(4,2)=1; C(4,3)=1; C(4,4)=3
+     C(5,1)=2; C(5,2)=2; C(5,3)=2; C(5,4)=2
+     C(6,1)=2; C(6,2)=2; C(6,3)=2; C(6,4)=2
+     TYPE(1)='AIRCRAFT CARRIER'
+     TYPE(2)='CRUISER'
+     TYPE(3)='DESTROYER'
+     TYPE(4)='SUBMARINE'
+     TYPE(5)='AIRCRAFT'
+     TYPE(6)='TORPEDO'
+     LOOP
+       PRINT 'FILENAME':; INPUT FN
+       ERR=0
+       OPEN '',FN ELSE PRINT 'CANT OPEN ':FN; ERR=1
+     UNTIL ERR=0 DO REPEAT
+     LOOP
+       PRINT 'PLAYER NUMBER (1 OR 2)':; INPUT ME
+     UNTIL ME EQ '1' OR ME EQ '2' DO REPEAT
+     PRINT 'INSTRUCTIONS?':; INPUT T
+     IF T EQ 'Y' OR T EQ 'YES' THEN GOSUB 20000
+*******************************************************
+*
+*  SETUP BOARD
+*  ELEMENT FORMAT = WHO DIGIT:KIND DIGIT:AIRCRAFT DIGIT
+*
+*******************************************************
+     IF ME EQ '1' THEN
+       P(1)=2; P(2)=2; P(3)=2; P(4)=4
+       FOR I=1 TO 2
+         FOR J=1 TO 4
+           FOR K=1 TO P(J)
+             LOOP X=RND(10)+1; Y=RND(10)+1 UNTIL B(X,Y) EQ '' DO REPEAT
+             B(X,Y)=I:J
+           NEXT K
+         NEXT J
+       NEXT I
+       GOSUB 5000 ; * PACK
+       GOTO 4000
+     END
+***********************************************************
+*
+*  WAITING TO MOVE
+*
+************************************************************
+2000 *
+     LOOP WHILE 1 DO
+       LOOP
+         PRINT 'HIT RETURN TO FIND OUT IF ENEMY HAS MOVED YET':
+         INPUT T
+         ERR=0
+         READ BUF FROM ID ELSE ERR=1
+         T=FIELD(BUF,AM,1); T2=FIELD(BUF,AM,4)
+         IF T#TURN OR T2#TURN THEN ERR=1
+       UNTIL ERR=0 DO REPEAT
+       I=1
+       LOOP UNTIL EXTRACT(BUF,2,I,0) EQ '' DO
+         PRINT EXTRACT(BUF,2,I,0)
+         I=I+1
+       REPEAT
+       BUF=FIELD(BUF,AM,3)
+       FOR I=1 TO 10
+         FOR J=1 TO 10
+           B(I,J)=FIELD(BUF,VM,(I-1)*10+J)
+         NEXT J
+       NEXT I
+       TURN=TURN+1
+********************************************************
+*
+*  INPUT COMMAND
+*
+*********************************************************
+4000   *
+       GOSUB 6000; * PRINT BOARD
+       GOSUB 10000; * TEST FOR WINNER
+       MSG=''; MOVE=0; *  SETUP FOR INPUT
+       I=1; T=ME:'4'
+       LOOP
+         UNTIL FIELD(BUF,VM,I) EQ T AND RND(3)=1 OR I=100 DO
+         I=I+1
+       REPEAT
+       IF FIELD(BUF,VM,I) EQ T THEN
+         PRINT 'YOUR SUBMARINE HAS BEEN DETECTED AT SECTOR ':I-1
+         MSG=MSG:'ENEMY SUBMARINE DETECTED AT SECTOR ':I-1:VM
+       END
+       LOOP UNTIL MOVE=4 DO
+         PRINT 'COMMAND ':; INPUT COM
+         IF COM EQ 'S' THEN GOSUB 7000 ELSE
+           IF COM EQ 'M' OR COM EQ 'A' OR COM EQ 'T' THEN GOSUB 8000 ELSE
+             IF COM EQ 'D' THEN GOSUB 6000 ELSE
+               PRINT
+               PRINT '   M = MOVE SHIP'
+               PRINT '   A = AIR STRIKE'
+               PRINT '   T = TORPEDO ATTACK'
+               PRINT '   D = DISPLAY'
+               PRINT '   S = SUB DETECTION'
+               PRINT
+             END
+           END
+         END
+       REPEAT
+       GOSUB 5000; *PACK
+       WRITE TURN:AM:MSG:AM:BUF:AM:TURN ON ID
+       TURN=TURN+1
+       GOSUB 10000; * TEST FOR WINNER
+     REPEAT
+********************************
+*
+*  PACK MAT B INTO BUF
+*
+********************************
+5000 *
+     BUF=''
+     FOR I=1 TO 10
+       FOR J=1 TO 10
+         BUF=BUF:VM:B(I,J)
+       NEXT J
+     NEXT I
+     BUF=BUF[2,9999]
+     RETURN
+*********************************************************
+*
+*  PRINT BOARD
+*
+**********************************************************
+6000 *
+     PRINT
+     PRINT '    0 1 2 3 4 5 6 7 8 9'
+     FOR I=1 TO 10
+       PRINT ((I-1)*10) 'L## !':
+       FOR J=1 TO 10
+         T=B(I,J); WHO=T[1,1]; KIND=T[2,1]
+         IF WHO EQ '' THEN PRINT ' ': ELSE
+           IF WHO EQ ME THEN PRINT KIND: ELSE
+             IF KIND EQ '4' THEN PRINT ' ': ELSE
+               PRINT 'X':
+             END
+           END
+         END
+         PRINT '!':
+       NEXT J
+       PRINT
+     NEXT I
+     PRINT
+     RETURN
+******************************************************
+*
+*  SUB DETECTION
+*
+*******************************************************
+7000 *
+     IF MOVE GT 0 THEN
+       PRINT 'SUB DETECTION AVAILABLE ONLY ON INITIAL MOVE.'
+       GOTO 7020
+     END
+     IF ME=1 THEN
+       ME=2
+       GOTO 7010
+     END
+     IF ME=2 THEN ME=1
+7010 T=ME:'4'
+7015 FOR I=1 TO 100
+       IF FIELD(BUF,VM,I) EQ T THEN PRINT 'ENEMY SUB AT ':I-1
+     NEXT I
+     MOVE=4
+     IF ME=1 THEN
+       ME=2
+       GOTO 7020
+     END
+     IF ME=2 THEN ME=1
+7020 RETURN
+******************************************************
+*
+*  MOVE
+*
+*******************************************************
+8000 *
+     PRINT 'FROM AND TO POSITIONS':; INPUT COM2
+     T=FIELD(COM2,',',1)
+     X=INT(T/10)+1; Y=T-INT(T/10)*10+1
+     T2=FIELD(COM2,',',2)
+     X2=INT(T2/10)+1; Y2=T2-INT(T2/10)*10+1
+* 'CASE' STATEMENT UNTIL END OF THIS SECTION
+     IF T<0!T>99!T2<0!T2>99!NUM(T)=0!NUM(T2)=0 THEN
+       PRINT 'FORMAT IS   NUMBER,NUMBER   WHERE NUMBER IS'
+       PRINT 'SECTOR NUMBER BETWEEN 0 AND 99 INCLUSIVE.'
+       RETURN
+     END
+     RANGE=ABS(X-X2)+ABS(Y-Y2); WHO=B(X,Y)[1,1]
+     KIND=B(X,Y)[2,1]; KIND2=B(X2,Y2)[2,1]
+     IF WHO NE ME THEN
+       PRINT 'YOU DO NOT HAVE A SHIP IN THAT SECTOR'
+       RETURN
+     END
+     IF COM EQ 'M' THEN MAXRANGE=1
+     IF COM EQ 'A' THEN IF KIND EQ '1' THEN MAXRANGE=6; KIND=5 ELSE
+       PRINT 'THAT SECTOR IS NOT OCCUPIED BY AN AIRCRAFT CARRIER'
+       RETURN
+     END
+     IF COM EQ 'T' THEN IF KIND EQ '4' THEN MAXRANGE=6; KIND=6 ELSE
+       PRINT 'THAT SECTOR IS NOT OCCUPIED BY A SUBMARINE'
+       RETURN
+     END
+     IF RANGE>MAXRANGE THEN
+       PRINT 'MAXIMUM RANGE IS ':MAXRANGE:' SECTORS'
+       RETURN
+     END
+*  MOVE IS TO BE MADE
+     MOVE=MOVE+1
+     IF KIND2 EQ '' THEN
+       IF COM EQ 'M' THEN
+         B(X2,Y2)=B(X,Y); B(X,Y)=''
+         PRINT 'YOUR ':TYPE(KIND):' HAS MOVED INTO AN UNOCCUPIED SECTOR.'
+         RETURN
+       END ELSE
+         PRINT 'TARGET SECTOR IS UNOCCUPIED'
+         RETURN
+       END
+     END
+     PRINT 'YOUR ':TYPE(KIND):' HAS ATTACKED ENEMY ':TYPE(KIND2):'.'
+     MSG=MSG:'ENEMY ':TYPE(KIND):' HAS ATTACKED YOUR ':TYPE(KIND2)
+     MSG=MSG:' IN SECTOR ':T2:'.':VM
+     TEMP=RND(7); TEMP2=C(KIND,KIND2)
+     IF COM EQ 'M' THEN
+       IF TEMP=TEMP2 THEN
+         B(X2,Y2)=''; B(X,Y)=''
+         PRINT '*** BOTH DESTROYED ***'
+         MSG=MSG:'*** BOTH DESTROYED ***':VM
+         RETURN
+       END
+       IF TEMP<TEMP2 THEN
+         B(X2,Y2)=B(X,Y); B(X,Y)=''
+         PRINT '*** ENEMY ':TYPE(KIND2):' DESTROYED ***'
+         MSG=MSG:'*** YOUR ':TYPE(KIND2):' DESTROYED ***':VM
+         RETURN
+       END
+       B(X,Y)=''
+       PRINT '*** YOUR ':TYPE(KIND):' DESTROYED ***'
+       MSG=MSG:'*** ENEMY ':TYPE(KIND):' DESTROYED ***':VM
+       RETURN
+     END ELSE
+       IF TEMP<=TEMP2 THEN
+         B(X2,Y2)=''
+         PRINT '*** ENEMY ':TYPE(KIND2):' DESTROYED ***'
+         MSG=MSG:'*** YOUR ':TYPE(KIND2):' DESTROYED ***':VM
+         RETURN
+       END ELSE
+         PRINT '*** ATTACK FAILED ***'
+         MSG=MSG:'*** ATTACK FAILED ***':VM
+         RETURN
+       END
+     END
+************************************************************
+*
+*  TEST FOR WINNER
+*
+************************************************************
+10000*
+     T=INDEX(BUF,'11',1)+INDEX(BUF,'12',1)+INDEX(BUF,'13',1)+INDEX(BUF,'14',1)
+     T2=INDEX(BUF,'21',1)+INDEX(BUF,'22',1)+INDEX(BUF,'23',1)+INDEX(BUF,'24',1)
+     IF T#0 AND T2#0 THEN RETURN
+     IF T=0 AND T2=0 THEN PRINT '***** TIE GAME!!!! *****'; STOP
+     IF (T=0 AND ME EQ '1') OR (T2=0 AND ME NE '1') THEN
+       PRINT '***** YOU LOSE!!!! *****'
+     END ELSE
+       PRINT '***** YOU WIN!!!! *****'
+     END
+     STOP
+**************************************************
+*
+*  INSTRUCTIONS
+*
+**************************************************
+20000*
+     PRINT
+     PRINT "THE OBJECT OF 'NAVY' IS TO DESTROY ALL THE ENEMY'S SHIPS."
+     PRINT 'YOUR BATTLE FORCE CONSISTS OF:'
+     PRINT '  KIND           BOARD REPRESENTATION'
+     PRINT '2 AIRCRAFT CARRIERS  1'
+     PRINT '2 CRUISERS           2'
+     PRINT '4 DESTROYERS         3'
+     PRINT '4 SUBMARINES         4'
+     PRINT '   A SHIP ATTACKS AN ENEMY SHIP BY MOVING INTO THE SAME'
+     PRINT 'SQUARE AS THE ENEMY SHIP.  THE WINNER OF THE ENGAGEMENT'
+     PRINT 'IS DECIDED BY THE COMBAT RESULTS TABLE.'
+     PRINT 'ALL SHIPS MOVE 1 SQUARE AT A TIME.'
+     PRINT '   AN AIR STRIKE CAN BE LAUNCHED FROM AN AIRCRAFT CARRIER'
+     PRINT 'AGAINST ANOTHER SHIP.  AIRCRAFT HAVE A RANGE OF 4 SECTORS.'
+     PRINT 'AN AIRCRAFT HAS A 2 OUT OF 7 CHANCE AGAINST A SHIP.'
+     PRINT '   A TORPEDO ATTACK CAN BE LAUNCHED FROM A SUBMARINE'
+     PRINT 'AGAINST ANOTHER SHIP.  TORPEDOS HAVE A RANGE OF 1 SECTOR.'
+     PRINT 'A TORPEDO HAS A 2 OUT OF 7 CHANCE AGAINST A SHIP.'
+     PRINT 'THE BOARD IS DIVIDED INTO 100 SECTORS NUMBERED FROM 0 TO 99.'
+     PRINT 'ENEMY SURFACE VESSELS ARE REPRESENTED BY AN X ON THE BOARD.'
+     PRINT 'ENEMY SUBMARINES ARE NOT DISPLAYED BUT ARE RANDOMLY'
+     PRINT 'DETECTED FROM TIME TO TIME.'
+     PRINT 'HIT RETURN TO CONTINUE':
+     INPUT T
+     PRINT
+     RETURN
+END

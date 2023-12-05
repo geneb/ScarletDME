@@ -1,0 +1,394 @@
+*  WUMPUS
+*     CREATED AS A DEMONSTRATION PROGRAM FOR
+*       INTERNATIONAL TIMESHARING CORPORATION
+*
+*     REVISED BY CRAIG SHUCKER
+*       OCTOBER, 1975
+*
+************************************************************
+     DIM LOC(6),PATH(5),LINK(20,3),SAV(2)
+     PRINTER OFF
+     BELL=CHAR(7)
+     ERASE=@(-1)
+     PROMPT BELL
+************************************************************
+*
+*  LINK DATA
+*
+************************************************************
+     LINK(1,1)=2
+     LINK(1,2)=5
+     LINK(1,3)=6
+     LINK(2,1)=1
+     LINK(2,2)=3
+     LINK(2,3)=7
+     LINK(3,1)=2
+     LINK(3,2)=4
+     LINK(3,3)=8
+     LINK(4,1)=3
+     LINK(4,2)=5
+     LINK(4,3)=9
+     LINK(5,1)=1
+     LINK(5,2)=4
+     LINK(5,3)=10
+     LINK(6,1)=1
+     LINK(6,2)=11
+     LINK(6,3)=12
+     LINK(7,1)=2
+     LINK(7,2)=12
+     LINK(7,3)=13
+     LINK(8,1)=3
+     LINK(8,2)=13
+     LINK(8,3)=14
+     LINK(9,1)=4
+     LINK(9,2)=14
+     LINK(9,3)=15
+     LINK(10,1)=5
+     LINK(10,2)=11
+     LINK(10,3)=15
+     LINK(11,1)=6
+     LINK(11,2)=10
+     LINK(11,3)=16
+     LINK(12,1)=6
+     LINK(12,2)=7
+     LINK(12,3)=17
+     LINK(13,1)=7
+     LINK(13,2)=8
+     LINK(13,3)=18
+     LINK(14,1)=8
+     LINK(14,2)=9
+     LINK(14,3)=19
+     LINK(15,1)=9
+     LINK(15,2)=10
+     LINK(15,3)=20
+     LINK(16,1)=11
+     LINK(16,2)=17
+     LINK(16,3)=20
+     LINK(17,1)=12
+     LINK(17,2)=16
+     LINK(17,3)=18
+     LINK(18,1)=13
+     LINK(18,2)=17
+     LINK(18,3)=19
+     LINK(19,1)=14
+     LINK(19,2)=18
+     LINK(19,3)=20
+     LINK(20,1)=15
+     LINK(20,2)=16
+     LINK(20,3)=19
+1000 PRINT ERASE:@(20,10):"DO YOU WANT INSTRUCTIONS? ": ; INPUT INS
+     PRINT ERASE:@(0,0):
+     IF INS="NO" OR INS="N" THEN GOTO 1100
+     IF INS<>"YES" AND INS<>"Y" THEN GOTO 1000
+************************************************************
+*
+*  INSTRUCTIONS
+*
+************************************************************
+     PRINT @(19,3):"WELCOME TO 'HUNT THE WUMPUS'":
+     PRINT @(12,6):
+     PRINT "THE WUMPUS LIVE IN A CAVE OF 20 ROOMS.":
+     PRINT @(12,8):
+     PRINT "EACH ROOM HAS 3 TUNNELS LEADING TO OTHER ROOMS.":
+     PRINT @(12,10):
+     PRINT "LOOK AT AN ICOSAHEDRON TO SEE HOW THIS WORKS.":
+     PRINT @(12,12):
+     PRINT "(IF YOU DON'T KNOW WHAT AN ICOSAHEDRON IS, ASK SOMEONE.":
+     PRINT @(12,14):
+     PRINT " THEY PROBABLY WON'T KNOW EITHER.)":
+     PRINT @(12,18):
+     GOSUB 2200
+     PRINT @(24,2):"H A Z A R D S":
+     PRINT @(23,3):STR("-",15):
+     PRINT @(10,5):"BOTTOMLESS PITS:":
+     PRINT @(15,7):
+     PRINT "TWO ROOMS HAVE BOTTOMLESS PITS IN THEM.":
+     PRINT @(15,9):
+     PRINT "IF YOU GO THERE, YOU FALL INTO THE PIT (AND LOSE!)":
+     PRINT @(10,11):"SUPER BATS:":
+     PRINT @(15,13):
+     PRINT "TWO OTHER ROOMS HAVE SUPER BATS.":
+     PRINT @(15,15):
+     PRINT "IF YOU GO THERE, A BAT GRABS YOU AND":
+     PRINT @(15,17):
+     PRINT "TAKES YOU TO SOME ROOM AT RANDOM":
+     PRINT @(15,19):
+     PRINT "(WHICH COULD BE TROUBLESOME)."
+     PRINT @(17,22):
+     GOSUB 2200
+     PRINT @(26,2):"W U M P U S":
+     PRINT @(25,3):STR("-",13):
+     PRINT @(6,5):
+     PRINT "THE WUMPUS IS NOT BOTHERED BY THE HAZARDS":
+     PRINT @(6,7):
+     PRINT "(HE HAS SUCKER FEET AND IS TOO BIG FOR A BAT TO LIFT).":
+     PRINT @(6,9):
+     PRINT "USUALLY HE IS ASLEEP.":
+     PRINT @(6,11):
+     PRINT "TWO THINGS WAKE HIM UP:":
+     PRINT @(6,13):
+     PRINT "YOUR ENTERING HIS ROOM OR YOUR SHOOTIN AN ARROW.":
+     PRINT @(6,15):
+     PRINT "IF THE WUMPUS WAKES, HE MOVES (PROB.=.75) ONE ROOM":
+     PRINT @(6,17):
+     PRINT "OR STAYS STILL (PROB.=.25).":
+     PRINT @(6,19):
+     PRINT "AFTER THAT, IF HE IS WHERE YOU ARE, HE EATS YOU UP ":
+     PRINT "(AND YOU LOSE!)":
+     PRINT @(6,22):
+     GOSUB 2200
+     PRINT @(24,1):"Y O U":
+     PRINT @(23,2):STR("-",7):
+     PRINT @(5,4):
+     PRINT "EACH TURN YOU MAY MOVE OR SHOOT A CROOKED ARROW.":
+     PRINT @(5,6):
+     PRINT "MOVING: YOU CAN MOVE ONE ROOM (I.E. THRU ONE TUNNEL).":
+     PRINT @(5,8):
+     PRINT "SHOOTING: YOU HAVE 5 ARROWS.  YOU LOSE WHEN YOU RUN OUT.":
+     PRINT @(5,10):
+     PRINT "EACH ARROW CAN GO FROM 1 TO 5 ROOMS.":
+     PRINT @(5,12):
+     PRINT "YOU AIM BY TELLING THE COMPUTER TO WHICH ROOMS YOU WANT ":
+     PRINT "THE ARROW TO GO.":
+     PRINT @(5,14):
+     PRINT "IT THE ARROW CAN'T GO THAT WAY (I.E. NO TUNNEL)":
+     PRINT @(5,16):
+     PRINT "IT MOVES AT RANDOM TO THE NEXT ROOM.":
+     PRINT @(5,18):
+     PRINT "IF THE ARROW HITS THE WUMPUS, YOU WIN.":
+     PRINT @(5,20):
+     PRINT "IF THE ARROW HITS YOU, YOU LOSE.":
+     PRINT @(14,22):
+     GOSUB 2200
+     PRINT @(26,4):"W A R N I N G S":
+     PRINT @(25,5):STR("-",17):
+     PRINT @(14,7):
+     PRINT "WHEN YOU ARE ONE MOVE AWAY FROM THE WUMPUS OR A HAZARD":
+     PRINT @(14,9):
+     PRINT "THE COMPUTER SAYS:":
+     PRINT @(24,11):"WUMPUS: 'I SMELL A WUMPUS!'":
+     PRINT @(24,13):"BAT: 'BATS NEARBY'":
+     PRINT @(24,15):"PIT: 'I FEEL A DRAFT'":
+     PRINT @(20,18):
+     GOSUB 2200
+************************************************************
+*
+*    SET HAZARDS
+*
+************************************************************
+1100 LOC(1)=1+RND(20)
+     FOR I=2 TO 6
+       LOC(I)=1+RND(20)
+       FOR J=1 TO I-1
+         IF LOC(I)=LOC(J) THEN
+           LOC(I)=1+RND(20)
+           J=0
+         END
+       NEXT J
+     NEXT I
+     FOR I=1 TO 2
+       SAV(I)=LOC(I)
+     NEXT I
+     WHERE=LOC(1)
+************************************************************
+*
+*    SET ARROW COUNT
+*
+************************************************************
+1200 ARROWS=5
+************************************************************
+*
+*    START
+*
+************************************************************
+     PRINT ERASE:@(0,0):
+     PRINT "HUNT THE WUMPUS"
+     STATUS=0
+************************************************************
+*
+*    PRINT MESSAGES
+*
+************************************************************
+1300 PRINT
+     FOR I=2 TO 6
+       FOR J=1 TO 3
+         IF LINK(LOC(1),J)=LOC(I) THEN
+           IF I=2 THEN PRINT "I SMELL A WUMPUS!" ELSE
+             IF I=3 OR I=4 THEN PRINT "I FEEL A DRAFT" ELSE
+               IF I=5 OR I=6 THEN PRINT "BATS NEARBY"
+             END
+           END
+         END
+       NEXT J
+     NEXT I
+     PRINT
+     PRINT "YOU ARE IN ROOM ":LOC(1)
+     PRINT "TUNNELS LEAD TO ":LINK(WHERE,1):" ":LINK(WHERE,2):
+     PRINT " ":LINK(WHERE,3)
+************************************************************
+*
+*    SHOOT OR MOVE
+*
+************************************************************
+     PRINT
+     PRINT
+1400 PRINT   "S(HOOT) OR M(OVE)? ": ; INPUT ANS
+     IF ANS="SHOOT" OR ANS="S" THEN GOSUB 1900 ELSE
+       IF ANS="MOVE" OR ANS="M" THEN GOSUB 1700 ELSE
+         GOTO 1400
+       END
+     END
+***********************************************************
+*
+*    STATUS CHECK
+*
+***********************************************************
+     IF STATUS=0 THEN GOTO 1300
+     IF STATUS<1 THEN
+       PRINT
+       PRINT "HA HA HA - YOU LOSE!"
+     END ELSE
+       PRINT
+       PRINT "HEE HEE HEE - THE WUMPUS'LL GETCHA NEXT TIME!!"
+     END
+************************************************************
+*
+*      PLAY AGAIN?
+*
+************************************************************
+     PRINT
+     PRINT
+1500 PRINT   "DO YOU WANT TO TRY AGAIN? ": ; INPUT ANS
+     IF ANS="NO" OR ANS="N" THEN
+       PRINT ERASE:@(0,0):
+       STOP
+     END
+     IF ANS<>"YES" AND ANS<>"Y" THEN GOTO 1500
+1600 PRINT   "SAME SET-UP? ": ; INPUT ANS
+     IF ANS="YES" OR ANS="Y" THEN
+       LOC(1)=SAV(1)
+       LOC(2)=SAV(2)
+       WHERE=LOC(1)
+       GOTO 1200
+     END
+     IF ANS="NO" OR ANS="N" THEN GOTO 1100
+     GOTO 1600
+************************************************************
+*
+*      MOVE
+*
+************************************************************
+*
+************************************************************
+*
+*      ASK FOR NEW LOCATION
+*
+************************************************************
+1700 PRINT   "WHERE TO? ": ; INPUT WHERE
+     IF NOT(NUM(WHERE)) THEN GOTO 1700
+     IF WHERE<1 OR WHERE>20 OR WHERE=LOC(1) THEN GOTO 1700
+     FOR K=1 TO 3
+       IF LINK(LOC(1),K)=WHERE THEN GOTO 1800
+     NEXT K
+     PRINT "NOT POSSIBLE"
+     GOTO 1700
+************************************************************
+*
+*      CHECK FOR HAZARDS
+*
+************************************************************
+1800 LOC(1)=WHERE
+     IF WHERE=LOC(2) THEN
+       PRINT "...OOPS! BUMPED A WUMPUS!"
+       GOSUB 2000
+     END
+     IF STATUS<>0 THEN RETURN
+     IF WHERE=LOC(3) OR WHERE=LOC(4) THEN
+       PRINT "YYYIIIIEEEE . . . FELL IN PIT"
+       STATUS=-1
+       RETURN
+     END
+     IF WHERE=LOC(5) OR WHERE=LOC(6) THEN
+       PRINT "ZAP--SUPER BAT SNATCH!  ELSEWHEREVILLE FOR YOU!"
+       WHERE=1+RND(20)
+       GOTO 1800
+     END
+     RETURN
+************************************************************
+*
+*      SHOOT
+*
+************************************************************
+1900 ARROWS=ARROWS-1
+     WHIZ=LOC(1)
+************************************************************
+*
+*      ASK FOR DISTANCE OF SHOT
+*
+************************************************************
+1950PRINT     "NO. OF ROOMS (1-5)? ": ; INPUT NUMROOMS
+     IF NOT(NUM(NUMROOMS)) THEN GOTO 1950
+     IF NUMROOMS<1 OR NUMROOMS>5 THEN GOTO 1950
+************************************************************
+*
+*      ASK FOR PATH OF ARROW
+*
+************************************************************
+     FOR I=1 TO NUMROOMS
+       PRINT "ROOM # ? ": ; INPUT PATH(I)
+     NEXT I
+************************************************************
+*
+*      DETERMINE EFFECT OF SHOT
+*
+************************************************************
+     FOR I=1 TO NUMROOMS
+       FOR J=1 TO 3
+         IF LINK(WHIZ,J)=PATH(I) THEN J=5;WHIZ=PATH(I)
+       NEXT J
+       IF J<5 THEN
+         WHIZ=LINK(WHIZ,1+RND(3))
+       END
+       IF WHIZ=LOC(2) THEN
+         PRINT "AHA! y YOU GOT THE WUMPUS!"
+         STATUS=1
+         RETURN
+       END
+       IF WHIZ=LOC(1) THEN
+         PRINT "OUCH!  ARROW GOT YOU!"
+         STATUS=-1
+         RETURN
+       END
+     NEXT I
+     PRINT "MISSED"
+     GOSUB 2000
+     IF STATUS=0 AND ARROWS <=0 THEN
+       PRINT "AW, TOO BAD!  THAT WAS YOUR LAST ARROW!"
+       PRINT "TSK TSK TSK - WUMPUS GOT YOU!"
+       STATUS=-1
+     END
+     RETURN
+************************************************************
+*
+*      WUMPUS CHECK
+*
+************************************************************
+2000 I=RND(4)
+     IF I<>0 THEN
+       LOC(2)=LINK(LOC(2),I)
+     END
+     IF LOC(2)=LOC(1) THEN
+       PRINT "TSK TSK TSK - WUMPUS GOT YOU!"
+       STATUS=-1
+       RETURN
+     END
+     RETURN
+***********************************************************
+*
+*      CONTINUE INSTRUCTIONS
+*
+***********************************************************
+2200 PRINT   "PRESS <RETURN> TO CONTINUE": ; INPUT Z
+     PRINT ERASE:@(0,0):
+     RETURN
+END

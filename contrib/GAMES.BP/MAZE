@@ -1,0 +1,201 @@
+* GENERATES MAZES
+*BASIC
+      CLEAR
+      PRINT @(-1):"IS THIS AN ADDS 2020 TERMINAL (Y/N)":
+      INPUT ADDS,1
+      ADDS = (ADDS = "Y")
+      DIM SH(15), T(36,21), L(2), AA(2,400)
+      T0 = TIME()
+*     SH(1) ="@`" ; SH(2) =""   ; SH(3) ="@`" ; SH(4) ="D"
+*     SH(5) ="``" ; SH(6) ="D"  ; SH(7) ="P`" ; SH(8) ="d"
+*     SH(9) ="H`" ; SH(10)="d"  ; SH(11)="X`" ; SH(12)="L"
+*     SH(13)="\`" ; SH(14)="T"  ; SH(15)="h`"
+      IF ADDS THEN
+        PRINT @(-1):CHAR(27):"`0":
+        SH(1) ="ZZ" ; SH(2) ="V"  ; SH(3) ="RZ" ; SH(4) ="Z"
+        SH(5) ="ZZ" ; SH(6) ="S"  ; SH(7) ="PZ" ; SH(8) ="V"
+        SH(9) ="QZ" ; SH(10)="V"  ; SH(11)="TZ" ; SH(12)="U"
+        SH(13)="]Z" ; SH(14)="Y"  ; SH(15)="PZ"
+        FOR I = 1 TO 15
+          IF LEN(SH(I)) = 1 THEN
+            SH(I) = CHAR(27):"H":SH(I)
+          END ELSE
+            SH(I) = CHAR(27):"H":SH(I)[1,1]:CHAR(27):"H":SH(I)[2,1]
+          END
+        NEXT I
+        GON="" ; GOF=""
+      END ELSE
+        SH(1) ="._" ; SH(2) ="."  ; SH(3) ="._" ; SH(4) ="."
+        SH(5) ="._" ; SH(6) ="."  ; SH(7) ="._" ; SH(8) ="!"
+        SH(9) ="!_" ; SH(10)="!"  ; SH(11)="!_" ; SH(12)="!"
+        SH(13)="!_" ; SH(14)="!"  ; SH(15)="!_"
+        GON="" ; GOF=""
+      END
+      AM=CHAR(254) ; VM=CHAR(253)
+      X=20 ; Y=20 ; EENA=50
+      S=1+RND(X) ; E=1+RND(X)
+ NTIMES = 1
+* OPEN '','LORRIE' ELSE PRINT 'LORRIE NOT OPENING' ; STOP
+        FNAME='THE-MAZE'
+FOR QUID=1 TO NTIMES
+1     MAT T = 0: AM:0:VM:0: AM:0:VM:0: AM:0:VM:0: AM:0:VM:0
+      PRINT CHAR(12):QUID:' OF ':NTIMES:
+      L(1)=1 ; L(2)=1
+      FOR N=2 TO X
+         IF N-1<=S THEN
+            T(N,2)=REPLACE(T(N,2),3,0,0,1:VM:L(1))
+            AA(1,L(1)) = N : AM : 1 : AM : 2 ; L(1)=L(1)+1
+           END ELSE
+            T(N,2)=REPLACE(T(N,2),3,0,0,2:VM:L(2))
+            AA(2,L(2)) = N : AM : 1 : AM : 2 ; L(2)=L(2)+1
+           END
+         IF N-1<=E THEN
+            T(N,Y)=REPLACE(T(N,Y),5,0,0,1:VM:L(1))
+            AA(1,L(1)) = N : AM : (Y+1) : AM : 8 ; L(1)=L(1)+1
+           END ELSE
+            T(N,Y)=REPLACE(T(N,Y),5,0,0,2:VM:L(2))
+            AA(2,L(2)) = N : AM : (Y+1) : AM : 8 ; L(2)=L(2)+1
+           END
+      NEXT N
+*
+*
+      FOR N = 2 TO Y
+         T(2,N)=REPLACE(T(2,N),2,0,0,1:VM:L(1))
+         AA(1,L(1)) = 1 : AM : N : AM : 1 ; L(1)=L(1)+1
+         T(X,N)=REPLACE(T(X,N),4,0,0,2:VM:L(2))
+         AA(2,L(2)) = (X+1) : AM : N : AM : 4 ; L(2)=L(2)+1
+      NEXT N
+*
+*
+      FOR N =2 TO X+1
+         IF N-1#S THEN
+            T(N,1) = REPLACE(T(N,1),1,0,0,4+EXTRACT(T(N,1),1,0,0))
+            W=N ; V=1 ; GOSUB 1900
+            T(N-1,1) = REPLACE(T(N-1,1),1,0,0,1+EXTRACT(T(N-1,1),1,0,0))
+            W=N-1 ; V=1 ; GOSUB 1900
+           END
+         IF N-1#E THEN
+            T(N,Y+1) = REPLACE(T(N,Y+1),1,0,0,4+EXTRACT(T(N,Y+1),1,0,0))
+            W=N ; V=Y+1 ; GOSUB 1900
+            T(N-1,Y+1) = REPLACE(T(N-1,Y+1),1,0,0,1+EXTRACT(T(N-1,Y+1),1,0,0))
+            W=N-1 ; V=Y+1 ; GOSUB 1900
+           END
+      NEXT N
+*
+*
+      FOR N = 2 TO Y+1
+         T(1,N) = REPLACE(T(1,N),1,0,0,8+EXTRACT(T(1,N),1,0,0))
+         W=1 ; V=N ; GOSUB 1900
+         T(1,N-1) = REPLACE(T(1,N-1),1,0,0,2+EXTRACT(T(1,N-1),1,0,0))
+         W=1 ; V=N-1 ; GOSUB 1900
+         T(X+1,N) = REPLACE(T(X+1,N),1,0,0,8+EXTRACT(T(X+1,N),1,0,0))
+         W=X+1 ; V=N ; GOSUB 1900
+         T(X+1,N-1)=REPLACE(T(X+1,N-1),1,0,0,2+EXTRACT(T(X+1,N-1),1,0,0))
+         W=X+1 ; V=N-1 ; GOSUB 1900
+      NEXT N
+*
+*
+      B = 1
+1410  P = 1+RND(L(B)-1)
+      DOPE=1+RND(EENA)
+1411     W=EXTRACT(AA(B,P),1,0,0) ; V=EXTRACT(AA(B,P),2,0,0)
+         CC=EXTRACT(AA(B,P),3,0,0)
+         T(W,V) =REPLACE(T(W,V),1,0,0,CC+EXTRACT(T(W,V),1,0,0)) ; GOSUB 1900
+         IF CC = 1 THEN CC=4 ; CA=W+1 ; CB=V ELSE
+         IF CC = 2 THEN CC=8 ; CA=W ; CB=V+1 ELSE
+         IF CC = 4 THEN CC=1 ; CA=W-1 ; CB=V ELSE
+         IF CC = 8 THEN CC=2 ; CA=W ; CB=V-1
+         END
+         END
+         END
+      T(CA,CB) = REPLACE(T(CA,CB),1,0,0,CC+EXTRACT(T(CA,CB),1,0,0))
+         W=CA ; V=CB ; GOSUB 1900
+*
+*
+      FOR DD=2 TO 5
+         IF EXTRACT(T(CA,CB),DD,2,0)#0 THEN
+            Z=EXTRACT(T(CA,CB),DD,2,0)
+            B1=EXTRACT(T(CA,CB),DD,1,0)
+            AA(B1,Z)=AA(B1,L(B1)-1)
+            DA=EXTRACT(AA(B1,Z),1,0,0)
+            DB=EXTRACT(AA(B1,Z),2,0,0)
+            DC=EXTRACT(AA(B1,Z),3,0,0)
+            IF DC=1 THEN T(DA+1,DB)=REPLACE(T(DA+1,DB),2,2,0,Z)
+            IF DC=2 THEN T(DA,DB+1)=REPLACE(T(DA,DB+1),3,2,0,Z)
+            IF DC=4 THEN T(DA-1,DB)=REPLACE(T(DA-1,DB),4,2,0,Z)
+            IF DC=8 THEN T(DA,DB-1)=REPLACE(T(DA,DB-1),5,2,0,Z)
+            L(B1)=L(B1)-1
+           END
+      NEXT DD
+*
+*
+      DD=L(B)
+      IF CA=X+1 OR EXTRACT(T(CA+1,CB),1,0,0)<>0 ELSE
+         T(CA+1,CB)=REPLACE(T(CA+1,CB),2,0,0,B:VM:L(B))
+         AA(B,L(B))=CA:AM:CB:AM:1 ; L(B)=L(B)+1
+         END
+      IF CA=1 OR EXTRACT(T(CA-1,CB),1,0,0)<>0 ELSE
+         T(CA-1,CB)=REPLACE(T(CA-1,CB),4,0,0,B:VM:L(B))
+         AA(B,L(B))= CA:AM:CB:AM:4 ; L(B)=L(B)+1
+         END
+      IF CB=Y+1 OR EXTRACT(T(CA,CB+1),1,0,0)<>0 ELSE
+         T(CA,CB+1)=REPLACE(T(CA,CB+1),3,0,0,B:VM:L(B))
+         AA(B,L(B))= CA:AM:CB:AM:2 ; L(B)=L(B)+1
+         END
+      IF CB=1 OR EXTRACT(T(CA,CB-1),1,0,0)<>0 ELSE
+         T(CA,CB-1)=REPLACE(T(CA,CB-1),5,0,0,B:VM:L(B))
+         AA(B,L(B))= CA:AM:CB:AM:8 ; L(B)=L(B)+1
+         END
+      IF DOPE#1 AND DD#L(B) THEN
+         DOPE=DOPE-1 ; P=RND(L(B)-DD)+DD ; GOTO 1411
+        END
+*
+*
+      B=-1*(B-1.5)+1.5
+     IF L(B)<>1 THEN GOTO 1410
+      B=-1*(B-1.5)+1.5
+     IF L(B)<>1 THEN GOTO 1410
+      PRINT @(1,23):
+*
+*
+HORIZ='??'
+BLANK='A@'
+VERTL='A@'
+SPAEC='@@'
+* GOTO 1892
+*PRINTER ON
+1800  FOR M=1 TO Y+1
+          OUTSTR=CHAR(5)
+      FOR N=1 TO X+1
+1810  IF REM(EXTRACT(T(N,M),1,0,0),2)=1 THEN OUTSTR=OUTSTR:HORIZ ELSE OUTSTR=OUTSTR:BLANK
+      NEXT N
+*     PRINT OUTSTR
+*     MAZE=MAZE:AM:OUTSTR
+*      WRITEV OUTSTR ON FNAME,-1
+           OUTSTR=CHAR(5)
+      FOR N=1 TO X+1
+1830  IF REM(EXTRACT(T(N,M),1,0,0),4)>1 THEN OUTSTR=OUTSTR:VERTL ELSE OUTSTR=OUTSTR:SPAEC
+     NEXT N
+*               FOR NNN=1 TO 11
+*               PRINT OUTSTR
+*  NEXT NNN
+*               MAZE=MAZE:AM:OUTSTR
+*            WRITEV OUTSTR ON FNAME,-1
+     NEXT M
+1892 S=E
+E=RND(X)+1
+NEXT QUID
+    T1 = TIME()
+PRINT T1-T0:" SECONDS REAL TIME":
+IF ADDS THEN PRINT CHAR(27):"`1":
+STOP
+*
+*
+1900    PRINT @(2*W,V):GON:SH(EXTRACT(T(W,V),1,0,0)):GOF: ; RETURN
+*
+*
+2000   FOR N=1 TO X+1 ; PRINT EXTRACT(T(N,M),1,0,0):' ': ; NEXT N ; PRINT
+       RETURN
+*
+*
+       END

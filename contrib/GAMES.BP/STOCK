@@ -1,0 +1,136 @@
+*STOCK MARKET GAME
+     DIM BID(7), OBID(7), STK(7), BUY(7)
+     DIM VAL(7), CHNG(7), SHAR(7), SELL(7)
+     STK(1)="EVOLUTION";  STK(2)="A.D.P.";  STK(3)="DATAPOINT"
+     STK(4)="DATA GENERAL";  STK(5)="APPLIED DIGITAL"
+     STK(6)="PRIME";  STK(7)="DATA PRODUCTS"
+     SA="0.00"
+     ZERO=0
+     SL="0.00";  BY="0.00"
+     MAT VAL="0.00";  MAT OBID=0
+     MAT CHNG="0";  MAT SHAR=0
+     MSG="THE GAME IS OVER"
+     ERASE=SPACE(45)
+     MT=0;  DAY=1
+     PSE="800.00";  CA="10000.00"
+     PSECH=0
+     FOR N=1 TO 7
+       BID(N)=RND(81)+20
+       OBID(N)=BID(N)
+     NEXT N
+***  PRINT INSTRUCTIONS
+     PRINT @(-1)
+     PRINT @(20,10):"STOCKMARKET"
+     PRINT @(15,15):"DO YOU WANT INSTRUCTIONS?":;INPUT INST
+     IF INST="Y" THEN GOSUB 900
+***  PRINT HEADINGS
+     PRINT @(-1)
+     PRINT @(27,2):"PORTLAND STOCK EXCHANGE"
+     PRINT @(8,4):"STOCK":@(25):"SHARES":@(40):"VALUE":@(49):"BID"
+     PRINT @(56,4):"CHANGE":@(66):"BUY":@(73):"SELL"
+     PRINT @(8,5):"-----":@(25):"------":@(40):"-----":@(49):"---"
+     PRINT @(56,5):"------":@(66):"---":@(73):"----"
+     FOR CHRT=1 TO 9
+       PRINT @(47,13+CHRT):'!'
+     NEXT CHRT
+     PRINT @(48,22):'------------------------------'
+100  FOR N=1 TO 7
+       PRINT @(1,N+5):N:".":@(4):STK(N):@(21):"!":@(64):"!":@(79):"!"
+     NEXT N
+***  PRINT SHARES, VALUE, BID, CHANGE
+     IF DAY=1 THEN GOTO 160
+     MT=(RND(13)-5)*1.07
+     ZS=MT/100
+     SL=0;  BY=0
+     SA=0
+     FOR R=1 TO 7
+       OBID(R)=BID(R)
+       BID(R)=BID(R)+(BID(R)*ZS*RND(4))
+       SHAR(R)=SHAR(R)+BUY(R)-SELL(R)
+       CHNG(R)=BID(R)-OBID(R)
+       VAL(R)=SHAR(R)*BID(R)
+       SL=(SELL(R)*OBID(R))+SL
+       BY=(BUY(R)*OBID(R))+BY
+       SA=SA+VAL(R)
+     NEXT R
+     OPSE=PSE
+     PSE=PSE+MT
+     PSECH=PSE-OPSE
+160  FOR T=1 TO 7
+       PRINT @(24,T+5):SHAR(T) "R#####":@(32):VAL(T) "R$,2#############"
+       PRINT @(47,T+5):BID(T) "R2######":@(56):CHNG(T) "R2######"
+     NEXT T
+     PRINT @(10,14):"STOCK EXCHANGE AVERAGE: ":PSE
+     PRINT @(10,16):"CHANGE: ":PSECH:@(33):"DAY: ":DAY
+     CA=CA+SL-BY
+     TA=SA+CA
+     PRINT @(10,18):"STOCK ASSETS = ":SA "R$,2###############"
+     PRINT @(10,19):"CASH ASSETS  = ":CA "R$,2###############"
+     PRINT @(10,20):"TOTAL ASSETS = ":TA "R$,2###############"
+     STAV=INT(PSE/10)
+     STZ=86-STAV
+     IF STAV GT 85 THEN STZ=1
+     IF STAV LT 78 THEN STZ=8
+     PRINT @(47+DAY,13+STZ):'*'
+     IF DAY=30 THEN
+       PRINT @(10,22):MSG
+       STOP
+     END
+***  INPUT BUY AND SELL, AND INCR DAY
+     COST=0;  REV=0
+200  FOR X=1 TO 7
+       PRINT @(1,22):ERASE
+210    PRINT @(66,X+5):;INPUT BUY(X)
+       IF CA LE ZERO THEN
+         PRINT @(1,22):'NO PURCHASES PERMITTED'
+         GOTO 220;  END
+       PRINT @(1,21):ERASE:@(1,22):ERASE
+       COST=COST+BUY(X)*BID(X)
+       CASH=CA-COST+REV
+       IF CASH LE ZERO THEN
+         PRINT @(1,21):'INSUFFICIENT CASH - TRY SMALLER'
+         PRINT @(1,22):"PURCHASE OR SALE OF STOCK."
+         COST=COST-BUY(X)*BID(X)
+         GOTO 210;  END
+       IF BUY(X) GE 1 AND BUY(X) LE 200 THEN GOTO 222
+220    BUY(X)=0
+       PRINT @(66,X+5):"    "
+       PRINT @(66,X+5):BUY(X) "R###"
+       GOTO 225
+222    SELL(X)=0
+       PRINT @(66,X+5):"    "
+       PRINT @(66,X+5):BUY(X) "R###"
+       PRINT @(73,X+5):"    "
+       PRINT @(73,X+5):SELL(X) "R###"
+       GOTO 230
+225    PRINT @(73,X+5):;INPUT SELL(X)
+       IF SELL(X) GT SHAR(X) THEN
+         PRINT @(1,22):ERASE
+         PRINT @(1,22):"YOU DO NOT HAVE ":SELL(X):" ":STK(X):" SHARES TO SELL"
+         GOTO 225;   END
+       REV=REV+SELL(X)*BID(X)
+       IF SHAR(X) LT 1 THEN
+         SELL(X)=0
+         GOTO 227
+       END
+       IF SELL(X) GE 1 AND SELL(X) LE 200 THEN GOTO 227
+       SELL(X)=0
+227    PRINT @(73,X+5):"    "
+       PRINT @(73,X+5):SELL(X) "R###"
+     230  NEXT X
+     DAY=DAY+1
+     GOTO 100
+     STOP
+900  ***
+     PRINT @(-1)
+     PRINT @(30.2):"STOCKMARKET"
+     PRINT @(33,3):"BOB 7"
+     PRINT @(12,5):"THE OBJECT OF 'STOCKMARKET' IS TO COMPLETE THE"
+     PRINT @(10):"30-DAY BUSINESS CYCLE WITH TOTAL ASSETS GREATER"
+     PRINT @(10):"THAN THE $10,000.00 TOTAL ASSETS WHICH YOU START"
+     PRINT @(10):"WITH.   INDIVIDUAL BUY OR SELL TRANSACTIONS HAVE"
+     PRINT @(10):"A LIMIT OF 200 SHARES.  REMEMBER THE MARKET GOES"
+     PRINT @(10):"DOWN AS WELL AS UP."
+     PRINT @(10,15):"HIT RETURN TO CONTINUE":;INPUT JUNK
+     RETURN
+END
