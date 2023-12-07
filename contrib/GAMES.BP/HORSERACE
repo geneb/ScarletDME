@@ -1,0 +1,442 @@
+*  HORSE RACE
+*
+*  CREATED BY CRAIG SHUCKER
+*     CALIFORNIA STATE UNIVERSITY, LONG BEACH
+*     FEBRUARY, 1975
+*
+*   MODIFIED TO INCLUDE PLAYER NAMES BY TED ELLISON
+*  REVISED BY CRAIG SHUCKER
+*     AUGUST, 1975
+*
+************************************************************
+     DIM MONEY(6),MYHORSE(6),IBET(6),TICKET(6)
+     DIM HNAME(55),H(10),LINEUP(10),PLACE(3)
+     DIM PLAYER(6)
+     PRINTER OFF
+     ERASE=@(-1)
+     XLINE=SPACE(79)
+     BELL=CHAR(7)
+     NIL=CHAR(0)
+     PROMPT BELL
+     PRINT ERASE
+************************************************************
+*
+*  PRINT INTRODUCTION
+*
+************************************************************
+     PRINT @(19,4):"WELCOME TO GREEN MEADOWS RACE TRACK"
+     PRINT @(24,6):"--WHERE HORSES GO FASTER--"
+     PRINT @(27,8):"(SO DOES YOUR MONEY)"
+     PAUSE=3
+     GOSUB 2800
+     PRINT ERASE
+************************************************************
+*
+*  DETERMINE NUMBER OF PLAYERS
+*
+************************************************************
+1000 PRINT ERASE
+     PRINT @(30,10):"HOW MANY PLAYERS? ":
+     INPUT NUMPLA
+     IF NOT(NUM(NUMPLA)) THEN
+       PRINT @(32,12):"ILLEGAL INPUT"
+       PAUSE=3
+       GOSUB 2800
+       GOTO 1000
+     END
+     IF NUMPLA<1 OR NUMPLA>6 THEN
+       PRINT @(32,12):"MUST BE 1 THRU 6"
+       PAUSE=2
+       GOSUB 2800
+       GOTO 1000
+     END
+     NP=NUMPLA
+************************************************************
+*
+*  GIVE EACH PLAYER 100 DOLLARS
+*
+************************************************************
+     FOR I=1 TO NUMPLA
+       MONEY(I)=100
+     NEXT I
+     FOR I=NUMPLA+1 TO 6
+       MONEY(I)=0
+     NEXT I
+     FOR I=1 TO NUMPLA
+       PRINT @(30,10):"ENTER PLAYER ":I:"'S  NAME             ":@(53,10):
+       INPUT NAME
+       NAME = NAME:STR(' ',10-LEN(NAME))
+       PLAYER(I) = NAME
+       PRINT @(7,I-1):PLAYER(I):"  HAS    $100"
+     NEXT I
+************************************************************
+*
+*  HORSE NAMES
+*
+************************************************************
+     HNAME(1)="WHITE LADY"
+     HNAME(2)="KENTUCKY JEWEL"
+     HNAME(3)="TRUE BLUE"
+     HNAME(4)="HAPPY DAYS"
+     HNAME(5)="SEABREEZE"
+     HNAME(6)="AVENGER"
+     HNAME(7)="BLACK JACK"
+     HNAME(8)="BEETLE BOMB"
+     HNAME(9)="DEUCES WILD"
+     HNAME(10)="WHISTLIN' DIXIE"
+     HNAME(11)="WINDSONG"
+     HNAME(12)="STUMBLING BUFFALO"
+     HNAME(13)="GLORY B."
+     HNAME(14)="PANDEMONIUM"
+     HNAME(15)="SHADES OF GRAY"
+     HNAME(16)="SOUTHERN COMFORT"
+     HNAME(17)="R.S.V.P."
+     HNAME(18)="TOP DOG"
+     HNAME(19)="EBB TIDE"
+     HNAME(20)="TRUMP CARD"
+     HNAME(21)="GRAND SLAM"
+     HNAME(22)="JIGSAW"
+     HNAME(23)="NORTHERN LIGHTS"
+     HNAME(24)="PERISCOPE"
+     HNAME(25)="WILD SPIRIT"
+     HNAME(26)="SHOOTING STAR"
+     HNAME(27)="RELATIVE MOTION"
+     HNAME(28)="CAPITAL GAIN"
+     HNAME(29)="STYMIE"
+     HNAME(30)="CHECKMATE"
+     HNAME(31)="SWEET CHARITY"
+     HNAME(32)="BLANK CHECK"
+     HNAME(33)="PEEK'S PIKE"
+     HNAME(34)="LUCKY LADY"
+     HNAME(35)="CALCULATED RISK"
+     HNAME(36)="RIVER BOAT"
+     HNAME(37)="BLUE BELLE"
+     HNAME(38)="SUNSHINE BRANDY"
+     HNAME(39)="PURPLE HAZE"
+     HNAME(40)="HANDSOME DEVIL"
+     HNAME(41)="SUMMER SUNSET"
+     HNAME(42)="HARVEST MOON"
+     HNAME(43)="HOT CHOCOLATE"
+     HNAME(44)="STRAWBERRY JAM"
+     HNAME(45)="HIGH ROLLER"
+     HNAME(46)="FORTUOSITY"
+     HNAME(47)="TAYLOR MAID"
+     HNAME(48)="FOURTH DIMENSION"
+     HNAME(49)="HANG ON TIGHT"
+     HNAME(50)="WHIPLASH"
+     HNAME(51)="JASMINE JET"
+     HNAME(52)="PENNY ANTE"
+     HNAME(53)="PEPPERMINT TWIST"
+     HNAME(54)="TRIED AND TRUE"
+     HNAME(55)="POST NO BILLS"
+***********************************************************
+*
+*  SET UP TRACK
+*
+***********************************************************
+     STARTCOUNT = 0
+1100 STARTCOUNT = STARTCOUNT + 1
+     IF STARTCOUNT = 1 THEN
+       PRINT @(30,10):SPACE(35)
+       PRINT @(1,6):"#":SPACE(6):"HORSE":
+       PRINT SPACE(7):"START":SPACE(48):"FINISH":
+       PRINT @(1,7):"- ":STR("-",16):" ":STR("-",5):
+       PRINT SPACE(48):STR("-",6)
+       FOR I=0 TO 9
+         PRINT @(1,I+8):I
+       NEXT I
+     END
+     FOR I=0 TO 9
+       PRINT @(55,I+8):"                    *    ":
+     NEXT I
+************************************************************
+*
+*  SELECT HORSES FOR THIS RACE
+*
+************************************************************
+1200 FOR I=1 TO 10
+       R=RND(55)+1
+       FOR J=1 TO I-1
+         IF R=LINEUP(J) THEN GOTO 1200
+       NEXT J
+       LINEUP(I)=R
+     NEXT I
+     FOR I=1 TO 10
+       HORSE =HNAME(LINEUP(I))
+       HORSE = HORSE:STR(' ',18-LEN(HORSE)):I-1
+       PRINT @(3,I+7):HORSE
+     NEXT I
+************************************************************
+*
+*  PLAYERS PLACE THEIR BETS
+*
+************************************************************
+     IF STARTCOUNT = 1 THEN
+       PRINT @(28,19):STR("-",14)
+       PRINT @(28,20):"WHAT HORSE NUMBER? ":
+       PRINT @(28,21):"HOW MUCH? ":
+       PRINT @(28,22):"W(IN), P(LACE), OR S(HOW)? ":
+     END
+     PRINT @(47,20):"   ":
+     PRINT @(38,21):"   ":
+     PRINT @(54,22):"   ":
+     FOR I=1 TO NUMPLA
+       IF MONEY(I)=0 THEN GOTO 1700
+       PRINT @(28,18):"YOUR BET ":PLAYER(I)
+************************************************************
+*
+*  PLAYER SELECTS A HORSE
+*
+************************************************************
+       XXLINE = STR(' ',19)
+1300   PRINT @(47,20):'   ':@(47,20):
+       INPUT X
+       IF X = "R" THEN GOTO 9998
+       IF NOT(NUM(X)) THEN
+         PRINT @(60,20):"ILLEGAL INPUT"
+         PAUSE=3
+         GOSUB 2800
+         PRINT @(60,20):XXLINE
+         GOTO 1300
+       END
+       IF X<0 OR X>9 THEN
+         PRINT @(60,20):"MUST BE 0 THRU 9"
+         PAUSE=3
+         GOSUB 2800
+         PRINT @(60,20):XXLINE
+         GOTO 1300
+       END
+       MYHORSE(I)=X
+************************************************************
+*
+*  PLAYER BETS AN AMOUNT
+*
+************************************************************
+1400   PRINT @(38,21):'     ':@(38,21):
+       INPUT X
+       IF X MATCH "'-'0N" THEN
+         PRINT @(43,21):"JUST WHAT DO YOU THINK YOU'RE DOING?"
+         PAUSE=3
+         GOSUB 2800
+         PRINT @(43,21):SPACE(36)
+         GOTO 1400
+       END
+       IF NOT(NUM(X)) THEN
+         PRINT @(60,21):"ILLEGAL INPUT"
+         PAUSE=3
+         GOSUB 2800
+         PRINT @(60,21):XXLINE
+         GOTO 1400
+       END
+       IF X>1000 THEN
+         PRINT @(43,21):"TRACK LIMIT IS $1000"
+         PAUSE=3
+         GOSUB 2800
+         PRINT @(43,21):SPACE(20)
+         GOTO 1400
+       END
+       IF X>MONEY(I) THEN
+         PRINT @(43,21):"YOU DON'T HAVE THAT MUCH MONEY"
+         PAUSE=2
+         GOSUB 2800
+         PRINT @(43,21):SPACE(30)
+         GOTO 1400
+       END
+       IBET(I)=X
+       MONEY(I)=MONEY(I)-X
+************************************************************
+*
+*  PLAYER CHOOSES A "WIN", "PLACE" OR "SHOW" TICKET
+*
+************************************************************
+1500   PRINT @(54,22):'   ':@(54,22):
+       INPUT X
+       IF X[1,1]<>"W" AND X[1,1]<>"P" AND X[1,1]<>"S" THEN
+         PRINT @(60,22):"ILLEGAL INPUT"
+         PAUSE=3
+         GOSUB 2800
+         PRINT @(60,22):XXLINE
+         GOTO 1500
+       END
+       TICKET(I)=X[1,1]
+*************************************************************
+*
+*      THIS ROUTINE MAKES A RANDOM SARCASTIC REMARK
+*
+**************************************************************
+       RANDOM = RND(9)
+       RANDOMX = RANDOM +1
+       IF RANDOMX = 10 THEN RANDOMX = 0
+       IF MYHORSE(I) = RANDOM  OR MYHORSE(I) = RANDOMX THEN
+         X = RND(6)+1
+         IF X = 1 THEN PRINT @(23,8+MYHORSE(I)):"F A T   C H A N C E  !":
+         IF X = 2 THEN PRINT @(23,8+MYHORSE(I)):"S T U P I D     B E T !"
+         IF X = 3 THEN PRINT @(23,8+MYHORSE(I)):"H O P E   Y O U   D I D N ' T   B E T   IT   A L L "
+         IF X = 4 THEN PRINT @(23,8+MYHORSE(I)):"G L U E - F A C T O R Y   R E J E C T"
+         IF X = 5 THEN PRINT @(23,8+MYHORSE(I)):"T E A R   U P   Y O U R   T I C K E T ,   F O O L"
+         PAUSE = 6
+         GOSUB 2800
+         PRINT @(23,8+MYHORSE(I)):SPACE(50):
+       END
+************************************************************
+*
+*  PLAYER'S BET IS DISPLAYED
+*
+************************************************************
+       PRINT @(36,I-1):"BET  ":
+       PRINT IBET(I) "R$####":
+       IF TICKET(I)="W" THEN PRINT "  TO WIN"; GOTO 1600
+       IF TICKET(I)="P" THEN PRINT "  TO PLACE"; GOTO 1600
+       PRINT "  TO SHOW"
+1600   PRINT @(59,I-1):"ON HORSE #":MYHORSE(I)
+       PRINT @(25,I-1):MONEY(I) "R$#####":
+1700 NEXT I
+************************************************************
+*
+*  PREPARATIONS FOR THE RACE
+*
+************************************************************
+     FOR I=1 TO 10
+       H(I)=21
+     NEXT I
+     FOR I=1 TO 3
+       PLACE(I)=-1
+     NEXT I
+     ICOUNT=1
+************************************************************
+*
+*  THE RACE
+*
+************************************************************
+     PRINT BELL:@(28,18):"THEY'RE OFF!               ":BELL
+1900 R=RND(10)
+     IF R=PLACE(1)-1 OR R=PLACE(2)-1 THEN GOTO 1900
+     PRINT @(H(R+1),R+8):" ":R:
+     H(R+1)=H(R+1)+1
+     IF H(R+1)<75 THEN GOTO 1900
+     PLACE(ICOUNT)=R+1
+     PRINT @(77,R+8):
+     IF ICOUNT=1 THEN PRINT "1ST"; GOTO 2000
+     IF ICOUNT=2 THEN PRINT "2ND"; GOTO 2000
+     PRINT "3RD"
+2000 ICOUNT=ICOUNT+1
+     IF ICOUNT<4 THEN GOTO 1900
+     PRINT @(28,18):SPACE(30):
+************************************************************
+*
+*  CHECK ALL BETS
+*
+************************************************************
+     FOR I=1 TO NUMPLA
+       IF IBET(I)=0 THEN GOTO 2300
+************************************************************
+*
+*  SEE IF PLAYER HAS A WINNING TICKET
+*
+************************************************************
+       IF TICKET(I)="S" THEN
+         MULT=2
+         IF MYHORSE(I)=PLACE(1)-1 THEN GOTO 2100
+         IF MYHORSE(I)=PLACE(2)-1 THEN GOTO 2100
+         IF MYHORSE(I)=PLACE(3)-1 THEN GOTO 2100
+         GOTO 2200
+       END
+       IF TICKET(I)="P" THEN
+         MULT=4
+         IF MYHORSE(I)=PLACE(1)-1 THEN GOTO 2100
+         IF MYHORSE(I)=PLACE(2)-1 THEN GOTO 2100
+         GOTO 2200
+       END
+       IF TICKET(I)="W" THEN
+         MULT=6
+         IF MYHORSE(I)=PLACE(1)-1 THEN GOTO 2100
+         GOTO 2200
+       END
+************************************************************
+*
+*  PAY OFF A WINNING TICKET
+*
+************************************************************
+2100   MONEY(I)=MONEY(I)+MULT*IBET(I)
+       PRINT @(25,I-1):MONEY(I) "R$#####"
+************************************************************
+*
+*  CLEAR BET FROM SCREEN AND MEMORY
+*
+************************************************************
+2200   PRINT @(36,I-1):SPACE(44)
+       IBET(I)=0
+************************************************************
+*
+*  CHECK IF A PLAYER WENT BROKE
+*
+************************************************************
+       IF MONEY(I)=0 THEN
+         FOR J=1 TO 3
+           PRINT @(7,I-1):"BROKE      ":BELL
+           PAUSE=1
+           GOSUB 2800
+           PRINT @(7,I-1):PLAYER(I):
+         NEXT J
+         PRINT @(1,I-1):XLINE:
+         NP=NP-1
+         IF NP<1 THEN GOTO 2900
+       END
+***********************************************************
+*
+*  CHECK IF A PLAYER HAS MORE THAN $99999
+*
+***********************************************************
+       IF MONEY(I)>99999 THEN
+         PRINT @(33,I-1):SPACE(47)
+         PRINT @(33,I-1):"WHICH IS TOO MUCH FOR US TO HANDLE--BYE!"
+         PAUSE=4
+         GOSUB 2800
+         PRINT @(1,I-1):XLINE:
+         MONEY(I)=0
+         NP=NP-1
+         IF NP<1 THEN GOTO 2900
+       END
+2300 NEXT I
+***********************************************************
+*
+*  DETERMINE WHETHER TO CONTINUE
+*
+***********************************************************
+2400 GOTO 1100
+***********************************************************
+*
+*  SELECT PLAYER WHO WISHES TO QUIT
+*
+***********************************************************
+************************************************************
+**
+**  PLAYER IS DROPPED
+**
+***********************************************************
+2700 MONEY(Z)=0
+***********************************************************
+*
+*  PAUSE TIMING SUBROUTINE
+*
+***********************************************************
+2800 T=TIME()
+2850 IF PAUSE>TIME()-T THEN GOTO 2850
+     RETURN
+***********************************************************
+*
+*  CLOSE RACE TRACK
+*
+***********************************************************
+2900 PRINT ERASE
+     PRINT @(32,11):"RACE TRACK CLOSED":@(0,1):
+     STOP
+9998 ***   REFRESH THE SCREEN *****
+     PRINT ERASE
+     FOR I = 1 TO NUMPLA
+       PRINT @(7,I-1):PLAYER(I):"  HAS":
+       PRINT @(25,I-1):MONEY(I) "R$#####":
+     NEXT I
+     STARTCOUNT = 0
+     GOTO 1100
+END

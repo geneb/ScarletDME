@@ -1,0 +1,163 @@
+*** HANGMAN
+***     THIS PROGRAM IS A GAME IN WHICH THE COMPUTER TRIES TO CREATE
+***     A HANGED MAN BEFORE THE PLAYER CAN GUESS THE WORD SELECTED BY
+***     THE COMPUTER.
+***
+***     WRITTEN BY    - KEYSTONE COMPUTER ASSC. INC.
+***     PROGRAMMER    - WALTER P JOHNSON
+***     DATE WRITTEN  - 25 JULY 1975
+***
+     NUL=CHAR(0)
+     FF=@(-1)
+     BELL=CHAR(7)
+     CL=NUL CAT NUL CAT FF CAT NUL CAT NUL
+     A.CHAR="ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+     CNTER=0
+     PNUM=0
+     CNUM=0
+     CNT=0
+     TOTAL=0
+     OPEN 'DICT','HANGMAN-FILE' ELSE PRINT "THIS GAME CAN'T BE PLAYED WITHOUT THE HANGMAN-FILE!"; ABORT
+     SELECT
+998  READNEXT ID ELSE PRINT "YOU HAVE NO ITEMS IN THE HANGMAN FILE, I QUIT ";ABORT
+     IF ID = "DL/ID" THEN GOTO 998
+     PRINT CL:"THE COMPUTER WOULD LIKE TO KNOW WHO IS PLAYING!  ":
+     INPUT NAME
+     IF NAME EQ '' THEN NAME='YOO-YOO'
+5    *
+     PRINT CL:@(0,3):"IN WHICH CATAGORY DO YOU WISH TO BE CHALLANGED?"
+     PRINT
+     PRINT "     A   DATA PROCESSING"
+     PRINT "     B   SPORTS"
+     PRINT "     C   STATES & CITIES"
+     PRINT "     D   HISTORY"
+     PRINT; PRINT "ENTER BY LETTER..":
+     INPUT A
+     IF A EQ 'END' THEN GOTO 999
+     IF A EQ 'A' THEN
+       TYPE='DATA PROCESSING'
+       C=0
+       GOTO 15
+     END
+     IF A EQ 'B' THEN
+       TYPE='SPORTS'
+       C=100
+       GOTO 15
+     END
+     IF A EQ 'C' THEN
+       TYPE='STATES & CITIES'
+       C=200
+       GOTO 15
+     END
+     IF A EQ 'D' THEN
+       TYPE='HISTORY'
+       C=300
+       GOTO 15
+     END
+     GOTO 5
+15   *
+     TOTAL=0
+     B=RND(99)+1
+     B=B+C
+16   *
+     B=STR('0',3-LEN(B)) CAT B
+     READ WORD FROM B ELSE GOTO 15
+     IF WORD EQ '' THEN GOTO 15
+     WD=FIELD(WORD,' ',1)
+     IF WD EQ WORD THEN D=STR('-',LEN(WORD)); GOTO 17
+     D=STR('-',LEN(WD)) CAT ' '
+     WD=FIELD(WORD,' ',2)
+     D=D CAT STR('-',LEN(WD))
+     TOTAL=1
+     WD=FIELD(WORD,' ',3)
+     IF WD NE '' THEN
+       D=D CAT ' ' CAT STR('-',LEN(WD))
+       TOTAL=TOTAL+1
+     END
+17   *
+     ALPHA=A.CHAR
+     PRINT CL:@(3,1):TYPE:@(30,1):"H  A  N  G  M  A  N":@(60,4):"NUMBER OF WINS":@(59,5):STR('-',16):@(38,6):"I----":
+     PRINT @(60,6):"COMPUTER....":CNUM:@(38,7):"I   I":@(60,7):NAME:STR('.',12-LEN(NAME)):PNUM:
+     PRINT @(3,8):D:@(38,8):"I   I":@(38,9):"I":@(38,10):"I":@(38,11):"I":@(38,12):"I":@(38,13):"I":
+     PRINT @(0,14):"ENTER A LETTER..":@(38,14):"I":@(38,15):"I":@(33,16):STR('=',33):
+     PRINT @(2,21):"A B C D E F G H I J K L M N O P Q R S T U V W X Y Z":
+     PRINT @(16,14):
+     LETTER=''
+     ERR=0
+20   *
+     TI=TIME()
+     INPUT A
+     IF LEN(A)#1 THEN GOTO 25
+     TIM=TIME()
+     TM=TIM-TI
+22   *
+     TM=TM-20
+     IF TM>0 THEN ERR=ERR+1; GOTO 22
+     FOR I=1 TO LEN(LETTER)
+       IF LETTER[I,1] EQ A THEN GOTO 25
+     NEXT I
+     LETTER=LETTER CAT A
+     FOR I=1 TO 26
+       IF ALPHA[I,1] EQ A THEN
+         PRINT @(I*2,21):' ':
+         GOTO 30
+       END
+     NEXT I
+25   *
+     FOR J=1 TO 5
+       PRINT BELL
+       PRINT @(60,22):"INVALID LETTER":
+       FOR M=1 TO 25
+         CNTER=CNTER+1
+         CNTER=CNTER-1
+       NEXT M
+       PRINT @(60,22):"              ":
+     NEXT J
+     PRINT @(16,14):"   ":@(16,14):
+     GOTO 20
+30   *
+     CNT=0
+     FOR K=1 TO LEN(WORD)
+       IF WORD[K,1] EQ A THEN
+         PRINT @(2+K,7):A:
+         CNT=CNT+1
+       END
+     NEXT K
+     IF CNT=0 THEN GOTO 40
+     TOTAL=TOTAL+CNT
+     IF TOTAL=LEN(WORD) THEN
+       PNUM=PNUM+1
+       PRINT @(0,22):"DO YOU WISH TO TRY YOUR LUCK AGAIN!!!  Y/N ":
+       INPUT A
+       IF A EQ 'N' THEN GOTO 999
+       GOTO 5
+     END
+     PRINT @(16,14):"   ":@(16,14):
+     GOTO 20
+40   *
+     ERR=ERR+1
+     PRINT @(43,8):"( )":
+     IF ERR=1 THEN GOTO 45
+     PRINT @(44,9):"Y":
+     PRINT @(44,10):"I":
+     PRINT @(44,11):"I":
+     IF ERR=2 THEN GOTO 45
+     PRINT @(45,10):"\":
+     IF ERR=3 THEN GOTO 45
+     PRINT @(43,10):"/":
+     IF ERR=4 THEN GOTO 45
+     PRINT @(45,12):"\":@(46,13):"\":
+     IF ERR=5 THEN GOTO 45
+     PRINT @(43,12):"/":@(42,13):"/":
+     GOTO 55
+45   *
+     PRINT @(16,14):"   ":@(16,14):
+     GOTO 20
+55   *
+     CNUM=CNUM+1
+     PRINT @(15,19):BELL:"YOU LOST !!!!!":@(43,19):"THE WORD WAS - ":WORD:
+     PRINT @(0,22):"DO YOU WISH TO TRY YOUR LUCK AGAIN?  Y/N  ":
+     INPUT A
+     IF A NE 'N' THEN GOTO 5
+999  *
+END

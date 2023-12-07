@@ -1,0 +1,24 @@
+*   FIND PYTHAGOREAN TRIPLES
+     PRINT @(-1)
+     PRINT
+     PRINT
+     PRINT 'SOME PYTHAGOREAN TRIPLES ARE:'
+     PRINT
+     FOR A=1 TO 40
+       FOR B=1 TO A-1
+         CC=A*A+B*B
+         GOSUB 50
+         IF C # INT(C) THEN GOTO 25
+         PRINT B,A,C
+25     NEXT B
+     NEXT A
+     STOP
+*   SQUARE ROOT SUBROUTINE
+50   C=CC/2
+     FOR I=1 TO 20
+       X=(C+CC/C)/2
+       IF C = X THEN RETURN
+       C=X
+     NEXT I
+     RETURN
+END

@@ -1,0 +1,25 @@
+*TRIG PGM
+     PROMPT CHAR(7)
+     PI=3.1416
+100  PRINT
+     PRINT "ANGLE (DEGREES): ":
+     INPUT ANGLE
+     X=ANGLE*PI/180
+     XSQ=X*X
+     COSX=1
+     FOR I=30 TO 2 STEP -2
+       COSX=COSX*(-XSQ/(I*(I-1)))+1
+     NEXT I
+     SINX=X
+     FOR I=31 TO 3 STEP -2
+       SINX=SINX*(-XSQ/(I*(I-1)))+X
+     NEXT I
+     PRINT
+     PRINT "COS ":ANGLE:" = ":COSX
+     PRINT "SIN ":ANGLE:" = ":SINX
+     PRINT ANGLE:" DEGREES = ":X:" RADIANS"
+     PRINT
+     PRINT
+     PRINT "AGAIN? ": ; INPUT ANS
+     IF ANS="Y" OR ANS="YES" THEN GOTO 100
+END

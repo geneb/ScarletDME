@@ -1,0 +1,124 @@
+      *MOO
+      DIM N(4),G(4)
+      TOT.SCORE = 0
+      NUM.ROUNDS = 0
+      ***
+      *** DISPLAY THE DIRECTIONS
+      ***
+      PROMPT = "?"
+      PRINT @(-1)
+      PRINT "HELLO HUMAN, THIS IS MOO, THE TALKING COW"
+      PRINT "DO YOU WANT ME TO TELL YOU THE RULES":
+      INPUT YN
+      IF YN = "" OR YN[1,1] = "N" THEN GOTO 100
+      PRINT
+      PRINT "OKAY, HUMAN - THE PRINCIPLE IS SIMPLE:  I SHALL GENERATE A FOUR"
+      PRINT "DIGIT RANDOM NUMBER IN WHICH ALL THE DIGITS ARE DIFFERENT, AND"
+      PRINT "YOU WILL TRY TO GUESS IT."
+      PRINT
+      PRINT "I SHALL ASK FOR YOUR GUESS, AND THEN TELL YOU THE FOLLOWING"
+      PRINT "INFORMATION:  THE NUMBER OF DIGITS THAT ARE IN THE CORRECT POSITION"
+      PRINT "AND LABEL IT BULLS; AND THE NUMBER OF DIGITS THAT ARE CONTAINED IN"
+      PRINT "MY NUMBER BUT ARE NOT IN THE CORRECT POSITION AND LABEL IT COWS."
+      PRINT
+      PRINT "FOR EXAMPLE:"
+      PRINT "   IF MY NUMBER IS  7091"
+      PRINT "   AND YOU GUESS    7213"
+      PRINT "   I SHALL TELL YOU:      1 BULL, 1 COW."
+      PRINT
+      PRINT "I SHALL ALLOW YOU 15 TRIES.  IF THIS NUMBER IS TOO HARD FOR YOU,"
+      PRINT "GUESS 0000 AND I SHALL SHOW IT TO YOU (AND SET YOUR SCORE TO 15 FOR"
+      PRINT "A PENALTY).  TO MAKE THINGS INTERESTING, I SHALL GIVE YOU A RUNNING"
+      PRINT "AVERAGE AT THE END OF EACH ROUND."
+      PRINT
+      PRINT "GOOD LUCK, HUMAN."
+      ***
+      *** GO GENERATE A NEW NUMBER
+      ***
+100   GOSUB 800
+      PRINT
+      PRINT
+      PRINT @(0,23):
+      PROMPT ":"
+      ***
+      *** GIVE THE HUMAN 15 TRIES
+      ***
+      FOR TRY = 1 TO 15
+         ***
+         *** PROMPT FOR INPUT
+         ***
+200      PRINT "YOUR GUESS, HUMAN":
+         INPUT GUESS
+         IF GUESS = "END" THEN STOP
+         IF GUESS MATCHES "4N" THEN NULL ELSE
+            PRINT "HUMAN, YOU MUST ENTER A 4 DIGIT NUMBER!"
+            GOTO 200
+         END
+         IF GUESS = 0000 THEN
+            TRY = 15
+            PRINT "THE NUMBER WAS: ":NUMBER
+            GOTO 210
+         END
+         FOR I = 1 TO 4
+            G(I) = GUESS[I,1]
+         NEXT I
+         FOR I = 1 TO 4
+            FOR J = 1 TO 4
+               IF J # I AND G(I) = G(J) THEN
+                  PRINT "HUMAN, ALL OF THE DIGITS MUST BE DIFFERENT!"
+                  GOTO 200
+               END
+            NEXT J
+         NEXT I
+         BULLS = 0
+         COWS = 0
+         FOR I = 1 TO 4
+            IF G(I) = N(I) THEN
+               BULLS = BULLS + 1
+               GOTO 205
+            END
+            FOR J = 1 TO 4
+               IF G(I) = N(J) THEN
+                  COWS = COWS + 1
+                  GOTO 205
+               END
+            NEXT J
+205      NEXT I
+         IF BULLS = 4 THEN
+            PRINT @(25,22): "4 BULLS!"
+            GOTO 210
+         END
+         PRINT @(25,22): BULLS:" BULL":
+         IF BULLS # 1 THEN PRINT "S":
+         PRINT ", ":COWS:" COW":
+         IF COWS # 1 THEN PRINT "S":
+         PRINT "."
+      NEXT TRY
+      TRY = 15
+210   TOT.SCORE = TOT.SCORE + TRY
+      NUM.ROUNDS = NUM.ROUNDS + 1
+      PRINT "YOU TOOK ":TRY: " TRIES, AND YOUR AVERAGE IS ":
+      PRINT TOT.SCORE / NUM.ROUNDS "L2######"
+      PRINT
+      PRINT "DO YOU WANT TO PLAY AGAIN":
+      PROMPT "?"
+      INPUT ANS
+      IF ANS = "END" OR ANS[1,1] = "N" THEN STOP
+      PROMPT ":"
+      GOTO 100
+      ***
+      *** GENERATE A 4 DIGIT RADOM NUMBER
+      ***
+800   MAT N = ""
+      NUMBER = ""
+      FOR I = 1 TO 4
+810      DIGIT = RND(10)
+         FOR J = 1 TO I
+            IF N(J) = DIGIT THEN GOTO 810
+         NEXT J
+         N(I) = DIGIT
+         NUMBER = NUMBER:DIGIT
+      NEXT I
+      RETURN
+
+

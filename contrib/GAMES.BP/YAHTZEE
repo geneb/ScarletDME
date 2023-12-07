@@ -1,0 +1,373 @@
+*YAHTZEE GAME - ORGINAL. USES YHS FILE. CGO
+     OPEN '','YHS' TO F.HISTORY ELSE ABORT 201,'YHS'
+     PRINT @(8,21):"ENTER YOUR FIRST NAME : ":;INPUT NAME
+     IF NAME='' THEN PRINT 'NO DESIRE TO PLAY. AT TCL' ; STOP
+     ERASE=@(-1);  PRINT ERASE
+10   *
+     DIM T(10), NM(20)
+     SPC2="  " ; SPC4="    " ;  WS=1
+     SPC4="    "
+     SPC5=SPACE(5);   SPC20=SPACE(20)
+     N1=SPC4;     FH=SPC4;     CHNC=SPC4
+     N2=SPC4;     K3=SPC4;     BONUS=SPC4
+     N3=SPC4;     K4=SPC4;     SUM1=SPC4
+     N4=SPC4;     SS=SPC4;     SUM2=SPC4
+     N5=SPC4;     LS=SPC4;     SUM3=SPC4
+     N6=SPC4;     YAH=SPC4;    TOTAL=SPC4
+     RR=SPC5;     RR1=SPC4;    RR2=SPC4
+     RR3=SPC4;    RR4=SPC4;    RR5=SPC4
+     ROLL=SPC2;   TYPE=SPC2;   PLAY=SPC2
+     A=SPC2;      B=SPC2;      C=SPC2
+     D=SPC2;      E=SPC2;      L=SPC2
+     ZERO="00000";              RESULT=ZERO
+     FOUND=0
+15   *
+     GOSUB 1500
+     FOR Q=1 TO 10; *** RECALL OLD SCORES
+       READ T(Q) FROM F.HISTORY,Q ELSE T(Q)=0 ; PRINT ''
+       PRINT @(52,Q+5):T(Q)
+       READ NM(Q+10) FROM F.HISTORY,Q+10 ELSE NM(Q+10)=0 ; PRINT ''
+       PRINT @(58,Q+5):NM(Q+10)
+     NEXT Q
+     PRINT ERASE
+20   PRINT
+     PRINT @(27,2):"*** YAHTZEE ***"
+     PRINT
+     PRINT " TYPE   HAND   SCORE     TYPE   HAND":
+     PRINT "     SCORE":@(63):"PLAY"
+     PRINT " ----   ----   -----     ----   ----":
+     PRINT "     -----":@(63):"----"
+     PRINT "  1 :  ONES   =":@(27,6):"7 : FULL-HOUSE =":
+     PRINT @(53):"DICE NO.  : 1 2 3 4 5":@(65,7):"- - - - -"
+     PRINT "  2 :  TWOS   =":@(27,8):"8 : 3 OF A KIND=":@(53):"RESULT    :"
+     PRINT
+     PRINT "  3 :  THREES =":@(27,10):"9 : 4 OF A KIND=":@(53):"ROLLS LEFT: "
+     PRINT
+     PRINT "  4 :  FOURS  =":@(26,12):"10 : SMALL STRT ="
+     PRINT
+     PRINT "  5 :  FIVES  =":@(26,14):"11 : LARGE STRT ="
+     PRINT
+     PRINT "  6 :  SIXES  =":@(26,16):"12 : YAHTZEE    ="
+     PRINT @(7,18):"SUM1   = ":@(26):"13 : CHANCE     ="
+     PRINT @(7,20):"BONUS  = ":@(31):"SUM3       ="
+     PRINT @(7,22):"SUM2   = ":@(31):"TOTAL      ="
+100  RL="2"
+     PRINT @(65,10):RL
+     PRINT @(53,18):SPC20
+     PRINT @(53,19):SPC20
+     PRINT @(53,20):SPC20
+130  A=1+RND(6)
+     B=1+RND(6)
+     C=1+RND(6)
+     D=1+RND(6)
+     E=1+RND(6)
+     PRINT @(64,8):" ":A:" ":B:" ":C:" ":D:" ":E
+     PRINT @(53,15):"DICE NO."
+150  PRINT @(53,16):"TO REROLL : ":;INPUT RR
+151  IF RR = "18" THEN RL=RL+2;GOTO 300
+200  RR1=INDEX(RR,"1",1)
+     IF RR1=0 THEN GOTO 220
+210  A=1+RND(6)
+     PRINT @(65,8):A
+220  RR2=INDEX(RR,"2",1)
+     IF RR2=0 THEN GOTO 240 ELSE
+230    B=1+RND(6)
+       PRINT @(67,8):B
+240    RR3=INDEX(RR,"3",1)
+       IF RR3=0 THEN GOTO 260 ELSE GOTO 250
+250    C=1+RND(6)
+       PRINT @(69,8):C
+260    RR4=INDEX(RR,"4",1)
+       IF RR4=0 THEN GOTO 280 ELSE GOTO 270
+270    D=1+RND(6)
+       PRINT @(71,8):D
+280    RR5=INDEX(RR,"5",1)
+       IF RR5=0 THEN GOTO 300 ELSE GOTO 290
+290    E=1+RND(6)
+       PRINT @(73,8):E
+300    RL=RL-1
+       PRINT @(65,10):RL
+       IF RL=0 THEN
+350      GOSUB 1700
+         IF US#1 THEN GOTO 350
+390    END ELSE
+         PRINT @(65,16):SPC5
+         GOTO 150
+       END
+400    US=0
+       RESULT=A:B:C:D:E
+       ALL=A+B+C+D+E
+       TIMES=0
+       FOR L=1 TO 5
+         CHK=INDEX(RESULT,TYPE,L)
+         IF CHK#0 THEN TIMES=TIMES+1
+       NEXT L
+       VAL=TIMES*TYPE
+410    ***  N1-N6  ***
+       IF TYPE=1 & N1 GE ZERO THEN
+         GOSUB 1700
+         GOTO 400
+       END
+       IF TYPE=1 & N1 LT ZERO THEN
+         N1=VAL
+         PRINT @(17,6):N1 "R###"
+       END
+       IF TYPE=2 & N2 GE ZERO THEN
+         GOSUB 1700
+         GOTO 400
+       END
+       IF TYPE=2 & N2 LT ZERO THEN
+         N2=VAL
+         PRINT @(17,8):N2 "R###"
+       END
+       IF TYPE=3 & N3 GE ZERO THEN
+         GOSUB 1700
+         GOTO 400
+       END
+       IF TYPE=3 & N3 LT ZERO THEN
+         N3=VAL
+         PRINT @(17,10):N3 "R###"
+       END
+       IF TYPE=4 & N4 GE ZERO THEN
+         GOSUB 1700
+         GOTO 400
+       END
+       IF TYPE=4 & N4 LT ZERO THEN
+         N4=VAL
+         PRINT @(17,12):N4 "R###"
+       END
+       IF TYPE=5 & N5 GE ZERO THEN
+         GOSUB 1700
+         GOTO 400
+       END
+       IF TYPE=5 & N5 LT ZERO THEN
+         N5=VAL
+         PRINT @(17,14):N5 "R###"
+       END
+       IF TYPE=6 & N6 GE ZERO THEN
+         GOSUB 1700
+         GOTO 400
+       END
+       IF TYPE=6 & N6 LT ZERO THEN
+         N6=VAL
+         PRINT @(17,16):N6 "R###"
+       END
+       IF N1 GE ZERO & N2 GE ZERO THEN
+         IF N3 GE ZERO & N4 GE ZERO THEN
+           IF N5 GE ZERO & N6 GE ZERO THEN
+             SUM1=N1+N2+N3+N4+N5+N6
+             PRINT @(17,18):SUM1 "R###"
+             IF SUM1 LT "63" THEN BONUS="0" ELSE
+               BONUS="35"
+             END
+             PRINT @(17,20):BONUS "R###"
+             SUM2=BONUS+SUM1
+             PRINT @(17,22):SUM2 "R###"
+           END
+         END
+       END
+** FH  **
+       IF TYPE=7 & FH GE ZERO THEN
+         GOSUB 1700
+         GOTO 800
+       END
+       IF TYPE=7 & FH LT ZERO THEN
+         FH=0;  FOUND=0;  L=3
+         GOSUB 1300
+       END ELSE GOTO 430
+       IF KIND#"7" THEN GOTO 420
+       L=2;  GOSUB 1300
+       IF KIND="7" THEN FH=25
+420    PRINT @(44,6):FH "R###"
+       FOUND=0
+430    **  3 OF A KIND  **
+       IF TYPE=8 & K3 GE ZERO THEN
+         GOSUB 1700
+         GOTO 800
+       END
+       IF TYPE=8 & K3 LT ZERO THEN
+         FOUND=0
+         L=3;  GOSUB 1300
+       END ELSE GOTO 440
+       IF KIND="7" THEN K3=ALL ELSE
+         K3="0"
+       END
+       PRINT @(44,8):K3 "R###"
+440    **  4 OF A KIND  **
+       IF TYPE=9 & K4 GE ZERO THEN
+         GOSUB 1700
+         GOTO 800
+       END
+       IF TYPE=9 & K4 LT ZERO THEN
+         FOUND=0;  L=4
+         GOSUB 1300
+       END ELSE GOTO 450
+       IF KIND="7" THEN K4=ALL ELSE
+         K4="0"
+       END
+       PRINT @(44,10):K4 "R###"
+450    **  SS  **
+       IF TYPE=10 & SS GE ZERO THEN
+         GOSUB 1700
+         GOTO 800
+       END
+       IF TYPE=10 & SS LT ZERO THEN
+         SS=0; P=1; Q=4
+       END ELSE GOTO 460
+       GOSUB 1100
+       IF Z=4 THEN
+         SS=30
+         GOTO 455
+       END
+       P=2; Q=5
+       GOSUB 1100
+       IF Z=4 THEN
+         SS=30
+         GOTO 455
+       END
+       P=3; Q=6
+       GOSUB 1100
+       IF Z=4 THEN SS=30
+455    PRINT @(44,12):SS "R###"
+460    **  LS  **
+       IF TYPE=11 & LS GE ZERO THEN
+         GOSUB 1700
+         GOTO 800
+       END
+       IF TYPE=11 & LS LT ZERO THEN
+         LS=0; P=1; Q=5
+       END ELSE GOTO 470
+       GOSUB 1100
+       IF Z=5 THEN
+         LS=40
+         GOTO 465
+       END
+       P=2; Q=6
+       GOSUB 1100
+       IF Z=5 THEN LS=40
+465    PRINT @(44,14):LS "R###"
+470    ** YAH  **
+       IF TYPE=12 & YAH GE ZERO THEN
+         GOSUB 1700
+         GOTO 800
+       END
+       IF TYPE=12 & YAH LT ZERO THEN
+         L=5;  GOSUB 1300
+       END ELSE GOTO 480
+       IF KIND="7" THEN YAH=50 ELSE
+         YAH="0"
+       END
+       PRINT @(44,16):YAH "R###"
+480    **  CHNCE  **
+       IF TYPE=13 & CHNC GE ZERO THEN
+         GOSUB 1700
+         GOTO 800
+       END
+       IF TYPE=13 & CHNC LT ZERO THEN
+         CHNC=ALL
+       END ELSE GOTO 800
+       PRINT @(44,18):CHNC "R###"
+800    IF US=1 THEN GOTO 400
+       IF FH GE ZERO & K3 GE ZERO THEN
+         IF K4 GE ZERO & SS GE ZERO THEN
+           IF LS GE ZERO & YAH GE ZERO THEN
+             IF CHNC GE ZERO THEN
+               SUM3=FH+K3+K4+SS+LS+YAH+CHNC
+               PRINT @(44,20):SUM3 "R###"
+               IF SUM2 LT ZERO OR SUM3 LT ZERO THEN
+                 GOTO 100
+               END
+               TOTAL=SUM2+SUM3
+               TNW=TOTAL
+               PRINT @(44,22):TOTAL "R###"
+               A=TIME()
+900            C=TIME()-A
+               IF C<3 THEN GOTO 900
+               PRINT ERASE
+               READ SUMT FROM F.HISTORY,NAME:WS ELSE SUMT=0 ; PRINT ''
+               READ OFTEN FROM F.HISTORY,NAME:WS+1 ELSE OFTEN=0 ; PRINT ''
+               SUMT=SUMT+TOTAL
+               OFTEN=OFTEN+1
+               AVE=INT(SUMT/OFTEN)
+               PRINT @(8,19):"WELL ":NAME:", IN ":OFTEN:" GAMES YOU'VE AVERAGED ":AVE
+               WRITE SUMT ON F.HISTORY,NAME:WS
+               WRITE OFTEN ON F.HISTORY,NAME:WS+1
+*** CHECK BEST SCORES
+               IF TNW>T(10) THEN
+                 T(10)=TNW;  NM(20)=NAME
+               END
+               FOR R=9 TO 1 STEP -1
+                 IF TNW>T(R) THEN
+                   T(R+1)=T(R);  NM(R+11)=NM(R+10)
+                   T(R)=TNW;     NM(R+10)=NAME
+                 END
+               NEXT R
+               FOR Q=1 TO 10
+                 WRITE T(Q) ON F.HISTORY,Q
+                 WRITE NM(Q+10) ON F.HISTORY,Q+10
+               NEXT Q
+             END
+           END
+         END
+       END
+       IF TOTAL LE ZERO THEN GOTO 100
+       GOTO 10
+       STOP
+1100   *** CHECK FOR SS & LS ***
+       Z=0
+       FOR J=P TO Q
+         SET=INDEX(RESULT,J,1)
+         IF SET#0 THEN Z=Z+1
+       NEXT J
+       RETURN
+1300   ******  CHECK FOR K3,K4,FH,YAH  ******
+       KIND=0
+       FOR M=1 TO 6
+         IF M=FOUND THEN M=M+1
+         SET=INDEX(RESULT,M,L)
+         IF SET#0 THEN
+           KIND="7"
+           FOUND=M
+           GOTO 1320
+         END
+       1310   NEXT M
+1320   RETURN
+1500   *****  INSTRUCTIONS  *****
+       PRINT @(10,9):"                         "
+       PRINT @(24,1):"*** YAHTZEE ***"
+       PRINT @(29,2):"BOB 7"
+       PRINT @(8,4):"TYPE        HAND":@(36):"SCORE":
+       PRINT @(47):"10 HIGHEST SCORES "
+       PRINT @(8,5):"----":@(20):"----":@(36):"-----"
+       PRINT @(47,5):"-----------------"
+       PRINT @(8,6):"1-6":@(34):"SUM OF TYPE":@(49):"1.":SPC20
+       PRINT @(9,7):"7":@(16):"FULL-HOUSE":@(38):"25":@(49):"2.":SPC20
+       PRINT @(9,8):"8":@(16):"3 OF A KIND":@(34):"SUM OF DICE":@(49):
+       PRINT "3.":SPC20
+       PRINT @(9,9):"9":@(16):"4 OF A KIND":@(34):"SUM OF DICE":
+       PRINT @(49):"4.":SPC20
+       PRINT @(8,10):"10":@(16):"4 DICE STRAIGHT":@(38):"30":@(49):"5.":SPC20
+       PRINT @(8,11):"11":@(16):"5 DICE STRAIGHT":@(38):"40":@(49):"6.":SPC20
+       PRINT @(8,12):"12":@(16):"5 OF A KIND":@(38):"50":@(49):"7.":SPC20
+       PRINT @(8,13):"13":@(16):"ANYTHING":@(34):"SUM OF DICE":
+       PRINT @(49):"8.":SPC20
+       PRINT @(8,14):"BONUS":@(16):"SUM1>62":@(38):"35":@(49):"9.":SPC20
+       PRINT @(48,15):"10.":SPC20
+       PRINT @(8,16):"NOTE: ENTER TYPE ONLY WHEN"
+       PRINT @(14,17):"ROLLS LEFT=0"
+       RETURN
+1700   *****  CHECK FOR USED TYPE  *****
+       PRINT @(64,20):"            "
+       PRINT @(53,18):"ENTER TYPE"
+       PRINT @(53,19):"OF HAND"
+       PRINT @(53,20):" (1-13)   : ":;INPUT TYPE
+       IF TYPE = "00" THEN RR="18";GOTO 151
+       US=1; UZ=0
+       FOR X=1 TO 13
+         IF TYPE=X THEN UZ=1
+       NEXT X
+       IF UZ#1 THEN GOTO 1700
+       RETURN
+     END
+     STOP
+END

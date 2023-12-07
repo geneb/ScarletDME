@@ -1,0 +1,421 @@
+      *  BIORHYTHM. OUTPUT TO PNTR
+      *     CREATED BY CRAIG SHUCKER
+      *       APRIL, 1976
+      *
+      ***********************************************************
+      PROMPT ''
+      CLEAR=@(-1)
+      DIM P(23),E(28),I(33),MONTHNAME(12),MONTHDAYS(12)
+      MONTHSTRING="JAN,FEB,MAR,APR,MAY,JUN,JUL,AUG,SEP,OCT,NOV,DEC"
+      DAYSTRING="31,28,31,30,31,30,31,31,30,31,30,31"
+      PS1="0,11,21,29,36,39,40,38,33,25,16,6,-6,-16,-25,-33,-38,-40,"
+      PS2="-39,-36,-29,-21,-11"
+      PSTRING=PS1:PS2
+      ES1="0,9,17,25,31,36,39,40,39,36,31,25,17,9,0,-9,-17,-25,-31,-36,"
+      ES2="-39,-40,-39,-36,-31,-25,-17,-9"
+      ESTRING=ES1:ES2
+      IS1="0,8,15,22,28,32,36,39,40,40,38,35,30,25,18,11,4,-4,-11,-18,"
+      IS2="-25,-30,-35,-38,-40,-40,-39,-36,-32,-28,-22,-15,-8"
+      ISTRING=IS1:IS2
+      FOR J=1 TO 12
+         MONTHNAME(J)=FIELD(MONTHSTRING,",",J)
+         MONTHDAYS(J)=FIELD(DAYSTRING,",",J)
+      NEXT J
+      **********************************************************
+      *
+      *  SET UP SINE WAVE TABLES
+      *
+      **********************************************************
+      FOR J=1 TO 23
+         P(J)=FIELD(PSTRING,",",J)
+      NEXT J
+      FOR J=1 TO 28
+         E(J)=FIELD(ESTRING,",",J)
+      NEXT J
+      FOR J=1 TO 33
+         I(J)=FIELD(ISTRING,",",J)
+      NEXT J
+      **********************************************************
+      *
+      *  INTRODUCTION
+      *
+      **********************************************************
+1000  PRINT CLEAR:@(24,10):
+      PRINT "DO YOU WANT AN INTRODUCTION? ":
+      INPUT ANS
+      IF ANS="NO" OR ANS="N" THEN GOTO 1100
+      IF ANS<>"YES" AND ANS<>"Y" THEN GOTO 1000
+      PRINT CLEAR:
+      PRINT @(10,2):"ALTHOUGH IT IS NOT CONCLUSIVE, THERE IS ":
+      PRINT "EVIDENCE INDICATING":
+      PRINT @(10,4):"THAT BESIDES THE UNIVERSALLY-ACCEPTED ":
+      PRINT "DAILY BIOLOGICAL CYCLES":
+      PRINT @(10,6):"THERE EXISTS AT LEAST THREE OTHER RHYTHMIC ":
+      PRINT "BIOLOGICAL CYCLES:":
+      PRINT @(10,8):"A PHYSICAL RESISTANCE CYCLE OF 23 DAYS; AN ":
+      PRINT "EMOTIONAL REACTION":
+      PRINT @(10,10):"CYCLE OF 28 DAYS; AND AN INTELLECTUAL ":
+      PRINT "PERFORMANCE CYCLE OF":
+      PRINT @(10,12):"23 DAYS.":
+      GOSUB 2100
+      PRINT @(10,2):"ACCORDING TO BIORHYTHM THEORISTS, THE THREE ":
+      PRINT "RHYTHMS BEGIN AT":
+      PRINT @(10,4):"BIRTH AND CONTINUE WITHOUT DEVIATING IN ":
+      PRINT "WAVES OF FIXED":
+      PRINT @(10,6):"DURATION.  THE FIRST HALF OF EACH CYCLE ":
+      PRINT "IS AN 'UP' PHASE OR":
+      PRINT @(10,8):"A PEAK PERFORMANCE PERIOD WHERE THE BRAIN ":
+      PRINT "AND NERVOUS SYSTEM":
+      PRINT @(10,10):"OPERATE AT OPTIMAL LEVELS.  THE SECOND HALF ":
+      PRINT "OF EACH CYCLE IS":
+      PRINT @(10,12):"A 'DOWN' PHASE OR A REST PERIOD WHERE THE ":
+      PRINT "BRAIN AND NERVOUS":
+      PRINT @(10,14):"SYSTEM OPERATE AT MINIMAL LEVELS WHILE ":
+      PRINT "ENERGY IS BEING":
+      PRINT @(10,16):"RESTORED.":
+      GOSUB 2100
+      PRINT @(10,2):"THE DAYS OF TRANSITION, WHEN AN UP PERIOD ":
+      PRINT "GIVES WAY TO A":
+      PRINT @(10,4):"DOWN PERIOD OR VICE-VERSA, ARE KNOWN AS ":
+      PRINT "'CRITICAL' DAYS.  ON":
+      PRINT @(10,6):"THESE DAYS THE BODY HAS TROUBLE PERFORMING ":
+      PRINT "PROPERLY AND IS":
+      PRINT @(10,8):"MUCH MORE ACCIDENT PRONE.  DAYS WHEN TWO ":
+      PRINT "CYCLES COINCIDE AT":
+      PRINT @(10,10):"ZERO ARE DOUBLY CRITICAL.  A PERSON ":
+      PRINT "SHOULD BE EXTREMELY":
+      PRINT @(10,12):"CAUTIOUS ON THESE DAYS.  WHEN ALL THREE ":
+      PRINT "CYCLES COINCIDE AT":
+      PRINT @(10,14):"ZERO, WHICH, FORTUNATELY, OCCURS ONLY ONCE ":
+      PRINT "EVERY 22,252 DAYS":
+      PRINT @(10,16):"(58 YEARS AND 68 DAYS), IT IS BEST TO ":
+      PRINT "STAY IN BED.":
+      GOSUB 2100
+      PRINT @(10,2):"THIS PROGRAM IS DESIGNED TO PLOT AN ":
+      PRINT "INDIVIDUAL'S BIORHYTHM":
+      PRINT @(10,4):"PATTERN SPANNING UP TO TWO YEARS.  ":
+      PRINT "SINCE IT IS QUESTIONABLE":
+      PRINT @(10,6):"WHETHER THESE BIOLOGICAL CYCLES ACTUALLY ":
+      PRINT "EXIST, THIS PROGRAM":
+      PRINT @(10,8):"IS ONLY INTENDED TO BE USED AS AN AMUSING ":
+      PRINT "DIVERSION, AND NOT":
+      PRINT @(10,10):"AS A TOOL FOR AN ABSOLUTE SCIENCE.":
+      GOSUB 2100
+      **********************************************************
+      *
+      *  INSTRUCTIONS
+      *
+      **********************************************************
+1100  PRINT CLEAR:@(25,10):
+      PRINT "DO YOU WANT INSTRUCTIONS? ":
+      INPUT ANS
+      IF ANS="NO" OR ANS="N" THEN GOTO 1200
+      IF ANS<>"YES" AND ANS<>"Y" THEN GOTO 1100
+      PRINT CLEAR:@(12,1):
+      PRINT "WHEN PROMPTED FOR YOUR NAME TYPE IN YOUR NAME AS YOU WISH"
+      PRINT @(12,2):"IT TO APPEAR ON YOUR BIORHYTHM CHART."
+      PRINT @(12,4):"ENTER ALL DATES IN THE FOLLOWING FORM:"
+      PRINT @(12,6):"    DAY MONTH YEAR"
+      PRINT @(12,8):"DAY: A ONE OR TWO DIGIT NUMBER"
+      PRINT @(12,9):"MONTH: THE FIRST THREE LETTERS OF THE MONTH NAME"
+      PRINT @(12,10):"YEAR: A FOUR DIGIT NUMBER"
+      PRINT @(12,12):"EXAMPLE: 4 JUL 1976 (JULY 4,1976)"
+      GOSUB 2100
+      **********************************************************
+      *
+      *  GET NAME AND DATE OF BIRTH
+      *
+      **********************************************************
+1200  PRINT CLEAR:@(0,1):
+      PRINT "WHAT IS YOUR NAME? ":
+      INPUT NAME
+      PRINT
+      PRINT "WHEN WERE YOU BORN? ":
+      GOSUB 1700
+      BDAY=DAY
+      BMONTH=MONTH
+      BYEAR=YEAR
+      GOSUB 2000
+      BNUMDAYS=NUMDAYS
+      IF LEAPYEAR THEN
+         BNUMDAYS=BNUMDAYS-1
+         IF BMONTH<3 THEN
+            BNUMDAYS=BNUMDAYS-1
+         END
+      END
+      **********************************************************
+      *
+      *  GET STARTING DATE
+      *
+      **********************************************************
+1300  PRINT
+      PRINT "STARTING DATE FOR BIORHYTHM: ":
+      GOSUB 1700
+      IF YEAR>BYEAR+150 THEN
+         PRINT
+         PRINT "I THINK YOU'RE BEING A LITTLE BIT UNREALISTIC ABOUT YOUR"
+         PRINT "LIFE EXPECTANCY"
+         GOTO 1300
+      END
+      GOSUB 2000
+      IF YEAR<BYEAR OR (YEAR=BYEAR AND NUMDAYS<BNUMDAYS) THEN
+         PRINT
+         PRINT "PERHAPS YOU DON'T REALIZE THAT YOU WEREN'T EVEN BORN YET"
+         PRINT "AT THAT PARTICULAR DATE"
+         GOTO 1300
+      END
+      SDAY=DAY
+      SMONTH=MONTH
+      SYEAR=YEAR
+      SNUMDAYS=NUMDAYS
+      ************************************************************
+      *
+      *  GET ENDING DATE
+      *
+      ************************************************************
+1400  PRINT
+      PRINT "ENDING DATE FOR BIORHYTHM: ":
+      GOSUB 1700
+      IF YEAR<SYEAR OR (YEAR=SYEAR AND NUMDAYS<SNUMDAYS) THEN
+         PRINT
+         PRINT "YOUR SENSE OF HUMOR IS PATHETIC"
+         GOTO 1400
+      END
+      GOSUB 2000
+      IF YEAR>SYEAR+2 OR (YEAR=SYEAR+2 AND NUMDAYS>SNUMDAYS+2) THEN
+         PRINT
+         PRINT "IF YOU THINK I'M GOING TO SIT HERE AND PRINT PAGE AFTER"
+         PRINT "PAGE OF YOUR BIORHYTHM -- YOU'RE CRAZY!"
+         GOTO 1400
+      END
+      EDAY=DAY
+      EMONTH=MONTH
+      EYEAR=YEAR
+      ENUMDAYS=NUMDAYS
+      PRINT CLEAR:@(10,10):
+      PRINT "*** PLEASE WAIT -- I AM BUSY CALCULATING YOUR ":
+      PRINT "BIORHYTHYM ***"
+      ************************************************************
+      *
+      *  CALCULATE NUMBER OF LEAP YEARS
+      *
+      ************************************************************
+      LPYRS=0
+      IF SYEAR>BYEAR THEN
+         LPYRS=INT((SYEAR-1)/4)-INT(BYEAR/4)
+         LPYRS=LPYRS-(INT((SYEAR-1)/100)-INT(BYEAR/100))
+         LPYRS=LPYRS+(INT((SYEAR-1)/400)-INT(BYEAR/400))
+      END
+      IF BNUMDAYS<59 THEN
+         TESTYEAR=BYEAR
+         GOSUB 1900
+         LPYRS=LPYRS+LEAPYEAR
+      END
+      ************************************************************
+      *
+      *  CALCULATE STARTING POINTS FOR THE GRAPH
+      *
+      ************************************************************
+      DIFFYRS=SYEAR-BYEAR
+      DIFFDAYS=365*DIFFYRS+SNUMDAYS-BNUMDAYS+LPYRS
+      PHYS=DIFFDAYS-23*INT(DIFFDAYS/23)
+      EMOT=DIFFDAYS-28*INT(DIFFDAYS/28)
+      INTEL=DIFFDAYS-33*INT(DIFFDAYS/33)
+      DAY=SDAY-1
+      MONTH=SMONTH
+      YEAR=SYEAR
+      IF SYEAR=EYEAR THEN
+         COUNT=SNUMDAYS-1
+      END ELSE
+         COUNT=0
+      END
+      ************************************************************
+      *
+      *  PRINT HEADING
+      *
+      ************************************************************
+      PRINTER ON
+      PRINT CLEAR
+      PRINT "       @@@@@@@@   @@@@@@   @@@@@@@   @@@@@@@@   ":
+      PRINT "@@     @@ @@      @@ @@@@@@@@@@ @@     @@  @@      @@"
+      PRINT "       @@     @@    @@    @@     @@  @@     @@  ":
+      PRINT "@@     @@ @@      @@     @@     @@     @@  @@@    @@@"
+      PRINT "       @@     @@    @@    @@     @@  @@     @@  ":
+      PRINT "@@     @@  @@    @@      @@     @@     @@  @@@@  @@@@"
+      PRINT "       @@     @@    @@    @@     @@  @@     @@  ":
+      PRINT "@@     @@   @@  @@       @@     @@     @@  @@ @@@@ @@"
+      PRINT "       @@@@@@@@     @@    @@     @@  @@@@@@@@   ":
+      PRINT "@@@@@@@@@    @@@@        @@     @@@@@@@@@  @@  @@  @@"
+      PRINT "       @@     @@    @@    @@     @@  @@  @@     ":
+      PRINT "@@     @@     @@         @@     @@     @@  @@      @@"
+      PRINT "       @@     @@    @@    @@     @@  @@   @@    ":
+      PRINT "@@     @@     @@         @@     @@     @@  @@      @@"
+      PRINT "       @@     @@    @@    @@     @@  @@    @@   ":
+      PRINT "@@     @@     @@         @@     @@     @@  @@      @@"
+      PRINT "       @@@@@@@@   @@@@@@   @@@@@@@   @@     @@  ":
+      PRINT "@@     @@     @@         @@     @@     @@  @@      @@"
+      PRINT
+      PRINT
+      PRINT SPACE(INT((104-LEN(NAME))/2)):"FOR: ":NAME
+      PRINT
+      PRINT SPACE(43):"BIRTHDATE: ":BDAY:" ":MONTHNAME(BMONTH):" ":BYEAR
+      PRINT
+      PRINT
+      PRINT SPACE(8):"DATE":SPACE(10):"DOWN":SPACE(33):"CRITICAL":
+      PRINT SPACE(34):"UP"
+      PRINT SPACE(5):STR("-",11):SPACE(6):STR("-",81)
+      PRINT
+      ************************************************************
+      *
+      *  ADVANCE ONE DAY
+      *
+      ************************************************************
+1500  DAY=DAY+1
+      IF DAY>MONTHDAYS(MONTH) THEN
+         DAY=1
+         MONTH=MONTH+1
+      END
+      IF MONTH>12 THEN
+         MONTH=1
+         YEAR=YEAR+1
+      END
+      ************************************************************
+      *
+      *  COMPUTE NEW CYCLE PHASE
+      *
+      ************************************************************
+      PHYS=PHYS+1
+      IF PHYS>23 THEN
+         PHYS=1
+      END
+      EMOT=EMOT+1
+      IF EMOT>28 THEN
+         EMOT=1
+      END
+      INTEL=INTEL+1
+      IF INTEL>33 THEN
+         INTEL=1
+      END
+      ************************************************************
+      *
+      *  PREPARE OUTPUT LINE AND PRINT
+      *
+      ************************************************************
+      XDATE=SPACE(5):DAY "R##":" ":MONTHNAME(MONTH):" ":YEAR:SPACE(6)
+      BUF=SPACE(81)
+      LEVP=41+P(PHYS)
+      BUF=BUF[1,LEVP-1]:"P":BUF[LEVP+1,81-LEVP]
+      LEVE=41+E(EMOT)
+      IF LEVE=LEVP THEN
+         J="*"
+      END ELSE
+         J="E"
+      END
+      BUF=BUF[1,LEVE-1]:J:BUF[LEVE+1,81-LEVE]
+      LEVI=41+I(INTEL)
+      IF LEVI=LEVP OR LEVI=LEVE THEN
+         J="*"
+      END ELSE
+         J="I"
+      END
+      BUF=BUF[1,LEVI-1]:J:BUF[LEVI+1,81-LEVI]
+      IF BUF[41,1]=" " THEN
+         BUF=BUF[1,40]:".":BUF[42,40]
+      END
+      PRINT
+      PRINT XDATE:BUF
+      ************************************************************
+      *
+      *  CHECK FOR END DATE
+      *
+      ************************************************************
+      IF YEAR=EYEAR THEN
+         COUNT=COUNT+1
+         IF COUNT=ENUMDAYS THEN
+            PRINT @(-1)
+            PRINTER CLOSE
+            PRINTER OFF
+            GOTO 2200
+         END
+      END
+      GOTO 1500
+      ************************************************************
+      *
+      *  GET DATE
+      *
+      ************************************************************
+1600  PRINT
+      PRINT "INVALID DATE -- PLEASE RETYPE: ":
+1700  INPUT INDATE
+      MONTH=FIELD(INDATE," ",2)
+      FOR J=1 TO 12
+         IF MONTH=MONTHNAME(J) THEN
+            MONTH=J
+            GOTO 1800
+         END
+      NEXT J
+      GOTO 1600
+1800  YEAR=FIELD(INDATE," ",3)
+      IF NOT(NUM(YEAR)) THEN GOTO 1600
+      IF YEAR<1800 THEN GOTO 1600
+      DAY=FIELD(INDATE," ",1)
+      IF NOT(NUM(DAY)) THEN GOTO 1600
+      TESTYEAR=YEAR
+      GOSUB 1900
+      IF MONTH=2 AND DAY=29 THEN
+         IF NOT(LEAPYEAR) THEN GOTO 1600
+      END ELSE
+         IF DAY<1 OR DAY>MONTHDAYS(MONTH) THEN GOTO 1600
+      END
+      RETURN
+      ************************************************************
+      *
+      *  TEST FOR A LEAP YEAR
+      *
+      ************************************************************
+1900  LEAPYEAR=0
+      IF TESTYEAR/4=INT(TESTYEAR/4) THEN
+         LEAPYEAR=LEAPYEAR+1
+      END
+      IF TESTYEAR/100=INT(TESTYEAR/100) THEN
+         LEAPYEAR=LEAPYEAR-1
+      END
+      IF TESTYEAR/400=INT(TESTYEAR/400) THEN
+         LEAPYEAR=LEAPYEAR+1
+      END
+      RETURN
+      ************************************************************
+      *
+      *  GET NUMBER OF DAYS INTO THE YEAR
+      *
+      ************************************************************
+2000  NUMDAYS=0
+      FOR J=1 TO MONTH-1
+         NUMDAYS=NUMDAYS+MONTHDAYS(J)
+      NEXT J
+      NUMDAYS=NUMDAYS+DAY
+      IF MONTH>2 THEN
+         NUMDAYS=NUMDAYS+LEAPYEAR
+      END
+      RETURN
+      *************************************************************
+      *
+      *  CONTINUE FROM PAUSE
+      *
+      *************************************************************
+2100  PRINT @(27,19):"PRESS <RETURN> TO CONTINUE":
+      INPUT X
+      PRINT CLEAR:@(0,0):
+      RETURN
+      *************************************************************
+      *
+      *  CONTINUE?
+      *
+      *************************************************************
+2200  PRINT
+      PRINT "DO YOU WISH TO MAKE ANOTHER BIORHYTHYM CHART? ":
+      INPUT ANS
+      IF ANS="YES" OR ANS="Y" THEN GOTO 1200
+      IF ANS<>"NO" AND ANS<>"N" THEN GOTO 2100
+      PRINT CLEAR:@(0,0):
+
