@@ -1,5 +1,5 @@
 * OPGEN
-* Generate BP OPCODES.H from CSRC equivalent.
+* Generate GPL.BP OPCODES.H from gplsrc equivalent.
 * Copyright (c) 2004 Ladybridge Systems, All Rights Reserved
 *
 * This program is free software; you can redistribute it and/or modify
@@ -17,6 +17,13 @@
 * Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 * 
 * Ladybridge Systems can be contacted via the www.openqm.com web site.
+*
+* START-HISTORY (ScarletDME):
+* 09Dec23 mab Correct file locations  'CSRC', 'opcodes.h' -> /gplsrc/opcodes.h
+*                                     'BP', 'OPCODES.H'   -> 'GPL.BP', 'OPCODES.H' 
+*             Thanks to "Nivethan T" for this correction
+*             Remove hardcoded ValueMark (0xFD) lns 182,192,213. Some editors will auto change 
+*             to a unicode string, which will prevent BCOMP from compiling
 * 
 * START-HISTORY:
 * 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
@@ -29,8 +36,10 @@
 * START-CODE
 
 program opgen
-   openseq 'CSRC', 'opcodes.h' to in.f else stop 'Cannot open CSRC opcodes.h'
-   openseq 'BP', 'OPCODES.H' to out.f else
+*   openseq 'CSRC', 'opcodes.h' to in.f else stop 'Cannot open CSRC opcodes.h'
+*   openseq 'BP', 'OPCODES.H' to out.f else
+   openseq './gplsrc/opcodes.h' to in.f else stop 'Cannot open gplsrc opcodes.h'
+   openseq 'GPL.BP', 'OPCODES.H' to out.f else
       if status() then stop 'Cannot open OPCODES.H'
    end
    weofseq out.f
@@ -170,7 +179,7 @@ program opgen
 
    for j = 1 to 256 step 8
       out.rec = 'opcodes'
-      out.rec := if j = 1 then ' = "'  else ' := "ý'
+      out.rec := if j = 1 then ' = "'  else ' := "':@vm
       for k = 0 to 7
          if k then out.rec := @vm
          out.rec := simple.opcodes<j+k>
@@ -188,7 +197,7 @@ program opgen
    num.prefixed.opcodes = dcount(prefixed.opcode.values, @fm)
    for i = 1 to num.prefixed.opcodes step 8
       out.rec = 'prefixed.opcodes'
-      out.rec := if i = 1 then ' = "'  else ' := "ý'
+      out.rec := if i = 1 then ' = "'  else ' := "':@vm
       for j = 0 to 7
          k = i + j
       while k <= num.prefixed.opcodes
@@ -201,7 +210,7 @@ program opgen
 
    for i = 1 to num.prefixed.opcodes step 8
       out.rec = 'prefixed.opcode.values'
-      out.rec := if i = 1 then ' = "'  else ' := "ý'
+      out.rec := if i = 1 then ' = "'  else ' := "':@vm
       for j = 0 to 7
          k = i + j
       while k <= num.prefixed.opcodes
