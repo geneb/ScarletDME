@@ -18,7 +18,9 @@
 * 
 * Ladybridge Systems can be contacted via the www.openqm.com web site.
 * 
+* 
 * START-HISTORY:
+* 15 Dec 23 mab using continue causes endless loop
 * 02 Nov 06  2.4-15 VOC record types now case insensitive.
 * 28 Apr 06  2.4-2 0483 Do not delete dictionary when deleting specific part
 *                  of a multifile.
@@ -234,7 +236,9 @@ delete.upcased.file:
                      yn = upcase(yn[1,1])
                   until yn = 'Y' or yn = 'N'
                   repeat
-                  if yn = "N" then continue
+* 15Dec23 mab using continue here will create endless loop "while more" is not tested. I know an ugly goto                 
+*                  if yn = "N" then continue
+                   if yn = "N" then goto more_test
                end  
             end
 
@@ -271,6 +275,7 @@ delete.upcased.file:
                display sysmsg(6138, data.path) ;* Error deleting DATA portion 'xx'
                @system.return.code = -status()
             end
+more_test: *            
          while more
          repeat
       end else
