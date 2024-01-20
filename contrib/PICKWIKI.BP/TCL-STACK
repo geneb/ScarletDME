@@ -1,0 +1,780 @@
+ This program is an attempt to make TCL a more productive place for programmers. You can edit the command stack using standard bash/emacs key-bindings. There is also a stack of program files being worked on and shortcuts for the common operations of editing, compiling, running and interacting with version control. Planned new features include tab-completion on file and dictionary names (how to make it quick with thousands of entries is a problem).
+
+The help information gives a good overview of what is currently there (though aliases, program token expansion and setting the prompt are extras not mentioned).
+
+            PRINT 'Ctrl-A     Start of line     Ctrl-R      Toggle insert mode'
+            PRINT 'Ctrl-B     Back one char     Ctrl-W      Delete word'
+            PRINT 'Ctrl-D     Delete char       Ctrl-X      Forward word'
+            PRINT 'Ctrl-E     End of line       Ctrl-Z      Back word'
+            PRINT 'Ctrl-F     Forward char      '
+            PRINT 'Ctrl-G     Cancel line       '
+            PRINT 'Ctrl-I     Forward word      ~xxx        Search for xxx'
+            PRINT 'Ctrl-J     Delete to end     .Lm,n       List entry m thru n'
+            PRINT 'Ctrl-M     Accept line       .Rn         Restore entry n, edit'
+            PRINT 'Ctrl-N     Next line         .Dm,n       Delete entry m thru n'
+            PRINT 'Ctrl-P     Previous line     Q           Quit back to TCL'
+            PRINT
+            PRINT '/   List the program stack   //  List the stack with cvs status'
+            PRINT '/Nx Add a New program,'
+            PRINT '/Ex Edit the x`th program    /WW Edit the program list'
+            PRINT '/Wx VI the x`th program      /S  Sort the program stack'
+            PRINT '/Bx Compile the x`th program /BR Compile and run'
+            PRINT '/CI Checkin a program to cvs /D  Show diff with cvs version'
+
+See also:
+
+    GetLineStack - a subroutine to allow cursor editing in wy50, vt100
+
+CVS Integration "helpers"
+
+    CvsCheckout
+    CvsCheckin
+    CvsLog
+    CvsList
+    CvsDiff
+    CvsStatus
+    CvsGetDir
+
+***************************************************************************
+* Program: STACK
+* Author : Ian McGowan
+* Date   : 06/13/89
+* Edited : $Id: STACK,v 1.20 2005/02/10 17:36:54 dsiroot Exp $
+* Comment: Stacks TCL commands
+***************************************************************************
+EQU NUL TO '',SPC TO ' ',TRUE TO 1, FALSE TO 0, BANG TO '~', UNIX TO '!'
+EQU BELL TO CHAR(7), OTHERWISE TO 1
+EQU RET TO 13,ESC TO 27,UP.KEY TO 1,DOWN.KEY TO 2
+EOL=@(-4);UP=@(-10)
+PROMPT NUL
+
+LONG.LINE = 999
+EXECUTING = FALSE;SL.ACTIVE = FALSE
+SELECT.LIST = NUL;OLD.WORD = NUL
+SELECT.STATEMENT=FALSE ; CAP.ACTIVE=FALSE
+
+PWD=GETENV("PWD")
+I=LEN(PWD) ; ACC=NUL
+FOR F=I TO 1 STEP -1
+    IF PWD[F,1] = '/' THEN EXIT
+    ACC=PWD[F,1]:ACC
+NEXT F
+
+INITIALS=UPCASE(@LOGNAME)
+EXEC.LINE=\!grep "^\:@LOGNAME:\:" /etc/passwd | awk -F: '{print $5}' CAP.ACTIVE=TRUE
+GOSUB EXEC.SUB
+USERNAME=FIELD(EXEC.CAP<1>,",",1)
+HOME.DIR=GETENV("HOME")
+STACK.ITEM='.STACK_':INITIALS
+ALIAS.ITEM='.STACK.ALIAS_':INITIALS
+PROGRAM.ITEM='.STACK.PROGRAM_':INITIALS
+SETTING.ITEM='.STACK.SETTING_':INITIALS
+HOME.FILE='HOME.':UPCASE(INITIALS)
+OPEN 'VOC' TO VOC ELSE STOP 201,'VOC'
+OPEN HOME.FILE TO HOME.F ELSE
+    R='DIR' ; R<2>=HOME.DIR ; R<3>='D_VOC'
+    WRITE R ON VOC, HOME.FILE
+    OPEN HOME.FILE TO HOME.F ELSE STOP 201, HOME.FILE
+END
+OPEN 'CTLGTB' TO CTLGTB ELSE STOP 201,'CTLGTB'
+OPEN 'CTLG'   TO CTLG   ELSE STOP 201,'CTLG'
+OPEN 'TRIN.GLOBAL.PARAMETER' TO TRIN.GLOBAL.PARAMETER ELSE STOP 201,'TRIN.GLOBAL.PARAMETER'
+
+SETTINGS      = ';'        ;* DEFAULT COMMAND SEPERATOR
+SETTINGS<2>   = '.'        ;* DEFAULT STACK CHAR
+SETTINGS<3>   = '/'        ;* DEFAULT PROG CHAR
+SETTINGS<4>   = 9999       ;* DEFAULT MAX # LINES IN STACK
+SETTINGS<5>   = 'SCRED'    ;* DEFAULT SCREEN EDITOR
+SETTINGS<6>   = 'AE'       ;* DEFAULT LINE EDITOR
+SETTINGS<7>   ='* Edited :';* DEFAULT HEADER STRING
+SETTINGS<8>   = TRUE       ;* DEFAULT USE GET.LINE SUBR
+SETTINGS<9>   = 'BP.DEV'   ;* DEFAULT WORK FILE
+SETTINGS<10>  = TRUE       ;* DEFAULT = CONVERT TO UCASE
+SETTINGS<11>  = ""         ;* DEFAULT STARTUP COMMAND
+SETTINGS<12>  = "#R#A>"    ;* DEFAULT PROMPT
+SETTINGS<13>  = -2         ;* DEFAULT X DISPLACEMENT FOR PROMPT
+SETTINGS<14>  = "bash"     ;* DEFAULT SHELL FOR UNIX COMMANDS
+
+READ R FROM HOME.F, SETTING.ITEM ELSE R=NUL
+I=DCOUNT(SETTINGS,@AM)
+FOR F=1 TO I
+    IF R<F> # NUL THEN SETTINGS<F> = R<F>
+NEXT F
+COMMAND.SEPERATOR = SETTINGS<1>
+STACK.CHAR   = SETTINGS<2>
+PROG.CHAR    = SETTINGS<3>
+MAX.STACK    = SETTINGS<4>
+WP.VERB      = SETTINGS<5>
+ED.VERB      = SETTINGS<6>
+STAMP.STRING = SETTINGS<7>
+GET.LINE.FLAG= SETTINGS<8>
+WORK.FILE    = SETTINGS<9>
+MCU.ON       = SETTINGS<10>
+STARTUP      = SETTINGS<11>
+PROMT        = SETTINGS<12>
+X.DISP       = SETTINGS<13>
+WRITE SETTINGS ON HOME.F, SETTING.ITEM
+
+EXEC.LINE="!hostname" ; CAP.ACTIVE=TRUE ; GOSUB EXEC.SUB
+HOST.NAME=EXEC.CAP<1>
+
+READ STACK FROM HOME.F, STACK.ITEM ELSE STACK = NUL
+READ PROGRAMS FROM HOME.F, PROGRAM.ITEM ELSE PROGRAMS = NUL
+READ ALIASES FROM HOME.F, ALIAS.ITEM ELSE ALIASES = NUL
+OLD.X.DISP=X.DISP
+RTN=NUL
+IF STARTUP # NUL THEN ANS=STARTUP ; GOSUB COMMAND ; STARTUP=NUL
+ANS=NUL
+
+LOOP
+    GOSUB EXPAND.PROMPT
+    PRINT PROMPT.DISP:
+    X = LEN(PROMPT.DISP) + X.DISP
+    ENTRY = NUL;LEN = LONG.LINE;DISP.LEN=79-X
+    GOSUB GET.INPUT
+    ANS=ENTRY
+    * Reread the program and command stack, since they maybe modified
+    * in another session
+    READ PROGRAMS FROM HOME.F, PROGRAM.ITEM ELSE PROGRAMS = NUL
+    READ STACK FROM HOME.F, STACK.ITEM ELSE STACK = NUL
+    READ ALIASES FROM HOME.F, ALIAS.ITEM ELSE ALIASES = NUL
+    IF RTN # ESC THEN GOSUB COMMAND
+REPEAT
+
+GET.INPUT:
+    IF GET.LINE.FLAG THEN
+        CALL GET.LINE.STACK(X,LEN,DISP.LEN,ENTRY,RTN)
+    END ELSE
+        PRINT @(X):;INPUT ENTRY
+        RTN = RET
+    END
+RETURN
+
+COMMAND:
+    BEGIN CASE
+            * Map up and down arrows to .R1 and .Rn
+        CASE RTN = UP.KEY
+            ANS = '.R1'
+        CASE ANS='?'
+            ANS='.H'
+    END CASE
+    IF ANS = NUL THEN RETURN
+    UNIX.COMMAND=FALSE
+    IF ANS[1,1] = UNIX THEN UNIX.COMMAND=TRUE
+    OLD.STACK = STACK
+    START.WORD.SEARCH = 1
+    COMMAND.LIST = ANS
+    COMMAND.COUNT = 1
+    IF STARTUP#NUL THEN EXECUTING=TRUE ELSE EXECUTING=FALSE
+    IF UNIX.COMMAND THEN
+        * Don't look for ; for unix commands
+        GOSUB DO.COMMAND
+    END ELSE
+        LOOP
+            ANS = FIELD(COMMAND.LIST,COMMAND.SEPERATOR,COMMAND.COUNT)
+        UNTIL ANS = NUL DO
+            GOSUB DO.COMMAND
+            COMMAND.COUNT = COMMAND.COUNT + 1
+        REPEAT
+    END
+    WRITE ALIASES ON HOME.F, ALIAS.ITEM
+RETURN
+
+DO.COMMAND:
+    IF MCU.ON AND NOT(UNIX.COMMAND) THEN
+        ANS = TRIM(UPCASE(ANS))
+        IF ANS[1,5] # 'ALIAS' THEN GOSUB EXPAND.ALIASES
+        GOSUB EXPAND.PROG.CHARS
+    END
+    IF ANS='!' THEN ANS='!':SETTINGS<14>
+    LEN.ANS = LEN(ANS)
+    SEARCH.FOR=NUL
+    SELECT.STATEMENT=FALSE
+    CAP.ACTIVE=FALSE
+    BEGIN CASE
+        CASE ANS[1,1] = STACK.CHAR
+            GOSUB STACK.COMMAND
+        CASE ANS[1,1] = PROG.CHAR
+            GOSUB PROG.COMMAND
+        CASE ANS[1,1] = BANG
+            GOSUB BANG.COMMAND
+        CASE ANS = 'QUIT' OR ANS = 'OFF' OR ANS = 'EXIT'
+            GOSUB WRITE.INFO
+            CHAIN 'OFF'
+        CASE ANS = 'Q'
+            GOSUB WRITE.INFO
+            STOP
+        CASE ANS[1,5] = 'ALIAS'
+            GOSUB DO.ALIAS
+        CASE OTHERWISE
+            IF NOT(EXECUTING) THEN
+                INS ANS BEFORE STACK<1>
+                WRITE STACK ON HOME.F, STACK.ITEM
+            END
+            IF ANS[1,6] = 'SELECT' OR ANS[2,6]= 'SELECT' OR ANS[1,8]= 'GET.LIST' OR ANS[1,6] = 'SEARCH' THEN SELECT.STATEMENT=TRUE
+            EXEC.LINE = ANS
+            GOSUB EXEC.SUB
+            IF SELECT.STATEMENT THEN SL.ACTIVE=TRUE ELSE SL.ACTIVE=FALSE
+    END CASE
+RETURN
+
+DO.ALIAS:
+    AL = FIELD(ANS,SPC,2)
+    STRING = NUL;I = 3
+    LOOP
+        F = FIELD(ANS,SPC,I)
+    UNTIL F = NUL DO
+        STRING = STRING:SPC:F
+        I = I + 1
+    REPEAT
+    BEGIN CASE
+        CASE AL = NUL AND STRING = NUL
+            GOSUB LIST.ALIAS
+        CASE STRING = NUL
+            GOSUB LIST.ONE.ALIAS
+        CASE 1
+            GOSUB SET.ALIAS
+    END CASE
+RETURN
+
+SET.ALIAS:
+    STRING=STRING[2,LONG.LINE]
+    PRINT AL:'=':STRING
+    LOCATE AL IN ALIASES<1> BY 'AL' SETTING P THEN
+        ALIASES<2,P> = STRING
+    END ELSE
+        INS AL BEFORE ALIASES<1,P>;INS STRING BEFORE ALIASES<2,P>
+    END
+RETURN
+
+LIST.ALIAS:
+    I = DCOUNT(ALIASES<1>,@VM)
+    FOR F = 1 TO I
+        PRINT ALIASES<1,F>,ALIASES<2,F>
+    NEXT F
+RETURN
+
+LIST.ONE.ALIAS:
+    LOCATE AL IN ALIASES<1> BY 'AL' SETTING P ELSE PRINT AL:' not found';RETURN
+    X=0;LEN=99;DISP.LEN=30;ENTRY=ALIASES<2,P>
+    GOSUB GET.INPUT
+    IF RTN = 27 THEN RETURN
+    ALIASES<2,P> = ENTRY
+    IF ENTRY = NUL THEN DEL ALIASES<1,P>;DEL ALIASES<2,P>
+RETURN
+
+EXEC.SUB:
+    IF EXEC.LINE = NUL THEN RETURN
+    BEGIN CASE
+        CASE SL.ACTIVE AND SELECT.STATEMENT
+            EXECUTE EXEC.LINE PASSLIST SEL.LIST.IN RTNLIST SEL.LIST.OUT
+            SEL.LIST.IN=SEL.LIST.OUT
+        CASE SL.ACTIVE
+            EXECUTE EXEC.LINE PASSLIST SEL.LIST.IN
+        CASE SELECT.STATEMENT
+            EXECUTE EXEC.LINE RTNLIST SEL.LIST.OUT
+            SEL.LIST.IN=SEL.LIST.OUT
+        CASE CAP.ACTIVE
+            EXECUTE EXEC.LINE CAPTURING EXEC.CAP
+        CASE 1
+            EXECUTE EXEC.LINE
+    END CASE
+RETURN
+
+EXPAND.PROG.CHARS:
+    * expand //10 to be IV.BP IV.EQP.MNT for example
+    POS = 1
+    LOOP
+        I = INDEX(ANS,PROG.CHAR:PROG.CHAR,POS)
+    UNTIL I = 0 DO
+        VAR = NUL;IDX = I+2
+        LOOP
+            C = ANS[IDX,1]
+        UNTIL NOT(NUM(C)) OR C = NUL DO
+            VAR = VAR:C
+            IDX = IDX+1
+        REPEAT
+        IF NUM(VAR) AND VAR > 0 THEN
+            ANS = ANS[1,I-1]:PROGRAMS<VAR>:ANS[IDX,LONG.LINE]
+        END ELSE
+            POS = POS + 1
+        END
+    REPEAT
+RETURN
+
+EXPAND.ALIASES:
+    SWAP SPC WITH @VM IN ANS ; POS = 1
+    LOOP
+        R = ANS<1,POS>
+    UNTIL R = NUL DO
+        LOCATE R IN ALIASES<1> BY 'AL' SETTING P THEN ANS<1,POS> = ALIASES<2,P>
+        POS = POS + 1
+    REPEAT
+    SWAP @VM WITH SPC IN ANS
+RETURN
+
+EXPAND.PROMPT:
+    IF SL.ACTIVE THEN
+        PROMPT.DISP='#RSEL>'
+        OLD.X.DISP=X.DISP
+        X.DISP=-2
+    END ELSE
+        PROMPT.DISP = PROMT
+        X.DISP=OLD.X.DISP
+    END
+    CTR = 1
+    LOOP
+        I = INDEX(PROMPT.DISP,'#',CTR)
+    UNTIL I = 0 DO
+        F = PROMPT.DISP[I+1,1]
+        L = PROMPT.DISP[1,I-1];R = TRIM(PROMPT.DISP[I+2,LONG.LINE])
+        BEGIN CASE
+            CASE F = 'B'
+                PROMPT.DISP = L:CHAR(7):R
+            CASE F = 'A'
+                PROMPT.DISP = L:ACC:R
+            CASE F = 'T'
+                PROMPT.DISP = L:OCONV(TIME(),'MTS'):R
+            CASE F = 'D'
+                PROMPT.DISP = L:OCONV(DATE(),'D'):R
+            CASE F = 'E'
+                PROMPT.DISP = L:CHAR(ESC):R
+            CASE F = 'R'
+                PROMPT.DISP = L:CHAR(13):CHAR(10):R
+            CASE F = '#'
+                PROMPT.DISP = L:'#':R
+                CTR = CTR + 1
+            CASE F = 'U'
+                PROMPT.DISP = L:INITIALS:R
+            CASE F = 'H'
+                PROMPT.DISP=L:FIELD(HOST.NAME,".",1):R
+            CASE OTHERWISE
+                CTR = CTR + 1
+        END CASE
+    REPEAT
+RETURN
+
+STACK.COMMAND:
+    BEGIN CASE
+        CASE ANS[1,2] = '.L'
+            IF ANS = '.L' THEN ANS = '.L,20'
+            GOSUB GET.PARAMS
+            IF RANGE.ERROR THEN RETURN
+            I = DCOUNT(STACK,@AM)
+            IF I = 0 THEN PRINT 'No items present';RETURN
+            IF P2 > I THEN P2 = I
+            PRINT
+            FOR F = P2 TO P1 STEP -1;PRINT SPC:F'R#3':SPC:STACK<F> ; NEXT F
+        CASE ANS[1,2] = '.R' OR ANS[1,2] = '.X'
+            IF STACK = NUL THEN PRINT BELL ELSE GO EDIT
+        CASE ANS[1,2] = '.D'
+            GOSUB GET.PARAMS
+            IF RANGE.ERROR THEN RETURN
+            FOR I = P1 TO P2
+                DEL STACK<P1>
+            NEXT I
+            WRITE STACK ON HOME.F, STACK.ITEM
+        CASE ANS = '.E'
+            WRITE STACK ON HOME.F, STACK.ITEM
+            EXEC.LINE = ED.VERB:SPC:HOME.FILE:SPC:STACK.ITEM
+            GOSUB EXEC.SUB
+            READ STACK FROM HOME.F, STACK.ITEM ELSE STACK = NUL
+        CASE ANS = '.W'
+            WRITE STACK ON HOME.F, STACK.ITEM
+            EXEC.LINE = WP.VERB:SPC:HOME.FILE:SPC:STACK.ITEM
+            GOSUB EXEC.SUB
+            READ STACK FROM HOME.F, STACK.ITEM ELSE STACK = NUL
+        CASE ANS = '.CL'
+            STACK = NUL
+            WRITE STACK ON HOME.F, STACK.ITEM
+            PRINT 'Stack cleared'
+        CASE ANS = '.P'
+            PRINT '#R - Return  #A - Account  #D - Date  #T - Time #P - Port'
+            PRINT '#E - Escape  #L - Level    #U - User  #H - Host'
+            PRINT 'Prompt':
+            X = 7;DISP.LEN = 60;ENTRY = PROMT;LEN = 99;GOSUB GET.INPUT
+            PROMT = ENTRY
+            PRINT 'Enter the X displacement for input :':
+            ENTRY = NUL;LEN = 5;DISP.LEN = 5;X = 37;GOSUB GET.INPUT
+            X.DISP = ENTRY
+            IF NOT(NUM(X.DISP)) THEN X.DISP = 0
+            SETTINGS<12> = PROMT
+            SETTINGS<13> = X.DISP
+            OLD.X.DISP=X.DISP
+        CASE ANS = '.H'
+            PRINT 'Ctrl-A     Start of line     Ctrl-R      Toggle insert mode'
+            PRINT 'Ctrl-B     Back one char     Ctrl-W      Delete word'
+            PRINT 'Ctrl-D     Delete char       Ctrl-X      Forward word'
+            PRINT 'Ctrl-E     End of line       Ctrl-Z      Back word'
+            PRINT 'Ctrl-F     Forward char      '
+            PRINT 'Ctrl-G     Cancel line       '
+            PRINT 'Ctrl-I     Forward word      ~xxx        Search for xxx'
+            PRINT 'Ctrl-J     Delete to end     .Lm,n       List entry m thru n'
+            PRINT 'Ctrl-M     Accept line       .Rn         Restore entry n, edit'
+            PRINT 'Ctrl-N     Next line         .Dm,n       Delete entry m thru n'
+            PRINT 'Ctrl-P     Previous line     Q           Quit back to TCL'
+            PRINT
+            PRINT '/   List the program stack   //  List the stack with cvs status'
+            PRINT '/Nx Add a New program,'
+            PRINT '/Ex Edit the x`th program    /WW Edit the program list'
+            PRINT '/Wx VI the x`th program      /S  Sort the program stack'
+            PRINT '/Bx Compile the x`th program /BR Compile and run'
+            PRINT '/CI Checkin a program to cvs /D  Show diff with cvs version'
+        CASE ANS = '.U'
+            IF MCU.ON THEN MCU.ON = FALSE;PRINT 'upper case off' ELSE MCU.ON = TRUE;PRINT 'UPPER CASE ON'
+        CASE OTHERWISE
+            PRINT 'There is no such STACK command':BELL
+            PRINT '? for help'
+    END CASE
+RETURN
+
+GET.PARAMS:
+    I = INDEX(ANS,',',1)
+    IF I # 0 THEN
+        L = I-1;P1 = NUL
+        LOOP
+            IF NUM(ANS[L,1]) THEN P1 = ANS[L,1]:P1;L=L-1 ELSE EXIT
+        REPEAT
+        P2 = ANS[I + 1, LEN.ANS]
+    END ELSE
+        P1 = NUL
+        LOOP
+            IF NUM(ANS[LEN.ANS,1]) THEN P1 = ANS[LEN.ANS,1]:P1;LEN.ANS=LEN.ANS-1 ELSE EXIT
+        REPEAT
+        IF P1 = NUL THEN P1 = 1
+        P2 = P1
+    END
+    IF P1 = NUL THEN P1 = 1
+    IF P2 = NUL THEN P2 = MAX.STACK
+    IF NUM(P1) & NUM(P2) & P1 > 0 & P2 <= MAX.STACK THEN
+        RANGE.ERROR = FALSE
+    END ELSE
+        RANGE.ERROR = TRUE
+        PRINT 'Range Error':BELL
+    END
+RETURN
+
+EDIT:
+    * Some of the stuff in here is redundant, repeating COMMAND
+    * but to gosub command introduces re-entrancy problems
+    * That's why we use the dreaded GOTO command
+    N = ANS[3,LEN.ANS]
+    IF NOT(NUM(N)) THEN PRINT 'No such line number - ':N:BELL;RETURN
+    IF N = NUL THEN N = 1
+    LOOP WHILE N # NUL AND STACK<N> # NUL DO
+        PRINT UP:N 'R%3':':':EOL:
+        ENTRY = STACK<N>;X = 5;DISP.LEN = 74;LEN = LONG.LINE
+        IF ENTRY # NUL THEN
+            OLD.ENTRY = ENTRY
+            GOSUB GET.INPUT
+            ANS = ENTRY
+        END
+        BEGIN CASE
+            CASE RTN = UP.KEY
+                IF SEARCH.FOR # NUL THEN
+                    GO BANG.COMMAND
+                END ELSE
+                    N = N + 1
+                    IF STACK<N> = NUL THEN N = 1
+                END
+            CASE RTN = DOWN.KEY
+                N = N - 1
+                IF N = 0 THEN
+                    *FOR F = 1 TO MAX.STACK
+                    *   IF STACK<F> = NUL THEN N = F-1;F = MAX.STACK
+                    *NEXT F
+                    N=1; PRINT BELL:
+                END
+            CASE RTN = RET
+                UNIX.COMMAND=FALSE
+                IF ANS[1,1] = UNIX THEN UNIX.COMMAND=TRUE
+                IF UNIX.COMMAND THEN
+                    EXECUTING = FALSE
+                    IF N = 1 AND ENTRY = OLD.ENTRY THEN EXECUTING = TRUE
+                    GOSUB DO.COMMAND
+                    N=NUL
+                END ELSE
+                    C.LIST = ANS
+                    C.COUNT = 1
+                    LOOP
+                        ANS = FIELD(C.LIST,COMMAND.SEPERATOR,C.COUNT)
+                    UNTIL ANS = NUL DO
+                        EXECUTING = FALSE
+                        IF N = 1 AND ENTRY = OLD.ENTRY THEN EXECUTING = TRUE
+                        GOSUB DO.COMMAND
+                        C.COUNT = C.COUNT + 1
+                    REPEAT
+                    N = NUL
+                END
+            CASE RTN = ESC
+                N = NUL
+        END CASE
+    REPEAT
+RETURN
+
+BANG.COMMAND:
+    * Search the stack for a string
+    IF SEARCH.FOR = NUL THEN SEARCH.FOR = ANS[2,LONG.LINE]
+    FOUND = FALSE
+    FOR F = START.WORD.SEARCH TO MAX.STACK UNTIL FOUND OR STACK<F> = NUL
+        IF INDEX(STACK<F>,SEARCH.FOR,1) # 0 THEN FOUND = TRUE
+    NEXT F
+    IF FOUND THEN
+        START.WORD.SEARCH = F
+        ANS = '.R':F-1
+        GO EDIT
+    END
+    PRINT BELL:SEARCH.FOR:' event not found'
+RETURN
+
+PROG.COMMAND:
+    IF ANS = PROG.CHAR OR ANS=PROG.CHAR:PROG.CHAR THEN GO PRINT.PROG.INFO
+    GOSUB PARSE.PROG.COM
+    BEGIN CASE
+        CASE PROG.COM = '/WW'
+            WRITE PROGRAMS ON HOME.F, PROGRAM.ITEM
+            EXEC.LINE = WP.VERB:SPC:HOME.FILE:SPC:PROGRAM.ITEM
+            GOSUB EXEC.SUB
+            READ PROGRAMS FROM HOME.F, PROGRAM.ITEM ELSE PROGRAMS = NUL
+        CASE PROG.COM = '/N'
+            GOSUB GET.PROG.NAME
+            IF RTN=13 THEN
+                PROGRAMS<PROG.NUM> = PROG
+                WRITE PROGRAMS ON HOME.F, PROGRAM.ITEM
+            END
+            IF B.FILE # '' THEN
+                OPEN B.FILE TO F THEN
+                    OPTIONS=''
+                    CALL CVS.CHECKOUT(RTN, B.FILE, B.ITEM, OPTIONS)
+                    READ DUMMY FROM F, B.ITEM ELSE
+                        PRINT B.ITEM:' not found.  Use standard header? ':
+                        INPUT YORN
+                        IF YORN = 'Y' THEN
+                            READ HEADER FROM TRIN.GLOBAL.PARAMETER, 'TRIN.HEADER' THEN
+                                SWAP "$*" WITH "$" IN HEADER
+                                HEADER<2>=HEADER<2>[1,12]:B.ITEM
+                                HEADER<3>=HEADER<3>[1,12]:USERNAME
+                                HEADER<4>=HEADER<4>[1,12]:OCONV(DATE(),"D4/")
+                                WRITE HEADER ON F, B.ITEM
+                            END
+                        END
+                    END
+                    CLOSE F
+                END ELSE
+                    PRINT B.FILE:' is not a file in this account'
+                END
+            END
+        CASE PROG.COM = '/H'
+            OPTIONS='LESS'
+            CALL CVS.LOG(RTN, B.FILE, B.ITEM, OPTIONS)
+        CASE PROG.COM = '/L'
+            OPTIONS='MODIFIED'
+            X = 15;DISP.LEN=30;LEN=LONG.LINE;ENTRY=NUL
+            PRINT 'Program File :':
+            GOSUB GET.INPUT
+            ANS = UPCASE(ENTRY)
+            IF RTN # 13 THEN RETURN
+            CALL CVS.LIST(RTN, ENTRY, OPTIONS)
+        CASE PROG.COM = '/CI'
+            * Check it in
+            OPTIONS=''
+            CALL CVS.CHECKIN(RTN, B.FILE, B.ITEM, OPTIONS)
+        CASE PROG.COM = '/D'
+            * CVS Diff
+            OPTIONS='SHOW'
+            CALL CVS.DIFF(RTN, B.FILE, B.ITEM, OPTIONS)
+        CASE B.FILE[1,1] = '*' OR B.FILE=''
+            NULL ;* Don't do anything with 'comment' or blank entries
+        CASE PROG.COM = '/BR'
+            GOSUB COMPILE
+            EXEC.LINE = B.ITEM
+            GOSUB EXEC.SUB
+        CASE PROG.COM = '/B'
+            GOSUB COMPILE
+        CASE PROG.COM = '/E' OR PROG.COM = '/W'
+            OPEN B.FILE TO F ELSE PRINT 'Cannot open ':B.FILE:BELL;RETURN
+            READ R1 FROM F, B.ITEM ELSE R1=NUL
+            IF PROG.COM = '/E' THEN
+                EXEC.LINE = ED.VERB:SPC:PROG:OPTIONS
+            END ELSE
+                EXEC.LINE = WP.VERB:SPC:PROG
+            END
+            GOSUB EXEC.SUB
+            * Do we need to time-stamp?
+            *READ R FROM F, B.ITEM THEN
+            *   IF R1 # R THEN GOSUB TIME.STAMP
+            *END
+            CLOSE F
+        CASE PROG.COM = '/F'
+            EXEC.LINE = 'BFORMAT ':PROG:OPTIONS
+            GOSUB EXEC.SUB
+        CASE PROG.COM = '/R'
+            OPEN B.FILE TO F ELSE PRINT 'Cannot open ':B.FILE:BELL;RETURN
+            READV R FROM F, B.ITEM, 1 ELSE R=NUL
+            CLOSE F
+            IF R='PQ' THEN
+                EXEC.LINE= 'RP ':PROG:OPTIONS
+            END ELSE
+                EXEC.LINE = B.ITEM:OPTIONS
+            END
+            GOSUB EXEC.SUB
+        CASE PROG.COM = '/S'
+            E=\SORT.RECORD \:HOME.FILE:\ \:PROGRAM.ITEM
+            PRINT E ; EXECUTE E
+        CASE OTHERWISE
+            PRINT 'There is no such PROGRAM command':BELL
+            PRINT '? for help'
+    END CASE
+RETURN
+
+COMPILE:
+    OPTIONS=''
+    * Check for global catalog
+    READ DUMMY FROM CTLGTB, B.ITEM THEN
+        PRINT B.ITEM:' is cataloged globally'
+        OPTIONS='G'
+    END
+
+    * Check for local catalog
+    READ DUMMY FROM CTLG, B.ITEM THEN
+        PRINT B.ITEM:' is cataloged locally'
+        OPTIONS:='L'
+    END
+
+    * Check for direct catalog
+    READ DUMMY FROM VOC, B.ITEM THEN
+        IF INDEX(DUMMY<2>,'/CTLG/',1)=0 THEN
+            PRINT B.ITEM:' is cataloged direct to ':DUMMY<2>
+            PRINT 'Bugging out:':INDEX(DUMMY<2>,'/CTLG/',1)
+            RETURN
+        END
+    END
+
+    IF LEN(OPTIONS) > 1 THEN
+        PRINT "OPTIONS=":OPTIONS
+        PRINT "I do not like green eggs and ham, nor do I like"
+        PRINT "programs cataloged twice.  You must fix, Sam"
+        RETURN
+    END
+
+    LOOP
+    UNTIL OPTIONS#'' DO
+        PRINT 'Catalog ':B.ITEM:' -- L)ocal or G)lobal :':
+        INPUT OPTIONS
+        OPTIONS=UPCASE(OPTIONS)
+        IF OPTIONS = '/' OR OPTIONS='' THEN RETURN
+        * Have to enter L or G
+        IF OPTIONS # 'L' AND OPTIONS # 'G' THEN OPTIONS=''
+    REPEAT
+
+    EXEC.LINE = 'BASIC ':B.FILE:' '
+    IF OPTIONS='G' THEN EXEC.LINE:='TO BP.OBJ '
+    EXEC.LINE := B.ITEM:' -D'
+    PRINT EXEC.LINE
+    GOSUB EXEC.SUB
+
+    IF OPTIONS='G' THEN
+        EXEC.LINE = 'CATALOG BP.OBJ ':B.ITEM:' FORCE'
+        PRINT EXEC.LINE
+        GOSUB EXEC.SUB
+        * Global, so remove direct or local pointers
+        READ R FROM VOC, B.ITEM THEN DELETE VOC, B.ITEM
+    END ELSE
+        EXEC.LINE = 'CATALOG ':PROG:' LOCAL FORCE'
+        PRINT EXEC.LINE
+        GOSUB EXEC.SUB
+        * Object is in CTLG file, so remove from SOURCE file
+        OPEN B.FILE TO F ELSE PRINT 'Cannot open ':B.FILE:BELL;RETURN
+        DELETE F, '_':B.ITEM
+        CLOSE F
+    END
+
+    EXEC.LINE = 'NEWPCODE'
+    GOSUB EXEC.SUB
+RETURN
+
+PARSE.PROG.COM:
+    PROG.NUM = NUL
+    F = FIELD(ANS,SPC,1);L = LEN(F);I = L
+    LOOP
+        IF NUM(F[I,1]) THEN PROG.NUM = F[I,1]:PROG.NUM ELSE EXIT
+        I = I - 1
+    REPEAT
+    IF PROG.NUM = NUL THEN PROG.NUM = 1
+    OPTIONS = ANS[L+1,LONG.LINE]
+    PROG.COM = ANS[1,I]
+    PROG = PROGRAMS<PROG.NUM>
+    B.FILE = FIELD(PROG,SPC,1)
+    B.ITEM = FIELD(PROG,SPC,2)
+RETURN
+
+GET.PROG.NAME:
+    X = 15;DISP.LEN = 30;LEN = LONG.LINE;ENTRY = PROG
+    PRINT 'Program Name :':
+    GOSUB GET.INPUT
+    ANS = UPCASE(ENTRY)
+    IF RTN # 13 THEN RETURN
+    GOSUB EXPAND.ALIASES
+    IF INDEX(ANS,SPC,1) THEN
+        B.FILE = FIELD(ANS,SPC,1)
+        B.ITEM = FIELD(ANS,SPC,2)
+        PROG=ANS
+    END ELSE
+        IF ANS = NUL THEN
+            B.FILE = NUL ; B.ITEM = NUL ;PROG = NUL
+        END ELSE
+            B.FILE = WORK.FILE ; B.ITEM = ANS ; PROG = B.FILE:SPC:B.ITEM
+        END
+    END
+RETURN
+
+TIME.STAMP:
+    * Assumes that calling code opened file to F, and read record into R,
+    *  and will take care of closing file
+    ERROR = FALSE
+    IF INDEX(R,STAMP.STRING,1) THEN
+        L=LEN(STAMP.STRING)
+        FOR N=1 TO 10
+            IF R<N>[1,L] = STAMP.STRING THEN
+                R<N> = STAMP.STRING:' ':TIMEDATE():' By ':INITIALS'L#8'
+                WRITE R ON F,B.ITEM
+                R = NUL
+            END
+        NEXT F
+    END
+RETURN
+
+PRINT.PROG.INFO:
+    I = DCOUNT(PROGRAMS,@AM)
+    PRINT
+    FOR F = 1 TO I
+        IF PROGRAMS<F> # NUL THEN
+            CH=' '
+            IF ANS=PROG.CHAR:PROG.CHAR THEN
+                * We want cvs status as well
+                FILE=FIELD(PROGRAMS<F>,' ',1)
+                ITEM=FIELD(PROGRAMS<F>,' ',2)
+                CALL CVS.STATUS(R,FILE,ITEM,'')
+                STATUS=R<1>
+                WORK.VER=R<2>
+                CVS.VER=R<3>
+                BEGIN CASE
+                    CASE STATUS='UPTODATE'
+                        CH='  ':WORK.VER'L#9'
+                    CASE STATUS='MODIFIED'
+                        CH='> ':WORK.VER'L#4':' ':CVS.VER'L#4'
+                    CASE 1
+                        CH='! ':SPACE(9)
+                END CASE
+            END
+            PRINT F 'L#5':CH:' ':PROGRAMS<F>
+        END
+    NEXT F
+RETURN
+
+WRITE.INFO:
+    WRITE STACK ON HOME.F, STACK.ITEM
+    WRITE ALIASES ON HOME.F, ALIAS.ITEM
+    WRITE PROGRAMS ON HOME.F, PROGRAM.ITEM
+    WRITE SETTINGS ON HOME.F, SETTING.ITEM
+RETURN

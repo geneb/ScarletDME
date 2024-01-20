@@ -1,0 +1,81 @@
+*
+* Retrieve status array from every file in the VOC, update INODE xref
+* Written by Will Johnson, Fast Forward Technologies, wjhonson@aol.com
+* Creative Commons License, this notice must be present in all derivative
+ works
+*
+      EQUATE FALSE TO 0, TRUE TO 1
+$INCLUDE SYSCOM INC.STATUS
+$INCLUDE SYSCOM INC.INODE
+      GOSUB INIT
+      EXECUTE CMD, SELECT > L.VOC
+      DONE = FALSE ; CNT = 0
+      LOOP
+         READNEXT K.VOC FROM L.VOC ELSE DONE = TRUE
+         IF NOT(MOD(CNT,25)) THEN
+            PRINT CHAR(13):CNT"R#6":" files processed"
+         END
+      UNTIL DONE DO
+         CNT += 1 ; GOSUB FILE.STATUS
+      REPEAT
+      PRINT CNT"R#6":" files processed" ; PRINT ; PRINT ; PRINT
+      STOP
+*
+FILE.STATUS:
+      N.FILE = K.VOC
+      READ RD FROM FD.INODE.FILE.XREF,ACCOUNT ELSE
+         RD = "Starting FILE.STATUS command":@AM:TIMEDATE()
+      END
+      RD<3> = 'Going to process file ':N.FILE
+      WRITE RD ON FD.INODE.FILE.XREF,ACCOUNT
+*
+      DISPLAY "Status array for file ":N.FILE
+      OPEN N.FILE TO F.FILE THEN
+         STATUS STAT.ARR FROM F.FILE THEN
+            K.INODE.FILE.XREF = STAT.ARR<STATUS$INODEDEV>
+            K.INODE.FILE.XREF := ":":STAT.ARR<STATUS$INODE>
+            IF WRITE.XREF THEN GOSUB DO.WRITE.XREF
+         END
+      END
+      RETURN
+*
+DO.WRITE.XREF:
+      READU R.INODE.FILE.XREF FROM F.INODE.FILE.XREF,K.INODE.FILE.XREF LO
+CKED
+         NULL                            ; * skip if locked
+      END THEN
+      END
+      R.INODE.FILE.XREF<INODE$FILENAME> = N.FILE
+      R.INODE.FILE.XREF<INODE$PATH> = FILEINFO(F.FILE,2)
+      WRITE R.INODE.FILE.XREF ON F.INODE.FILE.XREF,K.INODE.FILE.XREF
+      RETURN
+*
+INIT:
+      ACCOUNT = @WHO
+      WRITE.XREF = TRUE
+      OPEN "DICT","INODE.FILE.XREF" TO FD.INODE.FILE.XREF ELSE
+         WRITE.XREF = FALSE
+      END
+      OPEN "INODE.FILE.XREF" TO F.INODE.FILE.XREF ELSE
+         WRITE.XREF = FALSE
+      END
+*
+      CMD = \SSELECT VOC WITH TYPE LIKE "F..." \
+
+      CMD := \ AND F2 NOT.MATCHING "'I_'..."\
+
+      CMD := \ AND F2 NOT.MATCHING "'../'..." AND F2 NOT.MATCHING "'..\
+
+      CMD := "\"
+      CMD := \'..." AND F2 NOT.MATCHING "'/'..." AND F2 NOT.MATCHING "'\
+
+      CMD := "\": \'..."\
+
+      CMD := \ AND F2 # "." AND F2 # ""\
+
+      DISPLAY CMD
+      DISPLAY "Press Enter to continue, or any other key to quit ":
+      INPUT WHATEVER,1_ ; IF WHATEVER #  THEN STOP
+      RETURN
+*
+   END

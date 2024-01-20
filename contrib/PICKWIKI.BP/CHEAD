@@ -1,0 +1,562 @@
+     program chead
+*
+* To investigate QMBASIC object code. Version 1.0
+*
+
+     copyright = 'Copyright Keith Robert Johnson 2008'
+
+*v This data is from the open source OPCODES.H - Version 2.6
+* Simple opcodes
+     opcodes = "STOP]ABORT]RETURN]JMP]JPO]JPZ]JNG]JZE"
+     opcodes := "]JNZ]]GOSUB]RETURNTO]CALL]ONGOTO]ONGOSUB]RUN"
+     opcodes := "]LDSINT]LDLINT]LDSTR]LDNULL]LDLCL]LDCOM]STOR]POP"
+     opcodes := "]DUP]LDSLCL]LDSYS]LD0]LD1]NULL]EXCH]VALUE"
+     opcodes := "]ADD]SUB]MUL]DIV]NEG]INT]INC]DEC"
+     opcodes := "]MOD]PWR]ABS]REM]LN]EXP]REUSE]IDIV"
+     opcodes := "]DSP]DSPNL]LDUNASS]AT]PROFF]PRON]PAGE]BREAKCT"
+     opcodes := "]KEYRDY]KEYIN]PRINTERR]PROMPT]GETPROMPT]KEYINC]BREAK]LOCATE"
+     opcodes := "]LEN]SUBSTR]SUBSTRE]CAT]REMOVE]CHAR]SEQ]EXTRACT"
+     opcodes := "]REPLACE]INS]DEL]LOCATES]SPACE]STR]DNCASE]UPCASE"
+     opcodes := "]RMVTKN]INSERT]FIELD]COL1]COL2]FLDSTOR]FMT]ICONV"
+     opcodes := "]OCONV]SUBSTRA]TRIM]TRIMF]TRIMB]COUNT]DCOUNT]INDEX"
+     opcodes := "]EQ]NE]GT]LT]NOT]AND]OR]BITAND"
+     opcodes := "]BITOR]BITNOT]GE]LE]SHIFT]BITXOR]BITSET]BITRESET"
+     opcodes := "]OPEN]READ]READV]WRITEV]DELETE]WRITE]CLOSE]QUOTIENT"
+     opcodes := "]FORLOOPS][[FOR1S]]]KEYINR]OPENPATH]SYSDIR]KEYINT]KEYINCT]TRANS"
+     opcodes := "]DIMLCL]DIMCOM]INDX1]INDX2]INMAT]INMATA]KEYINRT]MATCOPY"
+     opcodes := "]MATFILL]MATPARSE]MATBUILD]DELCOM]MATREAD]GETREM]SETREM]COMMON"
+     opcodes := "]STATUS]ONERROR]NOWAIT]SETMODE]CLRMODE]SETSTAT]SWAP]FOLD3"
+     opcodes := "]FILEINFO]OSPATH]TIME]DATE]TIMEDATE]EXECUTE]]ITYPE"
+     opcodes := "]ALPHA]NUM]APPEND]TRIMX]SOUNDEX]MATCHES]RAISE]LOWER"
+     opcodes := "]SUM]CONVERT]FCONVERT]COMPARE]FLDSTORF]MATCHFLD]QUOTE]RMVF"
+     opcodes := "]SELECT]CLEARSEL]CLEARALL]SLCTINFO]READNEXT]RDNXEXP]RDNXPOS]SSELECT"
+     opcodes := "]FORMLIST]READLIST]SYSMSG]]]]JFALSE]JTRUE"
+     opcodes := "]ACOS]ASIN]ATAN]COS]SIN]TAN]SQRT]RND"
+     opcodes := "]LDFLOAT]REP]STZ]STNULL]LDSYSV]UNASS]BITTEST]PREFIX"
+     opcodes := "]FORINIT]FORLOOP]FOR1]SLEEP]CLRFILE]QUIT]LOCK]UNLOCK"
+     opcodes := "]RELEASE]RECLCKD]FILELOCK]FLUNLOCK]LOCKREC]RLSALL]GETLOCKS]FOLD"
+     opcodes := "]SAVESCRN]RSTSCRN]TRACE]PRECISION]CHKCAT]CLEAR]CLRCOM]CHAIN"
+     opcodes := "]ULOCK]LLOCK]MVD]MVDS]MVDSS]MVDSSS]ASS]MVDD"
+     opcodes := "]CLRINPUT]HUSH]DATA]TESTLOCK]HEADING]FOOTING]PRNT]PRNL"
+     opcodes := "]PSET]PRCLOSE]PRFILE]SH]DEBUG]DBGINF]DBGBRK]KERNEL"
+     convert ']' to @vm in opcodes
+
+* Extended opcodes
+     excodes = "PABORT]NAP]TOTAL]IFS]SETNLS]GETNLS]ITYPE2]CALLV"
+     excodes := "]ABORTMSG]PWCRYPT]LOGIN]UMASK]TERMINFO]KEYCODE]ERRMSG]VARTYPE"
+     excodes := "]CROP]FIND]CHANGE]VSLICE]FINDSTR]SUBSTRNG]SWAPCASE]REPADD"
+     excodes := "]REPSUB]REPMUL]REPDIV]REPCAT]MAXIMUM]MINIMUM]CHANGED]REPSUBST"
+     excodes := "]DBGON]DBGOFF]UNLOAD]CAPTURE]PHANTOM]RTNLIST]SYSTEM]ABTCAUSE"
+     excodes := "]LOGOUT]USERNO]ISSUBR]LISTCOM]DBGWATCH]EVENTS]DBGSET]PCONFIG"
+     excodes := "]TTYGET]TTYSET]INPUTAT]INPUT]PRNAME]PRDISP]COMO]PTERM"
+     excodes := "]HEADINGN]PRRESET]EBCDIC]ASCII]DTX]GETLIST]SAVELIST]GETPU"
+     excodes := "]RDIV]SUMMATION]SEED]SETPU]OPTION]ENV]CONFIG]SENDMAIL"
+     excodes := "]SQUOTE]DELLIST]SORTDATA]SELECTV]SELECTE]PASSLIST]BINDKEY]CHECKSUM"
+     excodes := "]SEEK]READBLK]WRITEBLK]ANALYSE]CONFIGFL]FLUSH]CREATESQ]UNLK"
+     excodes := "]UNLKFL]OSRENAME]GRPSTAT]SETTRIG]KEYCODET]KEYEDIT]KEYEXIT]KEYTRAP"
+     excodes := "]OPENSEQ]READSEQ]WRITESEQ]WEOFSEQ]WRITESEQF]OPENSEQP]CREATEAK]AKRELEASE"
+     excodes := "]AKWRITE]AKREAD]AKDELETE]DELETEAK]SELINDX]SELINDXV]AKCLEAR]AKENABLE"
+     excodes := "]CREATEDH]CREATET1]MAPMARKS]SELLEFT]SELRIGHT]SETLEFT]SETRIGHT]INDICES1"
+     excodes := "]INDICES2]TXNBGN]TXNCMT]TXNEND]TXNRBK]OSERROR]NOBUF]XTD"
+     excodes := "]BTINIT]BTADD]BTSCAN]BTRESET]BTADDA]BTMODIFY]BTFIND]BTSCANA"
+     excodes := "]LOADOBJ]LOADED]SPLICE]PACKAGE]LOCATEF]LISTINDX]MIN]MAX"
+     excodes := "]SORTINIT]SORTADD]SORTNEXT]SORTCLR]RLSFILE]DIR]PMATRIX]DIMLCLP"
+     excodes := "]LOGMSG]SHCAP]PROCREAD]DEREF]IADD]ISUB]IMUL]SCALE"
+     excodes := "]READPKT]WRITEPKT]CHGPHANT]ONGOTOP]ONGOSUBP]READONLY]PICKREAD]STORSYS"
+     excodes := "]SUBST]PSUBSTRA]SAVEADDR]COMPREP]COMPINS]COMPINSRT]COMPREPLC]FCONTROL"
+     excodes := "]GETPORT]SETPORT]CCALL]ENTER]SETFLAGS]GETMSG]CSVDQ]OJOIN"
+     excodes := "]EXPANDHF]LOCAL]DELLCL]AKMAP]SRVRADDR]OBJECT]OBJMAP]OBJREF"
+     excodes := "]OPENSKT]CLOSESKT]READSKT]WRITESKT]SRVRSKT]ACCPTSKT]SKTINFO]SETSKT"
+     excodes := "]FORMCSV]ISMV]SETUNASS]TIMEOUT]IN]ME]GET]SET"
+     excodes := "]ARGCT]ARG]RTRANS]PAUSE]WAKE]PSUBSTRB]DELSEQ]CNCTPORT"
+     excodes := "]LGNPORT]OBJINFO]INHERIT]DISINH]CREATESH]LDLSTR]RDNXINT]ENCRYPT"
+     excodes := "]DECRYPT]CRYPT]INPUTBLK]NEGS]ABSS]LENS]SPACES]TRIMS"
+     excodes := "]TRIMFS]TRIMBS]NOTS]NUMS]SOUNDEXS]STRS]FMTS]ICONVS"
+     excodes := "]OCONVS]COUNTS]FOLDS]INDEXS]FOLDS3]TRIMXS]FIELDS]MODS"
+     excodes := "]CATS]EQS]NES]GTS]LTS]ANDS]ORS]GES"
+     excodes := "]LES"
+     convert ']' to @vm in excodes
+
+* Extended opcode values
+     values = "52992]52993]52994]52995]52996]52997]52998]52999"
+     values := "]53000]53001]53002]53003]53004]53005]53006]53007"
+     values := "]53008]53009]53010]53011]53012]53013]53014]53015"
+     values := "]53016]53017]53018]53019]53020]53021]53022]53023"
+     values := "]53024]53025]53026]53027]53028]53029]53030]53031"
+     values := "]53032]53033]53034]53035]53036]53037]53038]53039"
+     values := "]53040]53041]53042]53043]53044]53045]53046]53047"
+     values := "]53048]53049]53050]53051]53052]53053]53054]53055"
+     values := "]53056]53057]53058]53059]53060]53061]53062]53063"
+     values := "]53064]53065]53066]53067]53068]53069]53070]53071"
+     values := "]53072]53073]53074]53075]53076]53077]53078]53079"
+     values := "]53080]53081]53082]53083]53084]53085]53086]53087"
+     values := "]53088]53089]53090]53091]53092]53093]53094]53095"
+     values := "]53096]53097]53098]53099]53100]53101]53102]53103"
+     values := "]53104]53105]53106]53107]53108]53109]53110]53111"
+     values := "]53112]53113]53114]53115]53116]53117]53118]53119"
+     values := "]53120]53121]53122]53123]53124]53125]53126]53127"
+     values := "]53128]53129]53130]53131]53132]53133]53134]53135"
+     values := "]53136]53137]53138]53139]53140]53141]53142]53143"
+     values := "]53144]53145]53146]53147]53148]53149]53150]53151"
+     values := "]53152]53153]53154]53155]53156]53157]53158]53159"
+     values := "]53160]53161]53162]53163]53164]53165]53166]53167"
+     values := "]53168]53169]53170]53171]53172]53173]53174]53175"
+     values := "]53176]53177]53178]53179]53180]53181]53182]53183"
+     values := "]53184]53185]53186]53187]53188]53189]53190]53191"
+     values := "]53192]53193]53194]53195]53196]53197]53198]53199"
+     values := "]53200]53201]53202]53203]53204]53205]53206]53207"
+     values := "]53208]53209]53210]53211]53212]53213]53214]53215"
+     values := "]53216]53217]53218]59940]59946]59968]59980]59994"
+     values := "]59995]59996]60004]60065]60068]60237]60246]60247"
+     values := "]60248]60253]60383]60511]60567]60579]60754]61224"
+     values := "]61251]61280]61281]61282]61283]61285]61286]61290"
+     values := "]61291"
+     convert ']' to @vm in values
+
+* Simple and extended opcode modes
+     smodes = "AAABBBBBB.BBCMMACDFAEHAAANCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABBAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAC.AAAAAAAAAAAAAAAAAAAAAAAAAAAC...BBAAAAAAAAGAAACAAKABBAAAAAAAAAAAAAAAAAAAAAAALLLLALAAAAAAAAAAAAJAAA"
+     xmodes = "AACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOAAAAAAAAAAAAMMAAAAAAAAAAAAAAAPAAAAQEAACRCAAAAAAAAAAAAAACCAAAAAAAAAAAAASAAAAA............................."
+
+*^ End of data derived from OPCODES.H
+
+* Parse the command line
+     comd = @sentence
+     comd = trim(comd)
+     convert ' ' to @am in comd
+     loop
+        this = comd<1>
+        del comd<1>
+     until upcase(this) eq 'CHEAD' or comd eq '' do
+     repeat
+
+* Help
+     if comd<2> eq '' then
+        crt
+        crt 'Program to display information about compiled code.'
+        crt '---------------------------------------------------'
+        crt 'syntax: [RUN file] CHEAD FILE ITEM'
+        crt
+        crt 'This program will display information about'
+        crt 'the object code and about QMBASIC opcodes.'
+        crt
+        crt 'The output can be printed using P toggle.'
+        crt
+        crt 'NOTE: Incorrect if DEBUGGING option used.'
+        crt
+        stop
+     end
+
+     namf = comd<1>
+     name = comd<2>
+
+* Get the source code if possible
+     if namf[4] eq '.OUT' then namf = namf[1,len(namf)-4]
+     sourcode = ''
+     open namf to srs.file then
+        read sourcode from srs.file,name else null
+     end
+
+
+* Get the object code
+     namf = namf:'.OUT'
+     open namf to obj.file else
+        crt 'Cannot open object file ':namf
+        stop
+     end
+
+     read this from obj.file,name else
+        crt 'Cannot read object code ':name
+        stop
+     end
+* Calculate the object size from the header information
+* NOTE: LEN(THIS) is too short for big programs!
+     blen = oconv(this[25,4],'IL')
+
+* The standard read converts char(10) to attribute marks
+* Get item with a block sequential read to avoid this
+     openseq namf,name to code then
+        readblk this from code,blen else null
+        closeseq code
+     end
+     crt
+
+* Get the header
+     lenh = 164
+     head = this[1,lenh]
+     begn = lenh+2
+
+* Get the various variables we are interested in
+     nolocvar = oconv(head[13,2],'IS')
+     nosubarg = oconv(head[11,2],'IS')
+     symtabof = oconv(head[17,4],'IL')
+     lcordoff = oconv(head[21,4],'IL')
+     code.len = oconv(head[25,4],'IL')
+     hdrflags = oconv(head[29,2],'IS')
+     compiled = oconv(head[31,4],'IL')
+     d = int(compiled/86400)
+     t = rem(compiled,86400)
+     compiled = oconv(d,'D'):' ':oconv(t,'MTS')
+
+* Change for later version
+     vers = seq(this[2,1])
+     if vers > 0 and symtabof then
+        lcordoff = symtabof + 4
+        symtabof += oconv(this[symtabof+2,2],'is')+4
+     end
+
+* Some more for thoroughness
+     hdroffst = oconv(head[7,4],'IL')
+     stakdeep = oconv(head[15,2],'IS')
+     headrefs = oconv(head[35,2],'IS')
+     progname = head[37,128]
+     progname = trim(progname)
+     progname = trim(progname,char(0))
+
+* Get the symbol table
+     symtable = ''
+     if symtabof then symtable = this[symtabof+1,blen]
+     symtable = trim(symtable,char(1),'T')
+
+* Get the line table
+     lintable = ''
+     if lcordoff then
+        if symtabof
+           then lintable = this[lcordoff+2,symtabof-lcordoff-1]
+           else lintable = this[lcordoff+2,blen]
+     end
+
+     loclvars = ''
+     commvars = ''
+     commnumb = ''
+     if symtable ne '' then
+        loclvars = trim(symtable<1>,@vm,'T')
+        commvars = symtable
+        del commvars<1>
+        xxno = dcount(commvars,@am)
+        for xx = 1 to xxno
+           commnumb<-1> = commvars<xx,1>+1
+        next xx
+     end
+
+* Get the code
+     begin case
+        case lcordoff
+           this = this[begn,lcordoff-lenh-1]
+        case symtabof
+           this = this[begn,symtabof-lenh-1]
+        case 1
+           this = this[begn,blen]
+     end case
+
+
+* Present the user with a menu
+     prompt ''
+     pout = @false
+     plen = system(3) - 1
+     loop
+        crt @(-1),namf,name
+        crt
+        crt '  H - Header information'
+        crt '  F - Flags set in header'
+        crt '  V - Variables (local)'
+        crt '  C - Common variables'
+        crt '  L - Line concordance'
+        crt '  O - Opcodes'
+        crt '  E - Extended opcodes'
+        crt '  D - Dump of code'
+        crt '  X - heXadecimal code dump'
+        crt
+        if pout
+           then crt '  P - Print output now ON  turn OFF'
+           else crt '  P - Print output now OFF turn ON'
+        crt
+        crt '  Q - Quit'
+        crt
+        loop
+           crt @(0):@(-3):
+* You can take the boy out of Mangere...
+           if rnd(20)
+              then crt '  Press choice key :':
+              else crt '  Cuzzy Bro - Press [[C_H_O_I_C_E]] key, eh?':
+           answ = upcase(keycode())
+        until answ ne '' and index('DXVCLHFPQOE',answ,1) do repeat
+        crt
+        if answ eq 'D' then gosub show.code
+        if answ eq 'X' then gosub show.code
+        if answ eq 'V' then gosub show.local
+        if answ eq 'C' then gosub show.common
+        if answ eq 'L' then gosub show.lines
+        if answ eq 'H' then gosub show.header
+        if answ eq 'F' then gosub show.flags
+        if answ eq 'P' then pout = not(pout)
+        if answ eq 'O' then gosub show.opcodes
+        if answ eq 'E' then gosub show.extended.opcodes
+     until answ eq 'Q' do repeat
+     crt
+     stop
+
+************************ SUBROUTINES ********************************
+show.code:
+     if answ eq 'D' then decm = @true else decm = @false
+     if this eq ''
+        then disp = 'THERE IS NO CODE TO SHOW'
+        else disp = 'DUMP OF CODE':@am
+     cntr = 0
+     size = 16
+     loop
+        part = this[cntr+1,size]
+     until part eq '' do
+        line = cntr 'R%4':':'
+        for xx = 1 to size
+           bite = part[xx,1]
+           if bite = '' then
+              bite = '   '
+           end else
+              if decm
+                 then bite = seq(bite) 'R#3'
+                 else bite = ' ':(dtx(seq(bite)) 'R%2')
+           end
+           line := bite
+        next xx
+        line := ' - ':oconv(part,'MCP')
+        disp<-1> = line
+        cntr += size
+     repeat
+     gosub display
+     return
+
+
+show.local:
+     disp = '      Local Variables':@am
+     xxno = dcount(loclvars,@vm)
+     for xx = 1 to xxno
+        varb = loclvars<1,xx>
+        void = space(14-rem(len(varb),10))
+        locate(xx,commnumb;posn) then
+           if varb = '$'
+              then varb := void:'******* common block *******'
+              else varb := void:'****** labelled common ******'
+        end
+        begin case
+           case varb matches '"__"1[[N0X]]'
+              varb := void:'***** Temporary Variable ****'
+           case varb[1,2] eq '__'
+              varb := void:'******* FILE Variable *******'
+           case varb[1,1] eq '_'
+              varb := void:'***** Call to Subroutine ****'
+           case varb[1,1] eq '~'
+              varb := void:'******** Object code ********'
+           case varb[1,1] eq '*'
+              varb := void:'****** Object Argument ******'
+        end case
+        disp<-1> = xx 'R#5':' ':varb
+     next xx
+     if loclvars eq '' then disp = 'THERE IS NO VARIABLE INFORMATION'
+     gosub display
+     return
+
+
+show.common:
+     disp = 'COMMON BLOCK DISPLAY':@am
+     xxno = dcount(commvars,@am)
+     for xx = 1 to xxno
+        line = commvars<xx>
+        comm = line<1,1>
+        del line<1,1>
+        comm += 1
+        comm = loclvars<1,comm>
+        if comm = '$'
+           then disp<-1> = '  Common Block'
+           else disp<-1> = '  ':comm:' - Labelled common'
+        yyno = dcount(line,@sm)
+        for yy = 1 to yyno
+           disp<-1> = yy 'R#5':' ':line<1,1,yy>
+        next yy
+        if xx ne xxno then disp<-1> = ' '
+     next xx
+     if commvars eq '' then disp = 'THERE ARE NO COMMON BLOCKS, OR THERE IS NO INFORMATION'
+     gosub display
+     return
+
+
+show.lines:
+     disp = 'LINE CONCORDANCE TABLE'
+     disp<-1> = ' Line# Length of object in line'
+     xx = 0
+     line = 0
+     loop
+        xx += 1
+        part = lintable[xx,1]
+     until part eq '' do
+        seqn = seq(part)
+        if seqn = 255 then
+           xx += 1 ; seqn = seq(lintable[xx,1])
+           xx += 1 ; seqn += seq(lintable[xx,1])*256
+        end
+        line += 1
+        if seqn then disp<-1> =  line 'R#6':' ':seqn
+     repeat
+     if lintable eq '' then disp = 'THERE IS NO LINE INFORMATION'
+     gosub display
+     return
+
+
+show.header:
+     disp = 'HEADER INFORMATION - ':progname:@am
+     disp<-1> = 'Endian hint' 'R#35':' ': seq(head[1,1])
+     disp<-1> = 'Header Revision' 'R#35':' ': seq(head[2,1])
+     disp<-1> = 'Header Offset' 'R#35':' ': hdroffst
+     disp<-1> = 'Number of local variables' 'R#35':' ': nolocvar
+     disp<-1> = 'Number of subroutine arguments' 'R#35':' ': nosubarg
+     disp<-1> = 'Stack Depth' 'R#35':' ': stakdeep
+     disp<-1> = 'Symbol table offset' 'R#35':' ': symtabof
+     disp<-1> = 'Line concordance offset' 'R#35':' ': lcordoff
+     disp<-1> = 'Line concordance table size' 'R#35':' ': len(lintable)
+     disp<-1> = 'Object size' 'R#35':' ': code.len
+     disp<-1> = 'Code size' 'R#35':' ': len(this)
+     disp<-1> = 'When compiled' 'R#35':' ': compiled
+     disp<-1> = 'Header References' 'R#35':' ': headrefs
+     gosub display
+     return
+
+
+show.flags:
+     disp = 'FLAG INFORMATION':@am
+     disp<-1> = 'Command processor' 'R#35':' ':  bittest(hdrflags,0)
+     disp<-1> = 'Internal mode program' 'R#35':' ':  bittest(hdrflags,1)
+     disp<-1> = 'Compiled in debug mode' 'R#35':' ':  bittest(hdrflags,2)
+     disp<-1> = 'Debugger' 'R#35':' ':  bittest(hdrflags,3)
+     disp<-1> = 'Case insensitive string operations' 'R#35':' ':  bittest(hdrflags,4)
+     disp<-1> = 'Basic function' 'R#35':' ':  bittest(hdrflags,5)
+     disp<-1> = 'Variable arg count (hdr.args = max)' 'R#35':' ':  bittest(hdrflags,6)
+     disp<-1> = 'Is a recursive program' 'R#35':' ':  bittest(hdrflags,7)
+     disp<-1> = 'Is an A[[/S/C/I]]-type' 'R#35':' ':  bittest(hdrflags,8)
+     disp<-1> = 'Allow break in recursive' 'R#35':' ':  bittest(hdrflags,9)
+     disp<-1> = 'Trusted program' 'R#35':' ':  bittest(hdrflags,10)
+     disp<-1> = 'Allow remote files by NFS' 'R#35':' ':  bittest(hdrflags,11)
+     disp<-1> = 'Program uses case sensitive names' 'R#35':' ':  bittest(hdrflags,12)
+     disp<-1> = 'Can be called using QMCall()' 'R#35':' ':  bittest(hdrflags,13)
+     disp<-1> = 'Is a C-type' 'R#35':' ':  bittest(hdrflags,14)
+     disp<-1> = 'Is CLASS module' 'R#35':' ':  bittest(hdrflags,15)
+     gosub display
+     return
+
+
+show.opcodes:
+     disp = 'Simple OPCODES':@am
+     xxno = dcount(opcodes,@vm)
+     for xx = 1 to xxno
+        numb = xx-1
+        hexn = dtx(numb) 'R%2'
+        mode = smodes[xx,1]
+        gosub get.mode.show
+        disp<-1> = numb 'R#5':'   ':hexn:' ':opcodes<1,xx> 'l#10':show
+     next xx
+     if opcodes eq '' then disp = 'THERE ARE NO SIMPLE OPCODES'
+     gosub display
+     return
+
+
+show.extended.opcodes:
+     disp = 'Extended OPCODES':@am
+     xxno = dcount(excodes,@vm)
+     for xx = 1 to xxno
+        numb = values<1,xx>
+        hexn = dtx(numb) 'R%4'
+        mode = xmodes[xx,1]
+        gosub get.mode.show
+        line = numb:' ':hexn:' ':excodes<1,xx> 'L#10':show
+        disp<-1> =  line
+     next xx
+     if excodes eq '' then disp = 'THERE ARE NO EXTENDED OPCODES'
+     gosub display
+     return
+
+
+get.mode.show:
+     begin case
+        case mode eq 'A' ; show = 'Opcode Byte' ; show = '' ; * Tidier
+        case mode eq 'B' ; show = 'Jump Address'
+        case mode eq 'C' ; show = 'One Byte Value'
+        case mode eq 'D' ; show = 'Four Byte Value'
+        case mode eq 'E' ; show = 'Local Variable'
+        case mode eq 'F' ; show = 'String Value'
+        case mode eq 'G' ; show = 'Float Value'
+        case mode eq 'H' ; show = 'Common Variable'
+        case mode eq 'I' ; show = 'Common Dcl'
+        case mode eq 'J' ; show = 'Debug Reference'
+        case mode eq 'K' ; show = 'Opcode Prefix'
+        case mode eq 'L' ; show = 'Multivalue Opcode'
+        case mode eq 'M' ; show = 'Address List'
+        case mode eq 'N' ; show = 'Short Local'
+        case mode eq 'O' ; show = 'Pmatdata'
+        case mode eq 'P' ; show = 'Two Byte Value'
+        case mode eq 'Q' ; show = 'Local Dcl'
+        case mode eq 'R' ; show = 'Object Map Data'
+        case mode eq 'S' ; show = 'Long String Value'
+        case 1 ; show = ''
+     end case
+     return
+
+
+display:
+     xxno = dcount(disp,@am)
+     if pout and xxno gt 1 then gosub print.output ; return
+
+     pags = int(xxno/plen)
+     last = pags * plen
+     pags += (rem(xxno,plen) ne 0)
+     dawn = 1
+     loop
+        dusk = dawn + plen - 1
+        for here = dawn to dusk
+           crt disp<here>
+        next here
+        begin case
+           case xxno le plen
+              crt 'Press any key to retun to menu ':
+              wait = upcase(keycode())
+              return
+           case here gt last
+              crt 'Press any key to return to menu or <T>op <P>revious ':
+              wait = upcase(keycode())
+              if wait ne 'T' and wait ne 'P' then return
+           case dusk le plen
+              crt 'Press any key to continue or <Q> to return to menu ':
+              wait = upcase(keycode())
+              if wait eq 'T' or wait eq 'P' then wait = 'C'
+           case 1
+              crt 'Press any key to continue or <T>op <P>revious <Q>uit to return to menu ':
+              wait = upcase(keycode())
+        end case
+        begin case
+           case wait eq 'T' ; dawn = 1
+           case wait eq 'P' ; dawn -= plen
+           case 1           ; dawn += plen
+        end case
+        crt
+     until dawn gt xxno or wait eq 'Q' do repeat
+     return
+
+
+print.output:
+     crt
+     crt disp<1>
+     loop
+        crt 'ARE YOU SURE YOU WANT TO PRINT?':
+        answ = upcase(keycode())
+     until answ eq 'Y' or answ eq 'N' do
+        crt 'Please answer "Y" or "N"'
+     repeat
+     if answ eq 'Y' then
+        printer on
+        print 'Details for ':name:' in ':namf
+        print
+        for xx = 1 to xxno
+           print disp<xx>
+        next xx
+        printer off
+     end
+     return
+
+  end

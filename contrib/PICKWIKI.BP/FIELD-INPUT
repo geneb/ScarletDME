@@ -1,0 +1,1075 @@
+     SUBROUTINE FINP(PASS,NEED,CLUE)
+* Generalised Field Input Subroutine
+* This is for [[UniVerse]], but you can change it to run under other MVDBMS
+*
+$COPYRIGHT Keith Robert Johnson 2005
+*
+* COPYRIGHT Keith Robert Johnson 2005
+* This program has been put in the public domain by Keith Robert Johnson
+* as a source-code resource. That is, anyone may copy, modify, or
+* otherwise use it as if they had written it themselves, and Keith
+* Robert Johnson is not liable in any way for the results.  The code
+* will not work unless it is compiled, and it is up to the person who
+* so compiles it to determine the suitability of the code for use.
+*
+* Version : 2.01
+*===
+* Version information
+*  2.01 - Changed to use [Tab] and [[[BackTab]]]
+*         Always allow back tab (calling program can deal with it)
+*         The keys were changed to be pretty well terminal independant
+*  2.00 - MASSIVE rewrite from original GOTO-heavy version
+*  1.00 - First written in 1990
+*===
+*
+* PASS - The input variable this subroutine is getting
+* NEED - The rules governing the input string
+*        NEED is converted to WANT to ensure de-linking
+*        and the delimiters are all converted to attribute marks
+*
+* The rules consist of 5 fields:
+*
+* <1> is in the form column,row,code:length
+*     Examples
+*       14,12,c10 = character input at column 14 row 12 length 10
+*       10,5,N6.2 = numeric @ column 10 row 5 length 6 with 2 dec places
+*     The code refers to the input type (see SHOW variable definition)
+*
+* <2> is a set of flags
+*       H - display the help message
+*       M - input is Mandatory
+*       I - take input immediately it reaches the length required
+*       W - input can be wider than the display allows
+*       Q - The calling program has the help - Pass H back
+*       U - convert lower case to upper case
+*       L - convert upper case to lower case
+*           NOTE if both L and U given, then case is inverted (really!)
+*
+* <3> is a range (if type 'N'umeric, 'I'nteger, 'D'ate, 'T'ime)
+*     or a list (if type 'L'ist)
+*     or a set of allowable patterns (if type 'P'attern)
+*     or a set of allowable characters.
+*     It is tilde delimited.
+*
+* <4> is the name of the field and (for 'P'attern) a mask.
+*     It is tilde delimited.
+*
+* <5> is a hint defined in the calling program.  If it is not ""
+*     then HINT is assumed true, so it will be displayed.
+*
+* <6> is a default used  when re-calling this subroutine after
+*     the calling program has rejected the input.
+*     This is a subtlety allowing the restore (VPRE) to be intelligent.
+*
+* CLUE - Passes back the type of exit used (empty string is standard)
+*        E - Escape - PASS is unchanged and we want to bail out
+*        H - Help   - Only if QUIZ is true, PASS changed but not checked
+*        N - Next   - PASS changed, but we want to go to the 'next' field
+*        L - Last   - PASS changed, but we want to go to the 'last' field
+
+*** Initialise
+     SIDE = SYSTEM(2)
+     BASE = SYSTEM(3)
+     DAWN = (DATE()*86400)+TIME()
+     TAWN = DAWN
+     TUSK = TAWN
+     BELL = CHAR(7) ; BELL = '' ; * Quiet testing
+     ESCC = CHAR(27)
+     RVON = @(-13)
+     RVOF = @(-12)
+     CEOL = @(-4)
+     VIEW = @FALSE
+     CLUE = ''
+     ERLN = BASE - 1
+
+     LOWR = 'abcdefghijklmnopqrstuvwxyz'
+     UPPR = UPCASE(LOWR)
+     NUMB = '0123456789'
+
+     CODE = 'CABNIQDSPTHL'
+     SHOW = ''
+     SHOW<01> = 'Character'
+     SHOW<02> = 'Alphanumeric'
+     SHOW<03> = 'Alphabetic'
+     SHOW<04> = 'Number'
+     SHOW<05> = 'Integer'
+     SHOW<06> = 'Question'
+     SHOW<07> = 'Date'
+     SHOW<08> = 'Select'
+     SHOW<09> = 'Pattern'
+     SHOW<10> = 'Time'
+     SHOW<11> = 'Hexadecimal'
+     SHOW<12> = 'List'
+
+     ERR1 = 'Spaces are not allowed'
+     ERR2 = ' Cannot be null'
+     ERR3 = ' Must be before '
+     ERR4 = ' Must be after '
+     ERR5 = ' Must be in the range '
+
+     ESCP = 1 ; CARR = 2
+     LARR = 3 ; RARR = 4 ; UARR = 5 ; DARR = 6
+     BACK = 7 ; TABK = 8 ; BATK = 17
+     INSP = 9 ; DELC = 10
+     INSL = 11 ; DELL = 12 ; VPRE = 13 ; DELR = 14
+     PSWD = 15 ; PHLP = 16
+
+*** These things should be set in the calling program in a common block
+*    PROG = 'THE.CALLING.PROGRAM.NAME'
+     PROG = SYSTEM(9001)<2,2>
+     PROG = FIELD(PROG,'/',DCOUNT(PROG,'/'))
+     MIND = 0 ; * Minutes until the password is requested
+     MINT = 0 ; * Minutes until autologout - VERY process intensive.
+
+* Set up keys.
+* This would normally be done in a separate subroutine and the results
+* held in common, but this routine is standalone, so it's a kludge.
+* I have tried to cater for the common terminal types.
+
+     COMMON [[/FINP]]$DATA/ KCAP,KEYS,KPTR,KINI,KMUL
+     TEST = NOT(ASSIGNED(KEYS))
+*    TEST = @TRUE ; * To force reset of keys
+     IF TEST THEN
+* Set up key caps
+        KCAP = ''
+        KCAP<ESCP> = 'Esc' ; KCAP<CARR> = 'Enter'
+        KCAP<LARR> = 'LEFT arrow' ; KCAP<RARR> = 'RIGHT arrow'
+        KCAP<UARR> = 'UP arrow' ; KCAP<DARR> = 'DOWN arrow'
+        KCAP<BACK> = 'Backspace' ; KCAP<TABK> = 'Tab'
+        KCAP<INSP> = 'Insert' ; KCAP<DELC> = 'Delete'
+        KCAP<INSL> = 'Ctrl-N' ; KCAP<DELL> = 'Ctrl-D'
+        KCAP<VPRE> = 'Ctrl-A' ; KCAP<DELR> = 'Ctrl-K'
+        KCAP<PSWD> = 'F12' ; KCAP<PHLP> = 'F1'
+        KCAP<BATK> = 'Shift-Tab'
+* Standard keys
+        KEYS = '' ; KPTR = ''
+        KPTR<-1> = ESCP; KEYS<-1> = ESCC
+        KPTR<-1> = CARR; KEYS<-1> = CHAR(13)
+        KPTR<-1> = BACK; KEYS<-1> = CHAR(8)
+        KPTR<-1> = TABK; KEYS<-1> = CHAR(9)
+        KPTR<-1> = BATK; KEYS<-1> = ESCC:'[Z'
+        KPTR<-1> = INSL; KEYS<-1> = CHAR(14)
+        KPTR<-1> = DELL; KEYS<-1> = CHAR(4)
+        KPTR<-1> = VPRE; KEYS<-1> = CHAR(1)
+        KPTR<-1> = DELR; KEYS<-1> = CHAR(11)
+* VT-type terminals - cater for two arrow sequences
+        KPTR<-1> = LARR; KEYS<-1> = ESCC:'[D'
+        KPTR<-1> = LARR; KEYS<-1> = ESCC:'OD'
+        KPTR<-1> = RARR; KEYS<-1> = ESCC:'[C'
+        KPTR<-1> = RARR; KEYS<-1> = ESCC:'OC'
+        KPTR<-1> = UARR; KEYS<-1> = ESCC:'[A'
+        KPTR<-1> = UARR; KEYS<-1> = ESCC:'OA'
+        KPTR<-1> = DARR; KEYS<-1> = ESCC:'[B'
+        KPTR<-1> = DARR; KEYS<-1> = ESCC:'OB'
+        KPTR<-1> = INSP; KEYS<-1> = ESCC:'[1~'
+        KPTR<-1> = DELC; KEYS<-1> = ESCC:'[4~'
+        KPTR<-1> = PSWD; KEYS<-1> = ESCC:'[24~'
+        KPTR<-1> = PHLP; KEYS<-1> = ESCC:'OP'
+* ADDS-type terminals (not actually tested)
+        KPTR<-1> = LARR; KEYS<-1> = CHAR(21)
+        KPTR<-1> = RARR; KEYS<-1> = CHAR(6)
+        KPTR<-1> = UARR; KEYS<-1> = CHAR(26)
+        KPTR<-1> = DARR; KEYS<-1> = CHAR(10)
+        KPTR<-1> = INSP; KEYS<-1> = ESCC:'[D'
+        KPTR<-1> = DELC; KEYS<-1> = ESCC:'OD'
+        KPTR<-1> = PSWD; KEYS<-1> = CHAR(2):'<':CHAR(13)
+        KPTR<-1> = PHLP; KEYS<-1> = CHAR(2):'1':CHAR(13)
+* Wyse-type terminals (not actually tested)
+        KPTR<-1> = BATK; KEYS<-1> = ESCC:'I'
+        KPTR<-1> = RARR; KEYS<-1> = CHAR(12)
+        KPTR<-1> = UARR; KEYS<-1> = CHAR(11)
+        KPTR<-1> = INSP; KEYS<-1> = ESCC:'Q'
+        KPTR<-1> = DELC; KEYS<-1> = ESCC:'W'
+        KPTR<-1> = PSWD; KEYS<-1> = CHAR(1):'K':CHAR(13)
+        KPTR<-1> = PHLP; KEYS<-1> = CHAR(1):'@':CHAR(13)
+* QMTERM QM standard terminal
+* Note that the backtab on these is [Ctrl-Tab]
+        KPTR<-1> = LARR; KEYS<-1> = CHAR(203)
+        KPTR<-1> = RARR; KEYS<-1> = CHAR(204)
+        KPTR<-1> = UARR; KEYS<-1> = CHAR(205)
+        KPTR<-1> = DARR; KEYS<-1> = CHAR(206)
+        KPTR<-1> = INSP; KEYS<-1> = CHAR(211)
+        KPTR<-1> = DELC; KEYS<-1> = CHAR(212)
+        KPTR<-1> = PSWD; KEYS<-1> = CHAR(139)
+        KPTR<-1> = PHLP; KEYS<-1> = CHAR(128)
+        KPTR<-1> = BATK; KEYS<-1> = CHAR(213)
+
+        KINI = ''; KMUL = ''
+        XXNO = DCOUNT(KEYS,@AM)
+        FOR XX = 1 TO XXNO
+           TEMP = KEYS<XX>
+           IF LEN(TEMP) LE 1 THEN CONTINUE
+           LOCATE(TEMP[1,1],KINI;KPOS) ELSE
+              KPOS = DCOUNT(KINI,@AM)+1
+           END
+           KINI<KPOS> = TEMP[1,1]
+           KMUL<KPOS,-1> = TEMP
+        NEXT XX
+     END
+
+* Convert all delimiters to @AM.  The idea is that the calling program
+* can use any delimiters (@FM,@VM,@SM,@TM) and we convert these.
+* Thus the calling program can take a definition from an array and just
+* pass it, there is no need to massage it to suit.
+     WANT = CONVERT(@VM:@SM:@TM,@AM:@AM:@AM,NEED)
+
+* Parse input rules
+     THIS = WANT<1>
+     COLD = OCONV(FIELD(THIS,',',1),'MCN')+0 ; COLD = REM(COLD,SIDE)
+     ROWD = OCONV(FIELD(THIS,',',2),'MCN')+0 ; ROWD = REM(ROWD,BASE)
+     LOCN = @(COLD,ROWD)
+     THIS = FIELD(THIS,',',3)
+     TYPE = UPCASE(THIS[1,1])
+
+*!* Here is one way to call a text block input
+*!*    IF TYPE EQ 'X' THEN CALL TEXT.INPUT(PASS,WANT,CLUE); RETURN
+
+* We will process this if it is at all possible!
+     THIS = THIS[2,LEN(THIS)]
+     LEND = OCONV(FIELD(THIS,'.',1),'MCN')+0
+     DECP = OCONV(FIELD(THIS,'.',2),'MCN')+0
+     IF TYPE EQ 'N' THEN
+        IF DECP GT 0 THEN
+           LEND = LEND + 1 + DECP
+        END ELSE TYPE = 'I'
+     END
+     IF (LEND+COLD) GT SIDE THEN LEND = SIDE-COLD-2
+     LOCI = @(COLD+LEND,ROWD)
+
+     FLAG = UPCASE(WANT<2>)
+     HINT = INDEX(FLAG,'H',1) NE 0
+     IMMI = INDEX(FLAG,'I',1) NE 0
+     QUIZ = INDEX(FLAG,'Q',1) NE 0
+     UPIT = INDEX(FLAG,'U',1) NE 0
+     LOIT = INDEX(FLAG,'L',1) NE 0
+     WIDE = INDEX(FLAG,'W',1) NE 0
+     MUST = INDEX(FLAG,'M',1) NE 0
+     IF MUST THEN MAND = 'Mandatory' ELSE MAND = 'Optional'
+
+     LIST = WANT<3>
+     DEEP = FIELD(LIST,'~',1)
+     HIGH = FIELD(LIST,'~',2)
+     IF HIGH NE '' AND HIGH LT DEEP THEN
+        TEMP = DEEP ; DEEP = HIGH ; HIGH = TEMP
+     END
+
+     THIS = WANT<4>
+     WHAT = FIELD(THIS,'~',1)
+     MASK = FIELD(THIS,'~',2)
+
+     HELP = WANT<5>
+
+     DFLT = WANT<6>
+
+     PROMPT ''
+     SOND = @FALSE
+     PSTA = 0
+     ASTX = @FALSE
+     FORM = @FALSE
+
+     NICE = LIST
+     IF TYPE EQ 'P' THEN
+        ALOW = NUMB:UPPR:LOWR
+     END ELSE
+        LENT = LEN(NICE)
+        ALOW = ''
+        FOR XX = 1 TO LENT
+           THAT = NICE[XX,1]
+           IF NOT(INDEX(ALOW,THAT,1)) THEN ALOW := THAT
+        NEXT XX
+     END
+
+     POSN = INDEX(CODE,TYPE,1)
+     IF NOT(POSN) THEN POSN = 1
+
+     IF TYPE EQ 'Q' THEN LEND = 1 ; UPIT = @TRUE; LOIT = @FALSE
+
+     DISP = SHOW<POSN>
+     EXTR = ' '
+     DSP2 = ''
+     IF QUIZ THEN RST2 = ' <':KCAP<PHLP>:'> for help' ELSE RST2 = ''
+
+     JUST = 'L#':LEND
+     CONV = ''
+     EXST = PASS
+     IF EXST EQ '' THEN EXST = DFLT
+     IF IMMI THEN SPOT = '.' ELSE SPOT = '_'
+     FACE = STR(SPOT,LEND)
+
+     BEGIN CASE
+
+* Character (or unknown) input
+        CASE POSN EQ 1
+           IF TYPE EQ '*' THEN ASTX = @TRUE
+
+* Alphanumeric input
+        CASE POSN EQ 2
+           IF ALOW NE '' THEN EXTR = ' or "':ALOW:'"'
+           ALOW := NUMB
+           IF LOIT THEN ALOW := LOWR
+           IF UPIT THEN ALOW := UPPR
+           IF NOT(LOIT) AND NOT(UPIT) THEN ALOW := LOWR:UPPR
+
+* alphaBetic input
+        CASE POSN EQ 3
+           IF ALOW NE '' THEN EXTR = ' or "':ALOW:'"'
+           IF LOIT THEN ALOW := LOWR
+           IF UPIT THEN ALOW := UPPR
+           IF NOT(LOIT) AND NOT(UPIT) THEN ALOW := LOWR:UPPR
+
+* Number input (decimal)
+        CASE POSN EQ 4
+           X = LEND-DECP-1
+           NICE = ''
+           IF INDEX(ALOW,'$',1) THEN NICE = NICE:'$' ; X = X - 1
+           IF INDEX(ALOW,',',1) THEN
+              NICE = NICE:','
+              X = X - INT((X-1)/3)
+           END
+           TUP = STR('9',X):'.':STR('9',DECP)
+           IF HIGH EQ '' THEN HIGH = TUP ELSE
+              IF HIGH GT TUP THEN HIGH = TUP
+           END
+           TLO = '-':STR('9',X-1):'.':STR('9',DECP)
+           IF DEEP EQ '' THEN DEEP = TLO ELSE
+              IF DEEP LT TLO THEN DEEP = TLO
+           END
+           ALOW = NUMB:'.-':NICE
+           JUST = 'R#':LEND
+           CONV = 'MD':DECP:NICE
+           EXST = OCONV(EXST,CONV)
+           IF DFLT NE '' THEN DFLT = OCONV(DFLT,CONV)
+           DSP2 = ' Range ':OCONV(ICONV(DEEP,CONV),CONV):' to '
+           DSP2 := OCONV(ICONV(HIGH,CONV),CONV)
+
+* Integer input
+        CASE POSN EQ 5
+           X = LEND
+           NICE = ''
+           IF INDEX(ALOW,'$',1) THEN NICE = NICE:'$' ; X = X - 1
+           IF INDEX(ALOW,',',1) THEN
+              NICE = NICE:','
+              X = X - INT((X-1)/3)
+           END
+           IF DEEP EQ '' THEN DEEP = '-':STR('9',X-1)
+           IF HIGH EQ '' THEN HIGH = STR('9',X)
+           ALOW = NUMB:'-':NICE
+           JUST = 'R#':LEND
+           CONV = 'MD0':NICE
+           EXST = OCONV(EXST,CONV)
+           IF DFLT NE '' THEN DFLT = OCONV(DFLT,CONV)
+           DSP2 = ' Range ':OCONV(DEEP,CONV):' to ':OCONV(HIGH,CONV)
+
+* Question to be answered "Y" or "N"
+        CASE POSN EQ 6
+           ALOW = 'YN'
+
+* Date input
+        CASE POSN EQ 7
+           IF OCONV(-4915,'D2/') EQ '17/07/54' THEN
+              EURO = @TRUE ; DISP = 'European ':DISP
+           END ELSE EURO = @FALSE ; DISP = 'American ':DISP
+           BEGIN CASE
+              CASE LEND GE 11 ; CONV = 'D'
+              CASE LEND GE 10 ; CONV = 'D4/'
+              CASE 1 ; CONV = 'D2/'
+           END CASE
+           FACE = STR(SPOT,LEND)
+           EXST = OCONV(EXST,CONV)
+           IF DFLT NE '' THEN DFLT = OCONV(DFLT,CONV)
+           JUST = 'L#':LEND
+           IF DEEP NE '' THEN DSP2 := ' From ':OCONV(DEEP,'D')
+           IF HIGH NE '' THEN DSP2 := ' To ':OCONV(HIGH,'D')
+
+* Selection from set list of characters
+        CASE POSN EQ 8
+           EXTR = ' from "':ALOW:'"'
+
+* Pattern matching input
+        CASE POSN EQ 9
+           NUMPAT = DCOUNT(NICE,'~')
+           PATS = ''
+           IF MASK NE '' THEN
+              LENT = LEN(MASK)+1
+              FOR XX = 1 TO LENT
+                 PCHA = TRIM(MASK[XX,1])
+                 IF PCHA EQ '' THEN PSTA = XX-1; XX = LENT+1
+              NEXT XX
+           END
+           FOR PAT = 1 TO NUMPAT
+              PATTERN = FIELD(NICE,'~',PAT)
+              PATS<PAT> = PATTERN
+              DSP2 := ' or ':PATTERN
+           NEXT PAT
+           DSP2 = DSP2[4,999]
+           LENT = LEN(MASK)
+           FOR XX = 1 TO LENT
+              QUID = MASK[XX,1]
+              IF TRIM(QUID) NE '' THEN
+                 FACE = FACE[1,XX-1]:QUID:FACE[XX+1,99]
+                 FORM = @TRUE
+                 WIDE = @FALSE
+              END
+           NEXT XX
+           IF FORM THEN
+              FOR XX = LEND TO 1 STEP -1
+                 THIS = TRIM(MASK[XX,1])
+                 IF THIS EQ '' THEN CHRS = XX; XX = 0
+              NEXT XX
+           END
+
+* Time input
+        CASE POSN EQ 10
+           IF LEND GE 8 THEN
+              LEND = 8
+              MASK = '  :  :  '
+              CONV = 'MTS'
+              OFFSET = 1
+              TIMERR = WHAT:' Must be HH:MM:SS'
+              IF HIGH GT 359999 THEN HIGH = 359999
+           END ELSE
+              LEND = 5
+              MASK = '  :  '
+              CONV = 'MT'
+              OFFSET = 60
+              TIMERR = WHAT:' Must be HH:MM'
+              IF HIGH GT 359940 THEN HIGH = 359940
+           END
+           FACE = STR(SPOT,LEND)
+           ALOW = NUMB:":"
+           EXST = OCONV(EXST,CONV)
+           IF DFLT NE '' THEN DFLT = OCONV(DFLT,CONV)
+           JUST = 'L#':LEND
+           FOR XX = 1 TO LEND
+              QUID = MASK[XX,1]
+              IF TRIM(QUID) NE "" THEN
+                 FACE = FACE[1,XX-1]:QUID:FACE[XX+1,99]
+              END
+           NEXT XX
+           FORM = @TRUE
+           WIDE = @FALSE
+           IF DEEP NE '' THEN DSP2 := ' From ':OCONV(DEEP,CONV)
+           IF HIGH NE '' THEN DSP2 := ' To ':OCONV(HIGH,CONV)
+           CHRS = LEND
+
+* Hexadecimal input
+        CASE POSN EQ 11
+           ALOW = '0123456789ABCDEF'
+* Cannot do range checking on hexadecimal
+
+* List - You should display the list in HELP if you can
+        CASE POSN EQ 12
+           CONVERT '~' TO @AM IN LIST
+           LIST = @AM:TRIM(LIST,@AM):@AM
+
+     END CASE
+
+     DISP = MAND:' ':DISP:EXTR:DSP2:RST2
+     DISP = TRIM(DISP)
+     DISP = DISP[1,SIDE-1]
+     IF HELP NE '' AND HINT THEN HELP = (TRIM(HELP:RST2))[1,SIDE-1]
+     IF HELP EQ '' THEN HELP = DISP ELSE HINT = @TRUE
+
+* Set up extended help
+     COWS = 'To enter the data as displayed, press [':KCAP<CARR>:']'
+     COWS<-1> = 'To enter the data and go to the next field,'
+     COWS := ' press [':KCAP<TABK>:']'
+     COWS<-1> = 'To enter the data and go to the previous field,'
+     COWS := ' press [':KCAP<BATK>:']'
+     COWS<-1> = 'To abandon the process, press [':KCAP<ESCP>:']'
+     COWS<-1> = 'To move left and right, press [':KCAP<LARR>:']'
+     COWS  := ' & [':KCAP<RARR>:']'
+     COWS<-1> = 'To delete the character to the left of the cursor,'
+     COWS := ' press [':KCAP<BACK>:']'
+     COWS<-1> = 'To insert a space, press [':KCAP<INSP>:']'
+     COWS<-1> = 'To delete the character at the cursor position,'
+     COWS := ' press [':KCAP<DELC>:']'
+     COWS<-1> = 'To restore the original value, press [':KCAP<VPRE>:']'
+     COWS<-1> = 'To lock the terminal, press [':KCAP<PSWD>:']'
+     COWS<-1> = 'Input data - COL,ROW,TYPE&LENGTH = ':WANT<1>
+     COWS := '  FLAGS = ':FLAG
+     COWS := '  HINT = ':HINT
+     HERD = DCOUNT(COWS,@AM)
+
+     VAR = EXST
+     IF LEN(VAR) GT LEND AND NOT(WIDE) THEN VAR = VAR[1,LEND]
+     ER = ''
+
+MESS:
+* To ENSURE the user sees the message, use a two-line message that cycles
+* until the user presses the backspace key, which is unlikely to be
+* pressed otherwise.  This is also where the calling program can be seen
+* using the extended help (by repeatedly pressing <F1> key).
+
+     IF ER NE '' THEN
+        KUST = SIDE-2
+        KUST = 'R#':KUST
+        ER = TRIM((ER KUST))
+        OLDE = ER
+        MORE = 1
+        LOOP
+           CRT @(00,ERLN):CEOL:@((SIDE-LEN(ER))/2,ERLN):ER:
+           CRT BELL:
+           GOSUB GET.COMD
+           LOCATE(COMD,KEYS;CMD) THEN
+              CMD = KPTR<CMD>
+           END ELSE CMD = 0
+        UNTIL CMD = BACK DO
+           IF CMD = PHLP THEN
+              ER = COWS<MORE>[1,SIDE-1]
+              MORE += 1
+              IF MORE GT HERD THEN MORE = 1
+           END ELSE
+              IF COMD NE OCONV(COMD,'MCP') THEN
+                 IF ER = OLDE THEN
+                    ER = ''
+                    IF PROG NE '' THEN
+                       ER = 'Called from "':PROG:'" - '
+                    END
+                    ER := 'Press <':KCAP<BACK>:'> to continue'
+                    ER = ER[1,SIDE]
+                 END ELSE ER = OLDE
+              END
+           END
+        REPEAT
+     END
+
+     CRT @(00,ERLN):CEOL:
+     IF HINT THEN CRT @(00,ERLN):RVON:HELP[1,SIDE-1]:RVOF:
+     IF NOT(FORM) THEN CHRS = LEND
+     LENT = LEN(VAR)
+     X = FACE[LENT+1,LEND-LENT]
+     CRT LOCN:
+     TEMP = LENT
+     IF TEMP GT LEND THEN TEMP = LEND
+     IF ASTX THEN CRT STR('*',TEMP):X: ELSE
+        IF FORM THEN
+           IF VAR EQ MASK THEN CRT FACE: ELSE CRT VAR[1,TEMP]:X:
+        END ELSE CRT VAR[1,TEMP]:X:
+     END
+     LINE = VAR
+     THAT = PSTA
+
+GET.SET:
+     THAT += 1
+     IF THAT LE CHRS THEN SOND = @FALSE ELSE
+        IF IMMI THEN VAR = LINE; GO EXIT
+        IF NOT(WIDE) THEN
+           THAT = CHRS
+           IF SOND THEN CRT BELL:
+           SOND = @TRUE
+        END
+     END
+
+     IF TYPE EQ 'P' OR TYPE EQ 'T' THEN
+        PCHR = MASK[THAT,1]
+        IF PCHR NE '' AND PCHR NE ' ' THEN NC = PCHR; GO CHECK
+     END
+
+READY:
+     IF VIEW THEN
+        TEMP = LINE[THAT-LEND,LEND]
+        IF ASTX THEN TEMP = STR('*',LEND)
+        CRT LOCN:TEMP:
+        IF LEN(LINE) GT LEND THEN CRT '>': ELSE CRT ' ':
+        VIEW = @FALSE
+     END
+     IF WIDE AND THAT GT LEND THEN
+        HERE = LOCI
+        CRT HERE:
+        IF LEN(LINE) GT LEND THEN CRT '>': ELSE CRT ' ':
+     END ELSE HERE = @(COLD+THAT-1,ROWD)
+     CRT HERE:
+     GOSUB GET.COMD
+
+* This allows for a timeout capability with password prompting
+* Set up a variable called MIND - if it's zero, don't have a timeout
+     DUSK = (DATE()*86400)+TIME()
+     IF MIND AND (DUSK-DAWN) GT MIND*60 THEN GO PASSWORD
+     DAWN = DUSK
+
+     LOCATE(COMD,KEYS;CMD) THEN
+        CMD = KPTR<CMD>
+        GO COMMAND
+     END
+
+     NC = COMD[1,1]
+     SNC = SEQ(NC)
+     IF SNC LT 32 OR SNC GT 127 THEN CRT BELL: ; GO READY
+
+CHECK:
+     IF UPIT AND NC NE UPCASE(NC) THEN
+        NC = UPCASE(NC)
+     END ELSE
+        IF LOIT THEN NC = DOWNCASE(NC)
+     END
+
+     VALID = @FALSE
+
+     IF POSN = 1 THEN VALID = @TRUE
+     IF INDEX('DP',TYPE,1) THEN VALID = @TRUE ELSE
+        IF INDEX(ALOW,NC,1) THEN VALID = @TRUE
+     END
+
+     TEMP = LINE[1,THAT-1]:NC:LINE[THAT+1,999]
+     IF VALID AND TYPE EQ 'L' THEN
+        VALID = INDEX(LIST,@AM:TEMP,1)
+     END
+
+     IF NOT(VALID) THEN CRT BELL:; THAT -= 1; GO GET.SET
+     LINE = TEMP
+
+     IF THAT GE LEND THEN
+        TEMP = LINE[THAT-LEND+1,LEND]
+        IF ASTX THEN TEMP = STR('*',LEND)
+        CRT LOCN:TEMP:
+     END ELSE
+        IF NOT(ASTX) THEN
+           CRT @(THAT+COLD-1,ROWD):NC:
+        END ELSE CRT @(THAT+COLD-1,ROWD):'*':
+     END
+
+     IF FORM THEN
+        LOOP
+           PCHA = TRIM(MASK[THAT+1,1])
+        UNTIL PCHA EQ '' DO
+           THAT += 1
+           LINE = LINE[1,THAT-1]:PCHA:LINE[THAT+1,999]
+        REPEAT
+     END
+
+     GO GET.SET
+
+COMMAND:
+     VAR = LINE
+     BEGIN CASE
+
+        CASE CMD EQ ESCP
+* Escape Input
+           CLUE = 'E'
+           GO EXIT
+
+        CASE CMD EQ CARR OR CMD EQ TABK OR CMD EQ BATK
+* Enter or TAB or [[BackTAB]]
+           IF CMD EQ TABK THEN CLUE = 'N'
+           IF CMD EQ BATK THEN CLUE = 'L'
+           LINE = ''
+           GO EXIT
+
+        CASE CMD EQ INSP AND FORM
+* Insert Space with pattern outline
+           PCHR = TRIM(LINE[CHRS,1])
+           IF PCHR NE '' THEN CRT BELL:; THAT -= 1; GO GET.SET
+
+           OLIN = ''
+           FOR X = 1 TO LEND
+              IF X NE THAT THEN
+                 PCHR = TRIM(MASK[X,1])
+                 IF PCHR EQ '' THEN OLIN = OLIN:LINE[X,1]
+              END ELSE OLIN = OLIN:' ':LINE[X,1]
+           NEXT X
+           GOSUB SHOW.PLINE
+
+        CASE CMD EQ INSP
+* Insert Space
+           IF LEN(LINE) EQ CHRS AND NOT(WIDE) THEN THAT -= 1; GO GET.SET
+           NC = ' '
+           LINE = LINE[1,THAT-1]:NC:LINE[THAT,999]
+           IF LEN(LINE) GE (LEND-1) THEN
+              VIEW = @TRUE
+           END ELSE
+              SLINE = LINE
+              IF ASTX THEN SLINE = STR('*',LEN(LINE))
+              CRT @(COLD+THAT-1,ROWD):SLINE[THAT,99]:SPOT:
+           END
+           THAT -= 1
+
+        CASE CMD EQ DELC AND FORM
+* Delete Character with pattern outline
+           GOSUB DELETE.PCHAR
+
+        CASE CMD EQ DELC
+* Delete Character
+           LINE = LINE[1,THAT-1]:LINE[THAT+1,999]
+           IF LEN(LINE) GE (LEND-1) THEN
+              VIEW = @TRUE
+           END ELSE
+              SLINE = LINE
+              IF ASTX THEN SLINE = STR('*',LEN(LINE))
+              CRT @(COLD+THAT-1,ROWD):SLINE[THAT,99]:SPOT:
+           END
+           THAT -= 1
+
+* CASE CMD EQ INSL
+* Insert line only has meaning for a text block input
+
+* CASE CMD EQ DELL
+* Delete line only has meaning for a text block input
+
+        CASE CMD EQ VPRE
+* Load Previous Value
+           LINE = EXST
+           IF DFLT NE '' THEN LINE = DFLT
+           VAR = LINE
+           CRT LOCN:FACE:
+           IF WIDE THEN CRT ' ':
+           CRT LOCN:LINE:LOCN:
+           THAT = PSTA
+
+        CASE CMD EQ DELR
+* Clear To End Of Line
+           VAR = VAR[1,THAT-1]
+           IF FORM THEN VAR = VAR:MASK[THAT,99]
+           LINE = VAR
+           IF THAT LE LEND THEN
+              CRT @(COLD+THAT-1):FACE[THAT,99]:
+              IF WIDE THEN CRT ' ':
+           END
+           THAT -= 1
+
+        CASE CMD EQ LARR AND FORM
+* Left Arrow with pattern outline
+           THAT -= 1
+           LOOP
+              PCHR = MASK[THAT,1]
+              THAT -= 1
+           WHILE THAT GT PSTA AND PCHR NE '' AND PCHR NE ' ' DO
+           REPEAT
+           IF THAT LT PSTA THEN THAT = PSTA; CRT BELL:
+
+        CASE CMD EQ LARR
+* Left Arrow
+           IF THAT GE LEND THEN VIEW = @TRUE
+           THAT -= 2
+           IF THAT LT PSTA THEN THAT = PSTA
+
+        CASE CMD EQ BACK AND FORM
+* [[BackSpace]] with pattern outline
+           THAT -= 1
+           IF THAT GT PSTA THEN
+              LOOP
+                 PCHR = MASK[THAT,1]
+              WHILE THAT GT PSTA AND PCHR NE '' AND PCHR NE ' '
+                 THAT -= 1
+              REPEAT
+              IF THAT GT PSTA THEN GOSUB DELETE.PCHAR
+           END
+           IF THAT LT PSTA THEN THAT = PSTA
+
+        CASE CMD EQ BACK
+* [[BackSpace]]
+           IF LEN(LINE) GE LEND THEN VIEW = @TRUE
+           THAT -= 1
+           IF THAT GT 0 THEN
+              LINE = LINE[1,THAT-1]:LINE[THAT+1,999]
+              SLINE = LINE
+              IF ASTX THEN SLINE = STR('*',LEN(LINE))
+              IF NOT(VIEW) THEN CRT LOCN:FACE:LOCN:SLINE:
+              THAT -= 1
+           END ELSE THAT = 0
+
+        CASE CMD EQ RARR AND FORM
+* Right Arrow with pattern outline
+           LOOP
+              PCHA = TRIM(MASK[THAT+1,1])
+           UNTIL PCHA = '' DO
+              THAT += 1
+           REPEAT
+           NC = LINE[THAT,1]
+           IF NC EQ '' THEN GO READY
+           GO CHECK
+
+        CASE CMD EQ RARR
+* Right Arrow
+           IF THAT GE LEND THEN VIEW = @TRUE
+           NC = LINE[THAT,1]
+           IF NC EQ '' THEN GO READY
+           GO CHECK
+
+        CASE CMD EQ PHLP
+* Help Key
+           IF QUIZ THEN
+              CLUE = 'H'
+              GO EXIT
+           END ELSE ER = DISP; GO MESS
+
+        CASE CMD EQ PSWD
+PASSWORD:
+* Re-enter Password - this accepts anything right now
+           TRYS = 0
+           LOOP
+              TRYS = TRYS + 1
+           WHILE TRYS LT 4
+              CRT @(0,ERLN):CEOL:'Re-enter Password try ':TRYS:' ':
+              ECHO OFF
+              INPUT WORD:
+              ECHO ON
+           UNTIL WORD = ''
+              DAWN = (DATE()*86400)+TIME()
+              IF WORD EQ WORD THEN CRT @(0,ERLN):CEOL:; GO READY
+           REPEAT
+           CHAIN 'QUIT'
+
+        CASE 1
+           CRT BELL:
+           GO READY
+     END CASE
+     GO GET.SET
+
+EXIT:
+     CRT @(00,ERLN):CEOL:LOCN:
+
+     BEGIN CASE
+
+        CASE CLUE EQ 'E'
+           VAR = PASS
+           DVAR = VAR
+
+        CASE CLUE EQ 'H'
+           DVAR = VAR
+           IF TYPE EQ 'D' OR TYPE EQ 'T' THEN
+              VAR = ICONV(VAR,CONV)
+           END
+
+        CASE TRIM(VAR) EQ '' AND MUST
+           ER = WHAT:ERR2
+           GO MESS
+
+        CASE INDEX('ABSH',TYPE,1)
+           IF INDEX(VAR,' ',1) AND NOT(INDEX(ALOW,' ',1)) THEN
+              ER = ERR1; GO MESS
+           END
+           DVAR = VAR
+
+        CASE TYPE EQ 'N'
+           VAR = TRIM(VAR)
+           LOOP
+              TEMP = INDEX(VAR,'$',1)
+           WHILE TEMP
+              VAR = VAR[1,TEMP-1]:VAR[TEMP+1,99]
+           REPEAT
+           LOOP
+              TEMP = INDEX(VAR,',',1)
+           WHILE TEMP
+              VAR = VAR[1,TEMP-1]:VAR[TEMP+1,99]
+           REPEAT
+           IF NOT(NUM(VAR)) THEN
+              ER = WHAT:' Must be numeric'; GO MESS
+           END
+           IF VAR NE '' THEN
+              IF LEN(OCONV(VAR,'G1.1')) GT DECP THEN
+                 ER = WHAT:' Must have fewer than ':DECP+1
+                 ER := ' decimal places'
+                 GO MESS
+              END
+              TEMP = HIGH NE '' AND VAR GT HIGH
+              TEMP = TEMP OR (DEEP NE '' AND VAR LT DEEP)
+              IF TEMP THEN
+                 ER = WHAT:ERR5:DEEP:' to ':HIGH; GO MESS
+              END
+              VAR = ICONV(VAR,CONV)
+           END
+           DVAR = VAR
+
+        CASE TYPE EQ 'I'
+           VAR = TRIM(VAR)
+           LOOP
+              TEMP = INDEX(VAR,'$',1)
+           WHILE TEMP
+              VAR = VAR[1,TEMP-1]:VAR[TEMP+1,99]
+           REPEAT
+           LOOP
+              TEMP = INDEX(VAR,',',1)
+           WHILE TEMP
+              VAR = VAR[1,TEMP-1]:VAR[TEMP+1,99]
+           REPEAT
+           IF VAR NE '' THEN
+              IF NOT(VAR MATCHES '0N') AND NOT(VAR MATCHES '"-"0N') THEN
+                 ER = WHAT:' Must be integer'; GO MESS
+              END
+              IF VAR NE '' THEN
+                 TEMP = HIGH NE '' AND VAR GT HIGH
+                 TEMP = TEMP OR (DEEP NE '' AND VAR LT DEEP)
+                 IF TEMP THEN
+                    ER = WHAT:ERR5:DEEP:' to ':HIGH; GO MESS
+                 END
+              END
+              VAR = VAR + 0
+           END
+           DVAR = VAR
+
+        CASE TYPE EQ 'D'
+           VAR = TRIM(VAR)
+           TDAY = OCONV(DATE(),'D4/')
+           IF (VAR MATCHES '1[[N0N]]') THEN
+              IF LEN(VAR) LE 2 THEN
+                 IF EURO THEN VAR = VAR:TDAY[3,9] ELSE
+                    VAR = TDAY[1,3]:VAR:TDAY[6,9]
+                 END
+              END ELSE
+                 VAR = VAR[1,2]:'/':VAR[3,2]:'/':VAR[5,9]
+              END
+           END
+           IF VAR NE '' THEN
+              VAR = ICONV(VAR,'D')
+              IF VAR EQ '' THEN
+                 ER = 'Not a valid DATE input'; GO MESS
+              END
+              IF HIGH NE '' AND VAR GT HIGH THEN
+                 ER = WHAT:ERR3:OCONV(HIGH+1,CONV); VAR = '';  GO MESS
+              END
+              IF DEEP NE '' AND VAR LT DEEP THEN
+                 ER = WHAT:ERR4:OCONV(DEEP-1,CONV); VAR = '';  GO MESS
+              END
+           END
+           DVAR = VAR
+
+        CASE TYPE EQ 'P'
+           VAR = TRIM(VAR)
+           IF VAR EQ TRIM(MASK) THEN VAR = ''
+           IF VAR EQ '' AND MUST THEN
+              ER = WHAT:ERR2
+              GO MESS
+           END
+           IF VAR NE '' THEN
+              MATC = @FALSE
+              FOR PAT = 1 TO NUMPAT
+                 IF VAR MATCHES PATS<PAT> THEN MATC = @TRUE
+              NEXT PAT
+              IF NOT(MATC) THEN
+                 ER = WHAT:' Must match ':DSP2
+                 ER = ER[1,SIDE-1]
+                 GO MESS
+              END
+              DVAR = VAR
+           END ELSE DVAR = ''
+
+        CASE TYPE EQ 'T'
+           IF VAR NE '' AND TRIM(VAR) NE TRIM(MASK) THEN
+              TEMP = VAR
+              TEMP = TEMP:MASK[LEN(TEMP)+1,99]
+              CONVERT ' ' TO '0' IN TEMP
+              IF NOT(TEMP MATCHES '2N":"2N":"2N') THEN
+                 IF NOT(TEMP MATCHES '2N":"2N') THEN
+                    ER = TIMERR; GO MESS
+                 END
+              END
+              TEMP = ICONV(TEMP,'MT')
+              IF TEMP EQ '' THEN
+                 ER = 'Not a valid TIME input'; GO MESS
+              END
+              IF HIGH NE '' AND TEMP GT HIGH THEN
+                 ER = WHAT:ERR3:OCONV(HIGH+OFFSET,CONV); GO MESS
+              END
+              IF DEEP NE '' AND TEMP LT DEEP THEN
+                 ER = WHAT:ERR4:OCONV(DEEP-OFFSET,CONV); GO MESS
+              END
+              VAR = TEMP
+           END ELSE
+              IF MUST THEN
+                 ER = WHAT:ERR2
+                 GO MESS
+              END ELSE VAR = ''; DVAR = ''
+           END
+
+        CASE TYPE EQ 'L'
+           IF VAR NE '' THEN
+              TEMP = VAR
+              IF COUNT(LIST,TEMP) EQ 1 THEN
+                 TEMP = INDEX(LIST,TEMP,1)
+                 TEMP = DCOUNT(LIST[1,TEMP],@AM)
+                 VAR = LIST<TEMP>
+              END ELSE
+                 TEMP = @AM:TEMP
+                 IF COUNT(LIST,TEMP) EQ 1 THEN
+                    TEMP = INDEX(LIST,TEMP,1)
+                    TEMP = DCOUNT(LIST[1,TEMP+1],@AM)
+                    VAR = LIST<TEMP>
+                 END ELSE
+                    IF COUNT(LIST,TEMP) GT 1 THEN
+                       ER = VAR:' is not unique in the list'
+                    END ELSE
+                       ER = VAR:' is not in the list at all'
+                       VAR = ''
+                    END
+                    GO MESS
+                 END
+              END
+           END
+           DVAR = VAR[1,LEND]
+
+        CASE 1
+           DVAR = VAR
+           IF ASTX THEN DVAR = STR('*',LEN(VAR))
+
+     END CASE
+
+* Display and check for mandatory input
+     IF CONV NE '' THEN DVAR = OCONV(VAR,CONV)
+     CRT LOCN:(DVAR JUST):
+     IF WIDE THEN CRT ' ':
+     IF MUST AND VAR EQ '' THEN
+        IF CLUE NE 'H' AND CLUE NE 'E' THEN ER = WHAT:ERR2; GO MESS
+     END
+     PASS = VAR
+     RETURN
+
+DELETE.PCHAR:
+     OLIN = ''
+     FOR XX = 1 TO LEND
+        IF XX NE THAT THEN
+           PCHR = TRIM(MASK[XX,1])
+           IF PCHR EQ '' THEN OLIN = OLIN:LINE[XX,1]
+        END
+     NEXT XX
+
+SHOW.PLINE:
+     LINE = ''
+     XEND = LEN(OLIN)
+     XK = 1
+     XJ = 0
+     LOOP
+        XJ += 1
+     UNTIL XJ GT LEND DO
+        PCHR = TRIM(MASK[XJ,1])
+        IF XK LE XEND THEN
+           IF PCHR EQ '' THEN
+              LINE := OLIN[XK,1]
+              XK += 1
+           END ELSE LINE := PCHR
+        END
+     REPEAT
+     ALEN = LEN(LINE)
+     TEMP = TRIM(MASK[ALEN+1,1])
+     IF TEMP NE '' THEN LINE := TEMP
+     ALEN = LEN(LINE)
+     OLIN = LINE:FACE[ALEN+1,99]
+     CRT @(COLD,ROWD):OLIN:
+     THAT -= 1
+     RETURN
+
+GET.COMD:
+* This gives an autologout capability
+* Set up a variable called MINT - if it's zero, don't have a timeout
+     LOOP
+        IF MINT THEN
+           TUSK = (DATE()*86400)+TIME()
+           IF (TUSK-TAWN) GT MINT*60 THEN CHAIN 'QUIT'
+        END
+        INPUT FULL,-1
+     UNTIL FULL DO
+        NAP 100
+     REPEAT
+     TAWN = TUSK
+
+     COMD = KEYIN()
+     LOCATE(COMD,KINI;KPOS) THEN
+        LOOP
+           NAP 5
+           INPUT FULL,-1
+        WHILE FULL DO
+           COMD := KEYIN()
+           LOCATE(COMD,KMUL,KPOS;FULL) THEN RETURN
+        REPEAT
+     END
+     RETURN

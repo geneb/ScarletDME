@@ -1,0 +1,853 @@
+*=========================================================================
+*= Domaine   : OUTILS
+*= Programme : UT.XMLOUT
+*= Version 7.4.1.1
+*= Date de mise à jour : 15/05/03
+*= Date de génération : 15/05/03
+*=========================================================================
+*= L'instruction suivante permet de connaître le numéro de version du
+*= programme compilé sous unix par la commande : what _NomProgramme
+*=
+NumeroDeVersionDuProgramme = "@(#)[UT.XMLOUT 7.4.1.1 15/05/03]"
+*=
+*=========================================================================
+*-- Libellé     : Extraction d'un fichier en XML "simple"
+*-- Date        : 15/05/03
+*-- Référence   :
+*-- Objet       : Extraction sous forme de fichier XML du contenu d'un
+*--               fichier Unidata.
+*--               Si on ne précise rien le fichier se trouve restitué
+*--               sous forme arborescente FICHIER/ENREG/ATTRIBUTn/VALEUR/SSV.
+*--               Si on veut utiliser le dictionnaire alors les balises ATTRIBUTn
+*--               sont remplacées par le plus long nom de l'attribut dans le
+*--               dictionnaire s'il a été défini et les valeurs sont converties
+*--               à l'aide du format donné dans le dictionnaire (OCONV).
+*--               Formats d'appel :
+*--                UT.XMLOUT <fichier> <dict> <critères>
+*--               Où : fichier => nom du fichier que l'on veut transformer
+*--                    dict =>    utilisation du (D)ictionnaire ou non (.)
+*--                    critères=> ordres de sélection Uniquery pour limiter
+*--                               le traitement (IF @ID = "TOTO" par exemple)
+*--                               (critères du SELECT uniquement)
+*========================================================================
+*
+CODERR = 0   ; * Code d'erreur
+LIBERR = ""   ; * Libellé de l'erreur
+PARAM=""   ; * Tableau de paramètres pour TTCAFF03
+PARAM<1,1>="OUTILS"   ; * Domaine OUTILS
+PARAM<2,1>="OUTILS"   ; * Domaine OUTILS
+*ENR.INPUT = ""        ; * Enregistrement en entree
+DIM ENR.KSYS(100); MAT ENR.KSYS = ""         ; * Enregistrement de K-SYS
+
+
+NODR        = 0       ; * N° de la DR
+SFILES = ''           ; * Contient le nom des files utilisées.
+NLASTFILE = 2         ; * N° de la dernière file
+INPUTFILE = ""        ; * Nom du fichier en entree
+NB.CLEINPUT = 0       ; * Nombre de cles dans le fichier d'entree
+NB.ATTRIBUTES = 0     ; * Nombre d'attributs pour un article
+NB.VALUES   = 0       ; * Nombre de valeurs dans l'attribut
+NB.SSVALUES = 0       ; * Nombre de sous-valeurs d'une valeur
+ATTRIB      = ""      ; * Variable intermédiaire de stockage d'un attribut
+PHRASE      = ""      ; * Ordre d'execution du programme
+EXECUTION   = ""      ; * Ordre d'execution de la selection du fichier
+DICT.ARRAY  = ""      ; * Tableau dynaique de stockage des libellés et formats d'attributs
+CRITERES    = ""      ; * Critères de sélection des enregistrements
+DETAIL = ""           ; * Utilisation du DICT (D) ou non (vide)
+MAXPOS = 0            ; * Dernier attribut déclaré dans le dictionnaire
+*
+*---- Récupération de l'ordre d'execution
+PHRASE = @SENTENCE
+PHRASE = TRIM(PHRASE," ","B")
+*
+PARAM<3,1>=FIELD(SYSTEM(40),"/",DCOUNT(SYSTEM(40),"/"))  ; * Nom du programme
+PARAM<3,1>=PARAM<3,1>[2,LEN(PARAM<3,1>)]
+*
+*---- Récupération du nom de fichier potentiel et des paramètres
+I=DCOUNT(PHRASE," ")
+IF FIELD(UPCASE(PHRASE)," ",1) # "RUN" THEN
+  INPUTFILE = FIELD(PHRASE," ",2)
+  DETAIL = UPCASE(FIELD(PHRASE," ",3))
+  FOR J=4 TO I
+     CRITERES = CRITERES:' ':FIELD(PHRASE," ",J)
+  NEXT J
+END ELSE
+  INPUTFILE = FIELD(PHRASE," ",4)
+  DETAIL = UPCASE(FIELD(PHRASE," ",5))
+  FOR J=6 TO I
+     CRITERES = CRITERES:' ':FIELD(PHRASE," ",J)
+  NEXT J
+END
+*
+IF @USER.TYPE = 0 THEN
+*--------- Mise en place écran si en interactif
+  PRINT @(-1)
+  PRINT @(4,2):"EXTRACTION SIMPLE DU CONTENU D'UN FICHIER UNIDATA EN XML"
+  PRINT @(4,3):"========================================================"
+  PRINT @(4,6):"-------------------------------------------------------------------------"
+  PRINT @(4,13):"-------------------------------------------------------------------------"
+  PARAM<6,1>=1          ; * Affichage écran souhaité
+*
+  IF INPUTFILE = "" THEN GOSUB GETFILE
+END
+*
+IF @USER.TYPE <> 0 THEN PARAM<6,1>=0  ; * Pas d'affichage écran
+*
+*-- Affichage du fichier choisi --
+IF INPUTFILE = "" THEN
+  GOTO FIN ; * Aucun fichier choisi ... On se casse !
+END ELSE
+  IF @USER.TYPE = 0 THEN
+    PRINT @(5,7):"Fichier sélectionné : ":INPUTFILE
+    IF DETAIL    = "D" THEN PRINT @(5,8):"Utilisation du dictionnaire demandée "
+    IF CRITERES <> ""  THEN PRINT @(5,9):"Sélection des données par : ":CRITERES
+  END ELSE
+    PRINT TIMEDATE():" Début d'extraction en XML de ":INPUTFILE
+    IF DETAIL    = "D" THEN PRINT "                 Utilisation du dictionnaire demandee "
+    IF CRITERES <> ""  THEN PRINT "                 Selection des donnees par : ":CRITERES
+  END
+END
+*
+*--------- Initialisation de la file de sortie
+SFILES<1> = ''
+SFILES<NLASTFILE> = INPUTFILE:'.xml'
+DATFILN = NLASTFILE-1
+CALL SLIMPRIMANTE(SFILES)
+*- Modification car SLIMPRIMANTE ne permet pas de paramétrer le nombre de colonnes or nous en
+*- avons besoin de plus de 132
+EXECUTE 'SETPTR ':DATFILN:',1024,,,,3,BANNER UNIQUE ':SFILES<NLASTFILE>:',NOHEAD,BRIEF'
+*
+*--------- Ouverture des fichiers
+CODERR = 0
+GOSUB OPENFICH
+IF CODERR # 0 THEN
+  PARAM<4,1>=LIBERR
+  PARAM<5,1>=CODERR
+  CALL TTCAFF03 (PARAM,CODERR)
+  GOTO FIN
+END
+*
+*--------- Allons chercher le dictionnaire !
+CODERR = 0
+IF DETAIL = "D" THEN
+  GOSUB GETDICT
+  IF CODERR # 0 THEN
+    PARAM<4,1>=LIBERR
+    PARAM<5,1>=CODERR
+    CALL TTCAFF03 (PARAM,CODERR)
+    GOTO FIN
+  END
+END
+*--- Construction de la commande de SELECT et execution
+*-
+IF @USER.TYPE = 0 THEN PRINT @(2,22):@(-5):" -> Traitement des enregistrements de ":INPUTFILE:" en cours <-":@(-6):@(-4)
+*
+EXECUTION = 'SSELECT ':INPUTFILE
+IF CRITERES <> "" THEN EXECUTION = EXECUTION :' ':CRITERES
+EXECUTE EXECUTION CAPTURING V1
+*
+*-- Traitement de l'execution du SELECT
+*
+BEGIN CASE
+  CASE (@SYSTEM.RETURN.CODE > 0)         ; * On a trouvé des enregistrements
+*
+    READSELECT CLEINPUT THEN
+*
+    NB.CLEINPUT = DCOUNT(CLEINPUT,@AM)
+    IF @USER.TYPE = 0 THEN PRINT @(2,22):@(-4)
+    IF @USER.TYPE = 0 THEN
+        PRINT @(2,22):"-> ":NB.CLEINPUT:" enregistrement sélectionnés - ":@(-5):"Traitement en cours":@(-6):" <-"
+        IF NB.CLEINPUT >= 10 THEN
+          PRINT @(34,17):"|__________|"
+          PRINT @(34,18):"|          |":@(35,18):
+        END
+    END
+    FOR K=1 TO NB.CLEINPUT ; * Boucle sur les enregistrements sélectionnés
+*-- Affichage sympa manière ...
+      IF (@USER.TYPE = 0 AND NB.CLEINPUT >= 10) THEN
+          IF MOD(K,INT(NB.CLEINPUT/10)) = 0 THEN PRINT @(35+INT(K/(NB.CLEINPUT/10)),18):@(-13):".":@(-14):
+      END
+*
+*---- Lecture de INPUTFILE pour la clée donnée
+      READ ENR.INPUT FROM FINPUT,CLEINPUT<K> THEN
+        IF K = 1 THEN ; *-- Ecriture de l'entete du fichier XML
+          PRINT ON DATFILN '<?xml version ="1.0" encoding="ISO-8859-1" ?>'
+*
+*-- Quelques remarques d'ordre général et sur le traitement
+*
+          PRINT ON DATFILN '<!--                                                                                -->'
+          PRINT ON DATFILN '<!-- *** Ce fichier peut contenir des données confidentielles propriété du CNRS *** -->'
+          PRINT ON DATFILN '<!--                                                                                -->'
+          PRINT ON DATFILN '<!--      Extrait automatiquement de la GCF par ':PARAM<3,1>:' -->'
+          IF CRITERES <> "" THEN
+            PRINT ON DATFILN '<!--         avec comme critères de sélection ':CRITERES:' -->'
+          END
+          IF DETAIL = "D" THEN
+            PRINT ON DATFILN '<!--                                                                              -->'
+            PRINT ON DATFILN "<!--       Les valeurs ont été converties si nécessaire en utilisant l'attribut   -->"
+            PRINT ON DATFILN "<!--       CONV et en utilisant les nom des attributs définis dans le             -->"
+            PRINT ON DATFILN "<!--       dictionnaire. Si tous les attributs ne sont pas définis dans le        -->"
+            PRINT ON DATFILN '<!--       dictionnaire le fichier XML risque de ne pas être valide à cause de    -->'
+            PRINT ON DATFILN "<!--       l'élément ENREG de la DTD incorrectement représentatif des données     -->"
+            PRINT ON DATFILN '<!--       réellement extraites.                                                  -->'
+            PRINT ON DATFILN '<!--                                                                              -->'
+          END
+*-- On ecrit la DTD
+          PRINT ON DATFILN "<!DOCTYPE FICHIER ["
+          PRINT ON DATFILN "<!ELEMENT FICHIER (ENREG+)>"
+          PRINT ON DATFILN "<!ATTLIST FICHIER nom CDATA #REQUIRED"
+          PRINT ON DATFILN "                  delegation (1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|25|28|29) #REQUIRED"
+          PRINT ON DATFILN "                  nb.enreg CDATA #REQUIRED"
+          PRINT ON DATFILN "                  horodatage CDATA #IMPLIED>"
+*
+*-- On boucle sur les attributs pour préparer l'élément ENREG
+          PHRASE=""
+          FLAG=0
+          FOR DTD=1 TO MAXPOS
+            IF DETAIL="D" AND DICT.ARRAY<DTD,2,0><>"" THEN
+              IF LEN(PHRASE) + LEN(DICT.ARRAY<DTD,2,0>) > 1000 THEN ; * On va dépasser les 1024 caractères
+                 IF FLAG=1 THEN
+                   PRINT ON DATFILN "                 ":PHRASE[1,LEN(PHRASE)]
+                 END ELSE
+                   PRINT ON DATFILN "<!ELEMENT ENREG (":PHRASE[1,LEN(PHRASE)]
+                   FLAG = 1
+                 END
+                 PHRASE=DICT.ARRAY<DTD,2,0>:"?,"
+              END ELSE
+                  PHRASE=PHRASE:DICT.ARRAY<DTD,2,0>:"?,"
+              END
+            END ELSE
+                  PHRASE=PHRASE:"ATTRIBUT":DTD:"?,"
+            END
+          NEXT DTD
+          IF MAXPOS > 0 THEN
+                IF FLAG=1 THEN
+                    PRINT ON DATFILN "                 ":PHRASE[1,LEN(PHRASE)-1]:")>"
+                END ELSE
+                    PRINT ON DATFILN "<!ELEMENT ENREG (":PHRASE[1,LEN(PHRASE)-1]:")>"
+                END
+          END ELSE
+                PRINT ON DATFILN "<!ELEMENT ENREG  (#PCDATA)>"
+          END
+*--
+          PRINT ON DATFILN "<!ATTLIST ENREG  xml:space (default|preserve) 'preserve'"
+          PRINT ON DATFILN "                 ident CDATA #REQUIRED"
+          PRINT ON DATFILN "                 nb.attributs CDATA #REQUIRED>"
+*-- On boucle de nouveau sur les attributs connus du dico pour déclarer chacun d'entre-eux
+          FOR DTD=1 TO MAXPOS
+            IF DETAIL="D" AND DICT.ARRAY<DTD,2,0><>"" THEN
+               PRINT ON DATFILN "<!ELEMENT ":DICT.ARRAY<DTD,2,0>:" (#PCDATA|VALEUR|SSV)*>"
+               PRINT ON DATFILN "<!ATTLIST ":DICT.ARRAY<DTD,2,0>:" multivaleurs CDATA #REQUIRED>"
+            END ELSE
+               PRINT ON DATFILN "<!ELEMENT ATTRIBUT":DTD:" (#PCDATA|VALEUR|SSV)*>"
+               PRINT ON DATFILN "<!ATTLIST ATTRIBUT":DTD:" multivaleurs CDATA #REQUIRED>"
+            END
+          NEXT DTD
+*-- On finit avec les parties "fixes"
+          PRINT ON DATFILN "<!ELEMENT VALEUR  (#PCDATA|SSV)*>"
+          PRINT ON DATFILN "<!ATTLIST VALEUR  sous.valeurs CDATA #REQUIRED>"
+          PRINT ON DATFILN "<!ELEMENT SSV     (#PCDATA)>"
+          PRINT ON DATFILN '<!-- Entités mises pour compatibilité selon recommandations W3C http://www.w3.org/TR/2000/REC-xml-20001006 -->'
+          PRINT ON DATFILN '<!ENTITY lt     "&#60;"> '
+          PRINT ON DATFILN '<!ENTITY gt     ">"> '
+          PRINT ON DATFILN '<!ENTITY amp    "&#38;"> '
+          PRINT ON DATFILN '<!ENTITY apos   "'"> '
+          PRINT ON DATFILN '<!ENTITY quot   """> '
+          PRINT ON DATFILN "]>"
+*-- Fin de la DTD
+          PRINT ON DATFILN '<!-- -->'
+          PRINT ON DATFILN '<FICHIER nom="':INPUTFILE:'" delegation="':NODR:'" nb.enreg="':NB.CLEINPUT:'" horodatage="':OCONV(DATE(),'D2/'):' ':OCONV(TIME(),'MTS:'):'">'
+          PRINT ON DATFILN '<!-- -->'
+        END
+*       IF @USER.TYPE = 0 THEN PRINT @(2,15):K:" ":CLEINPUT<K>:@(-4)
+        CODERR = 0
+        GOSUB TRAITEENREG  ; * On traite les informations
+        IF CODERR <> 0 THEN
+          PARAM<4>=MESS
+          PARAM<5,1>=CODERR
+          CALL TTCAFF03 (PARAM,CODERR)
+          GOTO FIN                ; * On arrête le carnage
+        END
+      END ELSE
+*---- Pb a la lecture de INPUTFILE
+        PARAM<4,1>="Erreur lecture ":INPUTFILE:", cle : ":CLEINPUT<I>
+        PARAM<5,1>=STATUS()
+        CALL TTCAFF03 (PARAM,CODERR)
+        GOTO FIN                ; * On arrête le carnage
+      END
+*
+    NEXT K              ; * fin de boucle sur les enregistrements
+    IF @USER.TYPE = 0 THEN PRINT @(34,18):@(-4):@(34,17):@(-4) ;* On efface les lignes d'avancement
+*
+  END ELSE
+    PARAM<4,1>="Pb de lecture de liste des enregistrements sélectionnés"
+    PARAM<5,1>=STATUS()
+    CALL TTCAFF03 (PARAM,CODERR)
+    GOTO FIN                ; * On arrête le carnage
+*
+  END                     ; * fin du READSELECT
+*
+CASE (@SYSTEM.RETURN.CODE = 0)         ; * Pas de donnes
+  IF @USER.TYPE = 0 THEN
+    PRINT @(2,22):"*** Pas d'enregistrements pour ce fichier ***":@(-4)
+  END ELSE
+    PRINT TIMEDATE():" *** Pas d'enregistrements pour ce fichier ***"
+  END
+CASE (@SYSTEM.RETURN.CODE < 0)         ; * Y'a eu un souci
+  PARAM<4,1>="*** Pb lors de la sélection des enregistrements de ":INPUTFILE:" ***"
+  PARAM<5,1>=@SYSTEM.RETURN.CODE
+  CALL TTCAFF03 (PARAM,CODERR)
+  IF @USER.TYPE = 0 THEN PRINT TIMEDATE():" *** Pb lors de la sélection des enregistrements de ":INPUTFILE:" ***"
+  GOTO FIN                ; * On arrête le carnage
+END CASE
+*
+*-- Ecriture de l'en-pied du fichier XML
+IF NB.CLEINPUT <> "0" THEN PRINT ON DATFILN '</FICHIER>'
+IF @USER.TYPE = 0 THEN PRINT @(7,15):NB.CLEINPUT:" enregistrements(s) traité(s) dans la file ":SFILES<NLASTFILE>:@(-4)
+*
+*---- On a fini, bien ou mal mais on y est !!
+FIN:
+IF @USER.TYPE = 0 THEN
+PRINT @(2,22):"          Fin d'execution ": @(-3)
+END ELSE
+PRINT TIMEDATE():" Fin d'extraction "
+END
+CLEARSELECT
+CLOSE FINPUT
+STOP
+*-
+*------
+OPENFICH:
+*-- Sous-Programme d'ouverture des fichiers utilisés par le programme et d'assignation
+*-- du n° de la DR
+*--
+*
+OPEN INPUTFILE TO FINPUT ELSE
+  CODERR = 999
+  LIBERR = "Erreur ouverture fichier ":INPUTFILE
+  RETURN
+END
+*
+*-
+* Récupération du n° de DR
+CALL UTAKSYS("00000000",MAT ENR.KSYS,CODERR,MESS)
+IF CODERR <> 0
+THEN
+  LIBERR = MESS
+  RETURN
+END
+ELSE
+  NODR=ENR.KSYS(10)
+END
+RETURN
+*
+*------------
+TRAITEENREG:
+*-- Sous-Programme de traitement de l'enregistrement pour constitution du fichier en sortie
+*-- Chaque enregistrement entrée pouvant donner lieu à plusieurs niveaux de balise XML (ENREG,
+*-- ATTRIBUTx (ou libellé), VALEUR et/ou SSV. Normalement ces niveaux sont hiérarchisés et on ne
+*-- devrait pas trouver de sous-valeurs si il n'y a pas de multi-valeurs mais on en trouve donc
+*-- l'algorithme s'en est trouvé un peu compliqué.
+*-- Si on veut utiliser le dictionnaire (DETAIL="D") la balise ATTRIBUTx est remplacée par le
+*-- libellé du dictionnaire s'il existe et la conversion de la valeur à l'aide de OCONV est elle
+*-- aussi effectuée si un format de conversion a été donné dans le dictionnaire.
+MESS = ""
+CODERR = 0
+*- On compte le nombre d'attributs
+NB.ATTRIBUTES=DCOUNT(ENR.INPUT,@AM)
+*-
+CALL UTXMLLITTERALOK(CLEINPUT<K>)
+PRINT ON DATFILN '<ENREG ident="':CLEINPUT<K>:'" nb.attributs="':NB.ATTRIBUTES:'">' ; *- Balise ENREG
+*--
+IF ENR.INPUT<> "" THEN
+  CALL UTXMLLITTERALOK(ENR.INPUT)
+*---------------------------Attributs---------------------------------------------
+  FOR A=1 TO NB.ATTRIBUTES ; *-- On boucle sur le nombre d'attributs
+*
+*---------------------------Valeurs-----------------------------------------------
+*- On compte le nombre de valeurs
+    ATTRIB = ENR.INPUT<A,0,0>
+    NB.VALUES=DCOUNT(ATTRIB,@VM)
+*--------
+*
+    IF NB.VALUES > 1 THEN ; *-- On boucle sur le nombre de valeurs
+      IF DETAIL = "D" AND DICT.ARRAY<A,2,0><>"" THEN
+        PRINT ON DATFILN '<':DICT.ARRAY<A,2,0>:' multivaleurs="':NB.VALUES:'">' ; *- Balise ATTRIBUT
+      END ELSE
+        PRINT ON DATFILN '<ATTRIBUT':A:' multivaleurs="':NB.VALUES:'">'         ; *- Balise ATTRIBUT
+      END
+    END ELSE
+      IF DETAIL = "D" AND DICT.ARRAY<A,2,0><>"" THEN
+        PRINT ON DATFILN '<':DICT.ARRAY<A,2,0>:' multivaleurs="0">'             ; *- Balise ATTRIBUT
+      END ELSE
+        PRINT ON DATFILN '<ATTRIBUT':A:' multivaleurs="0">'                     ; *- Balise ATTRIBUT
+      END
+      IF DCOUNT(ATTRIB,@SM) <= 1 THEN
+        IF ATTRIB <> "" THEN
+          IF DETAIL = "D" AND DICT.ARRAY<A,1,0><>"" THEN
+            PRINT ON DATFILN OCONV(ATTRIB,DICT.ARRAY<A,1,0>)
+          END ELSE
+            PRINT ON DATFILN ATTRIB
+          END
+        END
+      END
+    END
+    FOR V=1 TO NB.VALUES
+      IF ENR.INPUT<A,V,0> <> "" THEN
+*---------------------------Sous-Valeurs-------------------------------------------
+*-       On compte le nombre de sous-valeurs
+        NB.SSVALUES=DCOUNT(ENR.INPUT<A,V,0>,@SVM)
+*
+        IF NB.SSVALUES > 1 THEN ; *-- On boucle sur le nombre de sous-valeurs
+          IF NB.VALUES > 1 THEN PRINT ON DATFILN '<VALEUR sous.valeurs="':NB.SSVALUES:'">'; *- Balise VALEUR
+          FOR S=1 TO NB.SSVALUES
+            IF ENR.INPUT<A,V,S> <> "" THEN
+              PRINT ON DATFILN '<SSV>'        ; *- Balise SSVALUE
+              IF DETAIL = "D" AND DICT.ARRAY<A,1,0><>"" THEN
+                PRINT ON DATFILN OCONV(ENR.INPUT<A,V,S>,DICT.ARRAY<A,1,0>)
+              END ELSE
+                PRINT ON DATFILN ENR.INPUT<A,V,S>
+              END
+              PRINT ON DATFILN '</SSV>'        ; *- Fin Balise SSVALUE
+            END ELSE
+              PRINT ON DATFILN '<SSV/>'       ; *- Balise vide SSVALUE
+            END
+          NEXT S
+*---------------------------Sous-Valeurs-------------------------------------------
+        END ELSE
+          IF NB.VALUES > 1 THEN
+            PRINT ON DATFILN '<VALEUR sous.valeurs="0">'          ; *- Balise VALEUR
+            IF ENR.INPUT<A,V,0> <> "" THEN
+              IF DETAIL = "D" AND DICT.ARRAY<A,1,0><>"" THEN
+                PRINT ON DATFILN OCONV(ENR.INPUT<A,V,0>,DICT.ARRAY<A,1,0>)
+              END ELSE
+                PRINT ON DATFILN ENR.INPUT<A,V,0>
+              END
+            END
+          END
+        END
+        IF NB.VALUES > 1 THEN PRINT ON DATFILN '</VALEUR>'         ; *- Fin de balise VALEUR
+      END ELSE
+        PRINT ON DATFILN '<VALEUR sous.valeurs="0"/>'
+      END                                                          ; *- Balie vide VALEUR
+*
+    NEXT V               ; *-- Fin de boucle sur le nombre de valeurs
+*---------------------------Valeurs-----------------------------------------------
+    IF DETAIL = "D" AND DICT.ARRAY<A,2,0><>"" THEN
+      PRINT ON DATFILN '</':DICT.ARRAY<A,2,0>:'>'                             ; *- Fin de balise ATTRIBUT
+    END ELSE
+      PRINT ON DATFILN '</ATTRIBUT':A:'>'                                     ; *- Fin de balise ATTRIBUT
+    END
+  NEXT A                ; *-- Fin de boucle sur le nombre de valeurs
+*---------------------------Attributs---------------------------------------------
+END
+*
+PRINT ON DATFILN '</ENREG>'                                            ; *- Fin de la balise RECORD
+*-
+RETURN
+*------------
+GETFILE:
+*-- Sous-programme de saisie du nom du fichier à traiter
+*--
+INDICATEUR=0
+LOOP
+WHILE INDICATEUR = 0 DO
+*
+  PRINT @(2,21):"Fichier à extraire (# pour finir) :":@(-4)
+  CALL UTSAISIE(REPONSE,37,21,25)
+  REPONSE=TRIM(UPCASE(REPONSE))
+*
+  FOR I = 14 TO 20
+    PRINT @(0,I):@(-4)
+  NEXT I
+  PRINT @(0,22):@(-4)
+*
+  BEGIN CASE
+    CASE (REPONSE="" )
+      CONTINUE
+    CASE (REPONSE#"#" AND REPONSE#"?")
+      CODERR = 0
+      INDICATEUR=1
+      INPUTFILE = REPONSE
+*
+    CASE (REPONSE="#")
+      INDICATEUR=1
+*
+    CASE (REPONSE="?")
+      PRINT @(2,15):"Vous devez saisir un nom de fichier ayant un dictionnaire.":@(-4)
+      PRINT @(2,16):"En effet des informations contenues dans ce DICT sont nécessaires a la ":@(-4)
+      PRINT @(2,17):"bonne execution de ce traitement.":@(-4)
+      PRINT @(2,18):" ":@(-4)
+      PRINT @(2,19):" ":@(-4)
+  END CASE
+*
+REPEAT
+*
+RETURN
+*------------
+GETDICT:
+*-- Sous programme de lecture du DICT du fichier (par OCONV T) pour remplir un
+
+*-- tableau dynamique DICT.ARRAY contenant pour chaque attribut du dictionnaire
+*-- (sauf la clé) un libellé (le plus long !) et un format de conversion s'il y en a.
+*-- Au passage on s'assure que le libellé pourra être utilisé pour faire une
+*-- balise XML digne de ce nom en appelant UTXMLBALISEOK pour le transformer si
+*-- nécessaire.
+*-
+CAPDICT = 'SSELECT DICT ':INPUTFILE:' BY LOC BY @ID IF TYP = "D"'
+EXECUTE CAPDICT CAPTURING V1
+*
+BEGIN CASE
+  CASE (@SYSTEM.RETURN.CODE > 0)         ; * On a trouvé des enregistrements
+*
+    READSELECT CLEDICT THEN
+    NB.CLEDICT = DCOUNT(CLEDICT,@AM)
+    DICT.ARRAY=""
+    D = 1
+    MAXPOS=0
+    LOOP
+    WHILE (D <= NB.CLEDICT) DO ; * Boucle sur les attributs de DICT sélectionnés
+*
+*---- Récupération des infos du DICT de INPUTFILE pour la clée donnée
+      POS=OCONV(CLEDICT<D>,"TDICT ":INPUTFILE:";X;;2") ; * Position
+      IF POS > MAXPOS THEN MAXPOS=POS ; * On stocke pour construire la DTD ensuite
+      CONV=OCONV(CLEDICT<D>,"TDICT ":INPUTFILE:";X;;3") ; * Conversion
+*        LIBELLE=OCONV(CLEDICT<D>,"TDICT ":INPUTFILE:";X;;4") ; * Libellé
+      LIBELLE=CLEDICT<D>
+*
+      IF POS > 0 THEN ; * On se fiche de la clé, on la laisse brute
+        IF CONV <> "" THEN DICT.ARRAY<POS,1,0>=CONV ; * Format
+        IF LEN(LIBELLE) > LEN(DICT.ARRAY<POS,2,0>) THEN
+          CALL UTXMLBALISEOK(LIBELLE)
+          FIND LIBELLE IN DICT.ARRAY SETTING F,V,S ELSE DICT.ARRAY<POS,2,0>=LIBELLE ; * Libellé
+        END
+      END
+*
+      D = D + 1
+    REPEAT              ; * fin de boucle sur les enregistrements
+*
+  END ELSE
+    LIBERR="Pb de lecture de liste du dictionnaire"
+    CODERR=STATUS()
+    RETURN                ; * On arrête le carnage
+*
+  END                     ; * fin du READSELECT
+CASE (@SYSTEM.RETURN.CODE = 0)         ; * DICT vide ?
+  LIBERR = "Le DICT de ":INPUTFILE:" semble vide !"
+  CODERR = 1
+CASE (@SYSTEM.RETURN.CODE < 0)         ; * Pas de dictionnaire ?
+  LIBERR = INPUTFILE:" n'aurait-il pas de DICT ?"
+  CODERR = 1
+END CASE
+RETURN
+*-
+END
+
+================= Check forbidden chars subroutine ===================
+
+SUBROUTINE UTXMLLITERRALOK(VALEUR)
+*=========================================================================
+*= Domaine   : OUTILS
+*= Programme : UTXMLLITERRALOK
+*= Version 7.4.1.1
+*= Date de mise à jour : 15/05/03
+*= Date de génération : 15/05/03
+*=========================================================================
+*= L'instruction suivante permet de connaître le numéro de version du
+*= programme compilé sous unix par la commande : what _NomProgramme
+*=
+NumeroDeVersionDuProgramme = "@(#)[UTXMLLITERRALOK 7.4.1.1 15/05/03]"
+*=
+*=========================================================================
+*-- Libellé     : remplacer les caractères "interdits" dans un littéral XML
+*-- Date        : 15/05/03
+*-- Référence   :
+*-- Objet       : Sous-Programme permettant de remplacer les caractères "interdits"
+*--               dans un littéral XML par les entités pré-définies qui doivent
+*--               les remplacer.
+*--               On assume que ces entités sont définies au préalable dans la DTD
+*--               Elles sont :
+*--               lt, gt, amp, apos, quot
+*========================================================================
+*-
+SWAP "<" WITH "<"IN VALEUR
+SWAP ">" WITH ">" IN VALEUR
+SWAP "&" WITH "&" IN VALEUR
+SWAP "'" WITH "'" IN VALEUR
+SWAP '"' WITH""" IN VALEUR
+*
+RETURN
+*
+END
+
+================= Check forbidden chars in tags subroutine ===================
+
+SUBROUTINE UTXMLBALISEOK(VALEUR)
+*=========================================================================
+*= Domaine   : OUTILS
+*= Programme : UTXMLBALISEOK
+*= Version 7.4.1.1
+*= Date de mise à jour : 15/05/03
+*= Date de génération : 15/05/03
+*=========================================================================
+*= L'instruction suivante permet de connaître le numéro de version du
+*= programme compilé sous unix par la commande : what _NomProgramme
+*=
+NumeroDeVersionDuProgramme = "@(#)[UTXMLBALISEOK 7.4.1.1 15/05/03]"
+*=
+*=========================================================================
+*-- Libellé     : remplacer les caractères "interdits" des balises XML par des _
+*-- Date        : 15/05/03 par DSI [HME]
+*-- Référence   :
+*-- Objet       : Sous-Programme permettant de remplacer les caractères "interdits"
+*--               des balises XML par des _
+*--               Si la balise commence par un chiffre on lui colle un _ en tête
+*========================================================================
+*
+FLAGNUMDEB=0
+LONG=LEN(VALEUR)
+I = 1
+FOR I =1 TO LONG
+    ASCII = SEQ(VALEUR[I,1])
+    IF (ASCII >=48 AND ASCII <=58) OR (ASCII >=65 AND ASCII <=90) OR (ASCII>=97 AND ASCII<=122) OR (ASCII >=192 AND ASCII <=214) OR (ASCII>=216 AND ASCII <=246) OR (ASCII >=248 AND ASCII<=255) OR (VALEUR[I,1]="-") OR (VALEUR[I,1]=".") THEN
+      IF I=1 AND (ASCII >=48 AND ASCII <=58) THEN ;* Ne peut pas commencer par un chiffre
+        FLAGNUMDEB=1
+      END
+    END ELSE
+       IF I=1 AND (VALEUR[I,1] = ":" OR VALEUR[I,1] = "_") THEN ;* Peut commencer par : ou _
+          CONTINUE
+       END ELSE
+           VALEUR[I,1]="_"
+       END
+    END
+NEXT I
+*
+IF FLAGNUMDEB=1 THEN VALEUR="_":VALEUR ;* On ajoute un _ car commence par un chiffre
+*
+RETURN
+END
+
+================ General errors handler subroutine ===============
+
+SUBROUTINE TTCAFF03(PARAM,CODRETOUR)
+*==========================================================================
+*= Domaine   : TTAPPLIS
+*= Programme : TTCAFF03
+*= Version 6.1.1.1
+*= Date de mise à jour : 99/11/15
+*= Date de génération : 01/02/14
+*===========================================================================
+*= L'instruction suivante permet de connaître le numéro de version du
+*= programme compilé sous unix par la commande : what _NomProgramme
+*=
+NumeroDeVersionDuProgramme = "@(#)[TTCAFF03 6.1.1.1 99/11/15]"
+*=
+*===========================================================================
+*-- Libelle : Gestion de l'erreur bloquante
+*-- Date création  : 22/09/99
+*-- Référence : ASS21238
+*-- Objet :
+*-- Objet : Générer une file ERR.ABORT et affichage d'un ecran d'erreur
+*--         si le traitement appelant est un TP
+*=================================================================
+*-- PARAMETRES :
+*==============
+*-- En entree :
+*--         PARAM<1,1> : DOMAINE (10L) : Domaine applicatif du programme appelant
+*--         PARAM<2,1> : DIAG (30L) : Diagnostic de l'anomalie constatee
+*--         PARAM<3,1> : NOMPROG (8L) : Nom du programme ou l'anomalie est constatée
+*--         PARAM<4,1> : LIBERR (30L) : Libellé de l'erreur
+*--         PARAM<5,1> : CODERREUR (3L) : Code de l'erreur renseigné avec un code erreur
+*--         ou la mention "Sans objet"
+*--         PARAM<6,1> : AFFICH (1L) : Indicateur precisant si le message doit (1)
+*--                       ou non (0) etre afficher a l'ecran
+*-- En sortie : CODRETOUR
+*--
+*==================================================================
+*
+*===========================
+* Description des variables
+*===========================
+* SLFIL : Parametre d'appel au programme SLIMPRIMANTE
+* F.ERR : File d'erreur contenant les lignes d'impression
+*===========================
+* Initialisations
+*===========================
+*
+DOMAINE = PARAM<1,1>
+DIAG = PARAM<2,1>
+NOMPROG = PARAM<3,1>
+LIBERR = PARAM<4,1>
+CODERREUR = PARAM<5,1>
+AFFICH = PARAM<6,1>
+CODRETOUR = 0
+SLFIL = ""
+SLFIL<1> = ""
+SLFIL<2> = "ERR.ABORT"
+CALL SLIMPRIMANTE (SLFIL)
+F.ERR = 1
+*
+*===========================
+* Ouverture des fichiers
+*===========================
+* Sans objet
+*
+*===========================
+* Bloc principal
+*===========================
+*-- Le code erreur est renseigne a Sans objet s'il est a blanc
+IF CODERREUR = "" THEN
+        CODERREUR = "Sans objet"
+END
+IF MOD((LEN(LIBERR)),66) # 0 THEN
+        NB_LIGNES = INT((LEN(LIBERR))/66)+1
+END ELSE
+  NB_LIGNES = INT((LEN(LIBERR))/66)
+END
+IF NB_LIGNES > 3 THEN
+*-- on affiche 3 lignes au maximum
+        NB_LIGNES = 3
+END
+*-- Affichage de l'erreur
+IF AFFICH = "1" THEN
+  PRINT @(-1)
+        PRINT @(0,0):DOMAINE:" : ":DIAG
+  PRINT @(0,4):"IL Y A EU UN PROBLEME GRAVE LORS DU DEROULEMENT DE VOTRE TRAITEMENT"
+  PRINT @(0,10):"PROGRAMME   : ":NOMPROG
+  PRINT @(0,11):"ERREUR      : ":LIBERR[1,66]
+                FOR I=2 TO NB_LIGNES
+                        DEBUT = (66*(I-1))+1
+                        FIN = DEBUT
+                        PRINT @(0,11+I-1):"              ":LIBERR[DEBUT,66]
+                NEXT I
+  PRINT @(0,11+NB_LIGNES):"CODE ERREUR : ":CODERREUR
+  PRINT @(4,22):"IMPRIMER OU NOTER LES REFERENCES CI-DESSUS ET PREVENEZ VOTRE RSI"
+  INPUT NULL
+END
+*--- File d'erreur ERR.ABORT
+IF MOD((LEN(LIBERR)),64) # 0 THEN
+        NB_LIGNES = INT((LEN(LIBERR))/64)+1
+END ELSE
+  NB_LIGNES = INT((LEN(LIBERR))/64)
+END
+PRINT ON F.ERR  "           PROBLEME GRAVE AU COURS DU TRAITEMENT"
+PRINT ON F.ERR ""
+PRINT ON F.ERR "PROGRAMME     : ":NOMPROG
+PRINT ON F.ERR "ERREUR        : ":LIBERR[1,64]
+        FOR I=2 TO NB_LIGNES
+                DEBUT = (64*(I-1)) + 1
+
+                FIN = DEBUT
+                PRINT ON F.ERR "                ":LIBERR[DEBUT,64]
+        NEXT I
+PRINT ON F.ERR "CODE ERREUR   : ":CODERREUR
+DATE = DATE() "D"
+TIME = TIME() "MT"
+PRINT ON F.ERR "DATE          : ":DATE:"  ":TIME
+PRINT ON F.ERR "LOGIN         : ":@LOGNAME
+PRINT ON F.ERR
+PRINT ON F.ERR "          PREVENEZ VOTRE R.S.I"
+PRINT ON F.ERR
+PRINT ON F.ERR
+*===========================
+* Fermeture des fichiers
+*===========================
+PRINTER CLOSE
+*===========================
+* Fin de traitement
+*===========================
+RETURN
+*===========================
+* Sous routines internes
+*===========================
+*
+* Sans objet
+
+================= General printer assign subroutine ========
+
+    SUBROUTINE SLIMPRIMANTE(SLFIL)
+*==========================================================================
+*= Programme : SLIMPRIMANTE
+*= Version 1.1
+*= Date de mise à jour : 96/04/25
+*= Date de génération : 01/02/14
+*===========================================================================
+*= L'instruction suivante permet de connaître le numéro de version du
+*= programme compilé sous unix par la commande : what _NomProgramme
+*=
+NumeroDeVersionDuProgramme = "@(#)[SLIMPRIMANTE 1.1 96/04/25]"
+*=
+*===========================================================================
+*----------------------------------------------------------------------------
+*-- PORTAGE
+*-- UDT : Assignation des imprimantes dans un programme
+*-- Creation : 17:02:10  16 Jan 1995  par ERG
+*-- Version : 1.0
+*-- Date de MAJ : 22 mai 1995
+*-- MAJ :  ajout de la mise a jour du fichier SO_HOLD_
+*-- Compile  :
+*----------------------------------------------------------------------------
+*  SLFIL : liste des files a initialiser en MA hormis la 19
+*----------------------------------------------------------------------------
+    PROMPT ""
+    LTAMPON = @DATA
+    IFIN = DCOUNT(SLFIL,@AM)
+* Recherche si entree verrouillee ou non
+    THOLD = 0
+    FOR I = 1 TO IFIN
+      IF SLFIL<I> # 0 THEN THOLD = 1 ; GO 10
+    NEXT I
+10  NULL
+*----------------------------------------------------------------------------
+* Modif du 22 mai 1995
+    SOHOLD = 1
+    OPEN "DICT _HOLD_" TO FDHOLD  ELSE SOHOLD = 0
+    OPEN "SO_HOLD_"    TO FSOHOLD ELSE SOHOLD = 0
+**** Fin modif du 22 mai 1995
+*----------------------------------------------------------------------------
+* Selection de l'imprimante si pas verrouillee
+    IF NOT(THOLD) THEN XDEST = ",DEST imp1" ELSE XDEST = ""
+* Assignation des lignes
+    CPT = 0
+    FOR I = 1 TO IFIN
+      XNOF = I - 1 ; MSF = SLFIL<I>
+* Recherche si verrouillee ou non
+      IF THOLD THEN XHOLD = 3 ELSE XHOLD = 1
+* Recherche si BANNER UNIQUE avec message
+      IF MSF # 0 THEN XBANNER = " ":MSF ELSE XBANNER = ""
+* Preparation de la phrase
+      PHRASE = 'SETPTR ':XNOF:',,,,,':XHOLD:',BANNER UNIQUE':XBANNER
+      PHRASE = PHRASE:',NOHEAD':XDEST:',BRIEF'
+* Envoi de l'initialisation
+      EXECUTE PHRASE
+**** Modif du 22 mai 1995
+      IF SOHOLD = 1 AND XHOLD = 3 THEN
+        READV NUM FROM FDHOLD,"NEXT.HOLD",1 ELSE NUM = 1
+        NUM = NUM - 1
+        IF XBANNER = "" THEN ITSOHOLD = "P_0000" ELSE ITSOHOLD = XBANNER[2,40]
+        ITSOHOLD = ITSOHOLD:"_":NUM "R%4"
+        WSOHOLD  = @DATE:@AM:@TIME:@AM:@LOGNAME:@AM:"N"
+        READU EXIST FROM FSOHOLD,ITSOHOLD ELSE NULL
+        WRITE WSOHOLD ON FSOHOLD,ITSOHOLD
+      END
+**** Fin modif du 22 mai 1995
+    NEXT I
+* Assignation de la file 19
+    EXECUTE 'SETPTR 19,,,,,3,BANNER UNIQUE 19,NOHEAD,BRIEF'
+**** Modif du 22 mai 1995
+    IF SOHOLD = 1 THEN
+      READV NUM FROM FDHOLD,"NEXT.HOLD",1 ELSE NUM = 1
+      NUM = NUM - 1
+      ITSOHOLD = "19_":NUM "R%4"
+      WSOHOLD  = @DATE:@AM:@TIME:@AM:@LOGNAME:@AM:"N"
+      READU EXIST FROM FSOHOLD,ITSOHOLD ELSE NULL
+      WRITE WSOHOLD ON FSOHOLD,ITSOHOLD
+    END
+**** Fin modif du 22 mai 1995
+* Remise en forme des tampons
+    NBTAMPON = DCOUNT(LTAMPON,CHAR(13)) - 1
+    FOR I = 1 TO NBTAMPON
+      DATA FIELD(LTAMPON,CHAR(13),I)
+    NEXT I
+*
+    RETURN

@@ -1,0 +1,42 @@
+This is a program to build a select list (and list names to screen ). It uses a file called MEMBERS and works with fields LAST.NAME and FIRST.NAME. New fields LASTX and FIRSTX were created as "I" descriptors. <2> SOUNDEX(FIELD(@RECORD<3>,' ',1)) for last name process. I indexed on LASTX and FIRSTX for file MEMBERS. MEMBERS has 2.6 million records and took 135 seconds to select specific names. We are using an "L" class machine running with 3 CPUs and EMC box for drives. With specific first and last spelled like name sounds usually turns up the name among others in just a fraction of a second. If you use a "*" then it may get slower to "sort" the select list into the sorted order for display.
+
+    ========== code here for program ==============================
+
+      OPEN "MEMBERS" TO MEMF ELSE STOP
+      CRT 'First Name: ':
+      INPUT FNAM
+      CRT 'Last Name:  ':
+      INPUT LNAM
+      CRT '(E)xact or (S)ounds alike? ':
+      INPUT SND,1
+      LASTX = SOUNDEX(LNAM)
+      ECMD = 'SELECT MEMBERS '
+      IF LNAM # '*' THEN
+         ECMD := 'WITH LASTX = "':LASTX:'"'
+         EXECUTE ECMD,//STATUS.>KNT
+      END ELSE KNT = 6000
+      IF KNT > 33 THEN
+         IF FNAM # '*' THEN
+            IF KNT # 6000 THEN ECMD := ' AND'
+            ECMD := ' WITH FIRSTX = "':SOUNDEX(FNAM):'"'
+            EXECUTE ECMD,//STATUS.>KNT
+            IF KNT = 0 THEN
+               CRT 'NO SELECTION, QUITTING...'
+               STOP
+            END ELSE CRT ECMD
+         END
+      END
+      EOF = 0
+      IF SND = 'E' THEN
+         ECMD<-1> = 'LIST MEMBERS '
+         IF LNAM # '*' THEN ECMD := 'WITH LAST.NAME = "':LNAM:'" '
+         IF FNAM # '*' THEN ECMD := 'WITH FIRST.NAME LIKE "':FNAM:'..."'
+         ECMD := 'BY LAST.NAME BY FIRST.NAME '
+         ECMD := 'FIRST.NAME LAST.NAME FIRSTX LASTX'
+      END ELSE
+         ECMD<-1> = 'LIST MEMBERS BY LASTX BY LAST.NAME BY FIRST.NAME '
+         ECMD := 'FIRST.NAME LAST.NAME FIRSTX LASTX'
+      END
+      EXECUTE ECMD
+      INPUT ANS,1
+      CRT 'ALL DONE'

@@ -1,0 +1,350 @@
+  SUBROUTINE PRINT.BARCODE.128.HP.SUB (MESSAGE, INDENT, BAR.WIDTH, BAR.HEIGHT, ORIENTATION, PASSED.PARAMS)
+  * Title:        PRINT.BARCODE.128.HP.SUB
+  * Written by:   Charlie Noah
+  * Date written: 1988
+  * Print barcode in Code 128 on HP Laserjet printers
+  *" (C) Copyright 1988 Charles W. Noah Associates"
+  ****************************************
+  *
+  * Rev 02-19-2010 12:50 by:    40 charlien charlien     350 lines;  13,149 bytes  5,271,091,321
+  *
+  * Start modification history
+  * Mod 02 02-16-2010 CWN Modify Mod 01 to make all barcode routines consistent SMURF AA2001
+  * Mod 01 06-25-2002 TEM Remove printer on/off. The parent process will do this.
+  * End modification history
+  *
+  * Requires HP [[LaserJet]] (compatible) printer
+  *
+  * Specifications
+  *
+  * MESSAGE (passed)         - This is the actual data to be encoded.
+  *
+  * INDENT (passed)          - Spacing to indent message if it is printed below barcode.
+  *
+  * BAR.WIDTH (passed)       - If a whole number is passed it will be the number of
+  *                            dots for a single bar (300 dpi).  If a number less
+  *                            one is used it is assumed to be inches for a single
+  *                            bar (ex .010 is the same as 3 dots).  If the value
+  *                            is null or zero the default of 3 dots (.010") will be
+  *                            used.  (max is 15 dots or .5")
+  *
+  * BAR.HEIGHT (passed)      - If a whole number is passed it will be the number of
+  *                            dots for the overall barcode height (300 dpi). If a
+  *                            decimal number is used, it is assumed to be inches.
+  *                            (ex. for a 1/2 inch barcode use 150 or .5).  The
+  *                            maximum is 900 dots or 3.0 inches.
+  *
+  * ORIENTATION (passed)     - Orientation of the barcode.  Use 'H' for horizontal
+  *                            (lines going up and down) and 'V' for vertical. The
+  *                            default is horizontal.
+  *
+  * PASSED.PARAMS (passed)   - Attr 1  = true   Print message text below barcode
+  *                            Attr 2  = true   Subroutine will control printer
+  *                            null             No message will print, caller will control printer
+  *
+  * PASSED.PARAMS (returned) - attr 10 = true   status code - 1   Null message
+  *                                                           2   Message too long     (N[[/A]])
+  *                                                           3   Invalid width param  (N[[/A]])
+  *                                                           4   Invalid indent param (N[[/A]])
+  *                                                           5   Invalid character    (N[[/A]])
+  *                                                           0   OK
+  *
+  * Note: The barcode is printed from the current cursor position.  After
+  *       the barcode is printed the cursor is repositioned back to its
+  *       original coordinates.
+  *
+  * Calling program must set printer print position and close print job.
+  *
+  ****************************************
+  *
+  * Initialize
+  *
+  EQU BS     TO CHAR(8)
+  EQU ESC    TO CHAR(27)
+  *
+  EQU FALSE  TO 0
+  EQU TRUE   TO 1
+  *
+  EQU CODE.A TO 1                                                             ;* Code fields
+  EQU CODE.B TO 2
+  EQU CODE.C TO 3
+  *
+  USER.NO             = @USER.NO
+  LOG.NAME            = @LOGNAME
+  PHANTOM             = SYSTEM(25)
+  *
+  IF USER.NO >= 10000 THEN
+     PHANTOM  = TRUE
+  END
+  *
+  PROGRAM.NAME        = 'PRINT.BARCODE.128.HP.SUB'
+  *
+  ****************************************
+  *
+  * Main program
+  *
+  IF UNASSIGNED(PASSED.PARAMS) THEN
+     PASSED.PARAMS  = ''
+  END
+  *
+  PARAMS              = PASSED.PARAMS
+  PRINT.MESSAGE.TEXT  = PARAMS<1>                                             ;* True if message text to be printed under barcode
+  PRINTER.CONTROL     = PARAMS<2>                                             ;* True if this program is to turn printer on and off
+  *
+  * Validate parameters
+  *
+  * INDENT       - spaces to indent text message if printed
+  * BAR.WIDTH    - width of each bar - number of dots at 300 dpi
+  * BAR.HEIGHT   - barcode height - number of dots at 300 dpi
+  * ORIENTATION  - H = horizontal, V = vertical
+  *
+  IF INDENT     = '' OR INDENT     = '0' OR NOT(NUM(INDENT))     THEN INDENT       = 0
+  IF BAR.WIDTH  = '' OR BAR.WIDTH  = '0' OR NOT(NUM(BAR.WIDTH))  THEN BAR.WIDTH    = 3
+  IF INDEX(BAR.WIDTH, '.', 1)                                    THEN BAR.WIDTH    = (BAR.WIDTH  * 300) 'R#0'
+  IF BAR.WIDTH  > 15                                             THEN BAR.WIDTH    = 15
+  *
+  IF BAR.HEIGHT = '' OR BAR.HEIGHT = '0' OR NOT(NUM(BAR.HEIGHT)) THEN BAR.HEIGHT   = 150
+  IF INDEX(BAR.HEIGHT, '.', 1)                                   THEN BAR.HEIGHT   = (BAR.HEIGHT * 300) 'R#0'
+  IF BAR.HEIGHT > 900                                            THEN BAR.HEIGHT   = 900
+  *
+  IF NOT(ORIENTATION MATCHES 'H]V')                              THEN ORIENTATION  = 'H'
+  *
+  BEGIN CASE
+  CASE MESSAGE = ''             ; STATUS.CODE  = 1                            ;* Null message
+  CASE 1                        ; STATUS.CODE  = 0                            ;* OK - proceed
+  END CASE
+  *
+  * If OK, set up and print
+  *
+  IF STATUS.CODE = 0 THEN
+     GOSUB BUILD.BIT.TABLE
+     *
+     CHECK.SUM    = 0
+     BAR.CNT      = 0
+     X.COORD      = 0
+     Y.COORD      = 0
+     *
+     * Print the start code
+     *
+     BEGIN CASE
+     CASE MESSAGE[1,4] MATCHES '4N'
+        CODE.FLD       = CODE.C
+        BIT.TABLE.PTR  = 106
+     CASE MESSAGE[1,1] < CHAR(32)                                             ;* Control character
+        CODE.FLD       = CODE.A
+        BIT.TABLE.PTR  = 104
+     CASE TRUE
+        CODE.FLD       = CODE.B
+        BIT.TABLE.PTR  = 105
+     END CASE
+     *
+   * PRINTER ON                                                               ;* Mod 01, Mod 02
+     *
+     IF PRINTER.CONTROL THEN                                                  ;* Mod 02
+        PRINTER ON                                                            ;* Mod 02
+     END                                                                      ;* Mod 02
+     *
+     GOSUB PRINT.BARCODE
+     *
+     * Print the bar code for each character
+     *
+     MESSAGE.LEN  = LEN(MESSAGE)
+     *
+     FOR CHR.PTR = 1 TO MESSAGE.LEN WHILE STATUS.CODE = 0
+        BEGIN CASE
+        CASE CODE.FLD # CODE.C AND MESSAGE[CHR.PTR,6] MATCHES '6N'
+           BIT.TABLE.PTR  = 100                                               ;* From A or B to C
+           *
+           GOSUB PRINT.BARCODE
+           *
+           CODE.FLD       = CODE.C
+        CASE CODE.FLD = CODE.C AND NOT(MESSAGE[CHR.PTR,2] MATCHES '2N')
+           CHR            = MESSAGE[CHR.PTR,1]
+           *
+           LOCATE CHR IN BIT.TABLE<CODE.B> SETTING JUNK THEN
+              BIT.TABLE.PTR  = 101                                            ;* From C to B
+              *
+              GOSUB PRINT.BARCODE
+              *
+              CODE.FLD       = CODE.B
+           END ELSE
+              BIT.TABLE.PTR  = 102                                            ;* From C to A
+              *
+              GOSUB PRINT.BARCODE
+              *
+              CODE.FLD       = CODE.A
+           END
+        END CASE
+        *
+        IF CODE.FLD = CODE.C THEN
+           CHR      = MESSAGE[CHR.PTR,2]
+           CHR.PTR += 1
+        END ELSE
+           CHR      = MESSAGE[CHR.PTR,1]
+        END
+        *
+        LOCATE CHR IN BIT.TABLE<CODE.FLD> SETTING BIT.TABLE.PTR ELSE
+           BEGIN CASE
+           CASE CODE.FLD = CODE.A
+              BIT.TABLE.PTR  = 101                                            ;* From A to B
+              *
+              GOSUB PRINT.BARCODE
+              *
+              CODE.FLD       = CODE.B
+           CASE CODE.FLD = CODE.B
+              BIT.TABLE.PTR  = 102                                            ;* From B to A
+              *
+              GOSUB PRINT.BARCODE
+              *
+              CODE.FLD       = CODE.A
+           END CASE
+           *
+           LOCATE CHR IN BIT.TABLE<CODE.FLD> SETTING BIT.TABLE.PTR ELSE
+              STATUS.CODE  = 5
+           END
+        END
+        *
+        IF STATUS.CODE = 0 THEN
+           GOSUB PRINT.BARCODE
+        END
+     NEXT CHR.PTR
+     *
+     * Print the modulo 103 check character
+     *
+     IF STATUS.CODE = 0 THEN
+        BIT.TABLE.PTR  = MOD(CHECK.SUM, 103) + 1
+        *
+        GOSUB PRINT.BARCODE
+        *
+        * Print the stop character
+        *
+        BIT.TABLE.PTR  = 107
+        *
+        GOSUB PRINT.BARCODE
+     END
+     *
+     * Print message text below barcode if required
+     *
+     IF PRINT.MESSAGE.TEXT THEN
+        *
+        * Advance print position
+        *
+        PRINT
+        PRINT
+        PRINT
+        *
+        IF BAR.WIDTH > 150 THEN                                               ;* Width of each bar - number of dots at 300 dpi
+           PRINT
+        END
+        *
+        PRINT STR(' ', INDENT + INT(BAR.WIDTH / 4) + 10): MESSAGE
+     END
+     *
+     * Reposition the cursor
+     *
+     PRINT ESC: '*p-': X.COORD: 'x-': Y.COORD: 'Y':
+     *
+   * PRINTER OFF                                                              ;* Mod 01, Mod 02
+     *
+     IF PRINTER.CONTROL THEN                                                  ;* Mod 02
+        PRINTER OFF                                                           ;* Mod 02
+     END                                                                      ;* Mod 02
+  END
+  *
+  PASSED.PARAMS<10>   = STATUS.CODE
+  *
+  RETURN
+  *
+  ****************************************
+  *
+  * Subroutines
+  *
+****************
+BUILD.BIT.TABLE: * Build bit table for characters
+****************
+  *
+  BIT.TABLE           = ''
+  MV.PTR              = 0
+  *
+  FOR ASCII.VALUE = 32 TO 95
+     MV.PTR              += 1
+     BIT.TABLE<1,MV.PTR>  = CHAR(ASCII.VALUE)
+  NEXT ASCII.VALUE
+  *
+  FOR ASCII.VALUE = 0 TO 31
+     MV.PTR              += 1
+     BIT.TABLE<1,MV.PTR>  = CHAR(ASCII.VALUE)
+  NEXT ASCII.VALUE
+  *
+  FOR ASCII.VALUE = 32 TO 127
+     BIT.TABLE<2, ASCII.VALUE - 31>  = CHAR(ASCII.VALUE)
+  NEXT ASCII.VALUE
+  *
+  FOR ASCII.VALUE = 0 TO 99
+     BIT.TABLE<3, ASCII.VALUE + 1>  = ASCII.VALUE 'R%2'
+  NEXT ASCII.VALUE
+  *
+  BIT.TABLE<4>        = '212222]222122]222221]121223]121322]131222]122213]122312'
+  BIT.TABLE<4,-1>     = '132212]221213]221312]231212]112232]122132]122231'
+  BIT.TABLE<4,-1>     = '113222]123122]123221]223211]221132]221231]213212'
+  BIT.TABLE<4,-1>     = '223112]312131]311222]321122]321221]312212]322112'
+  BIT.TABLE<4,-1>     = '322211]212123]212321]232121]111323]131123]131321'
+  BIT.TABLE<4,-1>     = '112313]132113]132311]211313]231113]231311]112133'
+  BIT.TABLE<4,-1>     = '112331]132131]113123]113321]133121]313121]211331'
+  BIT.TABLE<4,-1>     = '231131]213113]213311]213131]311123]311321]331121'
+  BIT.TABLE<4,-1>     = '312113]312311]332111]314111]221411]431111]111224'
+  BIT.TABLE<4,-1>     = '111422]121124]121421]141122]141221]112214]112412'
+  BIT.TABLE<4,-1>     = '122114]122411]142112]142211]241211]221114]413111'
+  BIT.TABLE<4,-1>     = '241112]134111]111242]121142]121241]114212]124112'
+  BIT.TABLE<4,-1>     = '124211]411212]421112]421211]212141]214121]412121'
+  BIT.TABLE<4,-1>     = '111143]111341]131141]114113]114311]411113]411311'
+  BIT.TABLE<4,-1>     = '113141]114131]311141]411131]211412]211214]211232'
+  BIT.TABLE<4,-1>     = '2331112'
+  *
+  RETURN
+  *
+**************
+PRINT.BARCODE: * Print one character of barcode
+**************
+  *
+  BAR.PATTERN         = BIT.TABLE<4,BIT.TABLE.PTR>
+  BAR.LEN             = LEN(BAR.PATTERN)
+  *
+  FOR BAR.PTR = 1 TO BAR.LEN STEP 2
+     BAR  = BAR.PATTERN[BAR.PTR,     1]
+     SPC  = BAR.PATTERN[BAR.PTR + 1, 1]
+     *
+     IF ORIENTATION = 'H' THEN                                                ;* Horizontal
+        PRINT ESC: '*c': BAR * BAR.WIDTH: 'a': BAR.HEIGHT: 'b0P':
+        *
+        X.COORD.ADJUST  = (BAR * BAR.WIDTH) + (SPC * BAR.WIDTH) - 1
+        *
+        PRINT ESC: '*p+': X.COORD.ADJUST: 'x+0Y':
+        *
+        X.COORD        += X.COORD.ADJUST
+     END ELSE                                                                 ;* Vertical
+        PRINT ESC: '*c': BAR.HEIGHT: 'a': BAR * BAR.WIDTH: 'b0P':
+        *
+        Y.COORD.ADJUST  = (BAR * BAR.WIDTH) + (SPC * BAR.WIDTH) - 1
+        *
+        PRINT ESC: '*p+0x+': Y.COORD.ADJUST: 'Y':
+        *
+        Y.COORD        += Y.COORD.ADJUST
+     END
+  NEXT BAR.PTR
+  *
+  IF BAR.CNT = 0 THEN
+     CHECK.SUM += (BIT.TABLE.PTR - 1)
+  END ELSE
+     CHECK.SUM += (BIT.TABLE.PTR - 1) * BAR.CNT
+  END
+  *
+  BAR.CNT            += 1
+  *
+  RETURN
+  *
+  ****************************************
+  *
+  * End of program
+  *
+  END

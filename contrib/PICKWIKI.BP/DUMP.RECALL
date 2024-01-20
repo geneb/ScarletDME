@@ -1,0 +1,390 @@
+This works for us, based on keeping "reports" in a DIR type file named "RECALLS" in a particular structure. The program could be modified to do something similar given different file layouts, or even use PROC's (if you're into that kind of thing).
+
+************************************************************************
+* Program: DUMP.RECALL
+* Author : Ian [[McG]]
+* Date   : 08/18/97
+* Edited : $Id: DUMP.RECALL 17141 2013-10-04 14:54:18Z stiffd01 $
+* Comment: Dump fields to an excel file
+************************************************************************
+* 04/01/1998 Ian  Modify to handle 'D' type fields
+* 04/96/1998 Ian  CD each dict item at the start of program
+* 04/24/1998 Ian  Modify to handle @ID type fields (0 index)
+* 06/15/1998 Ian  Do not use so many command line params - look in recall
+* 07/02/1998 Ian  If there's a select, use it
+* 12/29/1998 Ian  Convert " in data to '
+* 03/11/1999 Ian  Modify to dump in sylk or csv formats
+* 06/18/1999 Ian  Do not call external routine for conversion - dump as we go
+* 07/08/1999 Ian  Modified SUM calc to not include header row
+* 08/20/2001 Ian  Do not parse output manually - use TO DELIM "filename"
+*                 Use perl Spreadsheet::[[WriteExcel]] to generate excel file
+* 08/22/2001 Ian  Do totals at bottom of MR2 columns, optionally email file
+* 08/27/2001 Ian  Do not use UDTEXECUTE for select statement
+* 09/17/2001 Ian  Do a TRIM on recall to get rid of NULL atb names
+*                 Check for "silent" atbs with 0L width and \ heading
+* 01/08/2001 Ian  If recall contains "SPREAD" commands, execute them
+* 01/30/2003 Ian  If recall contains "CSV" dump as tab-delimited
+* 11/03/2004 Ian  Add HTML excel dump
+* 01/17/2005 Ian  Minor fix for change in format - comments after line 1
+* 01/19/2005 Ian  If email address = @LOGNAME, use current user's address
+* 02/02/2005 Ian  Do not stop looping when select hit - need to exec SPREAD
+
+* A recall consists of one line, which is the "source"
+* followed by the lines of code that actually produce the
+* report.  A tilda in line one represents a "hard" return
+* while a value mark indicates a "soft" return
+* e.g
+* 001: *GET.LIST L1~}SORT LS.MASTER KEY UATB.CUST.NAME.50}TOTAL UATB.OEC (IP\
+* 002: EXECUTE \GET.LIST L1\
+* 003: EXECUTE \SORT LS.MASTER KEY UATB.CUST.NAME.50 TOTAL UATB.OEC (IP\
+* 004: END
+*
+T1=TIME()
+YYYY=OCONV(DATE(),"DY")
+MM=  OCONV(DATE(),"DM")
+DD=  OCONV(DATE(),"DD")
+TT=  OCONV(TIME(),"MT")
+YMDT = YYYY:MM:DD:TT
+CONVERT ":" TO "" IN YMDT
+USER.NAME = @LOGNAME
+
+OPEN 'RECALLS' TO RECALLS ELSE STOP 201,'RECALLS'
+PROMPT ''
+
+HTML.FLAG=0
+CSV.FLAG=1
+DELIM.TYPE="TAB"
+HDR.FLAG=1
+TAB=CHAR(9)
+
+S=@SENTENCE
+RECALL.NAME=FIELD(S, ' ', 2)
+IF RECALL.NAME = '' THEN
+    PRINT @(-1):'ENTER RECALL NAME: ':
+    INPUT RECALL.NAME
+    IF RECALL.NAME = '' OR RECALL.NAME = '/' THEN STOP
+END
+READ RECALL FROM RECALLS, RECALL.NAME ELSE STOP 'CANNOT READ RECALLS ':RECALL.NAME
+
+* Decide if we're emailing or dumping to the shared drive
+P=FIELD(S,' ',3)
+EMAIL='' ; FILE=''
+IF INDEX(P,'@',1) # 0 THEN
+    * Mail the file to someone
+    IF P="@LOGNAME" THEN P=@LOGNAME
+    EMAIL=P
+END ELSE
+    FILE=P
+END
+
+FTP.TARGET=""
+IF FIELD(FILE,":",1)="FTP" THEN
+    FTP.TARGET=FILE
+    FILE=FIELD(FILE,":",5)
+END
+
+* See if there's a select or get-list statement
+GOSUB FIND.SELECT.LINE
+
+* Get rid of the select line and other stuff
+RECALL=RECALL<1>
+DEL RECALL<1,1>
+
+IF FILE = "" THEN
+    FILE=RECALL.NAME:"_":YMDT:".TXT"
+END ELSE
+    FILE=FILE:".TXT"
+END
+CONVERT ":" TO "" IN FILE
+* FILE='/samba_share/recall_dump/':FILE
+FN = FILE
+FILE='/samba_share/recall_dump/':ACCOUNT:'/':FN
+*
+* We assume that there is a directory in the shared drive
+* the same as the unix user name
+PC.FILE=@LOGNAME
+
+IF SELECT.LINE = '' THEN STOP 'MUST HAVE A SELECT LIST '
+
+GOSUB PARSE.ATB.NAMES
+
+HEAD=""
+EXEC="LIST ":INFILE:" ID.SUP "
+FOR COL=1 TO NUM.FLDS
+    FLD=FLD.LIST<1,COL>
+    CONV=FLD.LIST<2,COL>
+    COL.HDR=COL.HEAD.LINE<1,COL>
+    IF INDEX(CONV,"MR2",1) THEN
+        * Pass info to the perl script to say this is a numeric field
+        COL.HDR="#":COL.HDR
+    END
+    HEAD:=COL.HDR:"~"
+    IF CONV # '*' THEN
+        IF INDEX(CONV,",",1) THEN SWAP "," WITH "" IN CONV
+        EXEC:=\EVAL 'OCONV(\:FLD:\,"\:CONV:\")' \
+    END ELSE
+        * a "*" indicates no CONV
+        EXEC:=FLD:\ \
+    END
+NEXT COL
+
+NOITEMS.FLAG=0
+*BEGIN CASE
+*    CASE CSV.FLAG
+        GOSUB DUMP.BASIC
+*    CASE 1
+*        GOSUB DUMP.PERL
+*END CASE
+
+IF NOITEMS.FLAG THEN
+    ERR.MESSAGE="No items selected in recall: ":RECALL.NAME
+    IF EMAIL # '' THEN
+        CALL TRIN.MAIL.SUB(EMAIL, USER.NAME, ERR.MESSAGE, RECALL.NAME, "")
+    END ELSE
+        PRINT ERR.MESSAGE
+    END
+END ELSE
+    * Success!  Move over to NT server, or email
+    BEGIN CASE
+        CASE EMAIL # ''
+            * Send the file as an attachment
+            EXECUTE \TRIN.MAIL.FILE \:FILE:\ \:EMAIL:\ [[/A]]\
+        CASE FTP.TARGET # ''
+            EXECUTE \TRIN.FTP.SEND \:FILE:\ \:FTP.TARGET
+        CASE 1
+            * Move it to the shared drive
+            EXECUTE \TRIN.SMB.MOVE \:FILE:\ \:PC.FILE
+    END CASE
+END
+
+T=TIME()-T1
+IF T < 60 THEN
+    PRINT T:' seconds'
+END ELSE
+    PRINT INT(T/60):' minute(s), ':MOD(T,60):' second(s)'
+END
+STOP
+
+PARSE.ATB.NAMES:
+    CONVERT " " TO @VM IN RECALL
+    CONVERT "~" TO "" IN RECALL
+    RECALL=TRIM(RECALL)
+    TOT.FLDS=DCOUNT(RECALL<1>,@VM)
+    NUM.FLDS=0
+    FLD.LIST='' ; COL.HEAD.LINE=''
+    INFILE=''
+    FOR F=1 TO TOT.FLDS
+        FLD.NAME=RECALL<1,F>
+        IF FLD.NAME="CSV" THEN CSV.FLAG=1
+        IF FLD.NAME="TAB" THEN CSV.FLAG=1 ; DELIM.TYPE="TAB"
+        IF FLD.NAME="HTML" THEN CSV.FLAG=1 ; DELIM.TYPE="HTML"
+        IF FLD.NAME="NOHEAD" THEN HDR.FLAG=0
+        * Check this word to see if it's a file name, select,
+        * get-list or dictionary atb
+        IF INFILE='' THEN
+            OPEN FLD.NAME TO DUMMY THEN
+                INFILE=FLD.NAME
+                OPEN INFILE TO INFILE.F ELSE STOP 201,INFILE
+                OPEN 'DICT',INFILE TO @DICT ELSE STOP 201,'DICT ':INFILE
+                CLOSE DUMMY
+            END
+        END ELSE
+            * Add a field to field list, if it's in the dictionary
+            * and it's not already in the list and it's type I or D
+            LOCATE FLD.NAME IN FLD.LIST<1> SETTING POS ELSE
+                READ DREC FROM @DICT, FLD.NAME THEN
+                    IF DREC<1>='I' OR DREC<1>='D' THEN GOSUB STORE.FIELD
+                END
+            END
+        END
+    NEXT F
+    IF NUM.FLDS = 0 THEN
+        PRINT ; PRINT 'NO ATB NAMES FOUND IN RECALL'
+        STOP
+    END
+RETURN
+
+STORE.FIELD:
+    HED=DREC<4>
+    WID=DREC<5>
+    * If width=0 and header="\" then the ATB is suppressed
+    IF (WID="0L" AND HED="\") OR (WID="0R" AND HED="\") THEN RETURN
+
+    NUM.FLDS+=1
+    COL=NUM.FLDS
+    TYP=DREC<1>
+    ATB=DREC<2>
+    CNV=DREC<3>
+    IF CNV[1,1]='D' THEN CONVERT 'R' TO 'D' IN WID
+    IF CNV='' THEN CNV='*'
+    FLD.LIST<1,COL>=FLD.NAME
+    FLD.LIST<2,COL>=CNV
+    FLD.LIST<3,COL>=TYP
+    FLD.LIST<4,COL>=ATB
+    FLD.LIST<5,COL>=WID
+    IF HED='' THEN HED=FLD.NAME
+    CONVERT @VM TO "_" IN HED
+    CONVERT " " TO "_" IN HED
+    * This is the first line of the output file
+    COL.HEAD.LINE<1,COL>=HED
+    IF DREC<1> # 'D' THEN
+        E=\CD \:INFILE:\ \:FLD.NAME
+        EXECUTE E CAPTURING DUMMY
+    END
+RETURN
+
+FIND.SELECT.LINE:
+    SELECT.LINE=''
+    PRE="EXECUTE \" ; LEN.PRE=LEN(PRE)
+    * Skip the first "source" code line
+    LINE.NUM=2 ; MAX.LINE=DCOUNT(RECALL,@AM)
+    LOOP
+        * Strip the line to it's actual code
+        LINE=RECALL<LINE.NUM>
+        IF LINE[1,1]='*' THEN LINE.NUM+=1 ; CONTINUE
+        LINE=LINE[LEN.PRE+1, 999]
+        LINE=FIELD(LINE,'\',1)
+        * Is it a GET.LIST or SELECT?
+        FIRST.WORD=FIELD(TRIM(LINE),' ',1)
+        IF FIRST.WORD='SPREAD' THEN
+            * Execute the spread command
+            EXECUTE LINE
+        END
+
+        * Go with the first select line we find
+        IF SELECT.LINE='' THEN
+            IF FIRST.WORD='GET.LIST' OR FIRST.WORD='GET-LIST' OR FIRST.WORD='SELECT' OR FIRST.WORD='SSELECT' OR FIRST.WORD = 'sselect' THEN
+                SELECT.LINE=LINE
+            END
+        END
+    UNTIL LINE.NUM>MAX.LINE DO
+        LINE.NUM += 1
+    REPEAT
+RETURN
+
+DUMP.PERL:
+    * Use the "TO DELIM" unidata feature to dump the records the easy
+    * (and fast) way
+    EXEC:=\ to DELIM "~" \:FILE
+
+    EXECUTE SELECT.LINE
+    IF @SYSTEM.RETURN.CODE <= 0 THEN
+        NOITEMS.FLAG=1
+        RETURN
+    END
+
+    UDTEXECUTE EXEC
+    IF @LOGNAME = "stiffd01" THEN PRINT EXEC
+    * Change the .TXT to null
+    FILE= FILE[1,LEN(FILE)-4]
+
+    * Now call the perl script to convert to TXT to XLS
+    EXEC=\!/usr/local/bin/recall.pl "\:HEAD:\" \:FILE
+    EXECUTE EXEC
+
+    FILE=FILE:".xls"
+RETURN
+
+DUMP.BASIC:
+    * We have a list of field names and a select, parse them the hard way
+    * and write a tab-seperated file.  This is slower but avoids limitations
+    * on the number of columns (of unidata) and the perl module [[WriteExcel]]
+
+    * Change the .TXT to .XLS
+    FILE= FILE[1,LEN(FILE)-4]:".xls"
+
+    EXECUTE "!>":FILE
+    OPENSEQ FILE TO FVAR ELSE STOP 'CANNOT OPEN ':FILE
+
+    IF DELIM.TYPE="HTML" THEN
+        * Write the HTML header block - csv and tab don't need a header
+        R=\<html xmlns:o="urn:schemas-microsoft-com:office:office"\
+        R:=\xmlns:x="urn:schemas-microsoft-com:office:excel"\
+        R:=\xmlns="http://www.w3.org/TR/REC-html40">\
+        GOSUB DO.WRITE
+
+        R=\<head></head>\
+        GOSUB DO.WRITE
+
+        R=\<body><table border=1>\
+        GOSUB DO.WRITE
+    END
+
+    * This is the same for CSV, TAB and HTML from here on out
+
+    IF HDR.FLAG THEN
+        * Write a header line
+        REC.OUT=''
+        FOR COL=1 TO NUM.FLDS
+            FLD=COL.HEAD.LINE<1,COL>
+            REC.OUT<1,COL>=FLD
+        NEXT COL
+        GOSUB WRITE.LINE
+    END
+
+    EXECUTE SELECT.LINE
+    IF @SYSTEM.RETURN.CODE = 0 THEN
+        NOITEMS.FLAG=1
+        RETURN
+    END
+
+    LOOP
+        READNEXT @ID ELSE EXIT
+        REC.OUT=''
+        READ @RECORD FROM INFILE.F, @ID ELSE STOP 'CANNOT READ ':@ID
+        FOR COL=1 TO NUM.FLDS
+            FLD=FLD.LIST<1,COL>
+            CONV=FLD.LIST<2,COL>
+            * Should this have a flag?
+            CONVERT "," TO "" IN CONV
+            TYP=FLD.LIST<3,COL>
+            ATB=FLD.LIST<4,COL>
+            IF TYP="D" THEN
+                IF ATB=0 THEN VALUE=@ID ELSE VALUE=@RECORD<ATB>
+            END ELSE
+                VALUE=CALCULATE(FLD)
+            END
+            IF CONV # '*' THEN
+                * '*' Denotes no conversion code in field 3
+                VALUE=OCONV(VALUE,CONV)
+            END
+            REC.OUT<1,COL>=VALUE
+        NEXT COL
+        GOSUB WRITE.LINE
+    REPEAT
+    CLOSESEQ FVAR
+RETURN
+
+WRITE.LINE:
+    * Take REC.OUT and parse
+    BEGIN CASE
+        CASE DELIM.TYPE="TAB"
+            CONVERT @VM TO TAB IN REC.OUT
+            R=REC.OUT ; GOSUB DO.WRITE
+        CASE DELIM.TYPE="CSV"
+            R=''
+            FOR COL=1 TO NUM.FLDS
+                R=R:\"\:REC.OUT<1,COL>:\",\
+            NEXT COL
+            * Strip trailing comma
+            R=R[1,LEN(R)-1]
+            GOSUB DO.WRITE
+        CASE DELIM.TYPE="HTML"
+            * Turn @VM into <td>Field</td>
+            R=" <tr>" ; GOSUB DO.WRITE
+	    R=""
+            FOR COL=1 TO NUM.FLDS
+                R=R:\  <td>\:REC.OUT<1,COL>:\</td>\
+            NEXT COL
+	    GOSUB DO.WRITE
+            R=" </tr>" ; GOSUB DO.WRITE
+        CASE 1
+            * Should never happen
+            R=REC.OUT ; GOSUB DO.WRITE
+    END CASE
+RETURN
+
+DO.WRITE:
+    WRITESEQ R APPEND TO FVAR ELSE STOP 'CANNOT WRITE ':FILE
+RETURN
+

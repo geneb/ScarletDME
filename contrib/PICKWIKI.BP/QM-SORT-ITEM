@@ -1,0 +1,157 @@
+      SUBROUTINE QM.SORT.ITEM(ITEM,KEYS,DATA,PROBLEM)
+
+* Copyright 2013 Keith Johnson - You can use this program however you want
+
+*  ITEM - is a Pick record comtaining associated multivalues
+*  KEYS - is a set of attributes
+*         value 1 is the attribute in the record
+*         value 2 is the sort number
+*                 0 left justified
+*                 1 right justified
+*                 2 compound
+*                 3 right justified for numbers
+*               +16 if descending
+*               +64 if not case sensitive
+*  DATA - is a set of attributes for the associated multivalues
+*
+* This program uses the QM functions SORT and SORTNEXT
+*      and statements SORTADD and SORTCLEAR
+*      so it ain't gonna work on yer standard Pick!
+*
+* An honest and earnest "thank you" to Martin Phillips.
+*
+* The idea is that a record contains a number of associated multivalues -
+* some of these are keys, and others data. We wish to re-arrange the
+* multivalues in a different order without disrupting the associations.
+*
+* There are speed advantages to using attributes rather than values,
+* hence there are CONVERT lines that would be otherwise puzzling.
+
+      KATS = DCOUNT(KEYS,@AM)
+      IF KATS LT 1 THEN RETURN
+      PROBLEM = ''
+
+      OK = '0\1\2\3\16\17\18\19\64\65\66\67\80\81\82\83'
+      CONVERT '\' TO @AM IN OK
+
+* Checking the information
+      DIM LOCK(KATS)
+      DIM TYPE(KATS)
+      DIM THAT(KATS)
+      MAXM = 0
+      USED = ''
+
+      FOR KATR = 1 TO KATS
+         ANUM = KEYS<KATR,1>
+         IF NOT(ANUM MATCHES '1[[N0N]]')
+            THEN PROBLEM = 'NON-NUMERIC KEY ATTRIBUTE' ; GO AWAY
+         IF ANUM LT 1
+            THEN PROBLEM = 'KEY ATTRIBUTE ':ANUM:' LESS THAN 1' ; GO AWAY
+         IF MAXM LT ANUM THEN MAXM = ANUM
+
+         SNUM = KEYS<KATR,2>
+         IF NOT(SNUM MATCHES '1[[N0N]]') AND SNUM NE ''
+            THEN PROBLEM = 'NON-NUMERIC KEY SORT' ; GO AWAY
+         SNUM += 0
+         IF SNUM GT 128 THEN SNUM -= 128      ;* we'll see...
+         LOCATE(SNUM,OK;POSN)
+            ELSE PROBLEM = 'INVALID KEY SORT ':SNUM ; GO AWAY
+         LOCK(KATR) = SNUM
+         TYPE(KATR) = ANUM
+         LOCATE(ANUM,USED;POSN;'AR') THEN
+            PROBLEM = 'KEY ATTRIBUTE ':ANUM:' ALREADY USED'
+            GO AWAY
+         END ELSE INS ANUM BEFORE USED<POSN>
+      NEXT KATR
+
+      DATS = DCOUNT(DATA,@AM)
+      DIM WHAT(DATS)
+      FOR DATR = 1 TO DATS
+         DNUM = DATA<DATR>
+         IF NOT(DNUM MATCHES '1[[N0N]]')
+            THEN PROBLEM = 'NON-NUMERIC DATA ATTRIBUTE' ; GO AWAY
+         IF DNUM LT 1
+            THEN PROBLEM = 'DATA ATTRIBUTE ':ANUM:' LESS THAN 1' ; GO AWAY
+         WHAT(DATR) = DNUM
+         IF DNUM GT MAXM THEN MAXM = DNUM
+         LOCATE(DNUM,USED;POSN;'AR') THEN
+            PROBLEM = 'DATA ATTRIBUTE ALREADY USED'
+            GO AWAY
+         END ELSE INS DNUM BEFORE USED<POSN>
+      NEXT DATR
+
+* Parse
+      DIM ARRAY(MAXM+1)
+      MATPARSE ARRAY FROM ITEM
+
+* Change values to attributes and get size
+      LONG = 0
+      SOME = @FALSE
+      FOR KATR = 1 TO KATS
+         CONVERT @VM TO @AM IN ARRAY(TYPE(KATR))
+         CNTR = DCOUNT(ARRAY(TYPE(KATR)),@AM)
+         IF CNTR GT LONG THEN LONG = CNTR
+      NEXT KATR
+      FOR DATR = 1 TO DATS
+         CONVERT @VM TO @AM IN ARRAY(WHAT(DATR))
+         CNTR = DCOUNT(ARRAY(WHAT(DATR)),@AM)
+         IF CNTR GT LONG THEN LONG = CNTR
+         IF CNTR THEN SOME = @TRUE
+      NEXT DATR
+
+      IF SOME THEN LOCK(1) += 128             ;* there IS data to be retained
+
+      SORTVAR = SORT(KATS, MAT LOCK)
+
+*Stash the data in the sort variable
+      FOR XX = 1 TO LONG
+         MAT THAT = ''
+         FOR KATR = 1 TO KATS
+            THAT(KATR) = ARRAY(TYPE(KATR))<XX>
+         NEXT KATR
+         THIS = ''
+         FOR DATR = 1 TO DATS
+            THIS<DATR> = ARRAY(WHAT(DATR))<XX>
+         NEXT DATR
+         CONVERT @AM TO @VM IN THIS
+         SORTADD SORTVAR, MAT THAT, THIS
+      NEXT XX
+
+* Clear the data areas
+      FOR KATR = 1 TO KATS
+         ARRAY(TYPE(KATR)) = ''
+      NEXT KATR
+      FOR DATR = 1 TO DATS
+         ARRAY(WHAT(DATR)) = ''
+      NEXT DATR
+
+* Retrieve the sorted data
+      CNTR = 0
+      LOOP
+         THIS = SORTNEXT(SORTVAR, MAT THAT)
+      UNTIL STATUS()
+         CNTR += 1
+         FOR KATR = 1 TO KATS
+            ARRAY(TYPE(KATR))<CNTR> = THAT(KATR)
+         NEXT KATR
+         CONVERT @VM TO @AM IN THIS
+         FOR DATR = 1 TO DATS
+            ARRAY(WHAT(DATR))<CNTR> = THIS<DATR>
+         NEXT DATR
+      REPEAT
+
+* Change all the fields to values
+      FOR KATR = 1 TO KATS
+         CONVERT @AM TO @VM IN ARRAY(TYPE(KATR))
+      NEXT KATR
+      FOR DATR = 1 TO DATS
+         CONVERT @AM TO @VM IN ARRAY(WHAT(DATR))
+      NEXT DATR
+
+* Tidy up
+      MATBUILD ITEM FROM ARRAY
+      SORTCLEAR SORTVAR
+      MAT ARRAY = ''
+
+AWAY:
+      RETURN

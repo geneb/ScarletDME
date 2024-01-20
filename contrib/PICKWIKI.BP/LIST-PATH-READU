@@ -1,0 +1,280 @@
+This program reads in list.readu output and changes the device number and inode to pathname.
+Needs program dskdevno.c compiled and available. Others call it devices.c. The output is path space device number. The paths are the attached file systems.
+
+Requires a file: INODE.XREF to be built in a common area.
+Make pointers in other VOCs where needed:
+       INODE.XREF
+0001: F
+0002: /pathto/common/area/INODE.XREF
+0003: /pathto/common/area/D_INODE.XREF
+
+If you know the number of files on your system, divide by 20, make prime, resize to that modulo with a sep of 4. If you don't know at all use 10007. After filling it up, do file.stat and resize to better design.
+
+Usage: >RUN XBP LIST.PATH.READU [REBUILD | [EVERY | "" ] ] [ WRAP ]
+
+Note: you may rescale the width of the display for pathname by changing the size of ADJ variable in the program, Line: 170, 176, & 181. For wide, wrap, and normal.
+
+*-----------------------------------------------------------------------
+* TITLE:  LIST.PATH.READU
+* AUTH: Rich Sias
+* DATE: 05/15/2003
+* ID:   LIST.PATH.READU
+*-----------------------------------------------------------------------
+*Narrative:
+*----------------------
+* Takes LIST.READU command and detemines pathname from device number
+* and inode. Alters display depending on screen width.
+*-----------------------------------------------------------------------
+* EXT CALLS            NONE
+* FILES READ:          INODE.XREF
+* FILES UPDATE:        INODE.XREF
+* CONSTANTS UPDATE:    NONE
+* RESTART INSTRUCTIONS NONE
+*-----------------------------------------------------------------------
+* MODIFICATIONS
+* mm-dd-yy Login (sar######) Description
+*
+*-----------------------------------------------------------------------
+*
+* include section: "COMMON" include files should be preceded
+*                  "EQUATES" include files
+*-----------------------------------------------------------------------
+$INCLUDE MERCY.COMMON STANDARD.EQUATES
+*-----------------------------------------------------------------------
+* equate section
+*-----------------------------------------------------------------------
+*-----------------------------------------------------------------------
+* initialization section: do not include variables that are
+*---------------------- re-initialized prior to usage ------------------
+*-----------------------------------------------------------------------
+      PROG.ID = "LIST.PATH.READU"
+*-----------------------------------------------------------------------
+* open-file section: use OPEN.FILE routine to open files
+*-----------------------------------------------------------------------
+*-----------------------------------------------------------------------
+* main program body
+*-----------------------------------------------------------------------
+      GET(ARG.) COND ELSE COND = ""
+      BEGIN CASE
+         CASE COND = "REBUILD"
+            GOSUB REBUILD
+         CASE COND = "SILLY"
+         CASE COND = "FUFU"
+         CASE 1
+            GOSUB LIST.READU
+      END CASE
+      RETURN
+
+* This is the final return and should cause the logic to exit the pgm
+
+*-----------------------------------------------------------------------
+* subroutines: include desc ( function, variables used and changed, etc)
+*-----------------------------------------------------------------------
+********************
+$INCLUDE HELP
+********************
+
+      **************
+REBUILD:
+      **************
+      * Clear then open the data file.
+      ECMD = "CLEAR.FILE INODE.XREF"
+      EXECUTE ECMD
+      OPEN "INODE.XREF" TO XREF ELSE STOP 204,"INODE.XREF"
+      * Gather disk device numbers for all file systems.
+      UNIX = 'dskdevno.3k|grep -v mirror'
+      EXECUTE "SH -c":QUOTE(UNIX),//OUT.>CAP
+      CAP = CONVERT(" ",@VM,TRIM(CAP))
+      KNT = DCOUNT(CAP,@FM)
+
+      * Weed out blank & root responses.
+      IF CAP<KNT,1> < "  " THEN
+         CAP = FIELD(CAP,@FM,2,KNT-2)
+         KNT -= 2
+      END ELSE
+         CAP = FIELD(CAP,@FM,2,KNT-1)
+         KNT -= 1
+      END
+      IF CAP<KNT,1> < "  " THEN
+         CAP = FIELD(CAP,@FM,1,KNT-1)
+         KNT -= 1
+      END
+      * Initialize conditions.
+      DAMT = KNT
+      J = 0
+      *** (DIRS.TO.CHK is a mv string with all the file systems)
+      * First value is path, second is device number.
+      DIRS.TO.CHK = CAP
+      OK = 1
+
+      * Loop through all file systems.
+      FOR I = 1 TO DAMT
+         * Get working dir and device number.
+         DIR = DIRS.TO.CHK<I,1>
+         DIR1 = DIR
+         DEVNO = DIRS.TO.CHK<I,2>
+         * Get the inodes of all items in file system.
+         STMT = 'sh -c "ls -lRi ':DIR:'"'
+         EXECUTE STMT CAPTURING DIR.REC
+         VAMT = DCOUNT(DIR.REC,@FM)
+         DIR.REC = CHANGE(TRIM(DIR.REC)," ",@VM)
+         CRT I, DAMT, VAMT, J, DIR
+         * Loop through all items in file system.
+         FOR J = 1 TO VAMT
+            LINE = DIR.REC<J>
+            BEGIN CASE
+               CASE LINE EQ ""
+                  * Empty line.
+               CASE LINE<1,1>[1,1] EQ "/"
+                  * Line has new dir name.
+                  * OK means local path, not a mount point.
+                  IF OK THEN OLD.DIR = "PASS"
+                  FLIP = 0
+                  LOD = LEN(OLD.DIR)
+                  DIR1 = FIELD(LINE<1,1>,":",1)
+                  * Check if dir is a mount point.
+                  FIND DIR1 IN DIRS.TO.CHK SETTING BEGN,PTR THEN
+                     OK = 0
+                     * Retain old mount point dir.
+                     OLD.DIR = DIR1
+                  END ELSE
+                     * Check if new dir is sub dir of interim mount pt.
+                     IF OLD.DIR = DIR1[1,LOD] THEN OK = 0
+                        ELSE OK = 1
+                  END
+               CASE LINE<1,11> # ""
+                  * Line begins with device number.
+                  IF OK THEN
+                     * OK means is not a mount point within file system.
+                     INODE = LINE<1,2>
+                     FNAM = LINE<1,11>
+                     PATH = DIR1:"/":FNAM
+                     WRITE PATH ON XREF,DEVNO:"*":INODE
+                        ELSE CRT 'BAD DEAL ':PATH
+                  END
+               CASE 1
+            END CASE
+*        ---
+*          bla bla bla - I go create an xref file, (I did it above.)
+*         ---
+         NEXT J
+      NEXT I
+      RETURN
+
+************
+LIST.READU:
+************
+      WRAP = 0
+      OPEN "INODE.XREF" TO XREF ELSE STOP 204,"INODE.XREF"
+      * Get all pass parameters.
+      GET(ARG.) COND1 THEN
+         IF COND1 = "WRAP" THEN WRAP = 1 ; COND1 = ""
+      END
+         ELSE COND1 = ""
+      GET(ARG.) COND2 THEN
+         IF COND2 = "WRAP" THEN WRAP = 1 ; COND2 = ""
+      END
+         ELSE COND2 = ""
+      GET(ARG.) COND3 THEN
+         IF COND3 = "WRAP" THEN WRAP = 1 ; COND3 = ""
+      END
+         ELSE COND3 = ""
+      * Set size parameters for formatting. ADJ is for width of output.
+      BEGIN CASE
+         CASE WRAP
+            * Allows full path and all data to be shown.
+            ADJ = 30
+            GWID = ADJ + 12
+            PWID = ADJ + 7
+            RWID = ADJ - 4
+         CASE @CRTWIDE > 97
+            * For wide screen support, no wraps and full formatting.
+            ADJ = 30
+            GWID = ADJ + 12
+            PWID = ADJ + 7
+            RWID = ADJ + 7
+         CASE 1
+            ADJ = 26
+            * For little screens just let letters wrap to beginng of line.
+            GWID = ADJ + 12
+            PWID = ADJ + 7
+            RWID = ADJ + 7
+      END CASE
+      * Get list.readu data.
+      ECMD = "LIST.READU ":COND:" ":COND1:" ":COND2:" INTERNAL"
+      EXECUTE ECMD,//OUT.>GRAB
+      * Make up header info for list.readu.
+      HDRF = "Active File Locks:'L'":SPACE(RWID- 9):"Pathname "
+      HDRF := 'UsrNo Lmode   Pid Login ID'
+      HDRG = "Active Group Locks:":SPACE(GWID)
+      HDRG := "Rec Grp Grp Grp'L'":SPACE(RWID- 8):"Pathname "
+      HDRG := 'UsrNo Lmode G-Address Lcks .RD'
+      HDRG := ' .SH .EX'
+      HDRR = "Active Record Locks:'L'":SPACE(RWID- 8):"Pathname "
+      HDRR := 'UsrNo Lmode   Pid Login ID Item-ID'
+      OLD.CT = 0                         ; * Determines when to print revised hea
+der.
+      * Ignore the last "field" (line), it is empty.
+      KNT = COUNT(GRAB,@FM)
+      FOR I = 1 TO KNT
+         LCT = DCOUNT(GRAB<I>,@VM)
+         IF OLD.CT # LCT THEN
+            * Need new header info printed.
+            BEGIN CASE
+               CASE LCT EQ 9
+                  HEADING HDRF
+                  OLD.CT = LCT
+               CASE LCT EQ 12
+                  HEADING HDRG
+                  IF I > 2 THEN
+                     HDG = EREPLACE(HDRG,"'L'",@FM)
+                     PRINT
+                     PRINT HDG<1>
+                     PRINT HDG<2>
+                  END
+                  OLD.CT = LCT
+               CASE LCT EQ 10
+                  HEADING HDRR
+                  IF I > 2 THEN
+                     * GOSUB PRT.HDR
+                     HDG = EREPLACE(HDRR,"'L'",@FM)
+                     PRINT
+                     PRINT HDG<1>
+                     PRINT HDG<2>
+                  END
+                  OLD.CT = LCT
+               CASE 1
+            END CASE
+         END
+         * Read path info from XREF file.
+         READ PATH FROM XREF,GRAB<I,1>:"*":GRAB<I,2>
+            ELSE PATH = ' bum deal'
+         * Begin printing.
+         PRINT FMT(PATH,PWID:"R"):
+         * Check for wrap (fold) condition.
+         IF WRAP THEN
+            CRT
+            CRT SPACE(RWID):
+         END
+         * Print second third of output.
+         PRINT GRAB<I,4>"6R":GRAB<I,5>"3R":GRAB<I,6>"3R":
+         BEGIN CASE
+            CASE LCT EQ 9
+               CRT GRAB<I,7>"6R":GRAB<I,8>
+            CASE LCT EQ 12
+               CRT GRAB<I,7>"11R":GRAB<I,8>"4R":
+               CRT GRAB<I,9>"4R":GRAB<I,10>"4R":GRAB<I,11>"4R"
+            CASE LCT EQ 10
+               CRT GRAB<I,7>"6R":GRAB<I,8>"9R":" ":GRAB<I,9>
+            CASE 1
+               CRT '    LCT = ':LCT
+         END CASE
+      NEXT I
+      RETURN
+
+************
+TERMINATION:
+************
+      PRINT 'Terminating now '
+      STOP
+* last statement in a program don't add code after this line

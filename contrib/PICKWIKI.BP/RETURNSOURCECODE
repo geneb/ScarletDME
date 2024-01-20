@@ -1,0 +1,56 @@
+FFT.BP 'RETURN.SOURCE.PATH' BASIC 55 lines  Level: 3
+0001       SUBROUTINE RETURN.SOURCE.PATH(K.GLOBAL.CATDIR,SOURCE.PATH,ERRMSG)
+0002 * Return the source path from the end of the GLOBAL.CATDIR opcode
+0003 * Will Johnson, March 2013,
+0004 * Released under CC-BY-2.0 license
+0005 *
+0006 * In this next routine, the source location cannot be READ directly
+0007 * from the corresponding record in the GLOBAL.CATDIR file if there is
+0008 * a ^255 in that record, which truncates the record prematurely.
+0009 * Examining the record in the up-arrow mode of the EDitor, we can see
+0010 * that the source code location is at the end of the item, and is
+0011 * bounded by SEQ(0), but not the last SEQ(0) because they can't make it
+0012 * easy can they? So strip off the last two SEQ(0)s, and then get the
+0013 * last FIELD and that should be the filepath.
+0014 *
+0015 * SO in the below code we blockread throwing out any hex FF's (255),
+0016 * then retrieve the last attribute of that and then we convert the
+0017 * non-printables to periods ("MCP" conversion) and THEN we walk
+0018 * backward through it until we just have the last field delimited by two
+0019 * non-printables ("."), and that's our filepath.  Exhausted yet?
+0020 *
+0021       EQUATE FALSE TO 0, TRUE TO 1
+0022       SOURCE.PATH = ''
+0023       ERRMSG = ''
+0024       OPENSEQ "GLOBAL.CATDIR",K.GLOBAL.CATDIR TO F.GLOBAL.CATDIR ELSE
+0025          ERRMSG = "Can't read this item '":K.GLOBAL.CATDIR:"'"
+0026          ERRMSG := " from the GLOBAL.CATDIR file."
+0027          RETURN
+0028       END
+0029 *
+0030       DONE = FALSE ; OBJECT.CODE = ''
+0031       LOOP
+0032          READBLK T.BLOCK FROM F.GLOBAL.CATDIR,1 THEN NULL ELSE
+0033             DONE = TRUE
+0034          END
+0035       UNTIL DONE DO
+0036          BEGIN CASE
+0037             CASE T.BLOCK = CHAR(255) ; NULL
+0038             CASE 1 ; OBJECT.CODE := T.BLOCK
+0039          END CASE
+0040       REPEAT
+0041       S.OBJECT.CODE = DCOUNT(OBJECT.CODE,@AM)
+0042       PR.FILE = OCONV(OBJECT.CODE<S.OBJECT.CODE>,"MCP")
+0043 *
+0044       FILEPATH = '' ; L.PR.FILE = LEN(PR.FILE)
+0045       STATE = 0 ; LAST = '' ; I.PR.FILE = L.PR.FILE
+0046       LOOP
+0047          CH = PR.FILE[I.PR.FILE,1]
+0048          FILEPATH = CH:FILEPATH
+0049          IF LAST = '.' AND CH = '.' THEN STATE += 1
+0050       UNTIL STATE = 2 OR I.PR.FILE = 1 DO
+0051          LAST = CH ; I.PR.FILE -= 1
+0052       REPEAT
+0053       SOURCE.PATH = FILEPATH[3,LEN(FILEPATH)-4]
+0054       RETURN
+0055    END

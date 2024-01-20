@@ -1,0 +1,132 @@
+      PROGRAM FILESTATUS
+* ECL - KRJ - Universe - information about a file using STATUS*
+*
+      EQU AM TO CHAR(254), VM TO CHAR(253), SM TO CHAR(252)
+      TRUE = 1 = 1; FALSE = NOT(TRUE); QT = '"\':"'"
+      REST = @SENTENCE
+      KEEPQUOT = FALSE
+      GOSUB PARSE.REST
+      TEMP = DCOUNT(BITE,AM)
+      OPTIONS = BITE<TEMP>
+      IF OPTIONS[1,1] = '(' THEN
+         OPTIONS = FIELD(FIELD(OPTIONS,'(',2),')',1)
+         BITE = DELETE(BITE,TEMP,0,0)
+      END ELSE OPTIONS = ''
+      IF OCONV(BITE<1>,'MCU') = 'RUN' THEN
+         BITE = DELETE(BITE,1,0,0)
+         BITE = DELETE(BITE,1,0,0)
+      END
+      BITE = DELETE(BITE,1,0,0)
+*
+      FNAM = BITE<1>
+      BITE = DELETE(BITE,1,0,0)
+      IF FNAM = 'DICT' THEN
+         FNAM = FNAM:' ':BITE<1>
+         BITE = DELETE(BITE,1,0,0)
+      END
+* Get file
+      LOOP
+         GOT.FILE = FALSE
+         IF FNAM = '' THEN
+            CRT 'File >':
+            INPUT FNAM
+         END
+         IF FNAM = '' THEN STOP
+         DPRT = FIELD(FNAM,' ',1)
+         FPRT = FIELD(FNAM,' ',2)
+         IF FPRT = '' THEN FPRT = DPRT ; DPRT = ''
+         OPEN DPRT, FPRT TO FILE THEN
+            GOT.FILE = TRUE
+         END ELSE
+            CRT 'Unable to find file "':FNAM:'".'
+            FNAM = ''
+         END
+      UNTIL GOT.FILE DO
+      REPEAT
+*
+      STATUS JUNK FROM FILE ELSE STOP
+
+*     CRT '             Current position :': JUNK<1>
+*     CRT '          End of file reached :': JUNK<2>
+*     CRT '         Error accessing file :': JUNK<3>
+*     CRT '    Number of bytes available :': JUNK<4>
+      CRT '              File Permissions :': OCONV(JUNK<5>,'MO')
+      CRT '                     File Size :': JUNK<6>:' bytes'
+      CRT '          Number of hard links :': JUNK<7>
+      CRT '              User ID of owner :': JUNK<8>
+      CRT '             Group ID of owner :': JUNK<9>
+      CRT '                 I-node number :': JUNK<10>
+      CRT '        Device on which i-node :': JUNK<11>
+      CRT '       Device for special char :': JUNK<12>
+      CRT '                 Last Accessed :': OCONV(JUNK<14>,'D'):
+      CRT                                ' ': OCONV(JUNK<13>,'MTS')
+      CRT '                 Last modified :': OCONV(JUNK<16>,'D'):
+      CRT                                ' ': OCONV(JUNK<15>,'MTS')
+      CRT '           Last Status Changed :': OCONV(JUNK<18>,'D'):
+      CRT                                ' ': OCONV(JUNK<17>,'MTS')
+*     CRT '    Bytes left in output queue :': JUNK<19>
+      CRT '     Operating system filename :': JUNK<20>
+      CRT ' File type, Modulo, Separation :': JUNK<21>:
+      CRT                                ',': JUNK<22>:',':JUNK<23>
+      CRT '    Part numbers of part files :': JUNK<24>
+      CRT '       Pathnames of part files :': JUNK<25>
+      CRT '       Filenames of part files :': JUNK<26>
+      CRT '                 Full pathname :': JUNK<27>
+      CRT '           SQL file privileges :':
+      PRIV = JUNK<28>
+      BEGIN CASE
+         CASE PRIV = '1' ; CRT 'write-only'
+         CASE PRIV = '2' ; CRT 'read-only'
+         CASE PRIV = '3' ; CRT 'read/write'
+         CASE PRIV = '4' ; CRT 'delete-only'
+         CASE PRIV = '5' ; CRT 'delete/write'
+         CASE PRIV = '6' ; CRT 'delete/read'
+         CASE PRIV = '7' ; CRT 'delete/read/write'
+         CASE 1 ; CRT PRIV
+      END CASE
+      CRT '      SQL file privileges flag :': JUNK<29>
+      CRT '               Owner User name :': JUNK<30>
+      CRT '                UNIX file type :': JUNK<31>:' ':
+      TYPE = JUNK<32>
+      BEGIN CASE
+         CASE TYPE = '1' ; CRT 'Old 32-bit file'
+         CASE TYPE = '3' ; CRT 'New 32-bit file'
+         CASE TYPE = '5' ; CRT 'New 64-bit file'
+         CASE 1 ; CRT TYPE
+      END CASE
+
+      STOP
+*
+PARSE.REST:
+      BITE = ''
+      FLAG = ''
+      POSN = 1
+      XXCNT = LEN(REST)
+      FOR XX = 1 TO XXCNT
+         BIT = REST[XX,1]
+         IF FLAG EQ '' THEN
+            IF BIT = ' ' THEN
+               IF BITE<POSN> NE '' THEN POSN = POSN + 1
+            END ELSE
+               IF INDEX(QT,BIT,1) THEN
+                  FLAG = BIT
+                  IF KEEPQUOT THEN BITE<POSN> = BITE<POSN>:BIT
+               END ELSE
+                  IF BIT = '(' THEN
+                     FLAG = ')'
+                     IF BITE<POSN> NE '' THEN POSN = POSN + 1
+                     BITE<POSN> = '('
+                  END ELSE BITE<POSN> = BITE<POSN>:BIT
+               END
+            END
+         END ELSE
+            IF BIT NE FLAG THEN
+               BITE<POSN> = BITE<POSN>:BIT
+            END ELSE
+               IF KEEPQUOT OR BIT = ')' THEN BITE<POSN> = BITE<POSN>:BIT
+               POSN = POSN + 1
+               FLAG = ''
+            END
+         END
+      NEXT XX
+      RETURN

@@ -1,0 +1,482 @@
+!
+** Find item/s with string 'xxx' BASIC utility
+** (C) Copyright 1985-2003, Advantos Systems, Inc.  All Rights Reserved.
+!
+** Last Modified: 28 Oct 2003, wph
+** First Created: 01 Jan 1987, wph
+** Program Type-: Utility
+!
+** Notes:
+**
+**   This utility will select a list of items within a file that
+**   contain at least one of the specified search strings.
+**
+**   If '*' is used instead of a FileName then all files are searched,
+**   or if a select list is active, those files in the select file are
+**   searched.
+**
+**   If no edit then return select list for further processing
+**
+**   If a SELECTLIST is available when this program is executed then
+**   it is assumed that the select list contains the file names you
+**   want to search.
+**
+**   There are 2 q-pointers needed in the voc/md of the account you're
+**   running this utility in:
+**     1) VOC or MD
+**     2) SAVEDLISTS (_SAVEDLISTS_, &SAVEDLISTS&, POINTER-FILE)
+**
+!
+** Initialize program variables
+!
+*$OPTIONS EXT                      ; ** D3 version
+
+** initialize local variables
+PROMPT ''
+NULL$       = ''
+AM          = CHAR(254)
+VM          = CHAR(253)
+SVM         = CHAR(252)
+PORT.NO     = SYSTEM(22)
+SP1         = ' '
+SP2         = '  '
+SP3         = '   '
+SP4         = '    '
+SP5         = '     '
+SP10        = SPACE(10)
+SP20        = SPACE(20)
+
+** initialize screen variables
+SCRN.WIDTH  = SYSTEM(2)
+SCRN.LENGTH = SYSTEM(3) - 1
+TERM.TYPE   = SYSTEM(7)
+EOS         = @(-3)
+EOL         = @(-4)
+C.BCK       = @(-9)
+C.UP        = @(-10)
+HI          = @(-11)              ; ** U2 version
+HO          = @(-12)              ; ** U2 version
+*HI          = @(-100)             ; ** D3 version
+*HO          = @(-101)             ; ** D3 version
+FORE.COLOR1 = @(-182)
+IF FORE.COLOR1 NE NULL$ THEN
+   HI  = FORE.COLOR1
+END
+V.HI   = HI
+V.HO   = HO
+VC.BCK = C.BCK
+
+DIM STRINGS(15); * Maximum number of search strings
+
+PG.CNT   = 0
+FIND.CNT = 0
+LIST.ID  = "FIND.SELECT.LIST*" : PORT.NO
+
+QUIT.AND.PROCESS = 0              ; ** quit display & process
+
+** assign continue message
+CONT.MSG  = "Press [" : HI : "Enter" : HO : "] to see more or [" : HI
+CONT.MSG := "anything" : HO : "] to quit:"
+
+** Read 'TCL' sentence
+TCL.LINE = @COMMAND               ; ** U2 version
+*TCLREAD TCL.LINE                  ; ** D3 version
+
+OPTIONS  = OCONV(FIELD(TCL.LINE, '(', 2), 'MCU')
+TCL.LINE = TRIM(FIELD(TCL.LINE, '(', 1))
+
+** Access help if desired
+BEGIN CASE
+   CASE INDEX(TCL.LINE, ' HELP', 1)         ; GOTO DISPLAY.HELP
+   CASE INDEX(TCL.LINE, '?'    , 1)         ; GOTO DISPLAY.HELP
+   CASE FIELD(TCL.LINE, SP1    , 2) = NULL$ ; GOTO DISPLAY.HELP
+END CASE
+
+** Process file information
+FNAME = FIELD(TCL.LINE, ' ', 2)
+IF OCONV(FNAME, 'MCU')  = 'DICT' THEN
+   DSW   = 'DICT'
+   FNAME = FIELD(TCL.LINE, ' ', 3)
+END ELSE
+   DSW   = ''
+END
+
+** Validate options
+IF INDEX(OPTIONS, 'I', 1) THEN
+   FIND.ITEM  = 1
+   OPTIONS    = 'I'
+END ELSE
+   FIND.ITEM  = 0
+END
+IF INDEX(OPTIONS, 'F', 1) THEN FIRST.ITEM = 1 ELSE FIRST.ITEM = 0
+IF INDEX(OPTIONS, 'S', 1) THEN SUPP.DISP  = 1 ELSE SUPP.DISP  = 0
+IF INDEX(OPTIONS, 'T', 1) THEN TRIM.ITEM  = 1 ELSE TRIM.ITEM  = 0
+IF INDEX(OPTIONS, 'X', 1) THEN HEX.SEARCH = 1 ELSE HEX.SEARCH = 0
+
+** Build item list (if '*' files then build file list).  This is the
+  READLIST ITEM.LINE ELSE ITEM.LINE = NULL$      ; ** UV version
+*
+*ITEM.LINE = NULL$                                ; ** D3/UD version
+*IF SYSTEM(11) THEN                               ; ** D3/UD version
+*  LOOP                                           ; ** D3/UD version
+*     READNEXT ID ELSE EXIT                       ; ** D3/UD version
+*     ITEM.LINE<-1> = ID                          ; ** D3/UD version
+*  REPEAT                                         ; ** D3/UD version
+*END                                              ; ** D3/UD version
+*
+** Build file list to parse through
+FILE.LINE = NULL$                 ; ** initialize file names to search
+
+** no active list so let`s build one
+IF FNAME = '*' THEN
+   IF ITEM.LINE = NULL$ THEN
+      EXECUTE \SELECT MD WITH D/CODE = "D]""F"\ CAPTURING OUTPUT
+      IF SYSTEM(11) THEN
+         LOOP
+            READNEXT ID ELSE EXIT
+            IF FILE.LINE NE NULL$ THEN
+               FILE.LINE = ID : AM : FILE.LINE
+            END ELSE FILE.LINE = ID
+         REPEAT
+      END
+   END ELSE
+
+** use the item list previously built as the file list
+      FILE.LINE = ITEM.LINE
+   END
+   ITEM.LINE = NULL$              ; ** default to search through ALL items
+END ELSE FILE.LINE = FNAME
+!
+** Open files
+** another 'Open' statement occurs later as each selected file is opened
+!
+OPEN 'SAVEDLISTS' TO SAVEDLISTS ELSE STOP 201, 'SAVEDLISTS'
+!
+** Build appropriate file list
+!
+  SELECTV FILE.LINE TO FILE.LIST  ; ** UV version
+*SELECT FILE.LINE TO FILE.LIST     ; ** D3/UD version
+
+** Enter string(s) to search for
+INPUTCLEAR
+
+ITEMNUM = 0
+*IF NOT(FIND.ITEM) THEN
+   LOOP
+      CRT "Enter a string to search for: ":
+      INPUT STRING
+   UNTIL STRING = NULL$ OR ITEMNUM = 15 DO
+      ITEMNUM = ITEMNUM + 1
+      IF HEX.SEARCH THEN
+        STRING = CHAR(XTD(STRING))
+      END
+      STRINGS(ITEMNUM) = STRING
+   REPEAT
+   IF ITEMNUM = 0 THEN STOP
+*END
+CRT
+!
+** Start program loop
+!
+LN.CNT     = 0                    ; ** #of lines printed on a page - count
+SELECT.IDS = NULL$                ; ** list of items found
+LOOP
+   READNEXT FILENAME FROM FILE.LIST ELSE EXIT
+
+** open appropriate file to search
+   OPEN DSW, FILENAME TO F.NAME THEN
+      CRT V.HI : "File: " : FILENAME : V.HO
+      GOSUB CHECK.PAGE            ; ** page-stop test routine
+      IF QUIT.AND.PROCESS THEN GOTO EDIT.LIST
+   END ELSE
+      CRT V.HI : "File: " : FILENAME : " does not exist!" : V.HO
+      GOSUB CHECK.PAGE            ; ** page-stop test routine
+      IF QUIT.AND.PROCESS THEN GOTO EDIT.LIST
+      GOTO END.OF.LOOP1           ; ** skip further processing & loop again
+   END
+   EDIT.PATH = TRIM(DSW : SP1 : FILENAME)
+
+** build item list to search
+   IF ITEM.LINE = NULL$ THEN
+      SELECTV F.NAME TO ITEM.LIST        ; ** UV version
+*     SELECT F.NAME TO ITEM.LIST         ; ** D3/UD version
+   END ELSE
+      SELECTV ITEM.LINE TO ITEM.LIST     ; ** UV version
+*     SELECT ITEM.LINE TO ITEM.LIST      ; ** D3/UD version
+   END
+
+** select file & search for desired string
+   CNT = 0
+   LOOP
+      READNEXT ID FROM ITEM.LIST ELSE EXIT
+      READ REC FROM F.NAME, ID THEN
+         REC = ID : AM : REC      ; ** include the item id
+         IF FIND.ITEM THEN
+            REC = ID              ; ** we're only searching the Ids
+         END
+         FOR J = 1 TO ITEMNUM
+            IF TRIM.ITEM THEN REC = TRIM(REC)
+            IF INDEX(REC,STRINGS(J),1) THEN
+               IF FNAME = '*' THEN
+                  SELECT.IDS<-1> = EDIT.PATH : SP1 : ID
+               END ELSE
+                  SELECT.IDS<-1> = ID
+               END
+               FIND.CNT += 1
+
+** display matches
+               IF NOT(SUPP.DISP) THEN
+                  REC     = TRIM(REC)
+                  JJ.HIGH = COUNT(REC,STRINGS(J))
+                  FOR JJ = 1 TO JJ.HIGH
+                     COL.S = INDEX(REC,STRINGS(J),JJ)
+                     IF JJ = 1 THEN
+                        CRT FIND.CNT "L(#4)" :
+                        IF SCRN.WIDTH < 132 THEN
+                           CRT ID "L(#20)":
+                        END ELSE CRT ID "L(#30)":
+                     END ELSE
+                        CRT SP20:SP4:
+                        IF SCRN.WIDTH GE 132 THEN CRT SP10:
+                     END
+                     START.POS = COL.S - 15
+                     START.LEN = 15
+                     IF START.POS LE 0 THEN
+                        START.LEN = 14 + START.POS ; START.POS = 1
+                     END
+                     DISP.LINE  = ":" : REC[START.POS,START.LEN] "R(#15)"
+                     DISP.LINE :=       REC[COL.S,999]
+                     oDispLine  = OCONV(CONVERT(AM:VM:SVM, '^]\', DISP.LINE), 'MCP')  ; ** U2 version
+*                    oDispLine  = OCONV(CONVERT(DISP.LINE, AM:VM:SVM, '^]\'), 'MCP')  ; ** D3 version
+                     IF SCRN.WIDTH < 132 THEN
+                        CRT oDispLine "L(#54)"
+                     END ELSE
+                        CRT oDispLine "L(#96)"
+                     END
+                     GOSUB CHECK.PAGE    ; ** page-stop test routine
+                     IF QUIT.AND.PROCESS THEN GOTO EDIT.LIST
+                     IF FIRST.ITEM THEN EXIT
+                  NEXT JJ
+               END ELSE
+                 IF MOD(FIND.CNT,10) = 1 THEN CRT '.':
+               END
+
+            END
+         NEXT J
+      END
+***
+END.OF.LOOP2:
+***
+   REPEAT
+***
+END.OF.LOOP1:
+***
+  IF SUPP.DISP THEN CRT          ; ** drop a line
+REPEAT
+
+** Edit list once selected
+*
+***************
+EDIT.LIST:
+***************
+*
+IF SELECT.IDS NE NULL$ THEN
+   IF FIND.ITEM THEN CRT DCOUNT(SELECT.IDS , AM) : " items selected."
+
+   EDIT.CMD = 'U '
+   CRT V.HI : "EDIT item(s) selected (#/Yes/No/LineEditor/Quit) ?" :
+   CRT V.HO : "N" : C.BCK :
+   INPUT EDIT
+   EDIT = TRIM(OCONV(EDIT , 'MCU'))
+   NUMB = TRIM(OCONV(EDIT , 'MCN'))
+   IF EDIT = '' THEN EDIT = 'N'
+   BEGIN CASE
+      CASE EDIT[1,1] = 'Q'   ; GOTO END.OF.PROGRAM
+      CASE EDIT[1,1] = 'X'   ; GOTO END.OF.PROGRAM
+      CASE EDIT[1,1] = 'Y'   ; EDIT = 0
+      CASE EDIT[1,1] = 'N'   ; EDIT = -1
+      CASE EDIT[1,1] = 'L'
+         EDIT.CMD = 'ED '
+         IF NUMB THEN EDIT = NUMB ELSE EDIT = 0
+      CASE NUMB              ; EDIT = NUMB
+      CASE 1                 ; EDIT = -1
+   END CASE
+
+** Edit select list
+   FIND.CNT = DCOUNT(SELECT.IDS , AM)
+   CRT FIND.CNT : " items found"
+
+   IF EDIT GE 0 THEN
+
+      IF EDIT > 0 THEN
+         IF EDIT > FIND.CNT THEN EDIT = FIND.CNT
+         FIND.CNT = EDIT
+      END ELSE EDIT = 1
+      YN = 'Y'                    ; ** initialize prompt variable
+      FOR X = EDIT TO FIND.CNT
+         NEW.ITEM = SELECT.IDS<X>
+
+         IF FNAME = '*' THEN
+            CRT "Editing.. " : EDIT.PATH : SP1 : NEW.ITEM
+            EXECUTE EDIT.CMD : NEW.ITEM
+         END ELSE
+            CRT "Editing.. " : EDIT.PATH : SP1 : NEW.ITEM
+            EXECUTE EDIT.CMD : EDIT.PATH : SP1 : NEW.ITEM
+         END
+
+         IF X = FIND.CNT THEN CRT "End of selected items." ; EXIT
+
+         CRT V.HI:"Continue editing (Yes/No/Back/Quit) ?":V.HO:YN:@(-9):
+         H.YN = YN
+         INPUT YN,1
+         YN = OCONV(YN,'MCU')[1,1]
+         IF YN = 'Q' OR YN = 'X' THEN GOTO END.OF.PROGRAM
+         IF YN =  NULL$  THEN YN = H.YN
+         IF YN =  'N' THEN EXIT
+         IF YN NE 'E' THEN EDIT.CMD = 'U ' ELSE EDIT.CMD = 'ED '
+         IF YN =  '-' OR YN = 'B' THEN
+            X = X - 2
+            IF X < 0 THEN X = 0
+*           CONTINUE
+         END
+      NEXT X
+
+   END ELSE
+
+      INPUTCLEAR
+      CRT
+      CRT V.HI : "Do you wish to ACTIVATE this List (Y/N) ?" :
+      CRT V.HO : "N" : C.BCK :
+      INPUT YN,1 ; YN = OCONV(YN , 'MCU')
+      CRT C.UP : EOL :
+
+      IF YN = 'Y' THEN
+         WRITE SELECT.IDS ON SAVEDLISTS, LIST.ID
+         CHAIN \QSELECT SAVEDLISTS \ : LIST.ID
+      END
+
+   END
+
+   GOSUB CLEAR.SELECT
+
+END ELSE CRT "No items found"
+
+GOTO END.OF.PROGRAM
+*
+**---------------------------------------------------------------**
+**                                                               **
+**                  S U B R O U T I N E S                        **
+**                                                               **
+**---------------------------------------------------------------**
+*
+** Check page for stopping and prompting to continue
+***************
+CHECK.PAGE:
+***************
+*
+LN.CNT += 1
+IF LN.CNT = SCRN.LENGTH THEN
+
+   INPUTCLEAR
+   LN.CNT           = 1
+   PG.CNT          += 1
+   QUIT.AND.PROCESS = 0
+
+   CRT V.HI:"Page ":V.HO:PG.CNT:V.HI:". Press [":V.HO:"Enter":V.HI:
+   CRT "] to continue, [":V.HO:"P":V.HI:"] to stop & Process,":
+   CRT " or [":V.HO:"Q":V.HI:"] to Quit:":V.HO:
+   INPUT ZZ,1
+   ZZ = OCONV(ZZ,'MCU')[1,1]
+   IF ZZ = 'E' THEN GOTO SELECT.ABORT
+   IF ZZ = 'Q' THEN GOTO SELECT.ABORT
+   IF ZZ = 'S' THEN GOTO SELECT.ABORT
+   IF ZZ = 'X' THEN GOTO SELECT.ABORT
+
+   IF ZZ = 'P' THEN
+      QUIT.AND.PROCESS = 1
+   END ELSE
+
+** display file on top of new page
+      CRT V.HI : "File: " : FILENAME : V.HO
+   END
+END
+RETURN
+*
+** Clear select list & pointer file item
+***************
+CLEAR.SELECT:
+***************
+*
+CLEARSELECT
+RETURN
+*
+** Help display
+***************
+DISPLAY.HELP:
+***************
+*
+CRT
+CRT "This utility will find a string of characters within any record in the file"
+CRT "specified.  You will be prompted to enter a string to search for.  You can"
+CRT "edit the items directly or select the items into a select-list. If an '*'"
+CRT "is used instead of 'FileName' then all files are searched, or if there is"
+CRT "an ActiveList the selected items are searched."
+CRT
+CRT "Syntax:"
+CRT "  BFIND FileName{[*]} {(options}     (same syntax with a SelectList)"
+CRT
+CRT "  * options:"
+CRT "       f - display only the 1st match then goto next program"
+CRT "       i - only look for matching ItemId's"
+CRT "       s - suppress the display of the matching lines"
+CRT "       t - trim each item of redundant spaces before comparing"
+CRT "       x - search for a hexadecimal character(s)"
+CRT
+CRT 'Example: SSELECT VOC = "[BP]"'
+CRT "         xx ITEMS SELECTED"
+CRT "       : BFIND * (S"
+CRT "  Enter a string to search for: ON ACCPAY"
+CRT
+CRT "Unless the '(S' option is used matching lines will be displayed with the"
+CRT "search-string lined up.  Once the search process completes you'll be asked:"
+CRT CONT.MSG :
+INPUT ZZ,1
+IF ZZ = NULL$ THEN
+   CRT C.UP : EOL
+   CRT "  EDIT item(s) selected (#/Yes/No/LineEditor/Quit) ?"
+   CRT
+   CRT "You should answer with the line# you wish to edit, [Y] to edit all items"
+   CRT "that match, [L] to edit all matching items with the Line-Editor, or [Q] to"
+   CRT "quit processing.  If you edit the items they are edited one at a time and"
+   CRT "you have the option to stop editing items any time.  The next question is:"
+   CRT
+   CRT "   Do you wish to ACTIVATE this list (Y/N) ?"
+   CRT
+   CRT "This allows you to activate a select-list of the matching items.  This will"
+   CRT "search all files with a 'BP' in it's name looking for the string 'ON ACCPAY'."
+   CRT "This is a general search for any program that writes to the ACCPAY file!"
+   CRT
+   CRT "Note:  if the 's' option is used, the 'f' option is overridden!  Also, if the"
+   CRT "        'i' option is used, all other options are negated!"
+END
+GOTO END.OF.PROGRAM
+*
+**----------------------------------------------------------------**
+**                                                                **
+**                  E N D   O F   P R O G R A M                   **
+**                                                                **
+**----------------------------------------------------------------**
+*
+** Clear select list and stop program
+***************
+SELECT.ABORT:
+***************
+*
+GOSUB CLEAR.SELECT
+*
+***************
+END.OF.PROGRAM:
+***************
+*
+END
+

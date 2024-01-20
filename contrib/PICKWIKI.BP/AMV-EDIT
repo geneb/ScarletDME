@@ -1,0 +1,130 @@
+     SUBROUTINE [[AMVEDIT_AE]](MAT AEJUNK)
+
+* Allows the user to edit associated multivalues shown across
+* the terminal. The user defines the association using [[AMVDEFINE_AE]].
+*
+* AE runs $xxx programs by having an item in [[AE_XCOMS]] keyed $xxx where
+*    the second line is the named of a cataloged program ending in _AE
+*
+* For example, if you have $EA set up with [[AMVEDIT_AE]] on line 2,
+*              it will run this program if you enter "$EA" within AE
+
+     BELL = CHAR(7)
+     FILENAME = AEJUNK(24)
+     IF FILENAME EQ '' THEN
+        CRT 'There is no file name':BELL
+        RETURN
+     END
+     IF FILENAME NE OCONV(FILENAME,'MCP') THEN
+        CRT 'The file name has unprintable characters':BELL
+        RETURN
+     END
+     OPEN 'VOC' TO VOC ELSE
+        CRT 'Cannot open VOC file':BELL
+        RETURN
+     END
+     AMID = FILENAME:'_amv'
+     READ JUNK FROM VOC, AMID ELSE
+        JUNK = 'X - Associated [[MultiValue]] definitions'
+     END
+     BAD = 0
+     TEST = JUNK<2>
+     IF LEN(TEST) GT 1 THEN BAD += 1
+     IF TEST MATCHES '0[[X1N0X]]' THEN BAD += 2
+     IF TEST MATCHES '0[[X1A0X]]' THEN BAD += 4
+     TEST = JUNK
+     IF JUNK<1>[1,1] NE 'X' THEN BAD += 8
+     DEL TEST<1>
+     DEL TEST<1>
+     CONVERT @VM:@AM:'1234567890' TO '' IN TEST
+     IF TEST NE '' THEN BAD += 16
+     IF BAD GT 0 THEN
+        CRT 'The definition for ':AMID:' is wrong (':BAD:')'
+        RETURN
+     END
+
+     LINE = AEJUNK(3)
+     LOCATE(LINE,JUNK,3;POSV) THEN
+        POSV = JUNK<4,POSV>
+     END ELSE POSV = 0
+     BAD = @FALSE
+     IF NOT(POSV) THEN
+* We can cope if there is only one AMV group defined
+        BAD = @TRUE
+        FOR XX = 5 TO 13
+           IF JUNK<XX> NE '' THEN
+              IF POSV THEN BAD = @TRUE ELSE BAD = @FALSE
+              POSV = XX
+           END
+        NEXT XX
+     END
+     IF BAD THEN
+        CRT 'Line ':LINE:' is not in an association'
+        RETURN
+     END
+
+     MARK = JUNK<2>[1,1]
+     KITH = JUNK<POSV>
+     CONVERT @VM TO @AM IN KITH
+
+     OPEN '[[AE_COMS]]' TO ACOM ELSE
+        CRT 'Cannot open [[AE_COMS]]':BELL
+        SLEEP 1
+        RETURN
+     END
+
+     TTID = @USERNO:'_':@LEVEL:'_':FILENAME:'_assoc'
+
+     SHOW = KITH
+     CONVERT @AM TO ' ' IN SHOW
+     CRT 'Editing AMV with fields ':SHOW
+
+* Set up a rotated array of the associated multivalues
+     NEW1 = AEJUNK(1)<KITH<1>>
+     CONVERT @VM TO @AM IN NEW1
+     XXNO = DCOUNT(KITH,@AM)
+     FOR XX = 2 TO XXNO
+        LINE = KITH<XX>
+        BITE = AEJUNK(1)<LINE>
+        YYNO = DCOUNT(BITE,@VM)
+        FOR YY = 1 TO YYNO
+           NEW1<YY,XX> = BITE<1,YY>
+        NEXT YY
+     NEXT XX
+
+* Convert the value marks if we have another mark defined
+     IF MARK NE '' THEN CONVERT @VM TO MARK IN NEW1
+
+* Write it away, edit it, and get it back
+     SENTENCE = TRIM(@SENTENCE)
+     VERB = FIELD(SENTENCE,' ',1)
+     IF VERB EQ 'RUN' THEN VERB = FIELD(SENTENCE,' ',1,3)
+     WRITE NEW1 ON ACOM, TTID
+     EXECUTE VERB:' [[AE_COMS]] ':TTID
+     READ OLD1 FROM ACOM,TTID ELSE OLD1 = ''
+     DELETE ACOM, TTID
+
+* replace the defined mark with value marks
+     IF MARK NE '' THEN CONVERT MARK TO @VM IN OLD1
+
+* Rotate the array back to what it was
+     NEW1 = ''
+     ZZNO = DCOUNT(OLD1,@AM)
+     FOR ZZ = 1 TO ZZNO
+        LINE = OLD1<ZZ>
+        FOR XX = 1 TO XXNO
+           BITE = LINE<1,XX>
+           IF BITE NE '' THEN NEW1<XX,ZZ> = BITE
+        NEXT XX
+     NEXT ZZ
+
+* Replace the original lines with the new ones
+* I remove trailing @VMs YOU MAY WANT TO LEAVE THEM
+     FOR XX = 1 TO XXNO
+        BITE = NEW1<XX>
+        BITE = TRIM(BITE,@VM,'T')
+        LINE = KITH<XX>
+        AEJUNK(1)<LINE> = BITE
+     NEXT XX
+
+     RETURN

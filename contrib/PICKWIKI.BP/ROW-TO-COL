@@ -1,0 +1,133 @@
+HomePage>>SourceCode>>BasicSource>>Row2Col
+
+This utility can transpose a dynamic array item's fields into values, and vice versa. I originally wrote it for AccuTerm GUI programming, where I needed to load records into grid controls. Calling the utility a second time on the same variable will transpose it back to its original "shape"; in order to do this accurately, all fields must contain the same number of values. It's pretty fast on large records too, since it only passes through the original item a few times (instead of extracting and replacing hundreds of fields and values.)
+
+ For example:
+
+  0001: apple}banana}cantalope                    0001: apple}111}red}0
+  0002: 111}222}333                  becomes      0002: banana}222}green}1
+  0003: red}green}blue                            0003: cantalope}333}blue}0
+  0004: 0}1}0
+
+i.e. 4 fields with 3 values each becomes 3 fields with 4 values each.
+
+      SUBROUTINE ROW2COL(ITEM)
+******
+* ROW2COL  $Revision: 1.1 $
+* Transpose table data "rows" (fields) to "columns" (values).
+* Copyright (C) 2004 Rex Gozar
+*
+* This library is free software; you can redistribute it and/or
+* modify it under the terms of the GNU Lesser General Public
+* License as published by the Free Software Foundation; either
+* version 2.1 of the License, or (at your option) any later version.
+*
+* This library is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+* Lesser General Public License for more details.
+*
+* You should have received a copy of the GNU Lesser General Public
+* License along with this library; if not, write to the Free Software
+* Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+* http://www.gnu.org/licenses/lgpl.html
+*
+* Rex Gozar
+* rkgozar@juno.com
+******
+$OPTIONS DEFAULT
+***
+* Find the maximum number of fields and the maximum
+* number of values per field.  Note that all fields
+* must have the same number of values; otherwise,
+* additional delimiters would need to be added as
+* placeholders and the resulting item could not be
+* "flipped" back into its original form.
+***
+      ITEMLEN = LEN(ITEM)
+      FMC = 1
+      VMC = 1
+      VMAX = 0
+      J = 0
+      LOOP
+         J += 1
+         C = ITEM[J,1]
+         BEGIN CASE
+            CASE C = @VM
+               VMC += 1
+            CASE C = @FM OR C = ''
+               IF FMC = 1 THEN
+                  VMAX = VMC
+               END ELSE
+                  IF VMC # VMAX THEN
+                     ABORTM "FIELDS DO NOT HAVE THE SAME VALUE COUNT"
+                  END
+               END
+               IF C = @FM THEN
+                  FMC += 1
+               END
+               VMC = 1
+         END CASE
+      WHILE C # '' REPEAT
+      FMAX = FMC
+***
+* Extract the elements and load them into an array.
+* This should be faster than <> extraction on large items.
+***
+      DIM ARRAY(FMAX,VMAX)
+      MAT ARRAY = ''
+      FMC = 1
+      VMC = 1
+      TEXTPOS = 1
+      TEXTLEN = 0
+      J = 0
+      LOOP
+         J += 1
+         C = ITEM[J,1]
+         BEGIN CASE
+            CASE C = @VM
+               ARRAY(FMC,VMC) = ITEM[TEXTPOS,TEXTLEN]
+               TEXTPOS = J + 1
+               TEXTLEN = 0
+               VMC += 1
+            CASE C = @FM OR C = ''
+               ARRAY(FMC,VMC) = ITEM[TEXTPOS,TEXTLEN]
+               TEXTPOS = J + 1
+               TEXTLEN = 0
+               FMC += 1
+               VMC = 1
+            CASE 1
+               TEXTLEN += 1
+         END CASE
+      WHILE C # '' REPEAT
+***
+* Build the new item so values are fields and fields
+* are values.
+***
+      BUFFER = SPACE(ITEMLEN)
+      BUFPOS = 1
+      FOR VMC = 1 TO VMAX
+         IF VMC # 1 THEN
+            TEXTLEN = 1
+            BUFFER[BUFPOS,TEXTLEN] = @FM
+            BUFPOS += TEXTLEN
+         END
+         FOR FMC = 1 TO FMAX
+            IF FMC # 1 THEN
+               TEXTLEN = 1
+               BUFFER[BUFPOS,TEXTLEN] = @VM
+               BUFPOS += TEXTLEN
+            END
+            TEXT = ARRAY(FMC,VMC)
+            TEXTLEN = LEN(TEXT)
+            BUFFER[BUFPOS,TEXTLEN] = TEXT
+            BUFPOS += TEXTLEN
+         NEXT FMC
+      NEXT VMC
+***
+* Done.
+***
+      ITEM = BUFFER
+      RETURN
+   END
+
