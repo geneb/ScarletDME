@@ -1,0 +1,25 @@
+program [[SBProcessSearch]]
+* A very simple string search utility for an SB+ process file.
+* stuart boydell - january 2006
+* eg
+* >RUN UTILS [[SBProcessSearch]] XXPROCESS SBOPEN
+*    will search for the expression SBOPEN and print
+*    out a list of occurences in the file.
+
+searchFile = field(@sentence,' ',4)
+searchTerm = field(@sentence,' ',5)
+if searchTerm = '' then stop
+open searchFile to f else stop
+data searchTerm,''
+execute 'SEARCH ':searchFile capturing cap
+loop while readnext id do
+   readv p from f,id,6 then
+      x = 1
+      loop while findstr searchTerm in p,x setting a,v do
+         crt id"l#30" : x"r#3 ": v"r#3 ": p<a,v>
+         x += 1
+      repeat
+   end
+repeat
+clearselect
+end

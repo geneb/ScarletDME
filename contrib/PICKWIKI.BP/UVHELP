@@ -1,0 +1,92 @@
+     PROGRAM UVHELP
+* ECL - KRJ - UniVerse help that works when the screen addressing doesn't
+
+     SENTENCE = TRIM(@SENTENCE)
+     CONVERT ' ' TO @AM IN SENTENCE
+     IF OCONV(SENTENCE<1>,'MCU') = 'RUN' THEN
+        DEL SENTENCE<1>
+        DEL SENTENCE<1>
+     END
+     DEL SENTENCE<1>
+
+     IF OCONV(SENTENCE<2>,'MCU') = 'FROM' THEN
+        CLASS = SENTENCE<3>
+        TOPIC = SENTENCE<1>
+        IF CLASS = '' THEN CLASS = 'SYS.HELP'
+     END ELSE
+        CLASS = SENTENCE<1>
+        TOPIC = SENTENCE<2>
+        IF TOPIC = '' THEN
+           TOPIC = CLASS
+           CLASS = 'SYS.HELP'
+        END
+     END
+
+     GOT.CLASS = @TRUE
+     DISP = CLASS
+     OPEN CLASS TO HELP.FILE ELSE GOT.CLASS = @FALSE
+     IF NOT(GOT.CLASS) AND FIELD(CLASS,'.',2) NE 'HELP' THEN
+        DISP = CLASS:'.HELP'
+        OPEN DISP TO HELP.FILE ELSE
+           CRT 'Cannot open "':CLASS:'"'
+           STOP
+        END
+     END
+
+     HEADLINE = 'Help information for "':DISP:' ':TOPIC:'"'
+
+     READ REC FROM HELP.FILE,TOPIC ELSE
+        CRT 'No information available for ':TOPIC
+        STOP
+    * commented out following - was  trying to cater for stuff not being there
+    *    EXECUTE 'SSELECT HELP.FILE' CAPTURING JUNK
+    *    REC = ''
+    *    LOOP WHILE READNEXT ID DO
+    *       REC<-1> = ID
+    *    REPEAT
+     END
+
+     PLEN = SYSTEM(3)-3
+     LINES = DCOUNT(REC,@AM)
+     PAGES = INT(LINES/PLEN) + (REM(LINES,PLEN) NE 0)
+
+     SPACES = 80-LEN(HEADLINE)
+     SPACES = INT(SPACES/2)
+     SPACES = SPACE(SPACES)
+     HEADLINE = SPACES:HEADLINE:SPACES
+     HEADLINE = HEADLINE[1,69]:' Page: '
+
+     PAGE = 1
+     LOOP
+        IF PAGE GT PAGES THEN PAGE = PAGES
+        CRT @(-1):HEADLINE:PAGE:'/':PAGES
+        CRT
+        BOT = ((PAGE-1)*20) + 1
+        MSUP = BOT + PLEN - 1
+        FOR XX = BOT TO MSUP
+           CRT REC<XX>
+        NEXT XX
+        CRT
+        LOOP
+           GOOD = @TRUE
+           CRT "Page 'U'p, 'D'own, 'T'op, 'B'ottom or 'Q'uit ":
+           INPUT ANS
+           ANS = OCONV(TRIM(ANS),'MCU')
+           BEGIN CASE
+              CASE ANS = 'T' ; PAGE = 1
+              CASE ANS = 'B' ; PAGE = PAGES
+              CASE ANS = 'U'
+                 PAGE = PAGE - 1
+                 IF PAGE LT 1 THEN PAGE = 1
+              CASE ANS = 'D' OR ANS = ''
+                 PAGE = PAGE + 1
+              CASE ANS MATCHES '1N0N'
+                 PAGE = ANS
+              CASE ANS = 'Q' ; STOP
+              CASE 1
+                 GOOD = @FALSE
+           END CASE
+        UNTIL GOOD DO
+           CRT "Invalid entry '":ANS:"' --- Must be 'U', 'D', 'T', 'B' or 'Q'"
+        REPEAT
+     REPEAT

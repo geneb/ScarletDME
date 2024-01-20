@@ -1,0 +1,79 @@
+SUBROUTINE BROWSE.FOR.FILE(START.POINT,END.POINT,ERROR)
+* 03 May 2012 Will Johnson
+* Writen for Universe 10.3 on Windows 7
+*
+* Browse up and down through DOS tree until file is found or error
+* If START.POINT is sent as empty, DOS automatically uses current dir
+*
+      EQUATE FALSE TO 0, TRUE TO 1
+      EXIT.ROUTINE = FALSE ; WORKING.DIR = START.POINT
+      LOOP
+         CMD = "DOS [[/C]] DIR ":WORKING.DIR
+         DISPLAY CMD ; EXECUTE CMD,OUT. > O.CMD
+         SELECTV O.CMD TO L.CMD
+         GOSUB DISPLAY.RESULTS
+         GOSUB GET.CMD
+         IF DIRTABLE<CMD,2> # "<DIR>" THEN
+            END.POINT = WORKING.DIR:"\":DIRTABLE<CMD,3>
+            DISPLAY "RETURNING '":END.POINT:"'"
+            EXIT.ROUTINE = TRUE
+         END
+      UNTIL EXIT.ROUTINE DO
+         DISPLAY "CHOSEN DIRECTORY '":DIRTABLE<CMD>:"'"
+         IF LEN(WORKING.DIR) # 3 THEN WORKING.DIR := "\"
+         WORKING.DIR := DIRTABLE<CMD,3>
+         DISPLAY "MOVING TO '":WORKING.DIR:"'"
+      REPEAT
+      RETURN
+*
+DISPLAY.RESULTS:
+      DONE = FALSE ; LINE.CNT = 0 ; FILE.CNT = 0 ; DIRTABLE = ''
+      LOOP
+         READNEXT LINE FROM L.CMD ELSE DONE = TRUE
+      UNTIL DONE DO
+         FIRST.WORD = FIELD(LINE,' ',1)
+         FOURTH.WORD = FIELD(TRIM(LINE),' ',4)
+         REST.OF.LINE = TRIM(LINE)[COL2()+1,LEN(LINE)]
+         I.DATE = ICONV(FIRST.WORD,'D')
+*
+* Always reset the working DIR to the DIR we're looking at
+* NOT(STATUS()) means the above ICONV found a valid date
+         IF STATUS() THEN
+            LINE.CNT += 1 ; PRINT LINE.CNT:' ':LINE
+            DIRECTORY.TEXT = "Directory of"
+            L.DT = LEN(DIRECTORY.TEXT)
+            IF TRIM(LINE)[1,L.DT] = DIRECTORY.TEXT THEN
+               WORKING.DIR = TRIM(LINE)[L.DT+2,LEN(LINE)]
+               DISPLAY "WORKING.DIR reset to '":WORKING.DIR:"'"
+            END
+         END ELSE
+            NEW.DATE = OCONV(I.DATE,"D4-")
+            FILE.CNT += 1
+            PRINT FILE.CNT:' ':LINE
+            ISDIR = FOURTH.WORD
+            FILE.NAME = REST.OF.LINE
+            DIRTABLE<-1> = FILE.CNT:@VM:ISDIR:@VM:FILE.NAME
+         END
+      REPEAT
+      RETURN
+*
+GET.CMD:
+      DONE.CMD = FALSE ; RETURN.CMD = FALSE
+      LOOP
+         LOOP
+            DISPLAY "ENTER LINE NUMBER (Q=QUIT): ": ; INPUT CMD
+            BEGIN CASE
+               CASE CMD = 'R' ; DONE.CMD = TRUE ; GOSUB DISPLAY.RESULTS
+               CASE CMD = 'Q'
+                  ERROR = 'User quit' ; DONE.CMD = TRUE
+                  RETURN.CMD = TRUE ; EXIT.ROUTINE = TRUE
+               CASE NOT(NUM(CMD)) ; NULL
+               CASE INT(CMD) # CMD ; NULL
+               CASE CMD < 1 OR CMD > FILE.CNT ; NULL
+               CASE 1 ; DONE.CMD = TRUE ; RETURN.CMD = TRUE
+            END CASE
+         UNTIL DONE.CMD DO DISPLAY "INVALID COMMAND" REPEAT
+      UNTIL RETURN.CMD DO REPEAT
+      RETURN
+*
+   END

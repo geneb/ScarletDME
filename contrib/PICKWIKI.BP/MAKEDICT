@@ -1,0 +1,338 @@
+
+ SYNTAX: MAKEDICT [DICT] FILE ITEM [OPTIONS] [OVERWRITING]
+
+OPTIONS: Each option is followed by a string defining it
+
+   AS   - Dictionary type (A, S, D, I or V)
+   LNUM - Attribute number (A, S, and D types)
+   CALC - I-type (I,V) or correlative (A,S,D)
+   CONV - Conversion
+   FMT  - length and Justification
+   ASSOC - Associated multivalue string
+   MULTI-VALUE  - M or Y for multivalues, otherwise single
+   DISPLAY.NAME - Column heading for reports
+
+   OVERWRITING means that changes are made without prompting
+
+and the code is
+
+  PROGRAM MAKEDICT
+
+* ECL - KRJ - Program to create or change a dictionary item
+
+  OPEN 'VOC' TO VOC ELSE
+    OPEN 'MD' TO VOC ELSE STOP 201,'VOC'
+  END
+  PROMPT ''
+
+* Set up keywords
+*
+  DICTK = '20'  ;* DICT keyword
+  TYPEK = '260' ;* AS keyword
+  LNUMK = '269' ;* LNUM keyword
+  CALCK = '38'  ;* CALC keyword
+  CONVK = '301' ;* CONVERSION keyword
+  DISPK = '304' ;* DISPLAY.NAME keyword
+  FORMK = '276' ;* FMT keyword
+  MULTK = '306' ;* MULTI-VALUE keyword
+  ASSOK = '302' ;* ASSOC keyword
+  OVERK = '34'  ;* OVERWRITING keyword
+
+$IFDEF QM
+  DICTK = '1'    ;* DICT keyword
+  TYPEK = '60'  ;* AS keyword
+  LNUMK = '153' ;* LNUM keyword
+  CALCK = '74'  ;* CALC keyword
+  CONVK = '64'  ;* CONVERSION keyword
+  DISPK = '57'  ;* DISPLAY.NAME keyword
+  FORMK = '58'  ;* FMT keyword
+  MULTK = '93'   ;* MULTI-VALUE keyword
+  ASSOK = '126' ;* ASSOC keyword
+  OVERK = '16'  ;* OVERWRITING keyword
+$ENDIF
+
+* Parse the command line - anything in quotes or brackets one thing
+*
+  BITE = ''
+  FLAG = ''
+  ATTR = 1
+  LONG = LEN(@SENTENCE)
+  FOR HERE = 1 TO LONG
+    THIS = @SENTENCE[HERE,1]
+    IF FLAG EQ '' THEN
+      IF THIS = ' ' THEN
+        IF BITE<ATTR> NE '' THEN ATTR += 1
+      END ELSE
+        IF INDEX('"\':"'",THIS,1) THEN
+          FLAG = THIS
+        END ELSE
+          IF THIS = '(' THEN
+            FLAG = ')'
+            IF BITE<ATTR> NE '' THEN ATTR += 1
+            BITE<ATTR> = '('
+          END ELSE BITE<ATTR> = BITE<ATTR>:THIS
+        END
+      END
+    END ELSE
+      IF THIS NE FLAG THEN
+        BITE<ATTR> = BITE<ATTR>:THIS
+      END ELSE
+        IF THIS = ')' THEN BITE<ATTR> = BITE<ATTR>:THIS
+        ATTR += 1
+        FLAG = ''
+      END
+    END
+  NEXT HERE
+
+* Check if we are running this - if so we delete first two
+  IF UPCASE(BITE<1>) EQ 'RUN' THEN
+    DEL BITE<1>
+    DEL BITE<1>
+  END
+
+* Delete the verb
+  DEL BITE<1>
+
+* Get the file, checking for DICT before file name
+  NAME = BITE<1>
+  DEL BITE<1>
+  READ VREC FROM VOC, NAME ELSE VREC = ''
+  IF VREC<1>[1,1] EQ 'K' AND VREC<2> EQ DICTK THEN
+    NAME = BITE<1>
+    DEL BITE<1>
+  END
+
+* Get the item we want to display or amend or create
+  ITEM = BITE<1>
+  DEL BITE<1>
+
+* If we don't have an item, show help
+  IF ITEM EQ '' THEN
+    CRT
+    CRT ' SYNTAX: MAKEDICT [DICT] FILE ITEM [OPTIONS] [OVERWRITING]'
+    CRT
+    CRT 'OPTIONS: Each option is followed by a string defining it'
+    CRT
+    CRT '   AS   - Dictionary type (A, S, D, I or V)'
+    CRT '   LNUM - Attribute number (A, S, and D types)'
+    CRT '   CALC - I-type (I,V) or correlative (A,S,D)'
+    CRT '   CONV - Conversion'
+    CRT '   FMT  - length and Justification    '
+    CRT '   ASSOC - Associated multivalue string'
+    CRT '   MULTI-VALUE  - M or Y for multivalues, otherwise single'
+    CRT '   DISPLAY.NAME - Column heading for reports'
+    CRT
+    CRT '   OVERWRITING means that changes are made without prompting'
+    CRT
+    STOP
+  END
+
+  OPEN 'DICT',NAME TO DFIL ELSE
+    CRT 'Cannot open dictionary of file "':NAME:'"'
+    STOP
+  END
+
+  READ DREC FROM DFIL, ITEM ELSE DREC = ''
+  ORIG = DREC
+  TYPE = TRIM(DREC<1>)
+
+* See if we just want to look at it
+  IF BITE EQ '' THEN
+    GOSUB SHOWDICT
+    STOP
+  END
+
+* Initialise the bits and bobs
+  TYPE = ''
+  LNUM = ''
+  CALC = ''
+  CONV = ''
+  DISP = ''
+  FORM = ''
+  MULT = ''
+  ASSO = ''
+  OVER = @FALSE
+
+* Process the input
+*
+  ACNT = DCOUNT(BITE,@AM)
+  FOR ANUM = 1 TO ACNT
+    WORD = BITE<ANUM>
+    READ VREC FROM VOC, WORD ELSE CONTINUE
+    IF UPCASE(TRIM(VREC<1>)[1,1]) NE 'K' THEN CONTINUE
+    THIS = TRIM(VREC<2>)
+    BEGIN CASE
+      CASE THIS EQ TYPEK
+        ANUM += 1 ; TYPE = BITE<ANUM>
+        TEST = UPCASE(TRIM(TYPE))[1,1]
+        IF NOT(TEST MATCHES '1A') THEN
+          CRT '"':TYPE:'" is an invalid Type'
+          STOP
+        END
+        IF NOT(INDEX('ADISV',TEST,1)) THEN
+          CRT '"':TYPE:'" is a wrong Type'; STOP
+        END
+      CASE THIS EQ LNUMK
+        ANUM += 1; LNUM = BITE<ANUM>
+        IF NOT(LNUM MATCHES '1[[N0N]]') AND LNUM THEN
+          CRT '"':LNUM:'" is an invalid number'
+          STOP
+        END
+      CASE THIS EQ CALCK
+        ANUM += 1; CALC = BITE<ANUM>
+        IF CALC EQ '' THEN CALC = @AM
+      CASE THIS EQ CONVK
+        ANUM += 1; CONV = BITE<ANUM>
+        IF CONV EQ '' THEN CONV = @FM
+      CASE THIS EQ DISPK
+        ANUM += 1; DISP = BITE<ANUM>
+        IF DISP EQ '' THEN DISP = @AM
+      CASE THIS EQ FORMK
+        ANUM += 1; FORM = BITE<ANUM>
+        GOOD = @FALSE
+        IF FORM MATCHES "0[[N1X]]'L'0X" THEN GOOD = @TRUE
+        IF FORM MATCHES "0[[N1X]]'R'0X" THEN GOOD = @TRUE
+        IF FORM MATCHES "0[[N1X]]'T'0X" THEN GOOD = @TRUE
+        IF FORM MATCHES "0N'L'0X" THEN GOOD = @TRUE
+        IF FORM MATCHES "0N'R'0X" THEN GOOD = @TRUE
+        IF FORM MATCHES "0N'T'0X" THEN GOOD = @TRUE
+        IF FORM MATCHES "'X'0[[N0X]]" THEN GOOD = @TRUE
+        IF NOT(GOOD) THEN
+          CRT '"':FORM:'" is an invalid Format'
+          STOP
+        END
+      CASE THIS EQ MULTK
+        ANUM += 1 ; MULT = BITE<ANUM>
+        MULT = UPCASE(TRIM(MULT))[1,1]
+        IF MULT EQ 'M' OR MULT EQ 'Y'
+          THEN MULT = 'M'
+          ELSE MULT = 'S'
+      CASE THIS EQ ASSOK
+        ANUM += 1; ASSO = BITE<ANUM>
+        IF ASSO = '' THEN ASSO = @AM
+      CASE THIS EQ OVERK
+        OVER = @TRUE
+    END CASE
+  NEXT ANUM
+
+* Change whatever we want to
+*
+  IF TYPE NE '' THEN DREC<1> = TYPE
+  THIS = UPCASE(TRIM(DREC<1,1>))[1,1]
+  BEGIN CASE
+    CASE THIS EQ 'I' OR THIS EQ 'V'
+      IF CALC NE '' THEN THAT = CALC; PART = 2; GOSUB REPLACE
+      IF CONV NE '' THEN THAT = CONV; PART = 3; GOSUB REPLACE
+      IF DISP NE '' THEN THAT = DISP; PART = 4; GOSUB REPLACE
+      IF FORM NE '' THEN DREC<5> = FORM
+      IF MULT NE '' THEN DREC<6> = MULT
+      IF ASSO NE '' THEN THAT = ASSO; PART = 7; GOSUB REPLACE
+    CASE THIS EQ 'D'
+      IF LNUM NE '' THEN DREC<2> = LNUM
+      IF CONV NE '' THEN THAT = CONV; PART = 3; GOSUB REPLACE
+      IF DISP NE '' THEN THAT = DISP; PART = 4; GOSUB REPLACE
+      IF FORM NE '' THEN DREC<5> = FORM
+      IF MULT NE '' THEN DREC<6> = MULT
+      IF ASSO NE '' THEN THAT = ASSO; PART = 7; GOSUB REPLACE
+    CASE THIS EQ 'A' OR THIS EQ 'S'
+      IF LNUM NE '' THEN DREC<2> = LNUM
+      IF DISP NE '' THEN THAT = DISP; PART = 3; GOSUB REPLACE
+      IF ASSO NE '' THEN THAT = ASSO; PART = 4; GOSUB REPLACE
+      IF CONV NE '' THEN THAT = CONV; PART = 7; GOSUB REPLACE
+      IF CALC NE '' THEN THAT = CALC; PART = 8; GOSUB REPLACE
+      IF FORM NE '' THEN
+        GOOD = @FALSE
+        TEST = OCONV(FORM,'MCA')
+        IF TEST EQ 'R' OR TEST EQ 'L' OR TEST EQ 'T' THEN
+          NUMB = FIELD(FORM,TEST,1)
+          IF NUMB EQ '' THEN NUMB = FIELD(FORM,TEST,2)
+          IF NUMB MATCHES '1[[N0N]]' THEN
+            DREC<9> = TEST
+            DREC<10> = NUMB
+            GOOD = @TRUE
+          END
+        END
+        IF NOT(GOOD) THEN
+          CRT '"':FORM:'" is an invalid Format'
+          STOP
+        END
+      END
+    CASE 1
+      CRT 'Cannot find type ':DREC<1>
+      STOP
+  END CASE
+
+  IF ORIG EQ DREC THEN
+    CRT 'Nothing Changed'
+    STOP
+  END
+
+  IF OVER THEN
+    WRITE DREC ON DFIL, ITEM
+    CRT 'Changes made'
+    STOP
+  END
+
+  GOSUB SHOWDICT
+  CRT
+  CRT 'OK to update this?':
+  INPUT ANSW
+  ANSW = UPCASE(TRIM(ANSW))[1,1]
+  IF ANSW EQ 'Y' THEN WRITE DREC ON DFIL, ITEM
+
+  STOP
+
+************
+* Subroutines
+*************
+SHOWDICT:
+  CRT
+  CRT NAME,ITEM,' ':
+  THIS = UPCASE(TRIM(DREC<1>))[1,1]
+  BEGIN CASE
+    CASE DREC EQ ''
+      CRT 'Dictionary is empty'
+    CASE THIS = 'I' OR THIS EQ 'V'
+      CRT 'I-type'
+      CRT ' TYPE: ':DREC<1>
+      CRT 'ITYPE: ':DREC<2>
+      CRT ' CONV: ':DREC<3>
+      CRT ' NAME: ':DREC<4>
+      CRT '  FMT: ':DREC<5>
+      CRT '  S[[/M]]: ':DREC<6>
+      CRT 'ASSOC: ':DREC<7>
+    CASE THIS EQ 'D'
+      CRT 'Prime style'
+      CRT ' TYPE: ':DREC<1>
+      CRT ' ATTR: ':DREC<2>
+      CRT ' CONV: ':DREC<3>
+      CRT ' NAME: ':DREC<4>
+      CRT '  FMT: ':DREC<5>
+      CRT '  S[[/M]]: ':DREC<6>
+      CRT 'ASSOC: ':DREC<7>
+    CASE THIS EQ 'A' OR TYPE EQ 'S'
+      CRT 'Pick style'
+      CRT '  TYPE: ':DREC<1>
+      CRT '  ATTR: ':DREC<2>
+      CRT '  NAME: ':DREC<3>
+      CRT ' ASSOC: ':DREC<4>
+      CRT '  CONV: ':DREC<7>
+      CRT '  CORR: ':DREC<8>
+      CRT '  JUST: ':DREC<9>
+      CRT 'LENGTH: ':DREC<10>
+    CASE 1
+      CRT 'UNKNOWN DICTIONARY TYPE'
+      ACNT = DCOUNT(DREC,@AM)
+      IF ACNT GT 12 THEN ACNT = 12
+      FOR ANUM = 1 TO ACNT
+        CRT ACNT 'R#3':' ':OCONV(DREC<ANUM>,'MCP')
+      NEXT ANUM
+  END CASE
+  RETURN
+
+REPLACE:
+* The @AM is to allow a field to be nulled
+  IF THAT EQ @AM
+    THEN DREC<PART> = ''
+    ELSE DREC<PART> = THAT
+  RETURN

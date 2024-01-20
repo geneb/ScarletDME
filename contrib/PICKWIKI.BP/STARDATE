@@ -1,0 +1,22 @@
+      FUNCTION STARDATE(TIMESTAMP)
+REM   Convert timestamp (YYYY-MM-DD HH:MM:SS) to star date
+
+      Year = TIMESTAMP[1,4]
+      Month = TIMESTAMP[6,2]
+      Day = TIMESTAMP[9,2]
+      Hour = TIMESTAMP[11,2]
+      Minute = TIMESTAMP[14,2]
+      Second = Field(TIMESTAMP,":",3,1)
+
+      Test = IConv(Year : "-02-29", "DYMD")
+      [[DaysInFebruary]] = 29 - Not(Not(Status()))
+      [[DayOfYear]] = Oconv(Iconv(TIMESTAMP[1,10],"DYMD"),"D[[/JY]]")["/",1,1]
+
+      [[StarDate]] = (Year - 2323) * 1000
+      [[StarDate]] += 1000 * ([[DayOfYear]] - 1) / 337
+      [[StarDate]] += [[DaysInFebruary]]
+      [[StarDate]] += Hour * 3600 + Minute * 60 + Second
+
+      RETURN([[StarDate]])
+
+   END

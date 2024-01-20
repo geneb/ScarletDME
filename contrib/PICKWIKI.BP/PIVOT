@@ -1,0 +1,70 @@
+A handy command when profiling or tracking down data issues. See the distribution of data quickly when exploring new tables and fields. Sure you can do a bunch of detail suppress reports, but where's the fun in that :-)
+
+:PIVOT CLIENTS COUNTRY
+Frequency of COUNTRY in CLIENTS 13:11:23 05-29-13
+Country........ CNTR......
+
+Australia               28
+Canada                  31
+France                  20
+USA                     51
+                ==========
+TOTAL                  130
+130 records listed
+
+***************************************************************************
+* Program: PIVOT
+* Author : mgc
+* Date   : 09/12/2002
+* Edited : 11:02:58 Sep 12 2002 By MGC
+* Comment:
+***************************************************************************
+* Date       By   Desc
+* ---------- ---- ---------------------------------------------------------
+IF INDEX(@SENTENCE,"(P",1) THEN LPTR="ON" ELSE LPTR="OFF"
+SENT=@SENTENCE
+SWAP "(P" WITH "" IN SENT
+FILE=FIELD(SENT," ",2)
+ATB =FIELD(SENT," ",3)
+ATB2=FIELD(SENT," ",4)
+ATB3=FIELD(SENT," ",5)
+ATB4=FIELD(SENT," ",6)
+
+IF FILE="" OR ATB = "" THEN
+   PRINT "Usage: PIVOT [[FileName]] [[AtbName]] [[[AtbName2]]]  [(P]"
+   PRINT "where [[[AtbName2]]] is optional. if there, it will be totaled"
+   STOP
+END
+
+OPEN FILE TO F ELSE STOP 201,FILE
+OPEN "DICT ":FILE TO DICT ELSE STOP 201,"DICT ":FILE
+READ UATBREC FROM DICT,"UATB.COUNTER" ELSE
+  UREC=""
+  UREC<1>=\I\
+  UREC<2>=\"1"\
+  UREC<3>=\\
+  UREC<4>=\CNTR\
+  UREC<5>=\10R\
+  UREC<6>=\M\
+  UREC<7>=\\
+  WRITE UREC ON DICT,"UATB.COUNTER"
+END
+
+EX = \SORT \:FILE
+EX:= \ BY \:ATB
+EX:= \ BREAK-ON \:ATB
+EX:= \  TOTAL UATB.COUNTER \
+IF ATB2 # "" THEN EX:= \ TOTAL \:ATB2
+IF ATB3 # "" THEN EX:= \ TOTAL \:ATB3
+IF ATB4 # "" THEN EX:= \ TOTAL \:ATB4
+
+EX:= \ HEADING "Frequency of \:ATB:\ in \:FILE:\ 'T'" \
+
+IF LPTR="OFF" THEN
+  EX:= \ (IDH \
+END ELSE
+  EX:= \ (PID \
+END
+IF LPTR="OFF" THEN PRINT EX
+EXECUTE EX
+IF LPTR # "OFF" THEN EXECUTE "SP.CLOSE"

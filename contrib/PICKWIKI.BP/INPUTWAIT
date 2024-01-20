@@ -1,0 +1,70 @@
+     SUBROUTINE INPUTWAIT(STR, MAX, TIM, DEF)
+     * S/R - KRJ - Duplicates INPUT... WAITING mechanism on UNIDATA
+     * which doesn't exist in UNIVERSE
+     *
+     * STR is the string being input
+     * MAX is the maximum string length (can have underline and colon)
+     * TIM is the delay in seconds
+     * DEF is the default if nothing is entered
+     *
+     * This matches up with the format
+     * INPUT STR,MAX FOR TIM ELSE STR = DEF
+     * PT standard setup
+     $OPTIONS PICK.FORMAT CASE FORMAT.OCONV TIME.MILLISECOND PERF.EQ.EXEC
+     $OPTIONS ONGO.RANGE -READ.RETAIN
+     * See whether a colon or underline is in the string MAX
+     * COL shows that the cursor is to be held on the line
+     * UND shows that a carriage return is required input
+     *
+     IF INDEX(MAX, ':', 1) THEN COL = @TRUE ELSE COL = @FALSE
+     IF INDEX(MAX, '_', 1) THEN UND = @TRUE ELSE UND = @FALSE
+  *
+     MAX = OCONV(MAX, 'MCN')
+     STR = ''
+     NUM = 0
+     CHR = ''
+     LOOP
+        TAB = @FALSE
+        BEG = SYSTEM(12)
+        EOW = @FALSE
+        LOOP
+  * Check whether there is anything in the type-ahead buffer (TAB)
+           INPUT TAB, -1
+           NOW = SYSTEM(12)
+  * Check how long we've been waiting for input
+           IF NOW LT BEG THEN EOW = @TRUE
+           IF ((NOW-BEG)/1000) GE TIM THEN EOW = @TRUE
+        UNTIL TAB OR EOW DO NAP 100 REPEAT
+  * We've either got something or we have waited too long. check TAB
+        IF TAB THEN
+           CHR = KEYIN()
+  * A carriage return or linefeed is an <ENTER>
+           IF CHR = CHAR(10) OR CHR = CHAR(13) THEN CHR = ''
+           IF CHR NE '' THEN
+  * Check for a backspace, but we must have something to backspace over!
+              IF CHR = CHAR(8) THEN
+                 IF NUM THEN
+                    CRT @(-9):' ':@(-9):
+                    STR = STR[1, LEN(STR)-1]
+                    NUM -= 1
+                 END
+              END ELSE
+  * Check for maximum length
+                 IF NOT(MAX) OR NUM LT MAX THEN
+  * We could parse out control chars here, but UNIDATA don't
+                    STR := CHR
+                    NUM += 1
+                    CRT CHR:
+                 END
+  * Check for any maximum length
+                 IF NOT(UND) AND MAX AND NUM GE MAX THEN CHR = ''
+              END
+           END
+        END ELSE CHR = ''
+     UNTIL CHR = '' DO REPEAT
+  * On the way out - see if we had to wait too long
+     IF EOW THEN STR = DEF ELSE
+  * If we didn't we may have to do the carriage return / line feed
+        IF COL ELSE CRT
+     END
+     RETURN

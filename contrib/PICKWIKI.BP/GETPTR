@@ -1,0 +1,86 @@
+     SUBROUTINE GETPTR(THAT,CHANNEL)
+*
+* This program gets the details for a SETPTR to be repeated in Universe
+* so that you can restore a printer to a prior setting.
+*
+* Copyright Keith Johnson 2006 - released to the public domain
+*
+     EXECUTE 'SETPTR ':CHANNEL CAPTURING THIS
+     THAT = ''
+     XXNO = DCOUNT(THIS,@AM)
+     FOR XX = 1 TO XXNO
+        LINE = THIS<XX>
+        LHS = TRIM(FIELD(LINE,':',1))
+        RHS = TRIM(FIELD(LINE,':',2,999))
+        BEGIN CASE
+           CASE LHS = 'Unit Number'   ; THAT<-1> = RHS
+           CASE LHS = 'Page Width'    ; THAT<-1> = RHS
+           CASE LHS = 'Page Depth'    ; THAT<-1> = RHS
+           CASE LHS = 'Top Margin'    ; THAT<-1> = RHS
+           CASE LHS = 'Bottom Margin' ; THAT<-1> = RHS
+           CASE LHS = 'Print mode'    ; THAT<-1> = TRIM(FIELD(RHS,'-',1))
+           CASE LHS = 'Number of copies' ; THAT<-1> = 'COPIES ':RHS
+           CASE LHS = 'Default spool banner'
+*             THAT<-1> = 'AS ':FIELD(RHS,'"',2)
+           CASE LHS = 'Print spool banner'
+              THAT<-1> = 'AS ':FIELD(RHS,'"',2)
+           CASE LHS = 'Output to HOLD file'
+              THAT<-1> = 'AS '
+              IF INDEX(RHS,'_',1) THEN THAT := 'UNIQUE '
+              THAT := FIELD(RHS,'_',1)
+           CASE LHS = 'Output NEXT hold file'
+              THAT<-1> = 'AS NEXT ':RHS
+           CASE LHS = 'Destination printer'
+              THAT<-1> = 'AT ':RHS
+           CASE LHS = 'Automatic page eject' AND RHS = 'Off'
+              THAT<-1> = 'NOEJECT'
+           CASE LHS = 'Defer printing until'
+              DAYT = FIELD(RHS,' ',3):FIELD(RHS,' ',2):FIELD(RHS,' ',5)
+              DAYT = ICONV(DAYT,'D')
+              IF DAYT EQ DATE() THEN
+                 NEW1 = ''
+              END ELSE
+* The next line fixes a weird bug in DEFER (Universe 10.0.8)
+                 DAYT += 1
+                 NEW1 = OCONV(DAYT,'DY2')
+                 NEW1 := '.':OCONV(DAYT,'DM')
+                 NEW1 := '.':OCONV(DAYT,'DD'):'.'
+              END
+              NEW1 := FIELD(RHS,' ',4)[1,5]
+              THAT<-1> = 'DEFER ':NEW1
+           CASE LHS = 'Page limit'
+              START = OCONV(FIELD(RHS,',',1),'MCN')
+              IF START GT 1 THEN THAT<-1> = 'STARTPAGE ':START
+              CEASE = OCONV(FIELD(RHS,',',2),'MCN')
+              IF CEASE NE '' THEN THAT<-1> = 'ENDPAGE ':CEASE
+           CASE LHS = 'Output formatting'
+              IF RHS = 'On'  THEN THAT<-1> = 'FMT'
+*             IF RHS = 'Off' THEN THAT<-1> = 'NOFMT'
+           CASE LHS = 'Output form name'
+              THAT<-1> = 'FORM ':RHS
+           CASE LHS = 'Format NLS map'
+              THAT<-1> = 'FORMAT.MAP ':RHS
+           CASE LHS = 'Fortran control codes'
+              IF RHS = 'On' THEN THAT<-1> = 'FTN'
+           CASE LHS = 'Initial Job State' ; THAT<-1> = RHS
+           CASE LHS = 'Display job numbers'
+              IF RHS = 'On' THEN THAT<-1> = 'INFORM'
+           CASE LHS = 'Keep output file open'
+              IF RHS = 'On' THEN THAT<-1> = 'KEEP'
+           CASE LHS = 'Line numbering'
+              IF RHS = 'On' THEN THAT<-1> = 'LNUM'
+           CASE LHS = 'Suppress spool banner'
+              IF RHS = 'On' THEN THAT<-1> = 'NOHEAD'
+           CASE LHS = 'Retain in queue'
+              IF RHS = 'On' THEN THAT<-1> = 'RETAIN'
+           CASE LHS = 'Spooler priority'
+              THAT<-1> = 'PRIORITY ':RHS
+           CASE LINE[1,12] = 'User Options'
+              THAT<-1> = 'USEROPTS ':LINE[25,999]
+           CASE LHS = ''
+           CASE 1
+*             CRT 'LHS = ':LHS
+*             CRT 'RHS = ':RHS
+        END CASE
+     NEXT XX
+     CONVERT @AM TO ',' IN THAT

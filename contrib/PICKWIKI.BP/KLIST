@@ -1,0 +1,1199 @@
+This utility attempts to combine the functionality of the "LIST.ITEM", "SEARCH", "COUNT" command and "SELECT" commans. It has been developed and enhanced for a 7 years now and is an invaluable aid to day to day development and system administration tasks in a Universe environment. Any bugs can be reported to me at kenf490713@yahoo.com.au. There is a preamble that gives users an idea of the functions available, as well as a '-HELP' option. Compile and catalog the code and at TCL enter: KLIST -H to see what options are available. The lastest (5th December, 2014) version is the last before I retire. It has the following extra functions added to it: 1. Use of '...' in file, record and string masks. 2. Use of PERL regular expressions (requires REGEXP UVBasic function) in string searches. 3. Expansion of values in fields and subvalues in values on a global and individual field/value basis. 4. Conversion of internal dates to external format on a global and individual field/value/subvalue basis. 5. Display of specific fields only 6. Prompts for missing command line parameters (UVAccount, File, Record masks)
+
+The code:
+
+* -*- mode:unibasic -*-
+********************************************************************************
+* Programme - KLIST
+*
+* Version 4.0
+*
+* Author    - Ken Ford                                Date - 7th March, 2008
+*
+* Description -
+*        This programme lists selected records or optionally fields withing records
+*   optionally expanding selected values and subvalues and optionally converting
+*   potential internal dates.  Records can be selected by record mask within file
+*   mask, optionally within Universe account.  A string mask can be used to narrow
+*   down which records to list, and matching fields only within a record can be
+*   listed.  Universe Retrieve phrases can be used in place of record masks as well.
+*   Also, a record count or keys only can be listed.
+*       This programme optionally combines the functionality of the following
+*  Universe commands:
+*    SELECT
+*    COUNT
+*    LIST.ITEM
+*    SEARCH
+*    ED
+*    COMO
+*    GET.LIST
+*
+* Modifications -
+* 16/3/08    Added '-V' option.
+* 26/3/08    Added '-M' option
+* 27/3/08    Changed '-Q' option to consider Q-pointer references only if
+*            F-pointer reference returns no record VOC item file ID.
+* 28/3/08    Use '-M' option with string-mask to print
+*            only lines containing a match.  Enable placing of options either
+*            before or after masking arguments.
+* 17/4/08    Default file selection to F-pointer references, considering Q-pointer
+*            references only if no F-pointer match/es; force consideration of
+*            pointer references if '-Q' present; limit to F-pointer references
+*            if '-F' present.
+*  3/7/08    Allow REC.RESPONSE to be the name of a &SAVEDLIST& record of keys.
+* 12/12/08   Added '-Dn[,n]' option to convert dates to external format.
+* 24/12/08   Enhanced '-V' option so that if ',S' is appended, sub-values are
+*            also expanded.
+* 20/5/09    Enabled running on active select list if file is in current account
+* 8/12/09    Introduced '-COMO' command line option to capture output in a COMO
+*            file 'KLIST.COMO'
+* 25/5/11    Restructured code; fixed bug in string matching; new argument '-nn'
+*            to limit no. of records to list.
+* 2/6/14     New option '-NO.ERR' to supress error messages.
+* 27/11/14   New option '-F' or '-A' to print specific fields/attributes;
+*            Revised option '-V[,S]' to enable expanding values in specific
+*            fields and subvalues in specific values;
+*            Revised option '-D' to enable specifying fields, values and subvalues
+*            for potential date conversion;
+*            Prevented listing of empty values and subvalues where appropriate;
+*            New option '-RE' to enable search string in PERL RE form
+*
+********************************************************************************
+*
+      PROMPT ''
+      PRINT '[KLIST v4.1 5/12/2014]'
+      DEFFUN REGEXP(STRING.OBJ,RE) ;* Define UVBasic function
+      IF INDEX(@SENTENCE,'-DEBUG',1) THEN DEBUG.ON = @TRUE ELSE DEBUG.ON = @FALSE
+*
+      GOSUB INITIALISATION
+*
+      GOSUB GET.OPTIONS
+*
+      ACCOUNT.CNT = DCOUNT(ACCOUNT,@FM)
+      FOR I = 1 TO ACCOUNT.CNT
+         GOSUB PROCESS.UV.ACCOUNT   ; * Process Universe Account
+      NEXT I
+*
+      GOSUB FINALISATION
+*
+      STOP
+*
+*================================================================================
+*
+PROCESS.UV.ACCOUNT:
+*
+* Processing of all (or default) Universe account/s instances.
+*
+      CMD = ''
+      EXPR = ''
+      IF PAUSE THEN
+         PRINTLINE = 'Account: ':ACCOUNT<I>'30L':' <Enter>(=Continue)[[/END]](=Stop) : '
+         GOSUB PRINT.LINE
+         INPUT RESPONSE
+         IF RESPONSE = 'END' THEN STOP
+      END
+*---- Check that Universe account exists.
+      UV.ACCOUNT = RAISE(TRANS('UV.ACCOUNT',ACCOUNT<I>,-1,'X'))
+      EXEC 'SH -c "ls -d ':UV.ACCOUNT<11>:'"' CAPTURING OUTPUT
+      IF INDEX(OUTPUT,'does not exist',1) THEN
+         PRINT 'Universe Account ':ACCOUNT<I>:' does not exist'
+         RETURN
+      END
+      HUSH ON
+      EXEC 'SET.FILE ':ACCOUNT<I>:' VOC ':VOC.PTR CAPTURING OUTPUT
+      HUSH OFF
+      IF DICT.FILE THEN
+         FILE.RESPONSE = FIELD(FILE.RESPONSE,' ',2)
+         IF FILE.RESPONSE = '_' THEN FILE.RESPONSE = ''    ; *@@@@#KF-081006
+      END
+      DICT = ''
+*---- Determine which files to consider within the Universe account.
+      BEGIN CASE
+       CASE FILE.RESPONSE = 'A' OR FILE.RESPONSE = 'ALL' OR FILE.RESPONSE = ''
+         IF FPTR.ONLY THEN EXPR = ' WITH F1 LIKE F...' ELSE
+            IF QPTR.ONLY THEN EXPR = ' WITH F1 LIKE Q...' ELSE
+               EXPR = ' WITH F1 LIKE F... OR WITH F1 LIKE Q...'
+            END
+         END
+         CMD = 'SELECT ':VOC.PTR:EXPR
+         HUSH ON
+         EXEC CMD CAPTURING OUTPUT
+         HUSH OFF
+       CASE TRANS(VOC.PTR,FILE.RESPONSE,0,'X')
+         PTR.TYPE = TRANS(VOC.PTR,FILE.RESPONSE,1,'X')[1,1]
+         IF PTR.TYPE MATCHES 'F':@VM:'Q' THEN
+            IF QPTR.ONLY THEN
+               IF (PTR.TYPE = 'Q') THEN
+                  FILE = FILE.RESPONSE
+               END ELSE FILE = ''
+            END
+            IF FPTR.ONLY THEN
+               IF (PTR.TYPE = 'F') THEN
+                  FILE = FILE.RESPONSE
+               END ELSE FILE = ''
+            END
+            FILE = FILE.RESPONSE
+         END ELSE
+            PRINT "'":FILE.RESPONSE:"' is not a file or file pointer"
+            RETURN
+         END
+       CASE 1
+         IF INDEX(FILE.RESPONSE,'...',1) THEN
+            CMD = 'SELECT ':VOC.PTR:' LIKE ':FILE.RESPONSE
+         END ELSE
+            CMD = 'SELECT ':VOC.PTR:' = "':FILE.RESPONSE:'"'
+         END
+         IF FPTR.ONLY THEN EXPR = 'SELECT ':VOC.PTR:' WITH F1 LIKE F...' ELSE
+            IF QPTR.ONLY THEN EXPR = 'SELECT ':VOC.PTR:' WITH F1 LIKE Q...' ELSE
+               EXPR = 'SELECT ':VOC.PTR:' WITH F1 LIKE F... OR WITH F1 LIKE Q...'
+            END
+         END
+         CMD = EXPR:@FM:CMD
+         HUSH ON
+         EXEC CMD CAPTURING OUTPUT
+         HUSH OFF
+      END CASE
+      IF CMD THEN
+         FILE = ''
+         LOOP WHILE READNEXT ID DO
+            FILE<-1> = ID
+         REPEAT
+      END
+      FILE.CNT = DCOUNT(FILE,@FM)
+      IF FILE.CNT = 0 THEN
+         PRINTLINE = 'No File matches file-mask "':FILE.RESPONSE:'" in Account ':ACCOUNT<I>
+         GOSUB PRINT.LINE
+      END
+      SAVE.LIST = 1
+*
+      FOR J = 1 TO FILE.CNT
+         GOSUB PROCESS.FILE.IN.ACCOUNT   ; * Process File within Account
+      NEXT J
+*
+      RETURN
+*
+*--------------------------------------------------------------------------------
+*
+PROCESS.FILE.IN.ACCOUNT:
+*
+* Processing of all selected file instances within a Universe account
+*
+*---- Filter out object code files.
+      IF FIELD(FILE<J>,'.',DCOUNT(FILE<J>,'.')) = 'O' THEN RETURN
+      EXEC 'SET.FILE ':ACCOUNT<I>:' ':FILE<J>:' ':FILE.PTR CAPTURING OUTPUT
+      IF DICT.FILE THEN
+         DICT = 'DICT '
+      END ELSE
+         DICT = ''
+      END
+      FILE.HDR.PRINTED = 0
+      OPEN FILE.PTR TO FILE.FV ELSE
+         IF NOT(NO.ERROR) THEN PRINT 'Could not access file ':FILE<J>:' in Account ':ACCOUNT<I>
+         HUSH ON
+         EXEC 'DELETE VOC ':FILE.PTR
+         HUSH OFF
+         RETURN
+      END
+      IF FILEINFO(FILE.FV,3) = 4 THEN
+         IF LEN(DICT) THEN RETURN
+         DIR.FILE = 1
+      END ELSE
+         DIR.FILE = 0
+      END
+      CLOSE FILE.FV
+      IF TRANS(VOC.PTR,FILE<J>,1,'X')[1,1] = 'Q' THEN QPTR = 1 ELSE QPTR = 0
+      RECORD = ''
+      RECORD.SAVED = ''
+      CMD = ''
+* --- Determine which records to consider within a file in a Universe account.
+      IF SAMPLE THEN SAMPLE = 'SAMPLE ':SAMPLE ELSE SAMPLE = ''
+      BEGIN CASE
+       CASE REC.RESPONSE = 'A' OR REC.RESPONSE = 'ALL' OR REC.RESPONSE = '' OR REC.RESPONSE = '...'
+         IF SORT.KEYS THEN CMD = 'SSELECT ':DICT:FILE.PTR
+         ELSE CMD = 'SELECT ':DICT:FILE.PTR
+       CASE NOT(INDEX(REC.RESPONSE,'[',1)) AND NOT(INDEX(REC.RESPONSE,']',1)) AND NOT(INDEX(REC.RESPONSE,'...',1)) AND TRANS(DICT:FILE.PTR,REC.RESPONSE,0,'X')
+         CMD = 'SELECT ':DICT:FILE.PTR:' "':REC.RESPONSE:'"'
+       CASE FIELD(REC.RESPONSE,' ',1) MATCHES 'WITH':@VM:'LIKE'
+         STRING.RESPONSE = REC.RESPONSE
+         REC.RESPONSE = '...'
+         CMD = 'SELECT ':DICT:FILE.PTR:' LIKE "':REC.RESPONSE:'"'
+       CASE 1
+         IF NOT(RECORD.LIST) THEN
+            IF NOT(TRANS('&SAVEDLISTS&',REC.RESPONSE,0,'X')) THEN
+               IF SORT.KEYS THEN CMD = 'SSELECT ':DICT:FILE.PTR:' LIKE "':REC.RESPONSE:'"'
+               ELSE CMD = 'SELECT ':DICT:FILE.PTR:' LIKE "':REC.RESPONSE:'"'
+            END ELSE
+               RECORD.LIST = 1
+               CMD = 'GET.LIST ':REC.RESPONSE
+            END
+         END ELSE
+            CMD = 'GET.LIST ':LIST.NAME
+         END
+      END CASE
+      IF STRING.RESPONSE AND NOT(RE.MATCHING) THEN
+         BEGIN CASE
+          CASE FIELD(STRING.RESPONSE,' ',1) = 'WITH'
+            CMD := ' AND ':STRING.RESPONSE
+          CASE FIELD(STRING.RESPONSE,' ',1) = 'LIKE'
+            CMD := ' AND WITH EVAL "@RECORD" ':STRING.RESPONSE
+          CASE NOT(INDEX(STRING.RESPONSE,'...',1))
+            IF STRING.RESPONSE MATCHES '...[...':@VM:'...]...' THEN
+               CMD := ' WITH EVAL "@RECORD" = "':STRING.RESPONSE:'"'
+               STRING.RESPONSE = TRIM(TRIM(STRING.RESPONSE,'[','L'),']','T')
+            END ELSE
+               CMD := ' WITH EVAL "@RECORD" = "[':STRING.RESPONSE:']"'
+            END
+          CASE INDEX(STRING.RESPONSE,'...',1)
+            CMD := ' WITH EVAL "@RECORD" LIKE ':STRING.RESPONSE
+         END CASE
+      END
+      CMD := ' ':SAMPLE
+      EXEC CMD CAPTURING OUTPUT
+      IF NOT(OUTPUT MATCHES "...record(s)...selected...to...") AND NOT(NO.ERROR) THEN
+         PRINT 'Error selecting records from file ':FILE<J>:' : '
+         FOR OUTPUT.INX = 1 TO DCOUNT(OUTPUT,@FM)
+            IF OUTPUT<OUTPUT.INX> ELSE CONTINUE
+            PRINT OUTPUT<OUTPUT.INX>
+         NEXT OUTPUT.INX
+      END
+      K.MAX = @SELECTED
+      IF COUNT.RECS THEN
+         PRINTLINE = "Records matching record-mask and/or string-mask in file ":DICT:FILE<J>:" : ":K.MAX
+         GOSUB PRINT.LINE
+         RETURN
+      END
+      IF @SELECTED > 0 THEN
+         RECS.PRINTED = 0
+         IF K.MAX > 10 THEN WARN.USER = 1 ELSE WARN.USER = 0
+*---------- Process Records in File within Account
+         FOR K = 1 TO K.MAX
+            READNEXT ID ELSE EXIT
+            RECORD<-1> = ID
+*------------- Process records in groups of 10 to save waiting time.
+            IF NOT(MOD(K,10)) THEN
+               GOSUB LIST.RECORD.GROUP   ; * List records within file within account.
+               RECORD = ''
+            END
+         NEXT K
+         IF LEN(RECORD) THEN
+            GOSUB LIST.RECORD.GROUP
+         END
+         PRINT ''
+         PRINTLINE = 'Records listed in file ':DICT:FILE<J>:' : ':K.MAX
+         GOSUB PRINT.LINE
+         IF LIST.NAME THEN EXEC 'DELETE.LIST ':LIST.NAME
+      END
+*
+      RETURN
+*
+*--------------------------------------------------------------------------------
+*
+LIST.RECORD.GROUP:
+*
+* Processing a group of 10 or fewer records within a file within a Universe account
+*
+      RECORD.CNT = DCOUNT(RECORD,@FM)
+      IF RECORD.CNT = 0 THEN
+         PRINTLINE = "No Record matches record-mask and/or string-mask in a/c ":ACCOUNT<I>
+         GOSUB PRINT.LINE
+      END
+      LAST.SAVEDLIST = ''
+      IF KEYS.ONLY THEN
+         OUTPUT = RECORD
+         RECORD.CNT = 1
+      END
+      FOR L = 1 TO RECORD.CNT
+         GOSUB LIST.RECORD
+      NEXT L
+      RETURN
+*
+*--------------------------------------------------------------------------------
+*
+LIST.RECORD:
+*
+* Listing a record within a file within a Universe account.
+*
+      IF NOT(FILE.HDR.PRINTED) THEN
+         IF QPTR THEN QPTR = '(Q-pointer)' ELSE QPTR = ''
+         PRINTLINE = ''
+         GOSUB PRINT.LINE
+         PRINTLINE = 'Account: ':ACCOUNT<I>:' - File: ':DICT:FILE<J>:' ':QPTR
+         GOSUB PRINT.LINE
+         IF KEYS.ONLY THEN
+            PRINTLINE = ''
+            GOSUB PRINT.LINE
+         END
+         LAST.SAVEDLIST = ACCOUNT<I>:@FM:DICT:FILE<J>
+         FILE.HDR.PRINTED = 1
+      END
+      REC.HDR.PRINTED = @FALSE
+      IF NOT(KEYS.ONLY) THEN
+         RECORD.PTR = RECORD<L>
+         CMD = 'LIST.ITEM ':DICT:FILE.PTR:' "':RECORD.PTR:'" NOPAGE COL.HDR.SUPP'
+         IF COMO AND COMO.ON THEN
+            COMO.ON = @FALSE
+            HUSH ON
+            EXEC 'COMO OFF'
+            EXEC 'SH -c "cat \&COMO\&[[/KLIST]].PART.COMO >> \&COMO\&[[/KLIST]].COMO"'
+            EXEC 'DELETE &COMO& KLIST.PART.COMO'
+            HUSH OFF
+         END
+         EXEC CMD CAPTURING OUTPUT
+         IF COMO THEN
+            COMO.ON = @TRUE
+            HUSH ON
+            EXEC 'COMO ON KLIST.PART.COMO'
+            HUSH OFF
+         END
+         IF (STRING.RESPONSE = '') THEN
+            OUTPUT = OUTPUT[INDEX(OUTPUT,DICT:FILE.PTR,1),99999]
+            OUTPUT = CHANGE(OUTPUT,DICT:FILE.PTR,DICT:FILE<J>,-1)
+         END ELSE
+            IF RE.MATCHING THEN
+*------------- Check for a match on a PERL regular expression within the record.
+               STRING.OBJ = CHANGE(FIELD(OUTPUT,@FM,2,999),@FM,'')
+               IF LEN(STRING.OBJ) < 257 THEN
+                  IF RE[1,1] MATCHES "'":@VM:'"' THEN
+                     RE = RE[2,LEN(RE)-2]
+                  END
+                  RESPONSE = REGEXP(STRING.OBJ,RE)
+                  IF TEST THEN
+                     PRINT RESPONSE<1>
+                     PRINT RESPONSE<2>
+                  END
+                  IF NOT(RESPONSE<1>) THEN RETURN
+               END
+            END
+         END
+         RECORD.SAVED := @FM:RECORD<L>
+      END
+      LINE.CNT = DCOUNT(OUTPUT,@FM)
+      IF DICT.FILE AND OUTPUT<5> = '001 I' THEN I.TYPE = @TRUE ELSE I.TYPE = @FALSE
+      FOR M = 1 TO LINE.CNT
+         IF I.TYPE AND M > 13 THEN RETURN
+         GOSUB PROCESS.LINE ;* Process each line in the record listing output.
+      NEXT M
+*
+      RETURN
+*
+*--------------------------------------------------------------------------------
+*
+PROCESS.LINE:
+*
+* Processing a line within listing of a record within a file within a Universe account.
+*
+      IF KEYS.ONLY THEN
+         RECORD.PTR = OUTPUT<M>
+         PRINTLINE = OUTPUT<M>
+         GOSUB PRINT.LINE
+      END ELSE
+         IF OUTPUT<M> = '' THEN RETURN
+         LINE.IN.SCREEN.OUTPUT = MOD(M,@CRTHIGH)
+         IF LINE.IN.SCREEN.OUTPUT = 1 THEN RETURN
+         IF INDEX(OUTPUT<M>,'LIST.ITEM ',1) THEN RETURN
+         IF INDEX(OUTPUT<M-1>:OUTPUT<M>,' PAGE ',1) THEN RETURN
+         IF TRIM(OUTPUT<M>) = RECORD.PTR THEN
+            REC.HDR = 'Record: ':OUTPUT<M>
+            RETURN
+         END
+*------- Check for a match within the current output line on either a specified string,
+*           or if supplied, a PERL regulare expression.
+         IF NOT(FULL.ITEM) THEN
+            IF RE.MATCHING THEN
+               IF NOT(REGEXP(OUTPUT<M>,RE)<1>) THEN RETURN
+            END ELSE
+               IF LEN(STRING.RESPONSE) THEN
+                  IF NOT(OUTPUT<M> MATCHES '...':STRING.RESPONSE:'...') THEN RETURN
+               END
+            END
+         END
+*------- Combine split lines in output from LIST.ITEM
+         N = 1
+         LOOP WHILE NOT((M+N) > LINE.CNT) DO
+            IF OUTPUT<M+N>[1,4] = '    ' THEN
+               OUTPUT<M> := TRIM(OUTPUT<M+N>)
+               N += 1
+            END ELSE EXIT
+         REPEAT
+         LINE = OUTPUT<M>
+         M += (N-1)
+         OUTPUT.FIELD.NO = TRIM(FIELD(LINE,' ',1),'0','L')
+         LINE = LINE[5,999]
+*------- Check whether field is to be printed or not.
+         PRINT.FIELD = @FALSE
+         IF LEN(FIELDS) THEN
+            RECORD.POS = 0
+            LOCATE(OUTPUT.FIELD.NO, FIELDS; RECORD.POS) THEN
+               PRINT.FIELD = @TRUE
+            END
+         END ELSE
+            PRINT.FIELD = @TRUE
+         END
+         IF PRINT.FIELD THEN
+            IF NOT(REC.HDR.PRINTED) THEN
+               REC.HDR.PRINTED = @TRUE
+               PRINTLINE = ''
+               GOSUB PRINT.LINE
+               PRINTLINE = REC.HDR
+               GOSUB PRINT.LINE
+               RECS.PRINTED += 1
+            END
+            IF DATE.CONV THEN
+*------------- Check each subvalue within each value within the current output line.
+               CONVERSIONS = @FALSE
+               MV.MAX = DCOUNT(LINE<1>,@VM)
+               IF MV.MAX = 0 THEN
+                  TRY.DATE = LINE<1>
+                  IF LEN(TRY.DATE) THEN GOSUB TRY.CONVERTING
+               END ELSE
+                  FOR MV.INX = 1 TO MV.MAX
+                     THIS.VAL = LINE<1,MV.INX>
+                     SV.MAX = DCOUNT(THIS.VAL<1,1>,@SM)
+                     IF SV.MAX = 0 THEN
+                        TRY.DATE = THIS.VAL
+                        IF LEN(TRY.DATE) THEN GOSUB TRY.CONVERTING
+                     END ELSE
+                        FOR SV.INX = 1 TO SV.MAX
+                           TRY.DATE = THIS.VAL<1,1,SV.INX>
+                           IF LEN(TRY.DATE) THEN GOSUB TRY.CONVERTING
+                        NEXT SV.INX
+                     END
+                  NEXT MV.INX
+               END
+               IF CONVERSIONS THEN OUTPUT<M> = OUTPUT<M>[1,4]:LINE
+            END
+*
+            IF LEN(EXP.MVS) AND (INDEX(LINE,@VM,1) OR INDEX(LINE,@SM,1)) THEN
+*------------- Field is multivalued, so check whether expansion of values is required or not.
+               EXPAND.MV = @FALSE
+               MV.FIELD.POS = 0
+               LOCATE(OUTPUT.FIELD.NO, EXP.MVS; MV.FIELD.POS) THEN
+                  EXPAND.MV = @TRUE
+               END ELSE
+                  IF EXP.MVS<1> = 0 THEN
+                     EXPAND.MV = @TRUE
+                     MV.FIELD.POS = 1
+                  END
+               END
+               IF EXPAND.MV THEN
+                  GOSUB EXPAND.MVS
+               END ELSE
+                  IF LEN(LINE) > 0 THEN
+                     PRINTLINE = OUTPUT.FIELD.NO"R%3":' ':LINE
+                     GOSUB PRINT.LINE
+                  END
+               END
+            END ELSE
+               IF LEN(LINE) > 0 THEN
+                  PRINTLINE = OUTPUT.FIELD.NO"R%3":' ':LINE
+                  GOSUB PRINT.LINE
+               END
+            END
+         END ELSE PRINT.FIELD = @FALSE
+      END
+*
+      RETURN
+*
+*--------------------------------------------------------------------------------
+*
+TRY.CONVERTING:
+*
+* If the value in the field looks like an internal date and if it is, convert it.
+*
+      IF NUM(TRY.DATE) THEN
+         IF INT(TRY.DATE) AND (TRY.DATE > 9999) AND (TRY.DATE < 20000) THEN
+*---------- See if this date is to be date-converted
+            FOR CONV.INX = 1 TO CONV.SPECIFIERS
+               IF (CONV.FIELDS<CONV.INX> = 0) OR (CONV.FIELDS<CONV.INX> = OUTPUT.FIELD.NO) THEN
+                  IF (CONV.MVS<CONV.INX> = 0) OR (CONV.MVS<CONV.INX> = MV.INX) THEN
+                     IF (CONV.SVS<CONV.INX> = 0) OR (CONV.SVS<CONV.INX> = SV.INX) THEN
+                        EXT.DATE = OCONV(TRY.DATE,'D4')
+                        IF ICONV(EXT.DATE,'D4') = TRY.DATE THEN
+                           LINE<1,MV.INX,SV.INX> = EXT.DATE
+                           CONVERSIONS = @TRUE
+                        END
+                     END
+                  END
+               END
+            NEXT CONV.INX
+         END
+      END
+*
+      RETURN
+*
+*--------------------------------------------------------------------------------
+*
+EXPAND.MVS:
+*
+* Expand multivalues in a field in a record in a file within a Universe account
+*
+      MV.MIN = 1
+      MV.MAX = DCOUNT(LINE,@VM)
+      FOR MV.INX = MV.MIN TO MV.MAX
+         IF (MV.MAX > 1 OR INDEX(LINE,@SM,1)) AND MV.INX = 1 THEN   ; * Allow for sub-valued single multivalue field.
+            PRINTLINE = OUTPUT.FIELD.NO"R%3":' Multivalues:'
+            GOSUB PRINT.LINE
+         END
+         CURRENT.MV = LINE<1,MV.INX>
+         IF LEN(EXP.SVS) AND INDEX(CURRENT.MV,@SM,1) THEN
+*---------- Value contains subvalues, so check whether expansion of subvalues is required or not.
+            EXPAND.SV = @FALSE
+            SV.VALUE.POS = 0
+            LOCATE(MV.INX, EXP.SVS<MV.FIELD.POS>; SV.VALUE.POS) THEN
+               EXPAND.SV = @TRUE
+            END ELSE
+               IF EXP.SVS<MV.FIELD.POS> = 0 THEN
+                  EXPAND.SV = @TRUE
+                  SV.VALUE.POS = 1
+               END
+            END
+            IF EXPAND.SV THEN
+               SV.MIN = 1
+               SV.MAX = DCOUNT(CURRENT.MV,@SM)
+               FOR SV.INX = SV.MIN TO SV.MAX
+                  IF SV.MAX > 1 AND SV.INX = 1 THEN
+                     PRINTLINE = SPACES(4):MV.INX"3R%3":' Subvalues:'
+                     GOSUB PRINT.LINE
+                  END
+                  CURRENT.SV = CURRENT.MV<1,1,SV.INX>
+                  IF LEN(CURRENT.SV) THEN
+                     PRINTLINE = SPACES(8):SV.INX"3R%3":' ':CURRENT.SV
+                     GOSUB PRINT.LINE
+                  END
+               NEXT SV.INX
+            END ELSE
+               IF LEN(CURRENT.MV) THEN
+                  PRINTLINE = SPACES(4):MV.INX"3R%3":' ':CURRENT.MV
+                  GOSUB PRINT.LINE
+               END
+            END
+         END ELSE
+            IF LEN(CURRENT.MV) THEN
+               PRINTLINE = SPACES(4):MV.INX"3R%3":' ':CURRENT.MV
+               GOSUB PRINT.LINE
+            END
+         END
+      NEXT MV.INX
+      RETURN
+*
+*--------------------------------------------------------------------------------
+*
+PRINT.LINE:
+*
+* Print a line of output
+*
+      IF COMO AND NOT(COMO.ON) THEN
+         COMO.ON = @TRUE
+         HUSH ON
+         EXEC 'COMO ON KLIST.PART.COMO'
+         HUSH OFF
+      END
+      IF (LINES.PRINTED > (@CRTHIGH-3)) AND NOT(NOSTOP) THEN
+         PRINT
+         PRINT 'Continue? Y(es)=default[[/N]](oStop)[[/Q]](uit)[[/END]] ... : ':
+         INPUT RESPONSE
+         BEGIN CASE
+          CASE UPCASE(RESPONSE) = 'END' OR UPCASE(RESPONSE) = 'Q'
+            PRINT
+            STOP
+          CASE UPCASE(RESPONSE) = 'N'
+            NOSTOP = 1
+            IF WARN.USER THEN
+               PRINT 'There are ':(K.MAX-RECS.PRINTED):' more records to go.  List them ALL? (Y[[/N]]=default) : ':
+               INPUT RESPONSE
+               IF UPCASE(RESPONSE)[1,1] # 'Y' THEN NOSTOP = 0
+            END
+          CASE 1
+            NULL
+         END CASE
+         PRINT 'Account: ':ACCOUNT<I>:' - File: ':DICT:FILE<J>:' ':QPTR:' - Record: ':RECORD.PTR:' (continued ... )'
+         PRINT
+         LINES.PRINTED = 2
+      END
+      PRINT PRINTLINE
+      LINES.PRINTED += 1
+      RETURN
+*
+*--------------------------------------------------------------------------------
+*
+INITIALISATION:
+*
+      IF INDEX(@SENTENCE,'-H',1) THEN
+         PRINT 'KLIST [<A/c-mask>] [<File-mask> <Record-mask>] [<String-mask>][<Options>]'
+         PRINT 'Options - '
+         PRINT " -An or -Fn   List Attribute[[/Field]] 'n' only.  Note: Multiple fields can be"
+         PRINT '              specified delimited by ";"'
+         PRINT ' -C[OUNT]     Count of records in a file'
+         PRINT " -D[f][,[v][,[s]]]"
+         PRINT "              Convert date/s in attributes/fields, values and subvalues."
+         PRINT '              Note: A optional field no., optional value no., and an'
+         PRINT '              optional subvalue no. can be included with a comma delimiter.'
+         PRINT "              Multiple 'D,,' instances are permitted, delimited by ';'"
+         PRINT ' -E[D]        Execute Line Editor using items selected from last used file'
+         PRINT '              Note: Last selection is in saved list KLIST.<Unix-login-id>'
+         PRINT ' -K[EYS]      Keys to records only are listed.'
+         PRINT ' -M[ATCHES]   Matching lines only in records selected are listed.'
+         PRINT ' -N[OSTOP]    Eliminate Header and End-of-Screen pause.'
+         PRINT ' -RE          List only lines in records matching a PERL Regular Expression.'
+         PRINT ' -S[ORT]      Sort by record ID'
+         PRINT ' -V[f][,S[v]] Expand Values in attributes/fields (and optionally Subvalues'
+         PRINT '              in values)'
+         PRINT "              Note: A Field[[/Attribute]] no. can follow 'V' to limit expansions."
+         PRINT "              A Value no. can follow 'S' to limit expansions."
+         PRINT "              Multiple 'V,S' instances are permitted delimited by ';'."
+         PRINT ''
+         PRINT 'Press <Enter> to continue ...':
+         INPUT RESPONSE
+         PRINT " -n           List a sample of 'n' records only."
+         PRINT ''
+         PRINT 'Less commonly used Options -'
+         PRINT ' -COMO        Capture output to KLIST.COMO command output file'
+         PRINT ' -F[PTRS]     Include only files referenced by F-pointers'
+         PRINT ' -NO.ERR      Eliminate messages about file access restrictions'
+         PRINT ' -P[AUSE]     Pause at each A/c header'
+         PRINT ' -Q[PTRS]     Include only files referenced by Q-pointers'
+         PRINT ''
+         PRINT 'Note: A command line mask item containing one or more spaces requires'
+         PRINT "       the whole mask item to be quoted.  "
+         PRINT "       E.g. 'WITH EVAL ":'"@RECORD<48,1>"':' # ""':"'"
+         PRINT '       Dictionary item names can be used in field listing expressions.'
+         PRINT "       Either '[' and/or ']' masks OR '...' masks can be used."
+         PRINT ''
+         PRINT " A/c-mask     'A'|'' = All Accounts / Default = Current Account"
+         PRINT " File-mask    '' = All files in an Account / '[',']' and '...' allowed"
+         PRINT " Record-mask  ''|null = All records in file in Account / 'WITH' clause allowed"
+         PRINT " String-mask  '[',']' and '...' allowed / 'WITH' clause allowed / PERL Regular"
+         PRINT "               Expression[[/Record]]-selection-phrase based on field content"
+         PRINT ''
+         PRINT 'Press <Enter> to continue ...':
+         INPUT RESPONSE
+         PRINT ' Examples :'
+         PRINT " KLIST FMC.CON... ...FTRIG... -N -V,S -COMO"
+         PRINT "    Captures in KLIST.COMO a list of all records with keys containing 'FTRIG'"
+         PRINT "    in all files with names containing 'FMC.CON' in the current Account, with"
+         PRINT "    expansion of all values and subvalues in multivalued fields"
+         PRINT " KLIST FMC.TEST DICT APP.INDEX -N -K -S"
+         PRINT "    List keys only in sorted order in the dictionary of file APP.INDEX in the"
+         PRINT "    Account FMC.TEST."
+         PRINT " KLIST TRAN ...S9... -A17 -V,S -N -5"
+         PRINT "    List 5 samples of records with keys containing 'S9' in the TRAN file, "
+         PRINT "    displaying Attribute 17 only, expanding all values and subvalues"
+         PRINT " KLIST VOC LOGIN '(kford)' -RE"
+         PRINT "    List lines in the 'LOGIN' record in the 'VOC' file in the current Account"
+         PRINT "    that match the PERL regular expression string mask."
+         PRINT " KLIST TRAN ...S9... -V,S -N -2 -D17,2,1"
+         PRINT "    List 2 samples of records with keys containing 'S9' in the TRAN file, "
+         PRINT "    displaying all fields, expanding all values and subvalues, and converting"
+         PRINT "    the date (if it is one) in field/attribute 17, value 2, subvalue 1."
+         STOP
+      END
+      IF TRANS('VOC','UV.ACCOUNT',0,'X') = '' THEN
+         HUSH ON
+         DATA 'Q'
+         DATA 'UV'
+         DATA 'UV.ACCOUNT'
+         DATA ''
+         DATA 'FI'
+         EXEC 'ED VOC UV.ACCOUNT'
+         HUSH OFF
+      END
+      AC.RESPONSE      = ''
+      ACCOUNT          = ''
+      ARG              = ''
+      ARGS             = ''
+      CMD.LINE         = CHANGE(@SENTENCE,' ',@FM)
+      COMO             = @FALSE
+      COMO.ON          = @FALSE
+      COUNT.RECS       = 0
+      DATE.CONV        = 0
+      DICT.FILE        = 0
+      EDIT.LIST        = 0
+      ELT.CNT          = 0
+      EXP.MVS          = ''
+      EXP.SVS          = ''
+      EXPECT.RE        = @FALSE
+      FIELDS           = ''
+      FILE             = ''
+      FILE.PTR         = 'KLIST.FILE'
+      FILE.RESPONSE    = ''
+      FPTR.ONLY        = 0
+      FULL.ITEM        = 1
+      ITEM             = 1
+      KEYS.ONLY        = 0
+      LAST.SAVEDLIST   = ''
+      LEFTOVERS        = ''
+      LINE             = ''
+      LINES.PER.PAGE   = @CRTHIGH
+      LINES.PRINTED    = 0
+      LIST.NAME        = ''
+      NO.ERROR         = @FALSE
+      NOSTOP           = 0
+      PAUSE            = 0
+      QPTR.ONLY        = 0
+      RE               = ''
+      RE.MATCHING      = @FALSE
+      REC.HDR          = ''
+      REC.HDR.PRINTED  = @FALSE
+      REC.RESPONSE     = ''
+      RECORD           = ''
+      RECORD.LIST      = 0
+      RECORD.SAVED     = ''
+      RECS.PRINTED     = 0
+      SAMPLE           = 0
+      SAVE.LIST        = 0
+      SORT.KEYS        = 0
+      SPECIFIC.FIELDS  = ''
+      STRING.RESPONSE  = ''
+      SVAL.POS         = 0
+      TEST             = 0
+      VAL.POS          = 0
+      VOC.PTR          = 'KLIST.VOC'
+      WARN.USER        = 0
+      RETURN
+*
+*--------------------------------------------------------------------------------
+*
+GET.OPTIONS:
+*
+      LOOP
+         REMOVE ELT FROM CMD.LINE SETTING DELIM
+         ELT.CNT += 1
+         IF ELT = 'RUN' OR ELT = 'RAID' THEN
+            REMOVE ELT FROM CMD.LINE SETTING DELIM
+            ELT.CNT += 1
+            CONTINUE
+         END
+         IF ELT[1,5] = 'KLIST' THEN CONTINUE
+         IF NOT(ELT) THEN
+            IF NOT(DELIM) THEN EXIT
+            ELSE CONTINUE
+         END
+*------- Parse command line options.
+         BEGIN CASE
+          CASE ELT[1,2] = '-A'                    ;* List specific attribute(s)/field(s) only
+            FIELDS = CHANGE(ELT[3,99],';',@FM)
+          CASE ELT[1,5] = '-COMO'                 ;* Capture to a command output file
+            COMO = @TRUE
+            HUSH ON
+            EXEC 'DELETE &COMO& KLIST.COMO'
+            HUSH OFF
+          CASE ELT[1,2] = '-C'                    ;* Count of records in a file
+            COUNT.RECS = 1
+          CASE ELT[1,2] = '-D'                    ;* Convert dates to external format
+            DATE.CONV = @TRUE
+*---------- Create arrays of field, value and subvalue positions for data conversion
+*           Note: '0' means convert all fields/values/subvalues; null means no conversion
+*
+* Examples:
+* '-D1;2,1;2,2,;3;4'
+*   This produces 3 arrays internally, thus:
+*       Field array -     1:@FM:2:@FM:2:@FM:3:@FM:4
+*       Value array -     0:@FM:1:@FM:2:@FM:0:@FM:0
+*       [[SubValue]] array -  0:@FM:0:@FM:0;@FM:0:@FM:0
+*   This is interpreted to mean:
+*      Date convert internal dates in field 1 (all values and subvalues, if any)
+*                   internal dates in field 2, value 1
+*                   field 2, value 2 (all subvalues, if any)
+*                   field 3 (all values and subvalues, if any)
+*                   field 4 (all values and subvalues, if any)
+            CONV.FIELDS = ''
+            CONV.MVS    = ''
+            CONV.SVS    = ''
+            SETS = CHANGE(ELT[3,99],';',@FM)
+            LOOP REMOVE SUBELT FROM SETS SETTING ELT.DELIM
+               IF LEN(SUBELT) THEN
+                  FIELD.POS = FIELD(SUBELT,',',1)
+                  IF LEN(FIELD.POS) THEN
+                     CONV.FIELDS<-1> = FIELD.POS
+                  END ELSE
+                     CONV.FIELDS<-1> = 0
+                  END
+                  VAL.POS = FIELD(SUBELT,',',2)
+                  IF LEN(VAL.POS) THEN
+                     CONV.MVS<-1> = VAL.POS
+                  END ELSE
+                     CONV.MVS<-1> = 0
+                  END
+                  SVAL.POS = FIELD(SUBELT,',',3)
+                  IF LEN(SVAL.POS) THEN
+                     CONV.SVS<-1> = SVAL.POS
+                  END ELSE
+                     CONV.SVS<-1> = 0
+                  END
+               END
+            WHILE ELT.DELIM DO
+            REPEAT
+            IF NOT(LEN(CONV.FIELDS)) THEN
+               CONV.FIELDS = 0
+               CONV.MVS    = 0
+               CONV.SVS    = 0
+            END
+            CONV.SPECIFIERS = DCOUNT(CONV.FIELDS,@FM)
+          CASE ELT[1,2] = '-E'                    ;* Edit the listed records
+            EDIT.LIST = 1
+          CASE ELT[1,5] = '-FPTR'                 ;* List only files with 'F' pointers
+            FPTR.ONLY = 1
+          CASE ELT[1,2] = '-F'                    ;* List specific field(s)/attribute(s) only
+            FIELDS = CHANGE(ELT[3,99],';',@FM)
+          CASE ELT[1,2] = '-K'                    ;* List only keys in a file
+            KEYS.ONLY = 1
+          CASE ELT[1,2] = '-M'                    ;* List only lines in record that  match string
+            FULL.ITEM = 0
+          CASE ELT[1,7] = '-NO.ERR'               ;* No errors listed
+            NO.ERROR = @TRUE
+          CASE ELT[1,2] = '-N'                    ;* No stopping after a screen of output
+            NOSTOP = 1
+            EXEC 'TERM ,9999' CAPTURING OUTPUT
+          CASE ELT[1,2] = '-P'                    ;* Pause on change of Universe account
+            PAUSE = 1
+          CASE ELT[1,5] = '-QPTR'                 ;* List only files with 'Q' pointers
+            QPTR.ONLY = 1
+          CASE ELT[1,3] = '-RE'                   ;* Search records using a PERL regular expression
+            RE.MATCHING = @TRUE
+            FULL.ITEM = @FALSE
+          CASE ELT[1,2] = '-S'                    ;* Sort listed output by record key
+            SORT.KEYS = 1
+          CASE ELT[1,2] = '-T'                    ;* Testing (debug) mode
+            TEST = 1
+            DEBUG
+          CASE ELT[1,2] = '-V'                    ;* Expand values withing fields
+*
+*           '-V' specifys which field or fields are to have values and optionally
+*                              subvalues displayed'
+*           Valid variants of the '-V' option:
+*              '-V'            means expand all multivalued fields
+*              '-Vn'           means expand multivalued field "n" only
+*              '-V,S'          means expand all multivalued fields and all subvalued
+*                                  values in each field
+*              '-Vn,S'         means expand multivalued field "n" only and all subvalued
+*                                  values in that field
+*              '-Vn,Sp'        means expand multivalued field "n" only and subvalues
+*                                  in value "p" of the field
+*              '-V,Sp'         means expand all multivalued fields and subvalues in
+*                                  value "p" of each field
+*              '-Vn[,S[p]];q[,S[r]] ... ;[x[,S[y]]'
+*                              represents a semi-colon delimited list of specific fields
+*                                  with optional value and subvalue expansion
+*           Examples:
+*              '-V'            means expand all values in all fields.
+*              '-V5'           means expand all values in multivalued field 5 only.
+*              '-V,S'          means expand all values in all multivalued fields and
+*                                  all subvalued values in each such field.
+*              '-V5,S'         means expand all values in multivalued field 5 only and
+*                                  all subvalued values in that field.
+*              '-V5,S5'        means expand multivalued field 5 only and subvalues in
+*                                  value 5 in that field.
+*              '-V5,S;7;9,S;12,S4'
+*                              means expand multivalued fields 5, 7, 9 & 12, and
+*                                  all subvalues in all values in fields 5 & 9, and subvalues
+*                                  in value 4 if field 12.
+*
+*           Note: It is valid to have multiple "-Vn" options, so the last example could be
+*                     expressed as '-V5,S -V7 -V9,S -V12,S4'
+*
+*---------- Create arrays of value and subvalue positions for expansion
+*           Note: '0' indicates expand all values/subvalues; null indicates no expansion
+            SETS = CHANGE(ELT[3,99],';',@FM)
+            LOOP REMOVE SUBELT FROM SETS SETTING ELT.DELIM
+               IF LEN(SUBELT) THEN
+                  VAL.POS = FIELD(SUBELT,',',1)
+                  IF LEN(VAL.POS) THEN
+                     EXP.MVS<-1> = VAL.POS
+                  END ELSE
+                     EXP.MVS<-1> = 0
+                  END
+                  SVAL.POS = FIELD(SUBELT,',',2)
+                  IF LEN(SVAL.POS) THEN
+                     SVAL.POS = FIELD(SVAL.POS,'S',2)
+                     IF LEN(SVAL.POS) THEN
+                        EXP.SVS<-1> = SVAL.POS
+                     END ELSE
+                        EXP.SVS<-1> = 0
+                     END
+                  END ELSE
+                     EXP.SVS<-1> = @FM
+                  END
+               END ELSE
+                  EXP.MVS<-1> = 0
+                  EXP.SVS<-1> = @FM
+               END
+            WHILE ELT.DELIM DO
+            REPEAT
+          CASE ELT[1,1] = '-' AND ELT[2,99] MATCHES "0N" ;* List a sample of 'n' records
+            SAMPLE = ELT[2,99]
+          CASE 1
+            ARGS := ELT:' '
+         END CASE
+      WHILE DELIM DO
+      REPEAT
+      CHAR.CNT = LEN(ARGS)
+*---- If there is an active select list of record IDs, save it for use later.
+      IF SYSTEM(11) THEN
+         RECORDS = ''
+         EOI = @FALSE
+         LOOP
+            READNEXT ID ELSE EOI = @TRUE
+         WHILE NOT(EOI) DO
+            IF NOT(LEN(ID)) THEN EXIT
+            RECORDS<-1> = ID
+         REPEAT
+         IF LEN(RECORDS) THEN
+            LIST.NAME = 'KLIST.LIST.':DATE():'.':FIELD(TIME(),'.',1)
+            OPEN '&SAVEDLISTS&' TO SAVEDLISTS.FV THEN
+               WRITE RECORDS ON SAVEDLISTS.FV, LIST.NAME
+            END
+            RECORD.LIST = 1
+         END
+      END
+*---- Process positional arguments from command line.
+      SELECT.EXPR = ''
+      REGEXPR = ''
+      ARG.CNT = 0
+      LOOP
+         ARG.CNT += 1
+         ARG = FIELD(ARGS,' ',ARG.CNT)
+      WHILE LEN(ARG) DO
+         IF ARG[1,1] = '"' OR ARG[1,1] = "'" THEN
+            ARG.DELIM = ARG[1,1]
+            ARG = FIELD(ARGS,ARG.DELIM,2)
+            ARG.CNT += COUNT(ARG,' ')
+         END
+         BEGIN CASE
+          CASE AC.RESPONSE = ''
+            BEGIN CASE
+*----------- Are all Universe Accounts to be checked?
+             CASE ARG MATCHES 'ALL':@VM:'[]' OR ARG = '...' OR ARG = '""' OR ARG = "''"
+               AC.RESPONSE = 'ALL'
+*----------- Is there a Universe A/c name mask in ARG?
+             CASE INDEX(ARG,'...',1) OR  INDEX(ARG,'[',1) OR INDEX(ARG,']',1)
+               AC.RESPONSE = ARG
+* ---------- Is there a Universe A/c with its name in ARG?
+             CASE TRANS('UV.ACCOUNT',ARG,0,'X') = ARG
+               AC.RESPONSE = ARG
+*----------- Is the Universe A/c not provided and there a file dictionary specified?
+             CASE ARG = 'DICT'
+               AC.RESPONSE = @WHO
+               DICT.FILE = @TRUE
+*----------- Is the Universe A/c not provided and there a file with its name in ARG?
+             CASE TRANS('VOC',ARG,0,'X') = ARG
+               AC.RESPONSE = @WHO
+               FILE.RESPONSE = ARG
+             CASE 1
+               AC.RESPONSE = '_'
+            END CASE
+          CASE FILE.RESPONSE = ''
+            BEGIN CASE
+*----------- Are all files in the current Universe A/c to be checked?
+             CASE ARG MATCHES 'ALL':@VM:'[]'OR ARG = '...' OR ARG = '""' OR ARG = "''"
+               FILE.RESPONSE = 'ALL'
+*----------- Is there a file dictionary specified in ARG?
+             CASE ARG = 'DICT'
+               DICT.FILE = @TRUE
+*----------- Is there a file in the current Universe A/c with its name in ARG?
+             CASE TRANS('VOC',ARG,0,'X') = ARG
+               FILE.RESPONSE = ARG
+*----------- Is there a name mask for the file/s to be check in the current Universe A/c?
+             CASE INDEX(ARG,'...',1) OR INDEX(ARG,'[',1) OR INDEX(ARG,']',1)
+               FILE.RESPONSE = ARG
+             CASE 1
+               FILE.RESPONSE = '_'
+            END CASE
+          CASE REC.RESPONSE = ''
+            BEGIN CASE
+             CASE INDEX(ARG,'...',1) OR INDEX(ARG,'[',1) OR INDEX(ARG,']',1)
+               REC.RESPONSE = ARG
+             CASE ARG MATCHES "'WITH":@VM:'"WITH'
+               SELECT.EXPR = ARG
+             CASE LEN(SELECT.EXPR)
+               SELECT.EXPR := ARG
+               IF ARG[LEN(ARG),1] MATCHES "'":@VM:'"' THEN
+                  REC.RESPONSE = SELECT.EXPR
+               END
+             CASE 1
+               REC.RESPONSE = ARG
+            END CASE
+          CASE STRING.RESPONSE = ''
+            BEGIN CASE
+             CASE RE.MATCHING
+               IF LEN(REGEXPR) THEN
+                  REGEXPR := ' ':ARG
+                  IF ARG[LEN(ARG),1] MATCHES "'":@VM:'"' THEN
+                     STRING.RESPONSE = REGEXPR
+                  END
+               END ELSE
+                  REGEXPR = ARG
+               END
+             CASE INDEX(ARG,'...',1) OR INDEX(ARG,'[',1) OR INDEX(ARG,']',1)
+               STRING.RESPONSE = ARG
+             CASE ARG MATCHES "'WITH":@VM:'"WITH'
+               SELECT.EXPR = ARG
+             CASE LEN(SELECT.EXPR)
+               SELECT.EXPR := ' ':ARG
+               IF ARG[LEN(ARG),1] MATCHES "'":@VM:'"' THEN
+                  STRING.RESPONSE = SELECT.EXPR
+               END
+             CASE 1
+               REC.RESPONSE = ARG
+            END CASE
+          CASE 1
+            LEFTOVERS = ARG
+         END CASE
+      REPEAT
+      IF AC.RESPONSE = '' THEN AC.RESPONSE = '_'
+      IF DICT.FILE THEN
+         FILE.RESPONSE = 'DICT ':FILE.RESPONSE
+      END
+      IF AC.RESPONSE = '_' THEN
+         IF NOT(LEN(FILE.RESPONSE)) THEN
+            VALID.AC = @FALSE
+            LOOP WHILE NOT(VALID.AC) DO
+               PRINT 'Account(s)? A(ll)|Name-mask|A/c-name|""(=All)|':"''(=All)|Null(=Current)[[/END]] : ":
+               INPUT AC.RESPONSE
+               VALID.AC = @TRUE
+               BEGIN CASE
+                CASE AC.RESPONSE = ''
+                  AC.RESPONSE = @WHO
+                CASE AC.RESPONSE MATCHES 'ALL':@VM:'A':@VM:'[]' OR AC.RESPONSE = '""' OR AC.RESPONSE = "''" OR AC.RESPONSE = '...'
+                  AC.RESPONSE = 'ALL'
+                CASE TRANS('UV.ACCOUNT',AC.RESPONSE,0,'X') = AC.RESPONSE
+                  AC.RESPONSE = AC.RESPONSE
+                CASE AC.RESPONSE = 'END'
+                  PRINT 'KLIST stopped.'
+                  STOP
+                CASE 1
+                  PRINT 'Invalid Account response.'
+                  VALID.AC = @FALSE
+               END CASE
+            REPEAT
+         END
+      END
+      BEGIN CASE
+       CASE AC.RESPONSE = 'ALL'
+         CMD = 'SELECT UV.ACCOUNT'
+         * HUSH ON
+         EXEC CMD CAPTURING OUTPUT
+         * HUSH OFF
+       CASE INDEX(AC.RESPONSE,'...',1) OR INDEX(AC.RESPONSE,'[',1) OR INDEX(AC.RESPONSE,']',1)
+         CMD = 'SELECT UV.ACCOUNT = "':AC.RESPONSE:'"'
+         EXEC CMD CAPTURING OUTPUT
+         IF INDEX(OUTPUT,@FM:'0 record',1) THEN
+            ACCOUNT = @WHO
+            IF TEST THEN
+               PRINT "First argument (":AC.RESPONSE:") is not a Universe A/c - defaulting to Current A/c - ":ACCOUNT
+               PRINT
+            END
+            IF AC.RESPONSE = 'DICT' THEN
+               AC.RESPONSE := ' ':FILE.RESPONSE
+               FILE.RESPONSE = REC.RESPONSE
+               REC.RESPONSE = STRING.RESPONSE
+               STRING.RESPONSE = ''
+            END
+            STRING.RESPONSE = REC.RESPONSE
+            REC.RESPONSE = FILE.RESPONSE
+            FILE.RESPONSE = AC.RESPONSE
+            AC.RESPONSE = ''
+         END
+       CASE 1
+         ACCOUNT = AC.RESPONSE
+         @SELECTED = 0
+      END CASE
+      IF SYSTEM(11) THEN
+         FOR I = 1 TO @SELECTED
+            READNEXT ID ELSE EXIT
+            ACCOUNT<-1> = ID
+         NEXT I
+      END
+      IF ACCOUNT = '' THEN
+         PRINT 'No Universe A/c matches account-mask (':AC.RESPONSE:')'
+         STOP
+      END
+      IF FILE.RESPONSE # '' THEN
+         IF FILE.RESPONSE = '_' THEN
+            FILE.RESPONSE = ''
+         END
+      END ELSE
+         PRINT 'File(s)?    (A)ll(=default)/<string-expression>/<filename>[[/END]]            : ':
+         INPUT FILE.RESPONSE
+         FILE.RESPONSE = UPCASE(FILE.RESPONSE)
+         IF FILE.RESPONSE = 'END' THEN
+            PRINT
+            STOP
+         END
+      END
+      IF REC.RESPONSE # '' THEN
+         IF REC.RESPONSE = '_' THEN
+            REC.RESPONSE = ''
+         END
+      END ELSE
+         IF RECORD.LIST THEN
+            REC.RESPONSE = LIST.NAME
+         END ELSE
+            IF ARG = '' AND NOT(KEYS.ONLY) THEN
+               PRINT 'Record ID(s)?  (A)ll(=default)/<string-expression>/<record-ID[[/END]]         : ':
+               INPUT REC.RESPONSE
+               REC.RESPONSE = UPCASE(REC.RESPONSE)
+               IF REC.RESPONSE = 'END' THEN
+                  PRINT
+                  STOP
+               END
+            END ELSE
+               REC.RESPONSE = 'A'
+            END
+         END
+      END
+      IF STRING.RESPONSE # '' THEN
+         IF STRING.RESPONSE = '_' THEN
+            STRING.RESPONSE = ''
+         END
+      END
+      RETURN
+*
+*--------------------------------------------------------------------------------
+*
+FINALISATION:
+*
+      PRINT
+      IF TEST THEN PRINT 'Cleaning up temporary VOC items ...'
+      HUSH ON
+      EXEC 'DELETE VOC ':VOC.PTR
+      HUSH OFF
+      IF SAVE.LIST THEN
+         K.MAX = DCOUNT(RECORD.SAVED,@FM)
+         IF K.MAX > 1 THEN
+            PRINT 'Saved ':K.MAX-1:' (selected) keys from last selected file (':LAST.SAVEDLIST<2>:' in a/c ':LAST.SAVEDLIST<1>:') in KLIST.':@ACCOUNT:' ...'
+            HUSH ON
+            EXEC 'DELETE &SAVEDLISTS& KLIST.':@ACCOUNT
+            DATA ''
+            FOR K = 2 TO K.MAX
+               DATA 'I ':RECORD.SAVED<K>
+            NEXT K
+            DATA 'FI'
+            EXEC 'ED &SAVEDLISTS& KLIST.':@ACCOUNT
+            HUSH OFF
+            IF EDIT.LIST THEN
+               DATA 'ED ':DICT:FILE.PTR
+               EXEC 'GET.LIST KLIST.':@ACCOUNT
+            END
+         END
+      END
+      HUSH ON
+      EXEC 'DELETE VOC ':FILE.PTR
+      EXEC 'TERM ,':LINES.PER.PAGE
+      HUSH OFF
+      CLEARSELECT
+      IF COMO AND COMO.ON THEN
+         COMO.ON = @FALSE
+         HUSH ON
+         EXEC 'COMO OFF'
+         EXEC 'SH -c "cat \&COMO\&[[/KLIST]].PART.COMO >> \&COMO\&[[/KLIST]].COMO"'
+         EXEC 'DELETE &COMO& KLIST.PART.COMO'
+         HUSH OFF
+      END
+*
+      RETURN
+*
+*--------------------------------------------------------------------------------
+*
+   END
+*
+*================================================================================

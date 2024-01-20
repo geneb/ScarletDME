@@ -1,0 +1,74 @@
+* ASORT() subroutine
+* Copyright (c) 2007, Keith Robert Johnson, All Rights Reserved
+*
+* This program is free software in the public domain; you can
+* redistribute it and/or modify it in any way you wish.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+*
+* START-HISTORY:
+* 28 Aug 07  Program written.
+* END-HISTORY
+*
+* START-DESCRIPTION:
+*
+* This subroutine will reorganise a set of associated
+* attributes by sorting the values in one of them and
+* aligning all the other attributes to match that one.
+*
+* CALL ASORT(back, give, what, mode)
+*
+* back = Sorted array
+* give = Unsorted array of Associated Multivalues
+* what = Sort Attribute : Default '1'
+* mode = Sort mode      : Default 'AL'
+*        A or AL = ascending - left justified
+*             AR = ascending - right justified
+*        D or DL = descending - left justified
+*             DR = descending - right justified
+*
+* END-DESCRIPTION
+*
+* START-CODE
+
+     SUBROUTINE ASORT(back, give, what, mode)
+
+* Set a default empty returned item
+     back = ''
+
+* Get sort attribute (default is 1)
+     attr = what
+     if not(num(attr)) then attr = 1
+     attr = int(abs(attr))
+     acnt = dcount(give,@am)
+     if attr lt 1 or attr gt acnt then attr = 1
+
+* Get sort mode (default is 'AL')
+     rank = upcase(mode)
+     if not(index('[[/A/AL/AR/D/DL/DR]]/','/':rank:'/',1)) then rank = 'AL'
+
+* Initialise - note that sorted attribute defines the value count
+     this = '' ; that = ''
+     line = give<attr>
+     vcnt = dcount(line,@vm)
+
+* Backward pass to preserve existing order for equal sorting values
+     for vnum = vcnt to 1 step -1
+        valu = line<1,vnum>
+        locate(valu,this;posn;rank) then null
+        ins valu before this<posn>
+        ins vnum before that<posn>
+     next vnum
+
+* Put all the returned attributes in the correct order
+     for anum = 1 to acnt
+        line = give<anum>
+        for vnum = 1 to vcnt
+           iota = line<1,that<vnum>>
+           if iota ne '' or anum eq attr then back<anum,vnum> = iota
+        next vnum
+     next anum
+
+     return

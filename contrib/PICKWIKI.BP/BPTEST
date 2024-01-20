@@ -1,0 +1,114 @@
+!
+** Run BASIC code from TCL (command line)
+** (C) Copyright 1985-2004, Advantos Systems, Inc.  All Rights Reserved.
+!
+** Last Modified: 05 Apr 2001, wph
+** First Created: 25 Feb 2001, wph
+** Program Type-: Utility
+!
+** Notes:
+**
+** This process simply builds a BASIC program from the command line,
+** compiles it, runs it, decatalogs it, then deletes it.  Multiple
+** lines can be created at 'TCL' by separating them with a ';'.
+**
+** This program will parse out each line and create it as a separate
+** line in the temporary program.  Of course, a ';' can be part of
+** a quoted string but cannot be part of a comment.
+!
+** Initialize local variables
+!
+*$OPTIONS EXT                 ; ** D3 version
+NULL$ = ''
+AM    = CHAR(254)
+VM    = CHAR(253)
+SVM   = CHAR(252)
+*
+** set unique key for bp item
+BpId = 'BpTest*' : SYSTEM(12) : SYSTEM(16)
+*
+** parse tcl sentence to get BASIC commands
+TCL.LINE = @COMMAND           ; ** U2 version
+*TCLREAD TclLine               ; ** D3 version
+TclLine   = TclLine[7,9999]   ; ** remove the command
+HELP.CMD  = FIELD(TRIM(TclLine), ' ', 1)
+IF HELP.CMD = '?' THEN GOTO DISPLAY.HELP
+!
+** Open File (make sure the file is compilable and executable)
+!
+OPEN '', 'DTATEMP' TO BpTemp.fv ELSE STOP 201, 'DTATEMP'
+*
+** convert program to separate lines
+QuoteStr  = '"\' : "'"     ; ** list of quote characters
+InQuotes  = NULL$          ; ** we're not in a quote section yet
+OrigProg  = TclLine
+NewProg   = NULL$
+xHigh     = LEN(OrigProg)
+*
+** parse through looking for separate lines of code
+FOR X = 1 TO xHigh
+   TestChar = OrigProg[X,1]
+   IF INDEX(QuoteStr, TestChar, 1) THEN
+      IF InQuotes = NULL$ THEN
+         InQuotes = TestChar
+      END ELSE
+         IF InQuotes = TestChar THEN InQuotes = NULL$
+      END
+   END
+   IF TestChar = ';' THEN
+      IF InQuotes = NULL$ THEN TestChar = AM
+   END
+   NewProg := TestChar
+NEXT X
+*
+** start program run
+WRITE NewProg ON BpTemp.fv, BpId
+EXECUTE \BASIC DTATEMP \ : BpId
+EXECUTE \RUN DTATEMP \     : BpId
+*
+** clean-up
+EXECUTE \DECATALOG DTATEMP \ : BpId CAPTURING Output
+EXECUTE \DELETE DTATEMP \    : BpId CAPTURING Output
+*
+GOTO END.OF.PROGRAM
+*
+**----------------------------------------------------------------**
+**                                                                **
+**                     S U B R O U T I N E S                      **
+**                                                                **
+**----------------------------------------------------------------**
+*
+** Help display
+***************
+DISPLAY.HELP:
+***************
+*
+CRT
+CRT 'Utility to execute BASIC code.  This is a simple way to run BASIC'
+CRT 'code.  If you want to run multiple lines, simply separate lines of'
+CRT 'code with ";", which is the same as you would do in a program'
+CRT
+CRT "Syntax:"
+CRT "  BPTEST {BASIC command(s)}"
+CRT
+CRT "Example:"
+CRT "  BPTEST EXECUTE \TERM\ CAPTURING OUTPUT; CRT OUTPUT"
+CRT
+CRT "^ terminal name: ActIbmpc.c1^ product name: AccuTerm IBM PC Color"
+CRT "^ terminal width: 80    printer width: 146^          depth: "
+CRT "25            depth: 61^ lineskip:    0^ lf delay:    1^ ff "
+CRT "delay:    1^ back space:  8^"
+CRT
+STOP
+*
+**----------------------------------------------------------------**
+**                                                                **
+**                  E N D   O F   P R O G R A M                   **
+**                                                                **
+**----------------------------------------------------------------**
+*
+***************
+END.OF.PROGRAM:
+***************
+*
+END

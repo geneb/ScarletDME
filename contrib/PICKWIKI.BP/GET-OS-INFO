@@ -1,0 +1,98 @@
+SUBROUTINE GET.OS.INFO(RTN.INFO,CURRENT.ID,TYPE)
+*
+* Colin Alfke
+*
+COMMON [[/OS]].INFO/ VOC, PATH
+IF UNASSIGNED(PATH) THEN PATH = ''
+*
+CMND = @COMMAND
+PLATFORM = OCONV(SYSTEM(33),'MCU')
+IF PLATFORM = "UNIX" THEN DELIM = "/" ELSE DELIM = "\"
+FN = FIELD(CMND,' ',2)
+*
+* Get the full path from the VOC
+*
+FILE.PATH = ''
+IF PATH # @PATH OR NOT(FILEINFO(VOC,0)) THEN
+  OPEN 'VOC' TO VOC THEN
+    READV FILE.PATH FROM VOC, FN, 2 ELSE FILE.PATH = ''
+  END
+  PATH = @PATH
+END
+*
+* Convert any environment variables to the full path
+*
+CONVERT DELIM TO @VM IN FILE.PATH
+NUM.PATH = DCOUNT(FILE.PATH<1>,@VM)
+FOR NP = 1 TO NUM.PATH
+  IF FILE.PATH<1,NP>[1,1] = "@" THEN
+    FILE.PATH<1,NP> = GETENV(FILE.PATH<1,NP>[2,999])
+  END
+NEXT NP
+CONVERT @VM TO DELIM IN FILE.PATH
+*
+* Get the info
+*
+FP = FILE.PATH:DELIM:CURRENT.ID
+BEGIN CASE
+  CASE TYPE = 'S'                   ;* Size
+    RTN.INFO = DIR(FP)<1>
+  CASE TYPE = 'D'                   ;* Date
+    RTN.INFO = DIR(FP)<2>
+  CASE TYPE = 'T'                   ;* Time
+    RTN.INFO = DIR(FP)<3>
+  CASE TYPE = 'P'                   ;* Privileges
+    RTN.INFO = DIR(FP)<4>
+  CASE 1                            ;* Date and Time
+    TEMP = DIR(FP)
+    RTN.INFO = OCONV(TEMP<2>,'D4'):"  ":OCONV(TEMP<3>,'MTS')
+END CASE
+RETURN
+
+
+
+Here are some dictionaries that you can use to call this routine (I keep them in the VOC so I can run them on any file):
+
+OS.DATE:
+IReturn Operating System date on the file
+SUBR("GET.OS.INFO",@ID,'D')
+D4
+    OS Date
+11R
+S
+
+
+OS.TIME:
+IReturn Operating System time on the file
+SUBR("GET.OS.INFO",@ID,'T')
+MTS
+ OS Time
+8R
+S
+
+
+OS.PRIV:
+IReturn Operating System priveleges on the file
+SUBR("GET.OS.INFO",@ID,'P')
+
+OS Priv
+5L
+S
+
+
+OS.SIZE:
+IReturn Operating System size on the file
+SUBR("GET.OS.INFO",@ID,'S')
+
+        OS Size
+15R
+S
+
+
+OS.INFO:
+IReturn Operating System Info
+SUBR("GET.OS.INFO",@ID,'')
+
+    OS Info
+21L
+S

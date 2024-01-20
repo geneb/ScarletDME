@@ -1,0 +1,824 @@
+PROGRAM MAKEXML
+* ECL - KRJ - Generates XML using standard dictionaries
+*
+* You have to make the WRITESEQ lines work for the U2 brand
+* Unidata - WRITESEQ LINE APPEND ON ...
+* Universe & QM - WRITESEQ LINE ON ...
+*
+* Next lines for QM
+$MODE UV.LOCATE
+      EQU ITATT TO 16
+* Next lines for Universe
+* $OPTIONS PICK.FORMAT -STATIC.DIM
+* EQU ITATT TO 20
+* Next lines for Unidata
+* $BASICTYPE 'P'
+* EQU ITATT TO 8
+*
+      VERSION = 'xml version="1.0"'
+      COMD = 'MAKEXML'
+      SENTENCE = OCONV(@SENTENCE,'MCU')
+      TEST = INDEX(SENTENCE,COMD,1)
+      IF TEST THEN
+         SENTENCE = TRIM(@SENTENCE[TEST+LEN(COMD),LEN(@SENTENCE)])
+      END ELSE SENTENCE = @SENTENCE
+      OPTIONS = FIELD(SENTENCE,'(',2)
+      SENTENCE = FIELD(SENTENCE,'(',1)
+      OPTIONS = OCONV(FIELD(OPTIONS,')',1),'MCU')
+*
+      ESC = CHAR(27)
+      T1 = CHAR(9)
+      T2 = T1:T1
+      T3 = T1:T1:T1
+      BELL = STR(CHAR(7),20)
+      BAD = @TRUE
+      FIRST = @TRUE
+* Get the operating system (text) file we want to create - and where from
+      TYPE19FILE = FIELD(SENTENCE,' ',1)
+      TYPE19ITEM = FIELD(SENTENCE,' ',2)
+      FNAME = FIELD(SENTENCE,' ',3)
+      DICTS = TRIM(SENTENCE[COL2(),LEN(SENTENCE)])
+* If we haven't got the data source, give help
+      IF FNAME EQ '' THEN
+         CRT @(-1):
+         CRT COMD:' - Generates XML'
+         CRT
+         CRT 'SYNTAX - ':COMD:' type19file item file [fields] (Options)'
+         CRT
+         CRT 'OPTIONS'
+         CRT ' G - Generate a schema only (.XSD)'
+         CRT ' D - DTD output only (.DTD)'
+         CRT ' K - Kill empty attributes (IE ignore them in XML)'
+         CRT ' Q - Quiet, do not display progress information'
+         CRT ' X - XSL outout required (This creates XML as well)'
+         CRT
+         CRT 'NOTES'
+         CRT 'If type19file is "CRT" output is to the screen.'
+         CRT 'The output file will have extensions added to suit the type'
+         CRT 'of output requested. If XSL file output is requested, then'
+         CRT 'BOTH the XSL and XML outputs are produced.'
+         STOP
+      END
+*
+* Get the options
+      IF INDEX(OPTIONS,'Q',1) THEN QUIET = @TRUE ELSE QUIET = @FALSE
+      IF INDEX(OPTIONS,'K',1) THEN KILL = @TRUE ELSE KILL = @FALSE
+      OUTPUT = 'XML'
+      IF INDEX(OPTIONS,'D',1) THEN OUTPUT = 'DTD'
+      IF INDEX(OPTIONS,'G',1) THEN OUTPUT = 'XSD'
+      IF INDEX(OPTIONS,'X',1) THEN OUTPUT = 'XSL'
+      IF OUTPUT NE 'XML' THEN QUIET = @TRUE
+      IF @TTY EQ 'phantom' THEN QUIET = @TRUE
+* Check if we have got dictionary items
+      IF DICTS EQ '' THEN
+         CRT 'Dictionary Items are required for XML'
+         STOP
+      END
+*
+* Display graph if terminal and select list is active
+      TOTCNT = SYSTEM(11)
+* Next line for Universe
+      IF TOTCNT THEN TOTCNT = @SELECTED
+*
+      CNTR = 0
+      OLD.PCT = 0
+      SHOW = @FALSE
+      IF TOTCNT THEN SHOW = @TRUE
+      IF QUIET THEN SHOW = @FALSE
+*
+* Open, check, and initialise the transfer file
+      IF TYPE19FILE NE 'CRT' THEN
+         OPEN TYPE19FILE TO TRANSFER.FILE ELSE
+            CRT 'Cannot open file ':TYPE19FILE:BELL
+            STOP
+         END
+* I THINK the next line will work in Unidata
+         IF FILEINFO(TRANSFER.FILE,3) NE '4' THEN
+            CRT TYPE19FILE:' is not type 1 or 19 file (Directory)':BELL
+            STOP
+         END
+         DELETE TRANSFER.FILE, TYPE19ITEM:'.':OUTPUT
+         IF OUTPUT = 'XSL' THEN DELETE TRANSFER.FILE, TYPE19ITEM:'.XML'
+      END ELSE SHOW = @FALSE; QUIET = @TRUE
+*
+* Open the source file and its dictionary
+      OPEN FNAME TO IFILE ELSE
+         CRT 'Cannot open file ':FNAME:BELL
+         STOP
+      END
+      OPEN 'DICT',FNAME TO DFILE ELSE
+         CRT 'Cannot open the dictionary of file ':FNAME:BELL
+         STOP
+      END
+*
+* Make sure the name of the file is good XML
+      XMLNAME = FNAME
+      CONVERT ' ':CHAR(9) TO '' IN XMLNAME
+      FRAG = XMLNAME; GOSUB CHANGE.CHARS; XMLNAME = FRAG
+*
+* Build up the dictionary data
+      FIELD.LIST = CONVERT(' ',@AM,DICTS)
+      XXCNT = DCOUNT(FIELD.LIST,@AM)
+*
+* Pass through the dictionary list, expanding any phrases
+* and setting out XML attributes, multivalues, and associated (or grouped)
+* U2 attributes.
+      PHRASES = ''
+      ATTS = ''
+      TAGS = ''
+      GRPS = ''
+      GGCNT = 0
+      GROUPS = ''
+      GRP.TITLE = ''
+      FOR XX = 1 TO XXCNT
+         ID = FIELD.LIST<XX>
+         READ DREC FROM DFILE,ID THEN
+            IF OCONV(DREC[1,2],'MCU') EQ 'PH' THEN
+               LOCATE ID IN PHRASES SETTING POSN THEN
+                  CRT 'Circular reference - ':
+                  CRT ID:' is a phrase that has been used before.'
+                  STOP
+               END
+               PHRASES<-1> = ID
+               NEWBIT = CONVERT(' ',@AM,DREC<2>)
+               YYCNT = DCOUNT(NEWBIT,@AM)
+               FIELD.LIST<XX> = NEWBIT
+               XX = XX - 1
+               XXCNT = XXCNT + YYCNT - 1
+            END ELSE
+               BEGIN CASE
+                  CASE DREC<1>[1,1] = 'A' OR DREC<6> = 'S'
+                     ATTS<-1> = XX
+* NOTE - I can't remember how Unidata handles groups
+                  CASE DREC<6> = 'M' AND DREC<7> NE ''
+                     GNAME = DREC<7>
+* Only allow two words maximum as a group title
+* The first word will be a sort of wrapper for the second, if there is one
+                     GNAME = TRIM(GNAME)
+                     TEST = INDEX(GNAME,' ',2)
+                     IF TEST THEN GNAME = GNAME[1,TEST-1]
+                     LOCATE GNAME IN GROUPS SETTING POSN THEN
+                        GRPS<POSN,-1> = XX
+                     END ELSE
+                        GGCNT = GGCNT + 1
+                        GROUPS<GGCNT> = GNAME
+                        FRAG = GNAME; GOSUB CHANGE.CHARS
+                        GRP.TITLE<GGCNT> = FRAG
+                        GRPS<GGCNT> = XX
+                     END
+* Multivalues are set out as elements, and require tags
+                  CASE DREC<6> = 'M'
+                     TAGS<-1> = XX
+                  CASE 1
+                     CRT ID:' is an invalid dictionary field'
+                     STOP
+               END CASE
+            END
+         END
+      NEXT XX
+*
+* Dimension and initialise the dictionary stuff
+      DIM DICT.RECS(XXCNT); MAT DICT.RECS = ''
+      DIM DICT.CONV(XXCNT); MAT DICT.CONV = ''
+      DIM DICT.TYPE(XXCNT); MAT DICT.TYPE = ''
+      DIM DICT.TITL(XXCNT); MAT DICT.TITL = ''
+*
+* Process the dictionary data
+      FOR XX = 1 TO XXCNT
+         ID = FIELD.LIST<XX>
+         READ DREC FROM DFILE, ID THEN
+            DTYPE = DREC<1>[1,1]
+            IF DTYPE EQ 'V' THEN DTYPE = 'I'
+* Convert A-type to D-type - our software can have conversion on 8 or 7
+            IF DTYPE = 'A' THEN
+               TEMP = 'D':@AM:DREC<2>:@AM:DREC<8>:@AM:DREC<3>
+               TEMP<5> = DREC<10>:DREC<9>
+               TEMP<6> = 'S'
+               IF DREC<7> NE '' THEN TEMP<3> = DREC<7>
+               DREC = TEMP
+               DTYPE = 'D'
+            END
+* Check the dictionary is compiled
+            IF DTYPE EQ 'I' AND DREC<ITATT> = '' THEN
+               EXECUTE 'COMPILE.DICT ':FNAME:' ':ID CAPTURING JUNK
+               READ DREC FROM DFILE, ID ELSE DREC = ''
+               IF DREC<ITATT> EQ '' THEN
+                  CRT 'Cannot compile dictionary ':ID
+                  STOP
+               END
+            END
+            IF DTYPE EQ 'D' OR DTYPE EQ 'I' THEN
+               BAD = @FALSE
+               DICT.RECS(XX) = DREC
+               DICT.CONV(XX) = DREC<3>
+               TITL = ID
+               FRAG = TITL; GOSUB CHANGE.CHARS; TITL = FRAG
+               DICT.TITL(XX) = TITL
+               DICT.TYPE(XX) = DTYPE
+            END
+         END
+      NEXT XX
+      IF BAD THEN
+         CRT BELL:'No Dictionary items chosen':BELL
+         STOP
+      END
+*
+* See what the maximum number in a group is and dimension group workspace
+      GMAX = 1
+      FOR GG = 1 TO GGCNT
+         GNUM = DCOUNT(GRPS<GG>,@VM)
+         IF GNUM GT GMAX THEN GMAX = GNUM
+      NEXT GG
+      DIM GDAT(GMAX)
+*
+* Now generate the output file
+      BEGIN CASE
+         CASE OUTPUT = 'DTD'; GOSUB OUTPUT.DTD
+         CASE OUTPUT = 'XSD'; GOSUB OUTPUT.SCHEMA
+         CASE OUTPUT = 'XSL'
+            GOSUB OUTPUT.XSL
+            IF TYPE19FILE NE 'CRT' THEN
+               CLOSESEQ DEST ON ERROR CRT 'CLOSESEQ ERROR':BELL
+               FIRST = @TRUE
+               GOSUB OUTPUT.XML
+            END
+         CASE 1
+            GOSUB OUTPUT.XML
+      END CASE
+      IF TYPE19FILE NE 'CRT' THEN
+*        CLOSESEQ DEST ON ERROR CRT 'CLOSESEQ ERROR':BELL
+CLOSESEQ DEST
+      END
+      STOP
+*
+*
+*********************************************************************
+* SUBROUTINES
+*********************************************************************
+PACK.ITEM:
+**********
+      REC = @RECORD
+      LINE = ''
+      XMLID = @ID
+      FRAG = XMLID; GOSUB CHANGE.CHARS; XMLID = FRAG
+      LINE = '<item id="':XMLID:'"'
+      YYCNT = DCOUNT(ATTS,@AM)
+      FOR YY = 1 TO YYCNT
+         XX = ATTS<YY>
+         IF DICT.TYPE(XX) EQ 'D' THEN
+            IF DICT.RECS(XX)<2> EQ '0' THEN
+               BIT = @ID
+* Just hope it is single valued
+            END ELSE BIT = REC<DICT.RECS(XX)<2>>
+         END ELSE
+            BIT = ITYPE(DICT.RECS(XX))
+         END
+         IF DICT.CONV(XX) NE '' THEN BIT = OCONV(BIT,DICT.CONV(XX))
+         IF KILL AND BIT EQ '' ELSE
+            FRAG = BIT; GOSUB CHANGE.CHARS; BIT = FRAG
+            LINE := ' ':DICT.TITL(XX):'="':BIT:'"'
+         END
+      NEXT YY
+      LINE := '>'
+      GOSUB WRITE.LINE; IF BAD THEN RETURN
+*
+      YYCNT = DCOUNT(TAGS,@AM)
+      FOR YY = 1 TO YYCNT
+         XX = TAGS<YY>
+         IF DICT.TYPE(XX) EQ 'D' THEN
+            IF DICT.RECS(XX)<2> EQ '0' THEN
+               BIT = @ID
+            END ELSE BIT = REC<DICT.RECS(XX)<2>>
+         END ELSE
+            BIT = ITYPE(DICT.RECS(XX))
+         END
+         BIT = RAISE(BIT)
+         ZZCNT = DCOUNT(BIT,@AM)
+         FOR ZZ = 1 TO ZZCNT
+* Note how subvalues are ignored - my decision, you may disagree
+            ZIT = BIT<ZZ,1>
+            IF DICT.CONV(XX) NE '' THEN ZIT = OCONV(ZIT,DICT.CONV(XX))
+            FRAG = ZIT; GOSUB CHANGE.CHARS; ZIT = FRAG
+            ZIT = '<':DICT.TITL(XX):'>':ZIT:'</':DICT.TITL(XX):'>'
+            LINE = T1:ZIT
+            GOSUB WRITE.LINE; IF BAD THEN RETURN
+         NEXT ZZ
+      NEXT YY
+*
+* Process the grouped data
+      FOR GG = 1 TO GGCNT
+         MAT GDAT = ''
+         IICNT = 0
+         HHCNT = DCOUNT(GRPS<GG>,@VM)
+         FOR HH = 1 TO HHCNT
+            XX = GRPS<GG,HH>
+            IF DICT.TYPE(XX) EQ 'D' THEN
+               IF DICT.RECS(XX)<2> EQ '0' THEN
+                  BIT = @ID
+               END ELSE BIT = REC<DICT.RECS(XX)<2>>
+            END ELSE
+               BIT = ITYPE(DICT.RECS(XX))
+            END
+            GDAT(HH) = RAISE(BIT)
+            INUM = DCOUNT(GDAT(HH),@AM)
+            IF INUM GT IICNT THEN IICNT = INUM
+         NEXT HH
+         WRAPPER = ''
+         TITLE = GRP.TITLE<GG>
+         WIT = ''
+         IF INDEX(TITLE,' ',1) THEN
+            WRAPPER = FIELD(TITLE,' ',1)
+            TITLE = FIELD(TITLE,' ',2)
+            WIT = T1
+         END
+* Cater for the special case where there is only one in the group
+* when we have an enclosing wrapper rather than a repeating title
+         IF HHCNT EQ 1 AND WRAPPER EQ '' THEN
+            WRAPPER = TITLE
+            TITLE = ''
+         END
+         SAVETITLE = TITLE
+         SAVEWRAPPER = WRAPPER
+         FOR II = 1 TO IICNT
+            TITLE = SAVETITLE
+            FOR HH = 1 TO HHCNT
+               XX = GRPS<GG,HH>
+* Again, subvalues are ignored
+               ZIT = GDAT(HH)<II,1>
+               IF DICT.CONV(XX) NE '' THEN ZIT = OCONV(ZIT,DICT.CONV(XX))
+               IF ZIT NE '' THEN
+                  IF WRAPPER NE '' THEN
+                     LINE = T1:'<':WRAPPER:'>'
+                     GOSUB WRITE.LINE; IF BAD THEN RETURN
+                     WRAPPER = ''
+                  END
+                  IF TITLE NE '' THEN
+                     LINE = WIT:T1:'<':TITLE:'>'; TITLE = ''
+                     GOSUB WRITE.LINE; IF BAD THEN RETURN
+                  END
+                  FRAG = ZIT; GOSUB CHANGE.CHARS; ZIT = FRAG
+                  ZIT = '<':DICT.TITL(XX):'>':ZIT:'</':DICT.TITL(XX):'>'
+                  LINE = WIT:T2:ZIT
+                  GOSUB WRITE.LINE; IF BAD THEN RETURN
+               END
+            NEXT HH
+            IF TITLE EQ '' AND SAVETITLE NE '' THEN
+               LINE = WIT:T1:'</':SAVETITLE:'>'
+               GOSUB WRITE.LINE; IF BAD THEN RETURN
+            END
+         NEXT II
+         IF WRAPPER EQ '' AND SAVEWRAPPER NE '' THEN
+            LINE = T1:'</':SAVEWRAPPER:'>'
+            GOSUB WRITE.LINE; IF BAD THEN RETURN
+         END
+      NEXT GG
+      LINE = '</item>'
+      GOSUB WRITE.LINE
+      RETURN
+*
+OUTPUT.XML:
+***********
+      IF NOT(QUIET) THEN CRT @(-1):COMD; CRT; CRT
+      IF OUTPUT = 'XSL' THEN
+         LINE = '<?':VERSION:'?>'
+         OUTPUT = 'XML'
+         GOSUB WRITE.LINE; IF BAD THEN STOP
+         LINE = '<?xml-stylesheet type="text/xsl" href="'
+         LINE := TYPE19ITEM:'.XSL"?>'
+      END ELSE
+         LINE = '<?':VERSION:' standalone="yes"?>'
+      END
+      GOSUB WRITE.LINE; IF BAD THEN STOP
+      LINE = T1:'<!-- XML from ':@PATH:' at ':TIMEDATE()
+      LINE := ' by ':@LOGNAME:' - Original line as below -->'
+      GOSUB WRITE.LINE; IF BAD THEN STOP
+      LINE = T1:'<!-- ':@SENTENCE:' -->'
+      GOSUB WRITE.LINE; IF BAD THEN STOP
+      LINE = '<file id="':XMLNAME:'">'
+      GOSUB WRITE.LINE; IF BAD THEN STOP
+      IF NOT(TOTCNT) THEN SELECT IFILE
+      EOF = @FALSE
+      LOOP
+         READNEXT @ID ELSE EOF = @TRUE
+      UNTIL EOF
+*LOOP WHILE READNEXT @ID DO
+         CNTR += 1
+         IF SHOW THEN
+            NEW.PCT = INT((CNTR*100)/TOTCNT)
+            IF NEW.PCT NE OLD.PCT THEN
+               percent = NEW.PCT
+               caption = 'PREPARING FILE "':TYPE19ITEM:'"'
+               GOSUB GRAPH
+            END
+            OLD.PCT = NEW.PCT
+         END ELSE
+            IF NOT(QUIET) THEN
+               IF NOT(REM(CNTR,100)) THEN CRT @(0):CNTR:
+            END
+         END
+         READ @RECORD FROM IFILE, @ID THEN GOSUB PACK.ITEM
+         IF BAD THEN STOP
+      REPEAT
+      LINE = '</file>'; GOSUB WRITE.LINE; IF BAD THEN STOP
+      IF NOT(SHOW OR QUIET) THEN CRT @(-1):CNTR:
+      RETURN
+*
+OUTPUT.DTD:
+***********
+      LINES = ''
+      LINES<-1> = '<?':VERSION:' standalone="yes"?>'
+      LINES<-1> = '<!--'
+      LINES<-1> = T1:'This is the DTD for the command'
+      LINES<-1> = T1:@SENTENCE
+      LINES<-1> = '-->'
+      LINES<-1> = '<!ELEMENT file (item)>'
+      LINES<-1> = '<!ATTLIST file id CDATA #REQUIRED>'
+      LINES<-1> = '<!ELEMENT item'
+      BIT = ' ('
+* Show tags
+      YYCNT = DCOUNT(TAGS,@AM)
+      FOR YY = 1 TO YYCNT
+         XX = TAGS<YY>
+         LINES := BIT:DICT.TITL(XX):'*'
+         BIT = ', '
+      NEXT YY
+* Show Groups
+      YYCNT = DCOUNT(GROUPS,@AM)
+      FOR YY = 1 TO YYCNT
+         LINES := BIT:FIELD(GROUPS<YY>,' ',1):'*'
+         BIT = ', '
+      NEXT YY
+      IF BIT = ', ' THEN LINES := ')'
+      LINES := '>'
+* Show id
+      LINES<-1> = '<!ATTLIST item id':T1:'CDATA #REQUIRED'
+      YYCNT = DCOUNT(ATTS,@AM)
+      IF YYCNT THEN
+* Loop doing each ATT
+         FOR YY = 1 TO YYCNT
+            XX = ATTS<YY>
+            LINES<-1> = SPACE(15):DICT.TITL(XX):T1:'CDATA #'
+            IF KILL THEN LINES := 'IMPLIED' ELSE LINES := 'REQUIRED'
+            IF YY EQ YYCNT THEN LINES := '>'
+         NEXT YY
+      END ELSE
+         LINES := '>'
+      END
+* Loop doing each TAG
+      YYCNT = DCOUNT(TAGS,@AM)
+      FOR YY = 1 TO YYCNT
+         XX = TAGS<YY>
+         LINES<-1> = '<!ELEMENT ':DICT.TITL(XX):' (#PCDATA)>'
+      NEXT YY
+* Loop doing each group item
+      GGCNT = DCOUNT(GRPS,@AM)
+      FOR GG = 1 TO GGCNT
+         GNAME = GROUPS<GG>
+         IF INDEX(GNAME,' ',1) THEN
+            LINES<-1> = '<!ELEMENT ':FIELD(GNAME,' ',1):' ('
+            LINES := FIELD(GNAME,' ',2):'*)>'
+            GNAME = FIELD(GNAME,' ',2)
+         END
+         HHCNT = DCOUNT(GRPS<GG>,@VM)
+         LINES<-1> = '<!ELEMENT ':GNAME:' '
+         BIT = '('
+         FOR HH = 1 TO HHCNT
+            XX = GRPS<GG,HH>
+            LINES := BIT:DICT.TITL(XX):'*'
+            BIT = ', '
+         NEXT HH
+         LINES := ')>'
+         FOR HH = 1 TO HHCNT
+            XX = GRPS<GG,HH>
+            LINES<-1> = '<!ELEMENT ':DICT.TITL(XX):' (#PCDATA)>'
+         NEXT HH
+      NEXT GG
+      GOSUB WRITE.LINES
+      RETURN
+*
+OUTPUT.SCHEMA:
+**************
+      LINES = ''
+      LINES<-1> = '<?':VERSION:' standalone="yes"?>'
+      LINES<-1> = @AM
+* Documentation
+      LINES<-1> = '<xsd:schema '
+      LINES := 'xmlns:xsd="http://www.w3.org/2000/10/XMLSchema">'
+      LINES<-1> = '<xsd:annotation>'
+      LINES<-1> = T1:'<xsd:documentation>'
+      LINES<-1> = T2:'This is the SCHEMA for the command'
+      LINES<-1> = T2:@SENTENCE
+      LINES<-1> = T1:'</xsd:documentation>'
+      LINES<-1> = '</xsd:annotation>'
+      LINES<-1> = @AM
+* file
+      LINES<-1> = '<xsd:element name="file" type="FileType"/>'
+      LINES<-1> = '<xsd:complexType name="FileType"'
+      LINES<-1> = T1:'<xsd:sequence>'
+      LINES<-1> = T2:'<xsd:element name="item" type="ItemType"/>'
+      LINES<-1> = T1:'</xsd:sequence>'
+      LINES<-1> = T1:'<xsd:attribute name="id" use="required"'
+      LINES := ' type="xsd:string"/>'
+      LINES<-1> = '</xsd:complexType>'
+      LINES<-1> = @AM
+* item
+      LINES<-1> = '<xsd:complexType name="ItemType"'
+* Show tags and groups
+      IF TAGS NE '' OR GROUPS NE '' THEN
+         LINES<-1> = T1:'<xsd:sequence>'
+      END
+* Show tags
+      YYCNT = DCOUNT(TAGS,@AM)
+      FOR YY = 1 TO YYCNT
+         XX = TAGS<YY>
+         LINES<-1> = T2:'<xsd:element name="'
+         LINES := DICT.TITL(XX):'" type="xsd:string"/>'
+      NEXT YY
+* Show groups referring to them as complex types
+      YYCNT = DCOUNT(GROUPS,@AM)
+      FOR YY = 1 TO YYCNT
+         GNAME = FIELD(GROUPS<YY>,' ',1)
+         LINES<-1> = T2:'<xsd:element name="':GNAME:'" '
+         LINES := 'type="':GNAME:'Type"/>'
+      NEXT YY
+      IF TAGS NE '' OR GROUPS NE '' THEN
+         LINES<-1> = T1:'</xsd:sequence>'
+      END
+* id attribute
+      LINES<-1> = T1:'<xsd:attribute name="id" use="required"'
+      LINES := ' type="xsd:string"/>'
+* Show attributes
+      YYCNT = DCOUNT(ATTS,@AM)
+      FOR YY = 1 TO YYCNT
+         XX = ATTS<YY>
+         LINES<-1> = T1:'<xsd:attribute name="':DICT.TITL(XX):'"'
+         IF NOT(KILL) THEN LINES := ' use="required"'
+         LINES := ' type="xsd:string"/>'
+      NEXT YY
+      LINES<-1> = '</xsd:complexType>'
+      LINES<-1> = @AM
+* Show any second level groups as complex types also
+      YYCNT = DCOUNT(GROUPS,@AM)
+      FOR YY = 1 TO YYCNT
+         GNAME = FIELD(GROUPS<YY>,' ',2)
+         IF GNAME NE '' THEN
+            LINES<-1> = '<xsd:complexType name="'
+            LINES := FIELD(GROUPS<YY>,' ',1):'Type">'
+            LINES<-1> = T1:'<xsd:sequence>'
+            LINES<-1> = T2:'<xsd:element name="':GNAME:'" '
+            LINES := 'type="':GNAME:'Type"/>'
+            LINES<-1> = T1:'</xsd:sequence>'
+            LINES<-1> = '</xsd:complexType>'
+            LINES<-1> = @AM
+         END
+      NEXT YY
+* Loop doing each group item
+      GGCNT = DCOUNT(GRPS,@AM)
+      FOR GG = 1 TO GGCNT
+         GNAME = GROUPS<GG>
+         IF INDEX(GNAME,' ',1) THEN GNAME = FIELD(GNAME,' ',2)
+         LINES<-1> = '<xsd:complexType name="':GNAME:'Type">'
+         HHCNT = DCOUNT(GRPS<GG>,@VM)
+         FOR HH = 1 TO HHCNT
+            XX = GRPS<GG,HH>
+            LINES<-1> = T1:'<xsd:element name="':DICT.TITL(XX)
+            LINES := '" type="xsd:string"/>'
+         NEXT HH
+         LINES<-1> = '</xsd:complexType>'
+         LINES<-1> = @AM
+      NEXT GG
+      LINES<-1> = '</xsd:schema>'
+      GOSUB WRITE.LINES
+      RETURN
+*
+OUTPUT.XSL:
+***********
+* Generic header
+      LINES = ''
+      LINES<-1> = '<?':VERSION:' standalone="yes"?>'
+      LINES<-1> = '<xsl:stylesheet '
+      LINES := 'xmlns:xsl="http://www.w3.org/TR/WD-xsl">'
+      LINES<-1> = @AM
+      LINES<-1> = '<xsl:template match="/">'
+      LINES<-1> = '<html>'
+      LINES<-1> = T1:'<head>'
+      LINES<-1> = T2:'<style>body,h1,h2,h3 '
+      LINES := '{ font-family: Tahoma,Arial,Helvetica; } '
+      LINES := 'thead { text-align: left; } '
+      LINES := 'tr { margin-top: 2px; } '
+      LINES := 'thead { background-color: Black; color: White; }</style>'
+      LINES<-1> = T2:'<title>File listing</title>'
+      LINES<-1> = T1:'</head>'
+      LINES<-1> = T1:'<body>'
+      LINES<-1> = T2:'<xsl:apply-templates select="*" />'
+      LINES<-1> = T1:'</body>'
+      LINES<-1> = '</html>'
+      LINES<-1> = '</xsl:template>'
+      LINES<-1> = @AM; GOSUB WRITE.LINES
+      LINES<-1> = '<xsl:template match="file">'
+      LINES<-1> = T1:'<h1>File name:'
+      LINES := '<xsl:value-of select="@id" />'
+      LINES := '</h1>'
+      LINES<-1> = T1:'<xsl:apply-templates select="*" />'
+      LINES<-1> = '</xsl:template>'
+      LINES<-1> = @AM; GOSUB WRITE.LINES
+
+* item with id and attributes
+      LINES<-1> = '<xsl:template match="item">'
+      LINES<-1> = T1:'<h2>Item ID:'
+      LINES := '<xsl:value-of select="@id" />'
+      LINES := '</h2>'
+      LINES<-1> = T1:'<div style="margin-left: 20px;">'
+* Loop doing each ATT
+      YYCNT = DCOUNT(ATTS,@AM)
+      FOR YY = 1 TO YYCNT
+         XX = ATTS<YY>
+         LINE = T1:'<h3>':DICT.TITL(XX):' = "'
+         LINE:= '<xsl:value-of select="@':DICT.TITL(XX):'" />'
+         LINE:= '"</h3>'
+         LINES<-1> = LINE
+      NEXT YY
+* Loop doing each TAG
+      YYCNT = DCOUNT(TAGS,@AM)
+      FOR YY = 1 TO YYCNT
+         XX = TAGS<YY>
+         LINES<-1> = T1:'<table>'
+         LINES<-1> = T2:'<thead>'
+         LINES<-1> = T3:'<th>':DICT.TITL(XX):'</th>'
+         LINES<-1> = T2:'</thead>'
+         LINES<-1> = T2:'<tbody>'
+         LINES<-1> = T3:'<xsl:apply-templates select="':DICT.TITL(XX):'"/>'
+         LINES<-1> = T2:'</tbody>'
+         LINES<-1> = T1:'</table>'
+      NEXT YY
+*
+* Loop doing each group (multi-level groups just have a reference)
+      GGCNT = DCOUNT(GROUPS,@AM)
+      FOR GG = 1 TO GGCNT
+         GNAME = GROUPS<GG>
+         GSUBNAME = FIELD(GNAME,' ',2)
+         GNAME = FIELD(GNAME,' ',1)
+         IF GSUBNAME NE '' THEN
+            LINES<-1> = T1:'<xsl:apply-templates select="':GNAME:'"/>'
+         END ELSE
+            HHCNT = DCOUNT(GRPS<GG>,@VM)
+            LINES<-1> = T1:'<h3>':GNAME:'</h3>'
+            LINES<-1> = T1:'<table>'
+            LINES<-1> = T2:'<thead>'
+            FOR HH = 1 TO HHCNT
+               XX = GRPS<GG,HH>
+               LINES<-1> = T3:'<th>':DICT.TITL(XX):'</th>'
+            NEXT HH
+            LINES<-1> = T2:'</thead>'
+            LINES<-1> = T2:'<tbody>'
+            LINES<-1> = T3:'<xsl:apply-templates select="':GNAME:'"/>'
+            LINES<-1> = T2:'</tbody>'
+            LINES<-1> = T1:'</table>'
+         END
+      NEXT GG
+      LINES<-1> = T1:'</div>'
+      LINES<-1> = '</xsl:template>'
+      LINES<-1> = @AM; GOSUB WRITE.LINES
+
+* Loop doing each TAG
+      YYCNT = DCOUNT(TAGS,@AM)
+      FOR YY = 1 TO YYCNT
+         XX = TAGS<YY>
+         LINES<-1> = '<xsl:template match="':DICT.TITL(XX):'">'
+         LINES<-1> = T1:'<xsl:for-each match=".">'
+         LINES<-1> = T2:'<tr><td>'
+         LINES<-1> = T2:'<xsl:value-of select="."/>'
+         LINES<-1> = T2:'</td></tr>'
+         LINES<-1> = T1:'</xsl:for-each>'
+         LINES<-1> = '</xsl:template>'
+         LINES<-1> = @AM; GOSUB WRITE.LINES
+      NEXT YY
+
+* Do each groups template
+      GGCNT = DCOUNT(GROUPS,@AM)
+      FOR GG = 1 TO GGCNT
+         HHCNT = DCOUNT(GRPS<GG>,@VM)
+         GNAME = GROUPS<GG>
+         GSUBNAME = FIELD(GNAME,' ',2)
+         GNAME = FIELD(GNAME,' ',1)
+         LINES<-1> = '<xsl:template match="':GNAME:'">'
+         IF GSUBNAME = '' THEN
+            GOSUB DO.TABLE
+            LINES<-1> = '</xsl:template>'
+            LINES<-1> = @AM; GOSUB WRITE.LINES
+         END ELSE
+            LINES<-1> = T1:'<h3>':GNAME:'</h3>'
+            LINES<-1> = T1:'<table>'
+            LINES<-1> = T2:'<thead>'
+            FOR HH = 1 TO HHCNT
+               XX = GRPS<GG,HH>
+               LINES<-1> = T3:'<th>':DICT.TITL(XX):'</th>'
+            NEXT HH
+            LINES<-1> = T2:'</thead>'
+            LINES<-1> = T2:'<tbody>'
+            IF GSUBNAME NE '' THEN
+               LINES<-1> = T3:'<xsl:apply-templates select="*" />'
+            END ELSE
+               GOSUB DO.TABLE
+            END
+            LINES<-1> = T2:'</tbody>'
+            LINES<-1> = T1:'</table>'
+            LINES<-1> = '</xsl:template>'
+            LINES<-1> = @AM; GOSUB WRITE.LINES
+            LINES<-1> = '<xsl:template match="':GSUBNAME:'">'
+            LINES<-1> = T1:'<tr>'
+            FOR HH = 1 TO HHCNT
+               XX = GRPS<GG,HH>
+               LINES<-1> = T2:'<td><xsl:value-of select="'
+               LINES := DICT.TITL(XX):'"/></td>'
+            NEXT HH
+            LINES<-1> = T1:'</tr>'
+            LINES<-1> = '</xsl:template>'
+            LINES<-1> = @AM; GOSUB WRITE.LINES
+         END
+
+      NEXT GG
+
+      LINES<-1> = '</xsl:stylesheet>'
+      GOSUB WRITE.LINES
+      RETURN
+*
+DO.TABLE:
+*********
+      IF HHCNT = 1 THEN
+         LINES<-1> = T1:'<xsl:for-each match=".">'
+         LINES<-1> = T2:'<tr><td>'
+         LINES<-1> = T2:'<xsl:value-of select="."/>'
+         LINES<-1> = T2:'</td></tr>'
+         LINES<-1> = T1:'</xsl:for-each>'
+      END ELSE
+         LINES<-1> = T1:'<tr>'
+         FOR HH = 1 TO HHCNT
+            XX = GRPS<GG,HH>
+            LINES<-1> = T2:'<td><xsl:value-of select="'
+            LINES := DICT.TITL(XX):'"/></td>'
+         NEXT HH
+         LINES<-1> = T1:'</tr>'
+      END
+      RETURN
+*
+WRITE.LINES:
+      LLCNT = DCOUNT(LINES,@AM)
+      FOR LL = 1 TO LLCNT
+         LINE = LINES<LL>
+         GOSUB WRITE.LINE
+         IF BAD THEN STOP
+      NEXT LL
+      LINES = ''
+      RETURN
+*
+WRITE.LINE:
+***********
+      IF FIRST THEN
+         IF TYPE19FILE NE 'CRT' THEN
+            WRITE LINE ON TRANSFER.FILE,TYPE19ITEM:'.':OUTPUT
+         END ELSE
+            CRT LINE
+         END
+         FIRST = @FALSE
+         IF TYPE19FILE NE 'CRT' THEN
+            OPENSEQ TYPE19FILE,TYPE19ITEM:'.':OUTPUT TO DEST ELSE
+               CRT 'Cannot OPENSEQ ':TYPE19ITEM:'.':OUTPUT
+               BAD = @TRUE
+               RETURN
+            END
+         END ELSE RETURN
+* Next line for Unidata?
+* RETURN
+      END
+      IF TYPE19FILE NE 'CRT' THEN
+         WRITESEQ LINE ON DEST ELSE
+* Replace above line with next on Unidata?
+*        WRITESEQ LINE APPEND ON DEST ELSE
+            CRT 'Cannot WRITESEQ'
+            BAD = @TRUE
+         END
+      END ELSE CRT LINE
+      RETURN
+*
+GRAPH:
+******
+*SUBROUTINE GRAPH(percent,caption)
+* S/R - SKR - Graph of % completion of a task
+*
+      CRT @(19,11):' |---|---|---|---|---|---|---|---|---|---| ':@(-4)
+      CRT @(19,12):' 0 20 40 60 80 100':@(-4)
+      CRT @(19,13):' ':caption:@(-4)
+      bar.length = INT(percent*40/100)
+      bar = STR(' ',bar.length)
+      CRT @(20,10):@(-13):bar:@(-14):percent:' %':@(-4)
+      RETURN
+*
+CHANGE.CHARS:
+*************
+      FRAG = CHANGE(FRAG,'&','&')
+      FRAG = CHANGE(FRAG,'<','<')
+      FRAG = CHANGE(FRAG,'>','>')
+      FRAG = CHANGE(FRAG,'"','"')
+      FRAG = CHANGE(FRAG,"'",''')
+      RETURN

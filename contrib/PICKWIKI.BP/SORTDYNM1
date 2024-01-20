@@ -1,0 +1,56 @@
+* sortdynm1 - Sort a dynamic array on one fiald.
+************************************************************************
+
+      SUBROUTINE SORTDYNM1( DYNARR, SORTFIELD, FIELDLIST, SORTCODE)
+
+************************************************************************
+
+* NOTE
+* ****
+
+* awy Apr 95 : Now used by ATL. Takes a record such as read from a file
+*              in DYNARR. It sorts the field specified by SORTFIELD
+*              according to SORTCODE. And as it rearranges SORTFIELD
+*              it also rearranges any fields specified in FIELDLIST
+
+* Modifications since date stamp
+* ******************************
+
+* None at present.
+
+      CODE = 'AL'
+      IF SORTCODE[1,1] EQ 'A' OR SORTCODE[1,1] EQ 'D' THEN
+         IF SORTCODE[2,1] EQ 'L' OR SORTCODE[2,1] EQ 'R' THEN CODE = SORTCODE
+      END
+
+      SORTARR = DYNARR<SORTFIELD>
+      IF DCOUNT(SORTARR,@VM) LE 1 THEN RETURN
+      REMOVE SORTED FROM SORTARR SETTING REM.SORT
+      LASTKEY = SORTED
+      COUNTER = 1
+
+      LOOP
+         REMOVE NEXTKEY FROM SORTARR SETTING REM.SORT
+         COUNTER += 1
+         COMP = COMPARE(LASTKEY, NEXTKEY, CODE[1])
+         IF (CODE[1,1] EQ 'A' AND COMP EQ 1) OR (CODE[1,1] EQ 'D' AND COMP EQ -1) THEN
+            LOCATE NEXTKEY IN SORTED<1> BY CODE SETTING POSN THEN
+               LOOP WHILE SORTED<POSN> EQ NEXTKEY AND NEXTKEY
+                  POSN += 1
+               REPEAT
+            END
+            INS NEXTKEY BEFORE SORTED<POSN>
+            IF FIELDLIST THEN FIELDS = SORTFIELD :@FM: FIELDLIST ELSE FIELDS = SORTFIELD
+            LOOP
+               REMOVE FIELD FROM FIELDS SETTING MER
+               MOVE = DYNARR<FIELD, COUNTER>
+               DEL DYNARR<FIELD, COUNTER>
+               INS MOVE BEFORE DYNARR<FIELD, POSN>
+            WHILE MER REPEAT
+         END ELSE
+            SORTED<-1> = NEXTKEY
+            LASTKEY = NEXTKEY
+         END
+      WHILE REM.SORT REPEAT
+      RETURN
+   END

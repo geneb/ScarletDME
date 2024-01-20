@@ -1,0 +1,12 @@
+#!/usr/local/bin/perl -w
+
+if ( -f $ARGV[0] ) {
+   ($dev, $ino, $mode, $nlink, $uid, $gid, $rdev, $size,
+    $atime, $mtime, $ctime, $blksize, $blocks) = stat $ARGV[0];
+
+    print "$dev\n$ino\n$mode\n$nlink\n$uid\n$gid\n$rdev\n$size\n",
+      scalar localtime($atime), "\n",
+      scalar localtime($mtime), "\n",
+      scalar localtime($ctime), "\n",
+      "\n$blksize\n$blocks\n";
+}

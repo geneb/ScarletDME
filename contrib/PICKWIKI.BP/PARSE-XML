@@ -1,0 +1,101 @@
+HEADING " "
+RESULTS=''
+OPEN '','BP' TO BPF ELSE
+  CRT "CAN'T OPEN BP FILE"
+  STOP
+END
+*
+*
+* Replace literal with name of XML source file to be parsed
+*
+XML.SOURCE.NAME='ms_sample_xml.txt'
+*
+READ X.XML.REC FROM BPF,XML.SOURCE.NAME ELSE
+  CRT "CAN'T READ BP ":XML.SOURCE.NAME
+  STOP
+END
+*
+X.RXML.REC=X.XML.REC
+CONVERT CHAR(10):CHAR(13) TO "  " IN X.RXML.REC
+X.RXML.REC=TRIM(X.RXML.REC)
+CONVERT "<" TO CHAR(254) IN X.RXML.REC
+*
+WRITE X.RXML.REC ON BPF,'reformatted-xml.txt'
+*
+X.STACK=""
+*
+READ X.RXML.REC FROM BPF,'reformatted-xml.txt' ELSE
+  CRT "CAN'T READ BP reformatted-xml.txt"
+  STOP
+END
+*
+X.MAX=DCOUNT(X.RXML.REC,@AM)
+FOR X.I = 1 TO X.MAX
+  X.LINE=TRIM(X.RXML.REC<X.I>)
+  IF X.LINE[1,1]="/" THEN
+    X.TAG=X.LINE[2,99999]
+    GOSUB DO.END.TAG
+  END ELSE
+    IF INDEX(X.LINE,'>',1) THEN
+      X.TAG=TRIM(FIELD(X.LINE,'>',1))
+      X.TAG=TRIM(FIELD(X.TAG,' ',1))
+      X.STACK=INSERT(X.STACK,1,1;X.TAG)
+      CRT X.LINE
+      RESULTS<-1>=X.LINE
+      CRT 'START TAG: ':X.TAG
+      RESULTS<-1>='START TAG: ':X.TAG
+      IF INDEX(X.LINE,' ',1) THEN
+        X.ATTRS=FIELD(X.LINE,'>',1)
+        X.ATTRS=TRIM(FIELD(X.ATTRS,' ',2,9999))
+        IF X.ATTRS NE "" THEN
+          X.ATTRS=FIELD(X.ATTRS,'>',1)
+          CRT 'ATTRIBUTE(S): ':X.ATTRS
+          RESULTS<-1>='ATTRIBUTE(S): ':X.ATTRS
+        END
+      END
+      X.VALUE=TRIM(FIELD(X.LINE,'>',2,9999))
+      IF X.VALUE NE "" THEN
+        CRT "VALUE: ":X.VALUE
+        RESULTS<-1>="VALUE: ":X.VALUE
+      END
+      CRT "STACK: ":X.STACK
+      RESULTS<-1>="STACK: ":X.STACK
+      CRT "*********************************"
+      RESULTS<-1>="*********************************"
+*
+      IF X.LINE[LEN(X.LINE)-1,2] = "/>" THEN
+        X.TAG=X.LINE
+        GOSUB DO.END.TAG
+      END
+*
+    END
+  END
+NEXT X.I
+*
+SWAP CHAR(253) WITH "**" IN RESULTS
+WRITE RESULTS ON BPF,'PARSE.XML.RESULTS'
+*
+STOP
+!---
+DO.END.TAG:
+X.TAG=FIELD(X.TAG,'>',1)
+X.TAG=FIELD(X.TAG,'/',1)
+X.TAG=TRIM(FIELD(X.TAG,' ',1))
+CRT X.RXML.REC<X.I>
+RESULTS<-1>=X.RXML.REC<X.I>
+CRT 'END TAG: ':X.TAG
+RESULTS<-1>='END TAG: ':X.TAG
+LOCATE X.TAG IN X.STACK<1,1> SETTING X.POS THEN
+  CRT "Deleted ":X.TAG:" from STACK"
+  RESULTS<-1>="Deleted ":X.TAG:" from STACK"
+  X.STACK=DELETE(X.STACK,1,X.POS)
+END
+CRT "STACK: ":X.STACK
+RESULTS<-1>="STACK: ":X.STACK
+CRT "*********************************"
+RESULTS<-1>="*********************************"
+!
+RETURN
+!---
+END
+

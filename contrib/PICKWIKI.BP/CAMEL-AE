@@ -1,0 +1,52 @@
+     subroutine cam_ae(mat junk)
+*
+* convert PICK.VARIABLES to [[CamelCase]]
+*
+     equate this to junk(1)
+     qt = '"\':"'"
+     atts = dcount(this,@am)
+*
+     for here = 1 to atts
+        line = this<here>
+        mine = upcase(field(trim(line),' ',1))
+        flag = @false
+        if mine ne 'REMOVE' then
+           if mine[1,3] eq 'REM' then flag = @true
+           if mine[1,1] eq '*' then flag = @true
+           if mine[1,1] eq '!' then flag = @true
+        end
+*
+* if it's a comment, we don't do it
+        if flag then continue
+*
+        xxno = len(line)
+        mine = ''
+        flag = ''
+        obit = ''
+        caps = @true
+        for xx = 1 to xxno
+           bit = line[xx,1]
+           bat = line[xx+1,1]
+           begin case
+              case bit eq flag ; flag = ''
+              case flag ne ''
+              case index(qt,bit,1) ; flag = bit
+              case bit eq ';'
+                 test = trim(line[xx+1,999999])[1,1]
+                 if test eq '*' or test eq '!' then flag = @am
+              case alpha(bit)
+                 if caps
+                    then bit = upcase(bit)
+                    else bit = downcase(bit)
+                 caps = @false
+              case bit eq '.'
+                 if alpha(obit) and alpha(bat) then bit = ''
+              case 1 ; null
+           end case
+           if not(alpha(bit)) then caps = @true
+           mine = mine:bit
+           obit = bit
+        next xx
+        this<here> = mine
+     next here
+     return

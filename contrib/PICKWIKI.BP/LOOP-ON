@@ -1,0 +1,15 @@
+FFT.BP 'LOOP-ON' BASIC 14 lines  Level: 3
+0001 *
+0002 * Mimic the R83 verb LOOP-ON, hit any key to stop
+0003 *
+0004       EQUATE FALSE TO 0, TRUE TO 1
+0005       SENT = @SENTENCE
+0006       WHAT = OCONV(SENT,'G1 99')
+0007 *
+0008       DONE = FALSE
+0009       LOOP
+0010          EXECUTE WHAT
+0011          INPUTIF A,1 THEN STOP
+0012       UNTIL DONE DO REPEAT
+0013 *
+0014 END

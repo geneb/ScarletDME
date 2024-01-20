@@ -1,0 +1,251 @@
+Here is a very simple example using CallHTTP:
+
+URL="http://www.example.com"
+HTTP.METHOD="GET"
+X.RTN.CODE = createRequest(URL,HTTP.METHOD,X.HANDLE)
+CRT 'createRequest: ':X.RTN.CODE
+X.RTN.CODE = submitRequestX.HANDLE,'','',X.RESPONSE.HEADERS,X.RESPONSE.DATA,X.HTTP.STATUS)
+CRT 'submitRequest: ':X.RTN.CODE
+*
+CRT 'X.RESPONSE.HEADERS = ':X.RESPONSE.HEADERS
+CRT 'X.RESPONSE.DATA = ':X.RESPONSE.DATA
+CRT 'X.HTTP.STATUS = ':X.HTTP.STATUS
+
+<hr> John T. (johnt -at- amileasing -dot- com) Here's some more sample CallHTTP Code:
+
+The samples show calling a web service to get some data. The first example, however, does not work at least as of Universe 9.6. CallHTTP, when doing a POST request, will strip out any Content-Type headers added Ref: http://www.indexinfocus.com/dl/u2list/200304/49063.html
+
+PROMPT ""
+*---- ----*
+SLASH="/"
+*---- ----*
+PROXY.NAME = ""
+PROXY.PORT = 0
+VERSION = "1.0"
+HEADERS = ""
+HTTP.STATUS = ""
+*---- ----*
+URL="http://www.webservicex.net/uszip.asmx"
+*---- ----*
+X=protocolLogging("httplog.txt","ON",4)
+*---- ----*
+X=createRequest(URL,"POST",HANDLE)
+X=setHTTPDefault("HEADERS","")
+X=setHTTPDefault("VERSION","1.1")
+X=SETREQUESTHEADER(HANDLE, "Content-Type","text/xml; charset=utf-8")
+PRINT X
+X=SETREQUESTHEADER(HANDLE, "SOAPAction",'"http://www.webserviceX.NET/GetInfoByZIP"')
+*---- ----*
+XML = ""
+XML :='<?xml version="1.0" encoding="UTF-8"?>'
+XML :='<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">'
+XML :='  <soap:Body>'
+XML :='<GetInfoByZIP xmlns="http://www.webserviceX.NET">'
+XML :='<USZip>01606</USZip>'
+XML :='    </GetInfoByZIP>'
+XML :='  </soap:Body>'
+XML :='</soap:Envelope>'
+*---- ----*
+*X=SETREQUESTHEADER(HANDLE, "Content-Length",LEN(XML))
+*---- ----*
+X=submitRequest(HANDLE,2000,XML,RESP.HEAD,RESP.DATA,HTTP.STATUS)
+*---- ----*
+PRINT "X = ":X
+PRINT "XML = ":XML
+MAX=DCOUNT(RESP.HEAD,@AM)
+FOR I=1 TO MAX
+PRINT "RESP.HEAD = ":RESP.HEAD<I,1>"L#12 ":RESP.HEAD<I,2>
+NEXT I
+PRINT "RESP.DATA = ":RESP.DATA
+PRINT "HTTP.STATUS = ":HTTP.STATUS
+X=protocolLogging("httplog.txt","OFF",4)
+*---- ----*
+*ARRAY=PARSE.XML(RESP.DATA,1,2,3,4,ERR)
+*---- ----*
+END
+
+This code uses direct sockets, and is based off code posted by Craig Bennett on the U2 mailing list ((http://www.indexinfocus.com/dl/u2list/200304/49064.html)
+
+PROMPT ""
+*---- ----*
+*---- ----*
+X=protocolLogging("",1,10)
+*---- ----*
+HTML.URL= "www.webservicex.net"
+HTML.URL.PATH = "/uszip.asmx"
+HTML.METHOD = "POST"
+HTML.BODY.CONTENTTYPE = "text/xml; charset=utf-8"
+HTML.SERVER = "www.webservicex.net"
+HTML.HEADERS = ""
+HTML.HEADERS<1,1> = "SOAPAction"
+HTML.HEADERS<2,1> = '"http://www.webserviceX.NET/GetInfoByZIP"'
+HTML.HEADERS.CNT = 1
+HTML.COOKIES = ""
+HTML.COOKIES.CNT = 0
+*---- ----*
+XML = ""
+XML :='<?xml version="1.0" encoding="UTF-8"?>'
+XML :='<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmls.soap.org/soap/envelope/">'
+XML :='  <soap:Body>'
+XML :='<GetInfoByZIP xmlns="http://www.webserviceX.NET">'
+XML :='<USZip>01606</USZip>'
+XML :='    </GetInfoByZIP>'
+XML :='  </soap:Body>'
+XML :='</soap:Envelope>'
+*---- ----*
+HTML.BODY = XML
+*
+GOSUB GET.HTML.PAGE:
+*---- ----*
+PRINT "RESPONSE = #":HTML.RESPONSE:"#"
+X=protocolLogging("",2,10)
+*
+STOP
+*---- ----*
+GET.HTML.PAGE:
+*
+* IN:
+* HTML.URL
+* HTML.URL.PATH
+* HTML.METHOD = "GET" OR "POST"
+* HTML.BODY.CONTENTTYPE
+* HTML.BODY
+* HTML.SERVER
+* HTML.HEADERS
+* HTML.HEADERS.CNT
+* HTML.COOKIES
+* HTML.COOKIES.CNT
+*
+* OUT:
+* HTML.RESPONSE
+*
+CRLF = CHAR(13):CHAR(10)
+HTML.TIMEOUT = 20000
+HTML.RESPONSE = ""
+*
+HTML.SKTERR = OPENSOCKET(HTML.URL, 80, 1, 3000, HTML.SKTHANDLE)
+IF HTML.SKTERR THEN
+      PRINT "ERROR OPENING SOCKET ":HTML.SKTERR
+             RETURN
+ END
+ *
+ HTML.BODY.LEN = LEN(HTML.BODY)
+ *
+ * Write HTTP Method and Request Path
+ BEGIN CASE
+       CASE HTML.METHOD EQ "GET"
+             HTML.WRITE = "GET ":HTML.URL.PATH:" HTTP/1.1":CRLF
+             HTML.BODY = ""
+ *
+       CASE HTML.METHOD EQ "POST"
+             HTML.WRITE = "POST ":HTML.URL.PATH:" HTTP/1.1":CRLF
+             HTML.WRITE:= "Content-Type: ":HTML.BODY.CONTENTTYPE:CRLF
+             HTML.WRITE:= "Content-Length: ":HTML.BODY.LEN:CRLF
+ *
+ END CASE
+ *
+ * Write HTTP Headers
+ HTML.WRITE:= "Host: ":HTML.SERVER:CRLF
+ *HTML.WRITE:= "User-Agent: Mozilla/4.0 (compatible; MSIE 5.01; WindowsNT)":CRLF ;* Blandishments and lies eh?
+HTML.WRITE:= "User-Agent: Universe 9.6":CRLF
+*
+*
+*  NEED THE FOLLOWING LINE, OR THE CONNECTION WILL NOT CLOSE WHEN THROUGH
+*  SENDING. IT WILL JUST TIME OUT.
+*
+HTML.WRITE:= "Connection: Close":CRLF
+*HTML.WRITE:= "Accept: image/gif, image/x-xbitmap, image/jpeg, image/pjpeg,application/vnd.ms-excel, application/vnd.ms-powerpoint, application/msword,*/*":CRLF
+*HTML.WRITE:= "Accept-Language: en-au":CRLF
+*HTML.WRITE:= "Accept-Encoding: gzip, deflate":CRLF
+*HTML.WRITE:= "Cache-Control: no-cache":CRLF
+*
+* And any extra one you specify
+IF HTML.HEADERS.CNT GT 0 THEN
+      FOR HTML.HEADERS.I = 1 TO HTML.HEADERS.CNT
+            HTML.WRITE:= HTML.HEADERS<1, HTML.HEADERS.I>
+            HTML.WRITE:= ": "
+            HTML.WRITE:= HTML.HEADERS<2, HTML.HEADERS.I>
+            HTML.WRITE:= CRLF
+      NEXT HTML.HEADERS.I
+END
+*
+* Stick in some cookies if you need
+IF HTML.COOKIES.CNT GT 0 THEN
+      HTML.WRITE:= "Cookie:"
+      FOR HTML.COOKIES.I = 1 TO HTML.COOKIES.CNT
+            HTML.WRITE:= " "
+            HTML.WRITE:= HTML.COOKIES<1, HTML.COOKIES.I>
+            HTML.WRITE:= "="
+            HTML.WRITE:= HTML.COOKIES<2, HTML.COOKIES.I>
+            IF HTML.COOKIES.I LT HTML.COOKIES.CNT THEN
+                  HTML.WRITE:= ";"
+            END
+      NEXT HTML.COOKIES.I
+      HTML.WRITE:= CRLF
+END
+*
+HTML.WRITE:= CRLF
+*
+* Append the request body
+HTML.WRITE:= HTML.BODY
+HTML.WRITE:= CRLF
+*
+* Send it down the socket handle you previously opened
+HTML.SKTERR = WRITESOCKET(HTML.SKTHANDLE, HTML.WRITE, HTML.TIMEOUT,1, HTML.WRITE.ACTLEN)
+IF HTML.SKTERR THEN
+      HTML.ERROR.ADD = "WRITESOCKET ERROR ":HTML.SKTERR
+      GOSUB HTTP.CLIENT.METHOD.ERROR
+END
+*
+* Read Response
+HTML.READ = ""
+HTML.READ.ACTLEN = 0
+HTML.READ.DONE = @FALSE
+*
+* Read Status Line
+HTML.SKTERR = READSOCKET(HTML.SKTHANDLE, HTML.RESPONSE, 100,HTML.TIMEOUT, 1,
+ HTML.READ.ACTLEN)
+IF HTML.SKTERR THEN
+      HTML.ERROR.ADD = "READSOCKET ERROR ":HTML.SKTERR
+      GOSUB HTTP.CLIENT.METHOD.ERROR
+END
+*
+HTML.TEMP = TRIM(HTML.RESPONSE)
+HTML.TEMP = CONVERT(" ", @AM, HTML.TEMP)
+HTML.RESPCODE = HTML.TEMP<2>
+*
+IF HTML.RESPCODE GE 200 AND HTML.RESPCODE LT 300 THEN
+      HTML.READ.DONE = @FALSE
+END ELSE
+      HTML.READ.DONE = @TRUE
+END
+LOOP WHILE NOT(HTML.READ.DONE) DO
+      HTML.SKTERR = READSOCKET(HTML.SKTHANDLE, HTML.READ, 0,HTML.TIMEOUT, 1, HTML.READ.ACTLEN)
+      IF HTML.SKTERR AND HTML.SKTERR NE 14 THEN
+            HTML.ERROR.ADD = "READSOCKET ERROR ":HTML.SKTERR
+            GOSUB HTTP.CLIENT.METHOD.ERROR
+      END
+*
+      IF HTML.SKTERR = 14  THEN
+            HTML.READ.DONE = @TRUE
+      END ELSE
+            HTML.RESPONSE := HTML.READ
+      END
+ REPEAT
+ *
+ * Close Socket, unless you want to play with a persistent connection in
+ * which clase don't Connection: Close
+ HTML.SKTERR = CLOSESOCKET(HTML.SKTHANDLE)
+ IF HTML.SKTERR THEN
+       HTML.ERROR.ADD = "CLOSESOCKET ERROR ":HTML.SKTERR
+       GOSUB HTTP.CLIENT.METHOD.ERROR
+ END
+ HTML.SKTHANDLE = ""
+ *
+ RETURN
+ *
+ HTTP.CLIENT.METHOD.ERROR:
+      PRINT HTML.ERROR.ADD
+      STOP
+ END
+
