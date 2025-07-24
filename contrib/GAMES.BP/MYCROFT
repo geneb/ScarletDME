@@ -1,0 +1,411 @@
+*  MYCROFT
+*
+*     CREATED AS A DEMONSTRATION PROGRAM FOR
+*       INTERNATIONAL TIMESHARING CORPORATION
+*
+*     REVISED BY CRAIG SHUCKER
+*       OCTOBER, 1975
+*
+************************************************************
+     DIM PLOT(42)
+     PRINTER OFF
+     ERASE=@(-1)
+     BELL=CHAR(7)
+     BACK=CHAR(21)
+     PROMPT BELL
+1000 PRINT ERASE:@(20,10):"DO YOU WANT INSTRUCTIONS? ":
+     INPUT ANS
+     IF ANS="NO" OR ANS="N" THEN GOTO 1100
+     IF ANS<>"YES" AND ANS<>"Y" THEN GOTO 1000
+***********************************************************
+*
+*  INSTRUCTIONS
+*
+***********************************************************
+     PRINT @(13,5):
+     PRINT "THE NAME 'MYCROFT' WAS TAKEN FROM THE R. A. HEINLEIN":
+     PRINT @(13,6):
+     PRINT "NOVEL 'THE MOON IS A HARSH MISTRESS' ....":
+     PRINT @(13,9):
+     PRINT "YOU ARE LANDING A WARSHIP ON THE MOON AND HAVE":
+     PRINT @(13,10):
+     PRINT "TAKEN OVER MANUAL CONTROL 500 FT ABOVE A GOOD":
+     PRINT @(13,11):
+     PRINT "LANDING SPOT WITH A DOWNWARD VELOCITY OF 50 FT/SEC,":
+     PRINT @(13,12):
+     PRINT "AND 120 UNITS OF FUEL REMAINING.  YOU ARE BEING":
+     PRINT @(13,13):
+     PRINT "PURSUED BY AN ENEMY MISSLE EQUIPPED WITH INFRARED":
+     PRINT @(13,14):
+     PRINT "SENSORS.":
+     PRINT @(13,18):
+     GOSUB 2400
+     PRINT @(13,2):
+     PRINT "THE FOLLOWING RULES GOVERN YOUR SPACECRAFT:":
+     PRINT @(13,5):
+     PRINT "  (1) AFTER EACH SECOND, THE HEIGHT, VELOCITY, AND":
+     PRINT @(13,6):
+     PRINT "      REMAINING FUEL WILL BE PRINTED, ALONG WITH A":
+     PRINT @(13,7):
+     PRINT "      PLOT OF THE SPACECRAFT AND MISSLE HEIGHTS":
+     PRINT @(13,8):
+     PRINT "      ABOVE THE LUNAR SURFACE":
+     PRINT @(13,10):
+     PRINT "  (2) AT THE RIGHT SIDE OF THE PLOT, THE SYMBOL '?'":
+     PRINT @(13,11):
+     PRINT "      WILL BE TYPED.  AT THIS POINT, SUPPLY THE":
+     PRINT @(13,12):
+     PRINT "      NUMBER OF UNITS OF FUEL TO BE BURNED IN":
+     PRINT @(13,13):
+     PRINT "      THE NEXT SECOND.  EACH UNIT OF FUEL SLOWS":
+     PRINT @(13,14):
+     PRINT "      YOUR DESCENT BY 1 FT/SEC.":
+     PRINT @(13,16):
+     PRINT "      THE MAXIMUM THRUST OF YOUR DESCENT ENGINE":
+     PRINT @(13,17):
+     PRINT "      IS 30 UNITS OF FUEL/SEC OR 30 FT/SEC/SEC.":
+     PRINT @(13,20):
+     GOSUB 2400
+     PRINT @(13,3):
+     PRINT "  (4) WHEN YOU MAKE CONTACT WITH THE LUNAR SURFACE,"
+     PRINT @(13,4):
+     PRINT "      YOUR DESCENT ENGINE WILL AUTOMATICALLY CUT":
+     PRINT @(13,5):
+     PRINT "      OFF AND YOU WILL BE GIVEN A REPORT OF YOUR":
+     PRINT @(13,6):
+     PRINT "      LANDING SPEED AND REMAINING FUEL.":
+     PRINT @(13,8):
+     PRINT "  (5) IF YOU RUN OUT OF FUEL, THE '?' WILL NO LONGER":
+     PRINT @(13,9):
+     PRINT "      BE TYPED OUT, AND THE REPORT WILL AUTOMATICALLY":
+     PRINT @(13,10):
+     PRINT "      BE GIVEN EACH SECOND UNTIL YOU HIT THE SURFACE":
+     PRINT @(13,11):
+     PRINT "      OF THE MOON.":
+     PRINT @(13,13):
+     PRINT "  (6) THE PROXIMITY MECHANISM OF THE MISSLE HAS":
+     PRINT @(13,14):
+     PRINT "      BEEN DESIGNED TO PRECLUDE DETONATION CLOSE":
+     PRINT @(13,15):
+     PRINT "      TO THE SURFACE OF THE PLANET.  NEVERTHELESS,":
+     PRINT @(13,16):
+     PRINT "      IF THE MISSLE CATCHES YOU, YOU'RE DONE FOR!!":
+     PRINT @(13,20):
+     GOSUB 2400
+     PRINT @(18,3):
+     PRINT "LIST OF VARIABLES AND SYMBOLS USED:":
+     PRINT @(18,5):
+     PRINT " T = ELAPSED TIME (SEC);":
+     PRINT @(18,6):
+     PRINT " H = HEIGHT ABOVE THE LUNAR SURFACE (FT);":
+     PRINT @(18,7):
+     PRINT " V = DOWNWARD VELOCITY (FT/SEC);":
+     PRINT @(18,8):
+     PRINT " F = REMAINING UNITS OF FUEL;":
+     PRINT @(18,9):
+     PRINT " ? = UNITS OF FUEL TO BE BURNED DURING THE":
+     PRINT @(18,10):
+     PRINT "     NEXT SECOND  (SUPPLIED BY THE USER);":
+     PRINT @(18,11):
+     PRINT " @   REPRESENTS YOUR WARSHIP;":
+     PRINT @(18,12):
+     PRINT " >   REPRESENTS THE MISSLE GOING UP;":
+     PRINT @(18,13):
+     PRINT " <   REPRESENTS THE MISSLE GOING DOWN;":
+     PRINT @(26,16):
+     PRINT "THE CHASE WILL NOW BEGIN...":
+     PRINT @(28,17):
+     PRINT "G O O D   L U C K ! ! !":
+     PRINT @(20,20):
+     GOSUB 2400
+1100 PRINT ERASE:@(0,0):
+***********************************************************
+*
+*  SET GRAVITY AND INITIALIZE TIME
+*
+***********************************************************
+     GRAV=5
+     TIME=0
+***********************************************************
+*
+*  INITIALIZE SHIP
+*
+***********************************************************
+     SHIP="@"
+     SHIPALT=500
+     SHIPVEL=50
+     SHIPFUEL=120
+     SHIPPLOT=41
+***********************************************************
+*
+*  INITIALIZE MISSLE
+*
+***********************************************************
+     MISSLE=">"
+     MISSALT=0
+     MISSVEL=0
+     MISSFUEL=360
+     MISSPLOT=1
+     WHENFIRE=1+RND(3)
+***********************************************************
+*
+*  INITIALIZE PLOT
+*
+***********************************************************
+     FOR I=2 TO 40
+       PLOT(I)=" "
+     NEXT I
+     PLOT(1)="*"
+     PLOT(2)=MISSLE
+     PLOT(41)=SHIP
+     PLOT(42)="*"
+**********************************************************
+*
+*  PRINT DATA AND PLOT
+*
+**********************************************************
+1200 PRINT "T:":TIME "R##":" ":
+     PRINT "H:":SHIPALT "R1######":" ":
+     PRINT "V:":SHIPVEL "R###":" ":
+     PRINT "F:":SHIPFUEL "R###":" ":
+     FOR I=1 TO 42
+       PRINT PLOT(I):
+     NEXT I
+**********************************************************
+*
+*  MISSLE CHECK
+*
+**********************************************************
+     IF INT(39*MISSALT/500+2.5)=INT(39*SHIPALT/500+2.5) THEN
+       PRINT
+       PRINT
+       I=RND(3)
+       IF I=0 THEN PRINT "BOOM!"
+       IF I=1 THEN PRINT "YOU ARE NOW SPACE DUST."
+       IF I=2 THEN PRINT "YOU HAVE GONE TO PIECES."
+       PRINT "APPROPRIATE CONDOLENCES WILL BE SENT TO YOUR FAMILY."
+       GOTO 2000
+     END
+**********************************************************
+*
+*  CHECK FUEL REMAINING
+*
+**********************************************************
+     IF SHIPFUEL=0 THEN
+       PRINT
+       SHIPBURN=0
+       GOTO 1400
+     END
+**********************************************************
+*
+*  FUEL TO BE BURNED
+*
+**********************************************************
+     PRINT "?":
+1300 INPUT SHIPBURN
+     IF NOT(NUM(SHIPBURN)) THEN GOSUB 2100;GOTO 1300
+     SHIPBURN=INT(SHIPBURN)
+     IF SHIPBURN<0 OR SHIPBURN>30 THEN GOSUB 2100;GOTO 1300
+     IF SHIPBURN>SHIPFUEL THEN SHIPBURN=SHIPFUEL
+**********************************************************
+*
+*  DETERMINE NEW MISSLE CONDITIONS
+*
+**********************************************************
+1400 IF MISSALT>SHIPALT THEN MISSLE="<"
+     IF WHENFIRE>TIME THEN GOTO 1550
+     IF SHIPALT>MISSALT THEN K=1 ELSE K=2.5
+     MISSBURN=(SHIPALT-MISSALT)*K-2*MISSVEL+GRAV
+     IF MISSBURN<0 THEN SGNB=-1 ELSE SGNB=1
+     MISSBURN=SGNB*MISSBURN
+     IF MISSBURN>MISSFUEL THEN MISSBURN=MISSFUEL
+     IF MISSBURN>15*(1+K) THEN MISSBURN=15*(1+K)
+     IF MISSBURN<0 THEN MISSBURN=0
+     ACC=SGNB*MISSBURN-GRAV
+     IF MISSVEL<0 THEN SGNV=-1 ELSE SGNV=1
+     IF ACC<0 THEN SGNA=-1 ELSE SGNA=1
+     IF SGNV<>SGNA THEN GOTO 1500
+     IF SGNV*MISSVEL>75-SGNA*ACC THEN GOTO 1500
+     ACC=SGNA*(75-SGNV*MISSVEL)
+     MISSBURN=ACC+GRAV
+     IF MISSBURN<0 THEN
+       MISSBURN=-MISSBURN
+       SGNB=-1
+     END ELSE
+       SGNB=1
+     END
+     IF MISSBURN<=MISSFUEL THEN GOTO 1500
+     MISSBURN=MISSFUEL
+     ACC=SGNB*MISSFUEL-GRAV
+1500 MISSFUEL=MISSFUEL-MISSBURN
+     MISSALT=MISSALT+.5*ACC+MISSVEL
+     MISSVEL=MISSVEL+ACC
+**********************************************************
+*
+*  DETERMINE MISSLE'S PLOT
+*
+**********************************************************
+1550 MISSPLOT=INT(39*MISSALT/500+2.5)
+     IF MISSPLOT<=1 THEN
+       MISSPLOT=1
+       MISSFUEL=0
+       MISSLE="*"
+     END
+     IF MISSPLOT>41 THEN
+       MISSPLOT=42
+       MISSLE="*"
+     END
+**********************************************************
+*
+*  CALCULATE NEW SHIP CONDITIONS
+*
+**********************************************************
+     ACC=GRAV-SHIPBURN
+     VEL=ACC+SHIPVEL
+     ALT=SHIPALT-SHIPVEL-.5*ACC
+     IF ALT>0 THEN GOTO 1600
+     X=2*ACC*SHIPALT+SHIPVEL*SHIPVEL
+     GOSUB 2200
+     TIMEX=(SQRT-SHIPVEL)/ACC
+     VEL=ACC*TIMEX+SHIPVEL
+     IF VEL<0 THEN GOTO 1600
+     IMPACT=1
+     TIME=TIME+TIMEX
+     GOTO 1700
+1600 IMPACT=0
+     SHIPALT=ALT
+     TIME=TIME+1
+1700 SHIPFUEL=SHIPFUEL-SHIPBURN
+     SHIPVEL=VEL
+**********************************************************
+*
+*  CHECK FOR IMPACT
+*
+**********************************************************
+     IF IMPACT=1 THEN GOTO 1900
+*********************************************************
+*
+*  DETERMINE SHIP'S PLOT
+*
+*********************************************************
+     SHIPPLOT=INT(SHIPALT*39/500+2.5)
+     IF SHIPPLOT<=1 THEN SHIPPLOT=2
+     IF SHIPPLOT<=41 THEN SHIP="@" ELSE
+       SHIPPLOT=41
+       SHIP=" "
+     END
+*********************************************************
+*
+*  SET UP PLOT
+*
+*********************************************************
+     FOR I=2 TO 41
+       PLOT(I)=" "
+     NEXT I
+     PLOT(SHIPPLOT)=SHIP
+     PLOT(MISSPLOT)=MISSLE
+     GOTO 1200
+**********************************************************
+*
+*  LANDING MESSAGES
+*
+**********************************************************
+1900 VEL=INT(SHIPVEL)
+     PRINT
+     PRINT
+     IF VEL=0 THEN
+       PRINT "PERFECT LANDING!"
+     END ELSE
+       IF VEL<=2 THEN
+         PRINT "SLIGHTLY BUMPY LANDING."
+       END ELSE
+         IF VEL<=4 THEN
+           PRINT "VERY BUMPY LANDING."
+         END ELSE
+           IF VEL<=5 THEN
+             PRINT "CRUNCH!! -- YOU BARELY MADE IT!"
+           END ELSE
+             IF VEL<=25 THEN
+               PRINT "APPROPRIATE CONDOLENCES WILL BE SENT TO YOUR FAMILY."
+             END ELSE
+               IF VEL<=50 THEN
+                 PRINT "EXCESSIVE IMPACT VELOCITY HAS DESTROYED THE"
+                 PRINT "STRUCTURAL INTEGRITY OF YOUR SHIP... NO AIR LEFT!"
+               END ELSE
+                 PRINT "THAT FLASH OF LIGHT VISIBLE FROM THE EARTH"
+                 PRINT "WAS YOUR SPACECRAFT VAPORIZING ON IMPACT..."
+               END
+             END
+           END
+         END
+       END
+     END
+     PRINT
+     PRINT "FINAL VELOCITY: ":VEL:" FT/SEC."
+     PRINT "FUEL REMAINING: ":SHIPFUEL:" UNITS."
+     PRINT
+     IF VEL<=5 THEN
+       PRINT "CONGRATULATIONS... THE GENERAL SENDS HIS COMPLIMENTS."
+     END ELSE
+       PRINT "YOU HAVE BEEN COURT MARTIALED."
+     END
+     PRINT
+     PRINT
+**********************************************************
+*
+*  DOES PLAYER WANT TO TRY AGAIN?
+*
+**********************************************************
+2000 PRINT "DO YOU WANT TO TRY AGAIN? ":
+     INPUT ANS
+     IF ANS="YES" OR ANS="Y" THEN
+       PRINT ERASE:@(0,0):
+       GOTO 1100
+     END
+     IF ANS="NO" OR ANS="N" THEN
+       PRINT ERASE:@(0,0):
+       STOP
+     END
+     GOTO 2000
+**********************************************************
+*
+*  CLEAR INVALID INPUT
+*
+**********************************************************
+2100 FOR I=1 TO 11
+       PRINT BACK:
+     NEXT I
+     PRINT SPACE(4):
+     FOR I=1 TO 4
+       PRINT BACK:
+     NEXT I
+     RETURN
+**********************************************************
+*
+*  SQUARE ROOT CALCULATOR
+*
+**********************************************************
+2200 IF X=0 THEN
+       SQRT=0
+       RETURN
+     END
+     IF X<1 THEN X1=2*X ELSE X1=X/2
+2300 X2=.5*(X/X1+X1)
+     D=X2-X1
+     IF D<0 THEN D=-D
+     IF D>.0001 THEN
+       X1=X2
+       GOTO 2300
+     END
+     SQRT=X2
+     RETURN
+*********************************************************
+*
+*  CONTINUE INSTRUCTIONS
+*
+*********************************************************
+2400 PRINT "(PRESS <RETURN> TO CONTINUEj)":
+     INPUT Z
+     PRINT ERASE:@(0,0):
+     RETURN
+END

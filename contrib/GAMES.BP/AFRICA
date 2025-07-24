@@ -1,0 +1,363 @@
+*  AFRICA
+*
+*  CREATED BY CRAIG SHUCKER
+*     CALIFORNIA STATE UNIVERSITY, LONG BEACH
+*     FEBRUARY,1975
+*
+*  REVISED BY CRAIG SHUCKER
+*     AUGUST,1975
+*
+************************************************************
+     PRINTER OFF
+     ERASE=@(-1)
+     XLINE=SPACE(80)
+     BELL=CHAR(7)
+     PROMPT BELL
+     PRINT ERASE
+************************************************************
+*
+*  DOES THE PLAYER WANT AN INTRODUCTION?
+*
+************************************************************
+1000 PRINT @(15,8):"DO YOU WANT THE STATEMENT OF THE PROBLEM? ":
+     INPUT INTRO,1
+     IF INTRO<>"YES" AND INTRO<>"NO" AND INTRO<>"Y" AND INTRO<>"N" THEN
+       PRINT @(27,11):"MUST BE 'Y(ES)' OR 'N(O)'"
+       GOSUB 1700
+     END
+     IF INTRO="Y" THEN INTRO="YES"
+*************************************************************
+*
+*  SETS UP PROBLEM (OPTIONAL INTRODUCTION)
+*
+************************************************************
+1100 PRINT ERASE
+     IF INTRO="YES" THEN
+       PRINT @(10,5):"PROBLEM: THREE MISSIONARIES"
+     END
+     PRINT @(18,16):"M M M":
+     IF INTRO="YES" THEN
+       GOSUB 1600
+       PRINT @(38,5):"AND THREE CANNIBALS"
+     END
+     PRINT @(24,16):"C C C"
+     IF INTRO="YES" THEN
+       GOSUB 1600
+       PRINT @(58,5):"ARE ON THE"
+       PRINT @(10,6):"LEFT BANK"
+     END
+     PRINT @(16,17):STR("X",14)
+     PRINT @(21,18):"L E F T  X"
+     PRINT @(21,19):"B A N K   X"
+     IF INTRO="YES" THEN
+       GOSUB 1600
+       PRINT @(20,6):"OF A RIVER THAT IS TOO DANGEROUS TO SWIM."
+     END
+     PRINT @(30,17):STR("@",20)
+     PRINT @(31,18):STR("@",18)
+     PRINT @(32,19):STR("@",16)
+     IF INTRO="YES" THEN
+       GOSUB 1600
+       PRINT @(64,6):"ALL"
+       PRINT @(10,7):"SIX WISH TO CROSS OVER TO THE RIGHT BANK."
+     END
+     PRINT @(50,17):STR("X",14)
+     PRINT @(49,18):"X R I G H T"
+     PRINT @(48,19):"X   B A N K"
+     IF INTRO="YES" THEN
+       GOSUB 1600
+       PRINT @(53,7):"TO DO SO THEY"
+       PRINT @(10,8):"HAVE A SMALL BOAT WHICH WILL CARRY TWO ":
+       PRINT "PEOPLE AT ONE TIME."
+     END
+     PRINT @(30,16):"<BOAT>"
+     IF INTRO="YES" THEN
+       GOSUB 1600
+       PRINT @(10,9):"TO INSURE THAT THEY WILL NOT BE EATEN, ":
+       PRINT "THE MISSIONARIES MUST"
+       PRINT @(10,10):"BE SURE THAT THEY ARE NEVER OUTNUMBERED ":
+       PRINT "BY CANNIBALS ON"
+       PRINT @(10,11):"EITHER BANK."
+       PRINT @(25,13):"HOW CAN ALL SIX CROSS SAFELY?"
+       FOR I=1 TO 5
+         GOSUB 1600
+       NEXT I
+       FOR I=5 TO 13
+         PRINT @(1,I):XLINE
+       NEXT I
+     END
+     CANNL=3
+     MISSL=3
+     CANNR=0
+     MISSR=0
+     BOAT="LEFT"
+************************************************************
+*
+*  HOW MANY CANNIBALS CROSS?
+*
+************************************************************
+     PRINT @(32,5):"HOW MANY CROSS?"
+1200 MISSB=0
+     PRINT @(24,8):SPACE(56)
+     IF BOAT="LEFT" & CANNL = 0 THEN GOTO 1300
+     IF BOAT="RIGHT" & CANNR =0 THEN GOTO 1300
+     PRINT @(24,8):"CANNIBALS: "
+     PRINT @(35,8):
+     INPUT CANNB,1
+     IF CANNB MATCH"'-'0N" THEN GOTO 2500
+     IF NOT(NUM(CANNB)) THEN
+       GOSUB 2200
+       GOTO 1200
+     END
+     IF CANNB>3 THEN GOTO 2400
+     IF BOAT="LEFT" & CANNB>CANNL THEN GOTO 2300
+     IF BOAT="RIGHT" & CANNB>CANNR THEN GOTO 2300
+     IF CANNB>2 THEN GOTO 3000
+************************************************************
+*
+*  HOW MANY MISSIONARIES CROSS?
+*
+************************************************************
+1300 PRINT @(41,8):SPACE(39)
+     IF BOAT="LEFT" & MISSL = 0 THEN GOTO 1350
+     IF BOAT="RIGHT" & MISSR= 0 THEN GOTO 1350
+     PRINT @(41,8):"MISSIONARIES: "
+     PRINT @(55,8):
+     INPUT MISSB,1
+     IF MISSB MATCH "'-'0N" THEN GOTO 2800
+     IF MISSB MATCH "'-'0N" THEN GOTO 2800
+     IF NOT(NUM(MISSB)) THEN
+       GOSUB 2200
+       GOTO 1300
+     END
+     IF MISSB>3 THEN GOTO 2700
+     IF BOAT="LEFT" & MISSB>MISSL THEN GOTO 2600
+     IF BOAT="RIGHT" & MISSB>MISSR THEN GOTO 2600
+************************************************************
+*
+*  CHECK TOTAL OF CANNIBALS AND MISSIONARIES
+*
+***********************************************************
+1350 MCB=MISSB+CANNB
+     IF MCB>2 THEN GOTO 3000
+     IF MCB<=0 THEN GOTO 2900
+************************************************************
+*
+*  LEGAL MOVE FROM LEFT BANK
+*
+************************************************************
+     IF BOAT="RIGHT" THEN GOTO 1400
+     CANNL=CANNL-CANNB
+     CANNR=CANNR+CANNB
+     MISSL=MISSL-MISSB
+     MISSR=MISSR+MISSB
+     BOAT="RIGHT"
+     GOSUB 1800
+     GOSUB 1900
+     GOTO 1500
+************************************************************
+*
+*  LEGAL MOVE FROM RIGHT BANK
+*
+************************************************************
+1400 CANNL=CANNL+CANNB
+     CANNR=CANNR-CANNB
+     MISSL=MISSL+MISSB
+     MISSR=MISSR-MISSB
+     BOAT="LEFT"
+     GOSUB 2000
+     GOSUB 2100
+************************************************************
+*
+*  CHECK FOR OUTNUMBERED MISSIONARIES
+*
+************************************************************
+1500 IF CANNL>MISSL & MISSL<>0 THEN GOTO 3100
+     IF CANNR>MISSR & MISSR<>0 THEN GOTO 3100
+************************************************************
+*
+*  HAS THE PLAYER SUCCEEDED YET?
+*
+************************************************************
+     IF CANNR=3 & MISSR=3 THEN GOTO 3400
+     GOTO 1200
+************************************************************
+*
+*  SUBROUTINES
+*
+************************************************************
+*
+************************************************************
+*  THREE SECOND PAUSE
+************************************************************
+1600 T=TIME()
+1650 IF TIME()-T<3 THEN GOTO 1650
+     RETURN
+************************************************************
+*  ERROR MESSAGE PAUSE AND CLEAR
+************************************************************
+1700 T=TIME()
+1750 IF TIME()-T<5 THEN GOTO 1750
+     PRINT @(1,11):XLINE
+     PRINT @(1,12):XLINE
+     PRINT @(1,13):XLINE
+     RETURN
+************************************************************
+*  EMBARK ON LEFT
+************************************************************
+1800 PRINT @(18,16):SPACE(12)
+     PRINT @(30-2*(MISSL+CANNL),16):
+     FOR I=1 TO MISSL
+       PRINT "M ":
+     NEXT I
+     FOR I=1 TO CANNL
+       PRINT "C ":
+     NEXT I
+     PRINT SPACE(6)
+     RETURN
+************************************************************
+*  DISEMBARK ON RIGHT
+************************************************************
+1900 PRINT @(44,16):"<BOAT> ":
+     FOR I=1 TO MISSR
+       PRINT "M ":
+     NEXT I
+     FOR I=1 TO CANNR
+       PRINT "C ":
+     NEXT I
+     RETURN
+************************************************************
+*  EMBARK ON RIGHT
+************************************************************
+2000 PRINT @(49,16):SPACE(12)
+     PRINT @(51,16):
+     FOR I=1 TO MISSR
+       PRINT "M ":
+     NEXT I
+     FOR I=1 TO CANNR
+       PRINT "C ":
+     NEXT I
+     PRINT @(44,16):SPACE(6)
+     RETURN
+************************************************************
+*  DISEMBARK ON LEFT
+************************************************************
+2100 PRINT @(30,16):"<BOAT>"
+     PRINT @(18,16):SPACE(12)
+     PRINT @(30-2*(MISSL+CANNL),16):
+     FOR I=1 TO MISSL
+       PRINT "M ":
+     NEXT I
+     FOR I=1 TO CANNL
+       PRINT "C ":
+     NEXT I
+     RETURN
+***********************************************************
+*
+*  ERROR ROUTINES
+*
+***********************************************************
+*
+***********************************************************
+*  NON-NUMERIC DATA
+***********************************************************
+2200 PRINT @(8,11):"PERHAPS YOU DON'T UNDERSTAND -- ":
+     PRINT "YOU ARE SUPPOSED TO USE NUMBERS"
+     PRINT @(15,13):"HINT: NUMBERS ARE ON THE TOP ROW ":
+     PRINT "OF THE KEYBOARD"
+     GOSUB 1700
+     RETURN
+***********************************************************
+*  TRYING TO MOVE MORE CANNIBALS THAN THERE ARE
+***********************************************************
+2300 PRINT @(22,12):"LOOK AT THE CANNIBALS AGAIN, DIMWIT"
+     GOSUB 1700
+     GOTO 1200
+***********************************************************
+*  TRYING TO MOVE MORE THAN THREE CANNIBALS
+***********************************************************
+2400 PRINT @(16,12):
+     PRINT "REALLY? -- THERE MUST BE A POPULATION EXPLOSION"
+     GOSUB 1700
+     GOTO 1200
+***********************************************************
+*  TRYING TO MOVE A NEGATIVE NUMBER OF CANNIBALS
+***********************************************************
+2500 PRINT @(19,12):
+     PRINT "JUST WHAT DO YOU THINK YOU ARE DOING, DODO?"
+     GOSUB 1700
+     GOTO 1200
+***********************************************************
+*  TRYING TO MOVE MORE MISSIONARIES THAN THERE ARE
+***********************************************************
+2600 PRINT @(6,12):"HAVE YOU HAD AN EYE EXAMINATION LATELY?":
+     PRINT " -- RECHECK THE MISSIONARIES"
+     GOSUB 1700
+     GOTO 1300
+***********************************************************
+*  TRYING TO MOVE MORE THAN THREE MISSIONARIES
+***********************************************************
+2700 PRINT @(12,12):"QUIT TRYING TO PERFORM MIRACLES -- ":
+     PRINT "THERE ARE ONLY THREE"
+     GOSUB 1700
+     GOTO 1300
+***********************************************************
+*  TRYING TO MOVE A NEGATIVE NUMBER OF MISSIONARIES
+***********************************************************
+2800 PRINT @(10,12):"ALRIGHT MORON, QUIT TRYING TO CHEAT -- ":
+     PRINT "PLAY THE GAME RIGHT"
+     GOSUB 1700
+     GOTO 1300
+***********************************************************
+*  PUTTING NOBODY IN THE BOAT
+***********************************************************
+2900 PRINT @(30,16):SPACE(20)
+     PRINT @(8,11):"HOW DO YOU EXPECT TO CROSS THE RIVER?":
+     PRINT " -- YOU LOST THE BOAT!"
+     GOTO 3200
+************************************************************
+*  PUTTING TOO MANY PEOPLE IN THE BOAT
+************************************************************
+3000 IF BOAT="LEFT" THEN
+       CANNL=CANNL-CANNB
+       MISSL=MISSL-MISSB
+       GOSUB 1800
+       PRINT @(33,19):"<BOAT>"
+     END ELSE
+       CANNR=CANNR-CANNB
+       MISSL=MISSL-MISSB
+       GOSUB 2000
+       PRINT @(41,19):"<BOAT>"
+     END
+     PRINT @(14,11):"NOW YOU'VE DONE IT, DUMMY -- ":
+     PRINT "YOU SANK THE BOAT!":
+     GOTO 3200
+************************************************************
+*  MISSIONARIES ARE OUTNUMBERED BY CANNIBALS
+************************************************************
+3100 PRINT @(18,11):"YOU FOOL!  -- YOU HAVE FED THE CANNIBALS"
+     GOTO 3200
+************************************************************
+*
+*  DOES THE PLAYER WANT TO TRY AGAIN?
+*
+************************************************************
+3200 PRINT @(26,13):"DO YOU WANT TO TRY AGAIN? ":
+     INPUT ANS,1
+     IF ANS="YES" OR ANS="Y" THEN INTRO="NO"; GOTO 1100
+     IF ANS="NO" OR ANS="N" THEN GOTO 3500
+     PRINT @(27,14):"MUST BE 'Y(ES)' OR 'N(O)'"
+3300 T=TIME()
+3350 IF TIME()-T<3 THEN GOTO 3350
+     PRINT @(1,13):XLINE
+     PRINT @(1,14):XLINE
+     GOTO 3200
+************************************************************
+*
+*  PROBLEM IS SOLVED
+*
+************************************************************
+3400 PRINT @(16,12):"SO YOU MADE IT...WHO GIVES A BANANA....."
+3500 PRINT @(1,1):
+     GOSUB 1600
+END

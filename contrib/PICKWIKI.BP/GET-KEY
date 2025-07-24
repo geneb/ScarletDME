@@ -1,0 +1,187 @@
+QM has a function called keycode() that will return one character for any key pressed. This subroutine is an attempt to emulate that behaviour. It is designed to be as terminal independant as possible; and does this by storing multiple escape sequences for the same key. This means that the following key combinations are, effectively, defaults for the arrow keys.
+
+    <Ctrl-F> returns char(204) = RIGHT
+    <Ctrl-J> returns char(206) = DOWN
+    <Ctrl-U> returns char(203) = LEFT
+    <Ctrl-Z> returns char(205) = UP
+
+
+     subroutine getkey(what)
+* Returns single character for just about any terminal escape sequence
+*======================================================================
+* This is for QM[[/UniVerse]], you can change it to run under other MVDBMS
+     what = 'COPYRIGHT Keith Robert Johnson 2007'
+* This program has been put in the public domain by Keith Johnson
+* as a source-code resource. That is, anyone may copy, modify, or
+* otherwise use it as if they had written it themselves, and
+* Keith Johnson is not liable in any way for the results.
+* The code will not work unless it is compiled, it is up to whoever
+* so compiles it to determine the suitability of the code for use.
+*======================================================================
+* Version - Description
+*    1.00 - Initial program, based on FINP
+*======================================================================
+* what - The character returned (based on QM practice).
+*        This program does not use Control or Alt function keys
+*        but has still got the equated numbers to use
+*======================================================================
+* Arrow keys
+     equ larr to 203, rarr to 204, uarr to 205, darr to 206
+* Page up and down, home and end
+     equ upag to 207, dpag to 208, home to 209, pend to 210
+* Insert, delete, backtab
+     equ insk to 211, delk to 212, btab to 213
+* Control - Page up and down, home and end
+     equ cupg to 214, cdpg to 215, chom to 216, cend to 217
+* Function, Control+Function, Alt+Function, Shift+Function
+     equ f1   to 128, cf1  to 140, af1  to 152, sf1  to 164
+     equ f2   to 129, cf2  to 141, af2  to 153, sf2  to 165
+     equ f3   to 130, cf3  to 142, af3  to 154, sf3  to 166
+     equ f4   to 131, cf4  to 143, af4  to 155, sf4  to 167
+     equ f5   to 132, cf5  to 144, af5  to 156, sf5  to 168
+     equ f6   to 133, cf6  to 145, af6  to 157, sf6  to 169
+     equ f7   to 134, cf7  to 146, af7  to 158, sf7  to 170
+     equ f8   to 135, cf8  to 147, af8  to 159, sf8  to 171
+     equ f9   to 136, cf9  to 148, af9  to 160, sf9  to 172
+     equ f10  to 137, cf10 to 149, af10 to 161, sf10 to 173
+     equ f11  to 138, cf11 to 150, af11 to 162, sf11 to 174
+     equ f12  to 139, cf12 to 151, af12 to 163, sf12 to 175
+*======================================================================
+* Stash the escape sequences and key codes in labelled common
+     common /keys$krj/ term,eseq,keys,stub,full
+     if not(assigned(term)) then term = ''
+     if term ne oconv(system(7),'MCU') then
+        term = oconv(system(7),'MCU')
+* Set up keys good for many terminals and as defaults
+        escp = char(27)
+        eseq = '' ; keys = ''
+        keys<-1> = larr; eseq<-1> = char(21)
+        keys<-1> = rarr; eseq<-1> = char(6)
+        keys<-1> = uarr; eseq<-1> = char(26)
+        keys<-1> = darr; eseq<-1> = char(10)
+        keys<-1> = upag; eseq<-1> = escp:'[5~'
+        keys<-1> = dpag; eseq<-1> = escp:'[6~'
+* Now do settings that don't interfere between terminals
+* VT-type terminals - cater for alternative arrow sequences
+        keys<-1> = rarr; eseq<-1> = escp:'[C'
+        keys<-1> = rarr; eseq<-1> = escp:'OC'
+        keys<-1> = uarr; eseq<-1> = escp:'[A'
+        keys<-1> = uarr; eseq<-1> = escp:'OA'
+        keys<-1> = darr; eseq<-1> = escp:'[B'
+        keys<-1> = darr; eseq<-1> = escp:'OB'
+        keys<-1> = insk; eseq<-1> = escp:'[1~'
+        keys<-1> = delk; eseq<-1> = escp:'[4~'
+        keys<-1> = btab; eseq<-1> = escp:'[Z'
+        keys<-1> = f1  ; eseq<-1> = escp:'OP'
+        keys<-1> = f2  ; eseq<-1> = escp:'OQ'
+        keys<-1> = f3  ; eseq<-1> = escp:'OR'
+        keys<-1> = f4  ; eseq<-1> = escp:'OS'
+        keys<-1> = f5  ; eseq<-1> = escp:'OT'
+        keys<-1> = f6  ; eseq<-1> = escp:'[17~'
+        keys<-1> = f7  ; eseq<-1> = escp:'[18~'
+        keys<-1> = f8  ; eseq<-1> = escp:'[19~'
+        keys<-1> = f9  ; eseq<-1> = escp:'[20~'
+        keys<-1> = f10 ; eseq<-1> = escp:'[21~'
+        keys<-1> = f11 ; eseq<-1> = escp:'[23~'
+        keys<-1> = f12 ; eseq<-1> = escp:'[24~'
+* Wyse-type terminals
+        keys<-1> = insk; eseq<-1> = escp:'Q'
+        keys<-1> = delk; eseq<-1> = escp:'W'
+        keys<-1> = btab; eseq<-1> = escp:'I'
+        keys<-1> = f1  ; eseq<-1> = char(1):'@':char(13)
+        keys<-1> = f2  ; eseq<-1> = char(1):'A':char(13)
+        keys<-1> = f3  ; eseq<-1> = char(1):'B':char(13)
+        keys<-1> = f4  ; eseq<-1> = char(1):'C':char(13)
+        keys<-1> = f5  ; eseq<-1> = char(1):'D':char(13)
+        keys<-1> = f6  ; eseq<-1> = char(1):'E':char(13)
+        keys<-1> = f7  ; eseq<-1> = char(1):'F':char(13)
+        keys<-1> = f8  ; eseq<-1> = char(1):'G':char(13)
+        keys<-1> = f9  ; eseq<-1> = char(1):'H':char(13)
+        keys<-1> = f10 ; eseq<-1> = char(1):'I':char(13)
+        keys<-1> = f11 ; eseq<-1> = char(1):'J':char(13)
+        keys<-1> = f12 ; eseq<-1> = char(1):'K':char(13)
+* ADDS-type terminals
+        keys<-1> = f1  ; eseq<-1> = char(2):'1':char(13)
+        keys<-1> = f2  ; eseq<-1> = char(2):'2':char(13)
+        keys<-1> = f3  ; eseq<-1> = char(2):'3':char(13)
+        keys<-1> = f4  ; eseq<-1> = char(2):'4':char(13)
+        keys<-1> = f5  ; eseq<-1> = char(2):'5':char(13)
+        keys<-1> = f6  ; eseq<-1> = char(2):'6':char(13)
+        keys<-1> = f7  ; eseq<-1> = char(2):'7':char(13)
+        keys<-1> = f8  ; eseq<-1> = char(2):'8':char(13)
+        keys<-1> = f9  ; eseq<-1> = char(2):'9':char(13)
+        keys<-1> = f10 ; eseq<-1> = char(2):':':char(13)
+        keys<-1> = f11 ; eseq<-1> = char(2):';':char(13)
+        keys<-1> = f12 ; eseq<-1> = char(2):'<':char(13)
+* xterm for my Asus eeePC[[/Linux/QM]] - which was why I wrote this
+        keys<-1> = f5   ; eseq<-1> = escp:'[15~'
+        keys<-1> = sf1  ; eseq<-1> = escp:'[[O2P]]'
+        keys<-1> = sf2  ; eseq<-1> = escp:'[[O2Q]]'
+        keys<-1> = sf3  ; eseq<-1> = escp:'[[O2R]]'
+        keys<-1> = sf4  ; eseq<-1> = escp:'[[O2S]]'
+        keys<-1> = sf5  ; eseq<-1> = escp:'[15;2~'
+        keys<-1> = sf6  ; eseq<-1> = escp:'[17;2~'
+        keys<-1> = sf7  ; eseq<-1> = escp:'[18;2~'
+        keys<-1> = sf8  ; eseq<-1> = escp:'[19;2~'
+        keys<-1> = sf9  ; eseq<-1> = escp:'[20;2~'
+        keys<-1> = sf10 ; eseq<-1> = escp:'[21;2~'
+        keys<-1> = sf11 ; eseq<-1> = escp:'[23;2~'
+        keys<-1> = sf12 ; eseq<-1> = escp:'[24;2~'
+* Now do terminal-specific settings
+* VT-type terminals
+        if term[1,2] eq 'VT' or term eq 'XTERM'then
+           keys<-1> = larr; eseq<-1> = escp:'[D'
+           keys<-1> = larr; eseq<-1> = escp:'OD'
+        end else
+           keys<-1> = insk; eseq<-1> = escp:'[D'
+           keys<-1> = delk; eseq<-1> = escp:'OD'
+        end
+* Wyse-type terminals
+        if term[1,2] eq 'WY' then
+           keys<-1> = larr; eseq<-1> = char(8)  ;* added line
+           keys<-1> = rarr; eseq<-1> = char(12)
+           keys<-1> = uarr; eseq<-1> = char(11)
+        end
+* xterm again
+        if term eq 'XTERM' then
+           keys<-1> = home; eseq<-1> = escp:'[H'
+           keys<-1> = pend; eseq<-1> = escp:'[F'
+           keys<-1> = insk; eseq<-1> = escp:'[2~'
+           keys<-1> = delk; eseq<-1> = escp:'[3~'
+        end else
+           keys<-1> = home; eseq<-1> = escp:'[2~'
+           keys<-1> = pend; eseq<-1> = escp:'[3~'
+        end
+* Populate the escape sequence test variables
+        stub = ''; full = ''
+        amax = dcount(eseq,@am)
+        for anum = 1 to amax
+           temp = eseq<anum>
+           if len(temp) le 1 then continue
+           locate(temp[1,1],stub;posn)
+              else posn = dcount(stub,@am)+1
+           stub<posn> = temp[1,1]
+           full<posn,-1> = temp
+        next anum
+     end
+*======================================================================
+* Actual code starts here
+     what = ''
+     loop
+        this = keyin()
+        locate(this,stub;posn) then gosub get.rest
+        locate(this,eseq;cmd)
+           then what = char(keys<cmd>)
+           else if len(this) eq 1 then what = this
+     while what eq '' do repeat
+     return
+get.rest:
+     loop
+        nap 5
+        input that,-1
+     while that do
+        this := upcase(keyin())
+        locate(this,full,posn;that) then return
+     repeat
+     return
+  end

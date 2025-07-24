@@ -1,0 +1,390 @@
+*  LANDER
+*     CREATED BY CRAIG SHUCKER
+*       OCTOBER, 1975
+*
+*     IDEA TAKEN FROM "MYCROFT"
+*
+************************************************************
+     DIM PLOT(42)
+     PRINTER OFF
+     ERASE=@(-1)
+     BELL=CHAR(7)
+     BACK=CHAR(21)
+     PROMPT BELL
+1000 PRINT ERASE:@(20,10):"DO YOU WANT INSTRUCTIONS? ":
+     INPUT INS
+     IF INS="NO" OR INS="N" THEN
+       GOSUB 2500
+       PRINT
+       GOTO 2050
+     END
+     IF INS<>"YES" AND INS<>"Y" THEN GOTO 1000
+***********************************************************
+*
+*  INSTRUCTIONS
+*
+***********************************************************
+     PRINT ERASE @(0,0):
+     GOSUB 2500
+     PRINT @(13,9):
+     PRINT "YOU ARE LANDING A SPACESHIP ON AN UNKNOWN PLANET AND HAVE":
+     PRINT @(13,10):
+     PRINT "TAKEN OVER MANUAL CONTROL ":H:" FT ABOVE A GOOD":
+     PRINT @(13,11):
+     PRINT "LANDING SPOT WITH A DOWNWARD VELOCITY OF ":V:" FT/SEC,":
+     PRINT @(13,12):
+     PRINT "AND ":F:" UNITS OF FUEL REMAINING.":
+     PRINT @(13,18):
+     GOSUB 2400
+     PRINT @(13,2):
+     PRINT "THE FOLLOWING RULES GOVERN YOUR SPACECRAFT:":
+     PRINT @(13,5):
+     PRINT "  (1) AFTER EACH SECOND, THE HEIGHT, VELOCITY, AND":
+     PRINT @(13,6):
+     PRINT "      REMAINING FUEL WILL BE PRINTED, ALONG WITH A":
+     PRINT @(13,7):
+     PRINT "      PLOT OF THE SPACECRAFT HEIGHT ABOVE THE":
+     PRINT @(13,8):
+     PRINT "      PLANET'S SURFACE":
+     PRINT @(13,10):
+     PRINT "  (2) AT THE RIGHT SIDE OF THE PLOT, THE SYMBOL '?'":
+     PRINT @(13,11):
+     PRINT "      WILL BE TYPED.  AT THIS POINT, SUPPLY THE":
+     PRINT @(13,12):
+     PRINT "      NUMBER OF UNITS OF FUEL TO BE BURNED IN":
+     PRINT @(13,13):
+     PRINT "      THE NEXT SECOND.  EACH UNIT OF FUEL SLOWS":
+     PRINT @(13,14):
+     PRINT "      YOUR DESCENT BY 1 FT/SEC.":
+     PRINT @(13,16):
+     PRINT "      THE MAXIMUM THRUST OF YOUR DESCENT ENGINE":
+     PRINT @(13,17):
+     PRINT "      IS 50 UNITS OF FUEL/SEC OR 50 FT/SEC/SEC.":
+     PRINT @(13,20):
+     GOSUB 2400
+     PRINT @(13,3):
+     PRINT "  (4) WHEN YOU MAKE CONTACT WITH THE PLANET'S SURFACE,"
+     PRINT @(13,4):
+     PRINT "      YOUR DESCENT ENGINE WILL AUTOMATICALLY CUT":
+     PRINT @(13,5):
+     PRINT "      OFF AND YOU WILL BE GIVEN A REPORT OF YOUR":
+     PRINT @(13,6):
+     PRINT "      LANDING SPEED AND REMAINING FUEL.":
+     PRINT @(13,8):
+     PRINT "  (5) IF YOU RUN OUT OF FUEL, THE '?' WILL NO LONGER":
+     PRINT @(13,9):
+     PRINT "      BE TYPED OUT, AND THE REPORT WILL AUTOMATICALLY":
+     PRINT @(13,10):
+     PRINT "      BE GIVEN EACH SECOND UNTIL YOU HIT THE SURFACE":
+     PRINT @(13,11):
+     PRINT "      OF THE PLANET.":
+     PRINT @(13,20):
+     GOSUB 2400
+     PRINT @(18,3):
+     PRINT "LIST OF VARIABLES AND SYMBOLS USED:":
+     PRINT @(18,5):
+     PRINT " T = ELAPSED TIME (SEC);":
+     PRINT @(18,6):
+     PRINT " H = HEIGHT ABOVE THE PLANET'S SURFACE (FT);":
+     PRINT @(18,7):
+     PRINT " V = DOWNWARD VELOCITY (FT/SEC);":
+     PRINT @(18,8):
+     PRINT " F = REMAINING UNITS OF FUEL;":
+     PRINT @(18,9):
+     PRINT " ? = UNITS OF FUEL TO BE BURNED DURING THE":
+     PRINT @(18,10):
+     PRINT "     NEXT SECOND  (SUPPLIED BY THE USER);":
+     PRINT @(18,11):
+     PRINT " @   REPRESENTS YOUR WARSHIP;":
+     PRINT @(26,16):
+     PRINT "THE MANUEVERS WILL NOW BEGIN...":
+     PRINT @(28,17):
+     PRINT "G O O D   L U C K ! ! !":
+     PRINT @(20,20):
+     GOSUB 2400
+1100 PRINT ERASE:@(0,0):
+     IF INS="YES" OR INS="Y" THEN INS="N" ELSE GOSUB 2500
+1150 PRINT ERASE:@(0,0):
+***********************************************************
+*
+*  PRINT HEADINGS
+*
+***********************************************************
+     PRINT "TIME  HEIGHT  VEL.  FUEL":
+     PRINT SPACE(16):
+     PRINT "PLOT OF HEIGHT"
+***********************************************************
+*
+*  SET GRAVITY AND INITIALIZE TIME
+*
+***********************************************************
+     GRAV=G
+     TIME=0
+***********************************************************
+*
+*  INITIALIZE SHIP
+*
+***********************************************************
+     SHIP="@"
+     SHIPALT=H
+     SHIPVEL=V
+     SHIPFUEL=F
+     SHIPPLOT=41
+***********************************************************
+*
+*  INITIALIZE PLOT
+*
+***********************************************************
+     FOR I=2 TO 40
+       PLOT(I)=" "
+     NEXT I
+     PLOT(1)="*"
+     PLOT(41)=SHIP
+     PLOT(42)="*"
+     INITALT=SHIPALT
+**********************************************************
+*
+*  PRINT DATA AND PLOT
+*
+**********************************************************
+1200 PRINT SPACE(1):
+     PRINT TIME "R##":SPACE(3):
+     PRINT SHIPALT "R1######":SPACE(3):
+     PRINT INT(SHIPVEL) "R###":SPACE(2):
+     PRINT SHIPFUEL "R####":SPACE(3):
+     FOR I=1 TO 42
+       PRINT PLOT(I):
+     NEXT I
+**********************************************************
+*
+*  CHECK FUEL REMAINING
+*
+**********************************************************
+     IF SHIPFUEL=0 THEN
+       PRINT
+       SHIPBURN=0
+       GOTO 1400
+     END
+**********************************************************
+*
+*  FUEL TO BE BURNED
+*
+**********************************************************
+     PRINT "?":
+1300 INPUT SHIPBURN
+     IF NOT(NUM(SHIPBURN)) THEN GOSUB 2100;GOTO 1300
+     SHIPBURN=INT(SHIPBURN)
+     IF SHIPBURN<0 OR SHIPBURN>50 THEN GOSUB 2100;GOTO 1300
+     IF SHIPBURN>SHIPFUEL THEN SHIPBURN=SHIPFUEL
+**********************************************************
+*
+*  CALCULATE NEW SHIP CONDITIONS
+*
+**********************************************************
+1400 ACC=GRAV-SHIPBURN
+     VEL=ACC+SHIPVEL
+     ALT=SHIPALT-SHIPVEL-.5*ACC
+     IF ALT>0 THEN GOTO 1500
+     IF ACC=0 THEN
+       TIMEX=SHIPALT/SHIPVEL
+       GOTO 1450
+     END
+     X=2*ACC*SHIPALT+SHIPVEL*SHIPVEL
+     GOSUB 2200
+     TIMEX=(SQRT-SHIPVEL)/ACC
+     VEL=ACC*TIMEX+SHIPVEL
+     IF VEL<0 THEN GOTO 1500
+1450 IMPACT=1
+     TIME=TIME+TIMEX
+     GOTO 1600
+1500 IMPACT=0
+     SHIPALT=ALT
+     TIME=TIME+1
+1600 SHIPFUEL=SHIPFUEL-SHIPBURN
+     SHIPVEL=VEL
+**********************************************************
+*
+*  CHECK FOR IMPACT
+*
+**********************************************************
+     IF IMPACT=1 THEN GOTO 1900
+*********************************************************
+*
+*  DETERMINE SHIP'S PLOT
+*
+*********************************************************
+     SHIPPLOT=INT(SHIPALT*39/INITALT+2.5)
+     IF SHIPPLOT<=1 THEN SHIPPLOT=2
+     IF SHIPPLOT<=41 THEN SHIP="@" ELSE
+       SHIPPLOT=41
+       SHIP=" "
+     END
+*********************************************************
+*
+*  SET UP PLOT
+*
+*********************************************************
+     FOR I=2 TO 41
+       PLOT(I)=" "
+     NEXT I
+     PLOT(SHIPPLOT)=SHIP
+     GOTO 1200
+**********************************************************
+*
+*  LANDING MESSAGES
+*
+**********************************************************
+1900 VEL=INT(SHIPVEL)
+     PRINT
+     IF VEL=0 THEN
+       PRINT "PERFECT LANDING!"
+     END ELSE
+       IF VEL<=2 THEN
+         PRINT "SLIGHTLY BUMPY LANDING."
+       END ELSE
+         IF VEL<=4 THEN
+           PRINT "VERY BUMPY LANDING."
+         END ELSE
+           IF VEL<=5 THEN
+             PRINT "CRUNCH!! -- YOU BARELY MADE IT!"
+           END ELSE
+             IF VEL<=25 THEN
+               PRINT "APPROPRIATE CONDOLENCES WILL BE SENT TO YOUR FAMILY."
+             END ELSE
+               IF VEL<=50 THEN
+                 PRINT "EXCESSIVE IMPACT VELOCITY HAS DESTROYED THE"
+                 PRINT "STRUCTURAL INTEGRITY OF YOUR SHIP... NO AIR LEFT!"
+               END ELSE
+                 PRINT "THAT FLASH OF LIGHT VISIBLE FROM THE EARTH"
+                 PRINT "WAS YOUR SPACECRAFT VAPORIZING ON IMPACT..."
+               END
+             END
+           END
+         END
+       END
+     END
+     PRINT
+     PRINT "FINAL VELOCITY: ":VEL:" FT/SEC."
+     PRINT "FUEL REMAINING: ":SHIPFUEL:" UNITS."
+     PRINT
+     IF VEL<=5 THEN
+       PRINT "CONGRATULATIONS... THE GENERAL SENDS HIS COMPLIMENTS."
+     END ELSE
+       PRINT "YOU HAVE BEEN COURT MARTIALED."
+     END
+     PRINT
+**********************************************************
+*
+*  DOES PLAYER WANT TO TRY AGAIN?
+*
+**********************************************************
+2000 PRINT "DO YOU WANT TO TRY AGAIN? ":
+     INPUT ANS
+     IF ANS="NO" OR ANS="N" THEN
+       PRINT ERASE:@(0,0):
+       STOP
+     END
+     IF ANS<>"YES" AND ANS<>"Y" THEN GOTO 2000
+2030 PRINT "SAME INITIAL CONDITIONS? ":
+     INPUT ANS
+     IF ANS="YES" OR ANS="Y" THEN
+       G=GSAV
+       H=HSAV
+       V=VSAV
+       F=FSAV
+       GOTO 1150
+     END
+     IF ANS<>"NO" AND ANS<>"N" THEN GOTO 2030
+2050 PRINT "DO YOU WISH TO CHOOSE INITIAL CONDITIONS? ":
+     INPUT ANS
+     IF ANS="NO" OR ANS="N" THEN GOTO 1100
+     IF ANS<>"YES" AND ANS<>"Y" THEN GOTO 2050
+     GOSUB 2600
+     GOTO 1150
+**********************************************************
+*
+*  CLEAR INVALID INPUT
+*
+**********************************************************
+2100 FOR I=1 TO 10
+       PRINT BACK:
+     NEXT I
+     PRINT SPACE(9):
+     FOR I=1 TO 9
+       PRINT BACK:
+     NEXT I
+     RETURN
+**********************************************************
+*
+*  SQUARE ROOT CALCULATOR
+*
+**********************************************************
+2200 IF X=0 THEN
+       SQRT=0
+       RETURN
+     END
+     IF X<1 THEN X1=2*X ELSE X1=X/2
+2300 X2=.5*(X/X1+X1)
+     D=X2-X1
+     IF D<0 THEN D=-D
+     IF D>.0001 THEN
+       X1=X2
+       GOTO 2300
+     END
+     SQRT=X2
+     RETURN
+*********************************************************
+*
+*  CONTINUE INSTRUCTIONS
+*
+*********************************************************
+2400 PRINT "(PRESS <RETURN> TO CONTINUEj)":
+     INPUT Z
+     PRINT ERASE:@(0,0):
+     RETURN
+**********************************************************
+*
+*  RANDOM INITIAL CONDITIONS
+*
+**********************************************************
+2500 G=.25*(20+RND(121))
+     V=30+RND(31)
+     H=V*(15+RND(6))
+     GOSUB 2900
+     RETURN
+**********************************************************
+*
+*  PICK INITIAL CONDITIONS
+*
+**********************************************************
+2600 PRINT "GRAVITATIONAL ACCELERATION CONSTANT (5-35): ":
+     INPUT ANS
+     IF NOT(NUM(ANS)) THEN GOTO 2600
+     IF ANS<5 OR ANS>35 THEN GOTO 2600
+     G=ANS
+2700 PRINT "INITIAL VELOCITY (30-60): ":
+     INPUT ANS
+     IF NOT(NUM(ANS)) THEN GOTO 2700
+     IF ANS<30 OR ANS>60 THEN GOTO 2700
+     V=ANS
+     HT1=15*INT(V)
+     HT2=20*INT(V)
+2800 PRINT "INITIAL ALTITUDE (":HT1:"-":HT2:"): ":
+     INPUT ANS
+     IF NOT(NUM(ANS)) THEN GOTO 2800
+     IF ANS<HT1 OR ANS>HT2 THEN GOTO 2800
+     H=ANS
+     GOSUB 2900
+     RETURN
+***********************************************************
+*
+*  CALCULATE FUEL AND SAVE INITIAL CONDITIONS
+*
+***********************************************************
+2900 F=10*(1+INT(7*(2*H*G/V+V)/100))
+     GSAV=G
+     HSAV=H
+     VSAV=V
+     FSAV=F
+     RETURN
+END

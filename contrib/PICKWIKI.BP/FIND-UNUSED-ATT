@@ -1,0 +1,108 @@
+
+    Author: Will Johnson mailto:wjhonson@aol.com
+    Writen: 14 Feb 2003
+    Purpose: Scans first SAMPLE.SIZE records in an input file and reports on
+    which attributes within the first MAX.SEARCH attributes are
+    consistently empty in all records. This is
+    so you can determine which ones are free for the taking.
+    Copyright 2003 Fast Forward Technologies, all rights reserved
+    This code may be used freely, but may not be sold seperately or as part
+    of any package.
+
+      EQUATE FALSE TO 0, TRUE TO 1
+      EQUATE COMPARE.LONG TO 1, COMPARE.SHORT TO 2
+      EQUATE AM TO CHAR(254)
+      GOSUB INIT
+      SELECT F.FILE
+      DONE = FALSE ; CNT = 0
+      LOOP
+         READNEXT K.FILE ELSE DONE = TRUE
+         IF NOT(MOD(CNT,100)) THEN GOSUB PRINT.CNT
+         IF CNT >= SAMPLE.SIZE THEN DONE = TRUE
+      UNTIL DONE DO
+         CNT += 1
+         READ R.FILE FROM F.FILE,K.FILE THEN GOSUB CHECK.IT
+      REPEAT
+      CLEARSELECT
+      GOSUB PRINT.CNT
+      GOSUB MERGE.LIST
+      CONVERT @AM TO "," IN OPEN.LIST
+      PRINT; PRINT OPEN.LIST
+      STOP
+
+CHECK.IT:
+
+      S.FILE = DCOUNT(R.FILE,AM)
+      BEGIN CASE
+         CASE MODE = COMPARE.LONG
+            I.FILE = S.FILE
+            LOOP
+               IF R.FILE<I.FILE> # '' THEN
+                  LOCATE(I.FILE,OPEN.LIST;W.LIST) THEN
+                     OPEN.LIST = DELETE(OPEN.LIST,W.LIST)
+                     OPEN.SIZE -= 1
+                  END
+               END
+            UNTIL I.FILE = 1 DO I.FILE -= 1 REPEAT
+         CASE MODE = COMPARE.SHORT
+            I.FILE = OPEN.SIZE
+            LOOP
+               IF R.FILE<OPEN.LIST<I.FILE>> # '' THEN
+                  LOCATE(OPEN.LIST<I.FILE>,OPEN.LIST;W.LIST) THEN
+                     OPEN.LIST = DELETE(OPEN.LIST,W.LIST)
+                     OPEN.SIZE -= 1
+                  END
+               END
+            UNTIL I.FILE = 1 DO I.FILE -= 1 REPEAT
+      END CASE
+      RETURN
+
+PRINT.CNT:
+
+      PRINT CHAR(13):CNT"R#8":
+      RETURN
+
+INIT:
+
+      SENT = @SENTENCE
+      N.FILE = FIELD(SENT,' ',2)
+      OPEN N.FILE TO F.FILE ELSE
+         PRINT 'Cannot open file "':N.FILE:'".  Hit return':
+         INPUT IGNORE,1:_ ; STOP
+      END
+      MAX.SEARCH = 200 ; SAMPLE.SIZE = 500
+      OPEN.LIST = ''
+      FOR I.LIST = 1 TO MAX.SEARCH
+         OPEN.LIST<-1> = I.LIST
+      NEXT I.LIST
+      OPEN.SIZE = MAX.SEARCH
+      MODE = COMPARE.LONG
+      PRINT 'Checking the first ':SAMPLE.SIZE:' records in file ':N.FILE
+      PRINT 'to see where the open slots are in the first ':MAX.SEARCH:
+      PRINT ' fields.'
+      RETURN
+
+MERGE.LIST:
+
+      ENDS.AT = OPEN.LIST<OPEN.SIZE>
+      OPEN.LIST = DELETE(OPEN.LIST,OPEN.SIZE)
+      STARTS.AT = ENDS.AT ; PREVIOUS.ATT = ENDS.AT
+      FOR I.SIZE = OPEN.SIZE-1 TO 1 STEP -1
+         THIS.ATT = OPEN.LIST<I.SIZE>
+         OPEN.LIST = DELETE(OPEN.LIST,I.SIZE)
+         IF THIS.ATT # PREVIOUS.ATT-1 THEN
+            GOSUB ADD.TEXT ; STARTS.AT = THIS.ATT ; ENDS.AT = THIS.ATT
+         END
+         STARTS.AT = THIS.ATT ; PREVIOUS.ATT = THIS.ATT
+      NEXT I.SIZE
+      GOSUB ADD.TEXT
+      RETURN
+
+ADD.TEXT:
+
+      IF STARTS.AT = ENDS.AT THEN ADD.TEXT = STARTS.AT ELSE
+         ADD.TEXT = STARTS.AT:"-":ENDS.AT
+      END
+      OPEN.LIST = INSERT(OPEN.LIST,I.SIZE;ADD.TEXT)
+      RETURN
+

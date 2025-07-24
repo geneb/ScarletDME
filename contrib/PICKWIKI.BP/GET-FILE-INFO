@@ -1,0 +1,64 @@
+GetFileInfo
+
+HomePage>>SourceCode>>BasicSource
+
+A wrapper around a call to fstat. This version calls a perl script, PerlVersionOfFstat, since AIX does not appear to have an fstat command.
+
+There is a new command or basic function to do this directly in ud5. I cannot find any info in the manual, anyone know what it's called? Obviously this subroutine would not be needed in that case :-)
+
+Update: the command is the aptly-named "DIR" command. That should be used instead of this routine.
+
+Syntax
+
+DIR(file.expr)
+
+Description
+
+The UniBasic DIR function returns the file size (in bytes), the last date and time the file was modified (in internal format), and the privileges for the file. UniData stores these values in the first four attributes of the return value. file.expr must evaluate to a file name at the operating system level. If you do not specify a path name, UniData searches the current directory.
+
+SUBROUTINE TRIN.GET.FILE.INFO(FILE, INFO)
+***************************************************************************
+* Program: TRIN.GET.FILE.INFO
+* Author : Ian [[McG]]
+* Date   : 02/14/2000
+* Edited : 13:40:04 Feb 14 2000 By MCGOWAN
+* Comment: Return O[[/S]] info about a file/directory
+***************************************************************************
+* Date       By   Desc
+* ---------- ---- ---------------------------------------------------------
+* INFO<1> = Device number of file system
+* INFO<2> = Inode#
+* INFO<3> = File mode
+* INFO<4> = Number of hard links to file
+* INFO<5> = File owner
+* INFO<6> = Group owner
+* INFO<7> = Device identifier
+* INFO<8> = Size, in bytes
+* INFO<9> = Last access time and date
+* INFO<10>= Last modify time and date
+* INFO<11>= Inode change time and date
+* INFO<12>= Blksize
+* INFO<13>= Actual blocks allocated
+
+EXECUTE "!/usr/local/bin/fstat ":FILE CAPTURING INFO
+IF INFO='' THEN RETURN
+O=INFO<5> ; GOSUB GET.OWNER ; INFO<5>=O
+D=INFO<9> ; GOSUB PROCESS.DATE ; INFO<9>=D
+D=INFO<10>; GOSUB PROCESS.DATE ; INFO<10>=D
+D=INFO<11>; GOSUB PROCESS.DATE ; INFO<11>=D
+RETURN
+
+GET.OWNER:
+   EXECUTE \!grep ":\:O:\:" /etc/passwd | awk 'BEGIN {FS=":"} {print $1}'\ CAPTURING NAME
+   IF NAME#'' THEN O=NAME<1>
+RETURN
+
+PROCESS.DATE:
+   *  Mon Feb 14 13:09:11 2000
+   D=TRIM(D)
+   T=FIELD(D, ' ', 4)
+   D=FIELD(D, ' ', 2, 2):' ': FIELD(D, ' ', 5)
+
+   D<1,1>=ICONV(D, 'D4')
+   D<1,2>=ICONV(T, 'MTS')
+RETURN

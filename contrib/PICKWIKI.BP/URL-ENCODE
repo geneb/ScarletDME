@@ -1,0 +1,47 @@
+ This is a function to correctly URLEncode a string.
+I wrote this when I was posting data into a SQL database using XML datagrams (very useful). The posted data had to be URL encoded and this was what I came up with.
+Because the data I was dealing with was only printable ascii < char(128) I have encoded only this range + uv delimiters for speed.
+
+function URLEncode(string)
+
+   *// perform standard URL encoding for UV ascii.
+   *// sboydell 17-Dec-2004
+
+   *// deffun URLEncode(string) [calling *URLEncode]
+   *// encodedString = URLEncode(unencodedString)
+
+   *// Only alphanumerics [0-9a-zA-Z], the special characters $-_.+!*'(),
+   *// and reserved characters used for their reserved purposes may be
+   *// used unencoded within a URL.
+
+   *// ranges of ascii codes of all characters to be encoded
+   *// 0-31 	ASCII Control Characters 	These characters are not printable 	Unsafe
+   *// 32-47 	Reserved Characters 	' '!?#$%&'()*+,-./ 	Unsafe
+   *// 48-57 	ASCII Characters and Numbers 	0-9 	Safe
+   *// 58-64 	Reserved Characters 	:;<=>?@ 	Unsafe
+   *// 65-90 	ASCII Characters 	A-Z 	Safe
+   *// 91-96 	Reserved Characters 	[\]^_` 	Unsafe
+   *// 97-122 	ASCII Characters 	a-z 	Safe
+   *// 123-126 	Reserved Characters 	{|}~ 	Unsafe
+   *// 127 	Control Characters 	' ' 	Unsafe
+   *// 128-255 	Non-ASCII Characters 	' ' 	Unsafe
+
+   equ E.COMMA       to ',',
+       E.PERCENT     to '%',
+       E.MAXRANGE    to 9,
+       E.ASCII.CODES to '37,37,32,36,38,44,47,47,58,64,91,94,96,96,123,128,250,255'
+
+   *// define pairs of ranges to encode
+   dim ENCODE.RANGE(E.MAXRANGE,2)
+   matparse ENCODE.RANGE from E.ASCII.CODES, E.COMMA
+
+   for i = 1 to E.MAXRANGE
+      for j = ENCODE.RANGE(i,1) to ENCODE.RANGE(i,2)
+         string = change(string,char(j),E.PERCENT:dtx(j,2))
+      next j
+   next i
+
+return(string)
+
+the:end
+

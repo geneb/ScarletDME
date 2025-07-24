@@ -1,0 +1,418 @@
+EM is designed to be used with Emacs, especially under Unix X(-windows) in client-server mode. It enables editing of individual MVdatabase records or a selectlist of records one by one, or a selectlist of records all at once (be careful about the number as records are locked and you can easily fill the lock table). One record can be edited by entering at TCL: "EM <filename> <recordname>", and this will pop the record into a running emacs session buffer. If a select list is active, entertering at TCL: "EM <filename>" will pop the records, one at a time, into a running emacs session buffer. If a select list is active and you want to edit all the records at once, enter at TCL: "EM <filename> *" to get all in one buffer of a running emacs session. In this mode in emacs, the current record (line) can be viewed in formatted form in a window below by entering the appropriate emacs command (see the Emacs Lisp library Wike page for the code).
+
+* -*-mode:unibasic-*-
+*$Id: EM,v 1.3 2003/12/15 05:30:26 kenf Exp kenf $
+*     Last updated by klf (klf) at 13:35:20 on 08/02/93
+*     Modified by Ken Ford for use by TSW - 4th June, 2003.
+******************************************************************************
+* This  program takes  the command  line  arguments entered when  executed and
+* converts the Universe file and item name to be edited into a  Unix pathname.
+* If the file is not a hashed file, the item is first copied to the &UFD& file
+* with '~' appended.  This file is then used by the EMACS  editor and deleted,
+* after it has been copied back to the original item.  Otherwise,  the item is
+* edited directly using  its  Unix  pathname.  The  program will  work  with a
+* single item name, a list of item names, '*', or an active select list.
+* If the item name is '*', with or without a select list, the items concerned
+* will be formatted into a buffer in virtually raw format, with the items id.
+* prepended.  Items can be edited, deleted or inserted provided they have their
+* item ids. intact and relevant item, field, value and sub value marks.
+*
+*                  Author:  Ken Ford              Date: 4th March, 1992.
+*
+*     Update History:
+*     Modified to use client/server Emacs.        Ken Ford     27th June, 2003
+*     Modified TO enable editting of multiple     Ken Ford     26th August, 2003
+*         items IN a buffer.
+*
+******************************************************************************
+$OPTIONS DEFAULT
+      if index(@SENTENCE,'-DEBUG',1) THEN
+         sentence = FIELD(@SENTENCE, '-', 1)
+         DEBUG
+      END
+      ELSE
+         sentence = @sentence
+      END
+      prompt ''
+      execute 'sh -c pwd' capturing output
+      current.account.pathname=output<1>
+      unix.pathname=''
+      option=field(field(sentence,'-',2),' ',1)
+      filename=field(sentence,' ',2)
+      if filename[1,1]='-' or filename='' then
+         print 'Filename?   : ' :
+         input filename
+         if filename = '' then stop
+      end
+      itemname = field(sentence, ' ' , 3)
+      if itemname[1,1]='-' or itemname='' then
+         if oconv(filename,'TVOC;X;;0')='' then
+            unix.pathname=filename
+         end else
+            if not(system(11)) then
+               print 'Itemname/s? : ' :
+               input itemname
+            end
+         end
+      end
+      if unix.pathname='' then
+         if filename='DICT' then
+            filename='DICT ':itemname
+            file.id=itemname
+            itemname=field(sentence,' ',4)
+            if itemname[1,1]='-' or itemname='' then
+               if not(system(11)) then
+                  print 'Itemname/s? : ' :
+                  input itemname
+                  if itemname='' then stop
+               end
+            end
+         end else file.id=filename
+         itemlist=''
+         for i=2 to 99
+            next.itemname=field(itemname,' ',i)
+            if next.itemname#'' then itemlist<-1>=next.itemname else i=99
+         next i
+         itemname=field(itemname,' ',1)
+      end
+      multiple.items=(itemname='*')
+      mode = ''
+      begin CASE
+       CASE option='V'
+         mode = '--no-wait'
+       case option='WD'
+         execute 'term 132,42,':field(@term.type,'-',1):'-wd'
+       case option='W'
+         execute 'term 132,':field(@term.type,'-',1):'-w'
+       case option='D'
+         execute 'term 80,42,':field(@term.type,'-',1):'-d'
+      end case
+      if unix.pathname#'' then
+         execute 'sh -c "ls -al ':filename:'"' capturing output
+         if not(index(output<1>,'No such file',1)) THEN
+            GOSUB check.for.emacs
+            cmd='sh -c "UWD=':current.account.pathname:';export UWD;'
+            cmd:='exec /usr/local/bin/emacsclient ':change(unix.pathname,'&','\&',-1):'"'
+            execute cmd
+            execute 'term 80,24,':field(@term.type,'-',1)
+         end
+         stop
+      end
+      open '' , 'VOC' to voc.fv else print '*** VOC file cannot be opened.'; stop
+      read voc.ref from voc.fv, file.id then
+         if index( 'FQ' , voc.ref < 1 > [1, 1], 1) = 0 then
+            print '*** File "':filename:'" does not exist.'; stop
+         end
+      end else print '*** File "':filename:'" does not exist.'; stop
+      if multiple.items AND NOT(SYSTEM(11)) then execute 'select ':filename
+      if itemname='' or multiple.items then
+         readnext itemname else itemname = ''
+      end
+      if field(filename,' ',1)='DICT' then m=5 else m=4
+      if itemlist='' then
+         for i = m to 99
+            next.itemname = field(sentence, ' ' , i)
+            if next.itemname[1,1] # '-' then
+               if next.itemname # '' then itemlist < - 1 >= next.itemname else i = 99
+            end
+         next i
+      end
+      itemnames = dcount(itemlist, @FM)
+      read uv.account.item from voc.fv, 'UV.ACCOUNT' else
+         write 'Q':@FM:'uv':@FM:'UV.ACCOUNT' on voc.fv, 'UV.ACCOUNT'
+      end
+      if voc.ref < 1 > [1, 1] = 'Q' then
+         write 'Q':@FM:voc.ref<2>:@FM:'VOC' on voc.fv, 'Q.VOC.EMACS'
+         open '', 'Q.VOC.EMACS' to q.voc.emacs.fv else
+            print '*** VOC file of Account ':voc.ref<2>:' cannot be opened.'
+            delete voc.fv, 'Q.VOC.EMACS'
+            stop
+         end
+         read q.voc.item from q.voc.emacs.fv,voc.ref<3> else
+            print '*** VOC item for Q-pointer file ':filename:' does not exist.'
+            delete voc.fv, 'Q.VOC.EMACS'
+            stop
+         end
+         account.pathname=oconv(voc.ref<2>,'TUV.ACCOUNT;X;;11')
+         if account.pathname='' then print '*** Account "':voc.ref < 2 >:'" does not exist.'; stop
+         if not(index(q.voc.item<2>,'/',1)) and q.voc.item<1>#'Q' then
+            pathname = account.pathname:'/':q.voc.item < 2 >
+         end else
+            if q.voc.item<1># 'Q' then pathname = q.voc.item<2>
+            else
+               print '*** File ':filename:' is a Q-pointer to another Q-pointer.  Use correct filename.'
+               delete voc.fv, 'Q.VOC.EMACS'
+               stop
+            end
+         end
+         delete voc.fv, 'Q.VOC.EMACS'
+      end else
+         substring=voc.ref<m-2>[1,2]
+         begin case
+            case substring='.'
+               pathname=current.account.pathname
+            case substring[1,1]='/'
+               pathname=voc.ref<m-2>
+            case 1
+               pathname = current.account.pathname:'/':voc.ref < m-2 >
+         end case
+      end
+      execute 'SH -c "ls -dl ':change(pathname,'&','\&',-1):'"' capturing output
+      non.hashed.file=(output[1,1]='d')
+      execute 'sh -c "echo $PWD"' capturing output
+      if current.account.pathname#output<1> then
+         pwd.var='PWD=':current.account.pathname:';export PWD;'
+      end else pwd.var=''
+      directory.pathname=pathname
+      loop while itemname # '' do
+         if not(non.hashed.file) THEN
+            IF multiple.items THEN
+               GOSUB get.multiple.items
+               adjusted.itemname=current.account.pathname:"/'":filename:".uv'"
+            END else
+            execute 'COPYI FROM ':filename:' TO &UFD& ':itemname:',':itemname:'~ OVERWRITING' capturing output
+            if itemname[1,1]='.' then itemname='?':itemname
+            if index(output,'1 record copied',1) then
+               execute 'SH -c "ls -ald ':current.account.pathname:'/':itemname:'~"' capturing output
+               if not(index(output,'No such file',1)) and output[1,1]#'d' then
+                  adjusted.itemname=current.account.pathname:'/':itemname:'~'
+               end else
+                  pathname=current.account.pathname
+                  gosub adjust.itemname
+               end
+               if index(sentence,'-R',1) then
+                  execute 'sh -c "pr -n: -t ':adjusted.itemname:' > ':adjusted.itemname:'~"'
+                  execute 'sh -c "rm ':adjusted.itemname:'"'
+                  execute 'sh -c "mv ':adjusted.itemname:'~ ':adjusted.itemname:'"'
+                  if itemname[1,1]='?' then itemname=itemname[2,99]
+                  data 'i Record Id: ':itemname
+                  data 'c/^252/|/g999'
+                  data 't'
+                  data 'c/^253/}/g999'
+                  data 'fi'
+                  execute 'ED &UFD& ':itemname:'~' capturing output
+               end
+            end else
+               pathname=current.account.pathname
+               gosub adjust.itemname
+               END
+            end
+            GOSUB check.for.emacs
+            cmd='sh -c "UWD=':current.account.pathname:';export UWD;'
+            cmd := 'exec /usr/local/bin/emacsclient ':mode:' ':change(adjusted.itemname,'&','\&',-1):'"'
+            execute cmd
+            IF multiple.items THEN
+               IF option#'V' THEN
+                  PRINT 'Rewrite multiple items to file? : ':
+                  INPUT response, 1
+                  IF index( 'yY' , response, 1) and response # '' THEN
+                     GOSUB write.multiple.items
+                  END
+                  itemname = ''
+               END
+            END else
+               if not(index(sentence,'-R',1)) then
+                  execute 'sh -c "ls ':adjusted.itemname:'"' capturing output
+                  if not(index(output,'No such file',1)) then
+                     if itemname[1,1]='?' then itemname=itemname[2,99]
+                     execute 'COPYI FROM &UFD& TO ':filename:' ':itemname:'~,':itemname:' OVERWRITING DELETING' capturing output
+                  end
+               end
+               execute 'DELETE &UFD& ':itemname:'~' capturing output
+               dirname=itemname:'~'
+               execute \SELECT &UFD& LIKE "':dirname[1,14]:'..."\ rtnlist selected.items capturing output
+               if @selected>0 then
+                  data 'Y'
+                  execute 'DELETE &UFD&' passlist selected.items capturing output
+               end
+               execute 'SH -c "rm -r ':dirname[1,14]:'"' capturing output
+            end
+         end else
+            execute 'SH -c "ls -adl ':change(directory.pathname,'&','\&',-1):'/':itemname:'"' capturing output
+            if index(output,'No such file',1) or output[1,1]='d' then
+               execute 'sh -c "ls -a ':directory.pathname:'/.Type1"' capturing output
+               if not(index(output,'No such file',1)) then
+                  pathname=directory.pathname
+                  gosub adjust.itemname
+               end else adjusted.itemname=directory.pathname:'/':itemname
+            end else adjusted.itemname=directory.pathname:'/':itemname
+            pathname=adjusted.itemname
+            if index(sentence,'-R',1) then
+               execute 'sh -c "pr -n: -t ':change(pathname,'&','\&',-1):' > ':change(pathname,'&','\&',-1):'~"'
+               pathname:='~'
+            end
+            filename=change(filename,'&','\&',-1)
+            GOSUB check.for.emacs
+            cmd='sh -c "UWD=':current.account.pathname:';export UWD;':pwd.var
+            cmd:='SRCDIR=':filename:';export SRCDIR;'
+            cmd:='SRCFILE=':itemname:';export SRCFILE;'
+            cmd := 'exec /usr/local/bin/emacsclient ':mode:' ':change(pathname,'&','\&',-1):'"'
+            execute cmd
+            pathname = change(pathname,'&','\&',-1)
+            if index(sentence,'-R',1) then
+               execute 'sh -c "rm ':pathname:'"' capturing output
+            end else
+               execute 'sh -c "ls ':pathname:'"' capturing output
+               if index(output,'No such file',1) then
+                  dirpath=pathname[1,index(pathname,itemname[1,14],1)-1]:itemname[1,14]
+                  execute 'sh -c "ls -dl ':dirpath:'"' capturing output
+                  if output[1,1] = 'd' then
+                     execute 'sh -c "ls -l ':dirpath:'"' capturing output
+                     if output<1> = 'total 0' then
+                        execute 'sh -c "rm -r ':dirpath:'"' capturing output
+                     end
+                  end
+               end
+            end
+         END
+         * IF NOT(multiple.items) then
+         if itemnames then
+            itemname = itemlist < 1 >
+            itemnames = itemnames - 1
+            del itemlist < 1 >
+         end else
+            readnext itemname else itemname = ''
+         end
+         if itemname # '' then
+            print 'Continue? (Y=default[[/N]]) : ' :
+            input response, 1
+            if index( 'nN' , response, 1) and response # '' then itemname = ''
+            END
+         * end
+      repeat
+      execute 'term 80,24,':field(@term.type,'-',1)
+      stop
+*
+adjust.itemname:
+      orig.itemname=itemname
+      adjusted.itemname=''
+      if not(non.hashed.file) then itemname=itemname:'~'
+      loop while len(itemname) > 13 do
+         pathname=pathname:'/':itemname[1,14]
+         if adjusted.itemname#'' then
+            adjusted.itemname=adjusted.itemname[1,index(adjusted.itemname,itemname,1)-2]
+         end
+         if len(itemname) = 14 then
+            adjusted.itemname = adjusted.itemname:itemname:'/?'
+         end else
+            if itemname[15, 1] = '.' then
+               adjusted.itemname = adjusted.itemname:itemname[1, 14]:'/?':itemname[15, 99]
+            end else adjusted.itemname = adjusted.itemname:itemname[1, 14]:'/':itemname[15, 99]
+         end
+         execute 'sh -c "ls -dl ':pathname:'"' capturing output
+         if index(output,'No such file',1) then
+            cmd='sh -c "mkdir ':pathname:'"'
+            execute cmd capturing output
+         end
+         itemname=field(adjusted.itemname,'/',count(adjusted.itemname,'/')+1)
+      repeat
+      if adjusted.itemname='' then
+         if non.hashed.file then adjusted.itemname=pathname:'/':itemname
+         else adjusted.itemname = itemname
+      end else
+         adjusted.itemname=pathname:'/':itemname
+      end
+      itemname=orig.itemname
+      return
+*
+check.for.emacs:
+      *
+      * Start emacs as a server if it isn't already running.
+      count=0
+      cmd='sh -c "ps -fu ':@LOGNAME:' | grep emacs | grep -v grep"'
+      EXECUTE cmd CAPTURING output
+      IF output = '' THEN
+         EXECUTE 'sh -c "emacs -u $HOME/.emacs -f server-start &"'
+         SLEEP 5
+         loop while (output = '' and count < 1000 ) do
+            EXECUTE cmd CAPTURING output
+            sleep 5
+            count += 1
+         repeat
+      end
+      RETURN
+*
+get.multiple.items:
+      IF SYSTEM(11) THEN
+         itemcount = @SELECTED
+      END ELSE
+         EXECUTE 'COUNT ':filename CAPTURING output
+         itemcount = FIELD(output, @FM, 2)
+         itemcount = FIELD(itemcount, ' ', 1)
+      END
+      DIM multipleitems(itemcount)
+      original.itemcount = itemcount
+      original.items = ''
+      OPEN '',filename TO DATAFILE ELSE STOP
+      itemindex = itemcount
+      LOOP WHILE itemname # '' DO
+         IF option='V' THEN
+            READ @RECORD FROM DATAFILE, itemname ELSE STOP
+         END ELSE
+            READU @RECORD FROM DATAFILE, itemname ELSE STOP
+         END
+         @RECORD = CHANGE(@RECORD, @FM, CHAR(127), -1)
+         multipleitems(itemindex) = itemname:@IM:@RECORD
+         original.items<-1> = itemname
+         itemindex -= 1
+         READNEXT itemname ELSE itemname=''
+      REPEAT
+      CLOSE DATAFILE
+      IF option#'V' THEN
+         OPEN '','&UFD&' TO DATAFILE ELSE STOP
+         MATWRITE multipleitems TO DATAFILE,filename:'.uv' ELSE STOP
+         CLOSE DATAFILE
+      END
+      return
+*
+write.multiple.items:
+* Back up the original file prior TO writing
+      EXECUTE 'sh -c "cp ':current.account.pathname:'/':filename:' ':current.account.pathname:'/':filename:'~"'
+      OPEN '','&UFD&' TO DATAFILE ELSE STOP
+      MATREAD multipleitems FROM DATAFILE,filename:'.uv' ELSE STOP
+      itemcount = INMAT()
+      DELETE DATAFILE, filename:'.uv'
+      DELETE DATAFILE, filename:'.uv~'
+      CLOSE DATAFILE
+      IF itemcount = 0 THEN
+         itemindex = original.itemcount
+      END else
+         itemindex = itemcount
+      END
+
+      OPEN '',filename TO DATAFILE ELSE STOP
+      LOOP WHILE itemindex > 0 DO
+         @RECORD = multipleitems(itemindex)
+         itemname = FIELD(@RECORD, @IM, 1)
+         @RECORD = CHANGE(@RECORD, itemname:@IM, '')
+         @RECORD = CHANGE(@RECORD, CHAR(127), @FM, -1)
+         WRITE @RECORD ON DATAFILE, itemname
+         LOCATE itemname IN original.items SETTING pos ELSE pos = 0
+         IF pos # 0 THEN original.items<pos> = ''
+         itemindex -= 1
+      REPEAT
+      IF itemcount = 0 THEN
+         LOOP WHILE multipleitems(0) # '' DO
+            @RECORD = FIELD(multipleitems(0), @FM, 1)
+            itemname = FIELD(@RECORD, @IM, 1)
+            @RECORD = CHANGE(@RECORD, itemname:@IM, '')
+            @RECORD = CHANGE(@RECORD, CHAR(127), @FM, -1)
+            WRITE @RECORD ON DATAFILE, itemname
+            LOCATE itemname IN original.items SETTING pos ELSE pos = 0
+            IF pos # 0 THEN original.items<pos> = ''
+            multipleitems(0) = FIELD(multipleitems(0), @FM, 2, 1000)
+         REPEAT
+      END
+      itemindex = original.itemcount
+      LOOP WHILE itemindex > 0 DO
+         IF original.items<itemindex> # '' THEN
+            DELETE DATAFILE, original.items<itemindex>
+         END
+         itemindex -= 1
+      REPEAT
+      CLOSE DATAFILE
+      print '*** NOTE:  Multiple records edited.  A backup, "':itemname:'~", made prior'
+      print '        to updating can be found in the current directory.'
+      return
+*
+   end

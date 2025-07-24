@@ -242,9 +242,9 @@ ifeq ($(wildcard $(INSTROOT)/.),)
 	chown -R qmsys:qmusers $(INSTROOT)
 	chmod -R 664 $(INSTROOT)
 	find $(INSTROOT) -type d -print0 | xargs -0 chmod 775
-#	else update everything that's changed, eg NEWVOC, MESSAGES, all that sort of stuff.
 else
-#	copy FILEs that need updating
+#	else update everything that's changed, eg NEWVOC, MESSAGES, all that sort of stuff.
+
 #	copy the contents of NEWVOC so the account will upgrade
 	@rm $(INSTROOT)/NEWVOC/*
 	@cp qmsys/NEWVOC/* $(INSTROOT)/NEWVOC
@@ -260,15 +260,24 @@ else
 #	copy the contents of terminfo so the account will upgrade
 	@rm -Rf $(INSTROOT)/terminfo/*
 	@cp -R qmsys/terminfo/* $(INSTROOT)/terminfo
+
+
 	@chown -R qmsys:qmusers $(INSTROOT)/terminfo
 	@find $(INSTROOT)/terminfo -type d -print0 | xargs -0 chmod 775
 	@find $(INSTROOT)/terminfo -type f -print0 | xargs -0 chmod 664
 
+#	@chown qmsys:qmusers $(INSTROOT)/terminfo/*
+#	@chmod 664 $(INSTROOT)/terminfo/*
+#	make sure all directories are readable
+#	find $(INSTROOT) -type d -print0 | xargs -0 chmod 775
+
+
+
 endif
 #       copy bin files and make them executable
 	@test -d $(INSTROOT)/bin || mkdir $(INSTROOT)/bin
-#	copy the contents of bin so the account will upgrade
-	@rm $(INSTROOT)/bin/*
+#	copy the contents of bin so the account will upgrade - -f so it works on an empty directory
+	@rm -f $(INSTROOT)/bin/*
 	@cp bin/* $(INSTROOT)/bin
 	chown qmsys:qmusers $(INSTROOT)/bin $(INSTROOT)/bin/*
 	chmod 775 $(INSTROOT)/bin $(INSTROOT)/bin/*

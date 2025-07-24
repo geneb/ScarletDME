@@ -1,0 +1,304 @@
+* A utility to print source code to an HP laser printer with various
+* output options. Written by Adrian Matthews in 1994
+
+$OPTIONS SMA.HEADING
+      PROMPT ''
+
+	       DEFAULT.PRINTER = '\\PRINTSERV\Development_HP8150'
+      DEFAULT.PRINT = DQUOTE(DEFAULT.PRINTER)
+      ESC = CHAR(27)
+      READLIST PASSED.RECORDS ELSE PASSED.RECORDS = ''
+      COND = ESC:"(10U":ESC:'(s0P':ESC:'&k2S'
+      SENTENCE = CONVERT(' ',@FM,FIELD(@SENTENCE,'-',1))
+      OPTIONS = FIELD(@SENTENCE,'-',2,999)
+      CONVERT ' ' TO '' IN OPTIONS
+      CONVERT '-' TO @FM IN OPTIONS
+      NO.NUM.OPTIONS = CONVERT('0123456789','',OPTIONS)
+      OPT.STRING = ''
+      LOCATE 'S' IN NO.NUM.OPTIONS<1> SETTING POS THEN
+         START.LINE = TRIM(CONVERT('S','',OPTIONS<POS>))
+         IF NOT(NUM(START.LINE)) THEN
+            ERR= '-S must be followed by a number'
+            GOSUB ERR.HANDLER
+            STOP
+         END
+         OPT.STRING = 'From line - ' : START.LINE
+      END ELSE
+         START.LINE = 1
+      END
+      LOCATE 'E' IN NO.NUM.OPTIONS<1> SETTING POS THEN
+         END.LINE = TRIM(CONVERT('E','',OPTIONS<POS>))
+         IF NOT(NUM(END.LINE)) THEN
+            ERR = '-E must be followed by a number'
+            GOSUB ERR.HANDLER
+            STOP
+         END
+         OPT.STRING := ' to line ':END.LINE
+      END ELSE
+         END.LINE = 999999
+      END
+      LOCATE 'EXPAND' IN OPTIONS<1> SETTING POS THEN
+         OPT.STRING<-1> = "INCLUDEs will not be expanded"
+         MODE = ''
+      END ELSE
+         MODE = 'EXPAND'
+         OPT.STRING<-1> = "INCLUDEs will be expanded"
+      END
+      LOCATE 'P' IN OPTIONS<1> SETTING POS THEN
+         LANDSCAPE = @FALSE
+         OPT.STRING<-1> = 'Output in portrait format'
+      END ELSE
+         LANDSCAPE = @TRUE
+         OPT.STRING<-1> = "Output in landscape format"
+      END
+      LOCATE 'LPI' IN NO.NUM.OPTIONS<1> SETTING POS THEN
+         LPI = TRIM(CONVERT('LPI','',OPTIONS<POS>))
+      END ELSE
+         LPI = 8
+      END
+      BEGIN CASE
+         CASE LPI = 8
+            LPI = ESC:'&l8D'
+            LINES.PER.COL = 54
+            PORT.LINES = 80
+            OPT.STRING := ' at eight lines per inch'
+         CASE LPI = 12
+            LPI = ESC:'&l10D'
+            LINES.PER.COL=86
+            PORT.LINES = 126
+            OPT.STRING := ' at twelve lines per inch'
+         CASE 1
+            ERR = 'Lines per inch must be 8 or 12'
+            GOSUB ERR.HANDLER
+            STOP
+      END CASE
+      LOCATE 'NOLINES' IN OPTIONS<1> SETTING POS THEN
+         NOLINES = @TRUE
+         OPT.STRING<-1> = 'Line-up bars will not be printed'
+      END ELSE
+         OPT.STRING<-1> = 'Line-up bars will be printed'
+         NOLINES = @FALSE
+      END
+      FILE.NAME = SENTENCE<2>
+      RECORD.ID = SENTENCE<3>
+      IF FILE.NAME = '' AND RECORD.ID = '' AND OPTIONS = '' THEN
+         CRT @SYS.BELL
+         STOP
+      END
+      LINES.PER.PAGE = LINES.PER.COL * 2
+      IF MODE = 'EXPAND' THEN ANS= 'Y' ELSE ANS = 'S'
+      PASSED.RECORDS<-1> = RECORD.ID
+            PERFORM 'SETPTR 0,80,63,0,0,1,AT ':DEFAULT.PRINTER
+      IF LANDSCAPE THEN
+        OPEN '&HOLD&' TO F.HOLD ELSE STOP 'Cannot open the &HOLD& file'
+      END
+      ERR.FLAG = 0
+      TERM.WIDTH = 0
+      DIM REC(99) ; MAT REC = ''
+      DIM SAVE.INDENT(99) ; MAT SAVE.INDENT = ''
+      DIM AMT(99) ; MAT AMT = ''
+      DIM SAVE.CNT(99) ; MAT SAVE.CNT = ''
+      DIM SAVE.MORE(99) ; MAT SAVE.MORE = ''
+      VINCLUDE = 0
+      CALL !GETPU(2,0,TERM.WIDTH,ERR.FLAG)
+      IF NOLINES THEN
+         MASK = SPACE(200)
+      END ELSE
+         MASK = "      ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179):"  ":CHAR(179)
+      END
+      LOOP
+         REMOVE RECORD.ID FROM PASSED.RECORDS SETTING MORE.IDS
+         FIELD.NO = 1
+         LOOP
+            BEGIN CASE
+               CASE FIELD.NO = 1
+                  LOOP
+                     ERR = ''
+                     IF NOT(FILE.NAME) THEN
+                        CRT
+                        CRT 'Enter file name : ': ; INPUT FILE.NAME
+                     END
+                     IF FILE.NAME THEN
+                        OPEN FILE.NAME TO F.FILE ELSE
+                           ERR = FILE.NAME:' is not a valid file name'
+                           GOSUB ERR.HANDLER
+                           FILE.NAME = ''
+                        END
+                     END ELSE
+                        FIELD.NO = 99
+                        EXIT
+                     END
+                     FIELD.NO += (NOT(ERR))
+                  UNTIL NOT(ERR) REPEAT
+               CASE FIELD.NO = 2
+                  LOOP
+                     ERR = ''
+                     IF NOT(RECORD.ID) THEN
+                        CRT
+                        CRT 'Enter record ID : ': ; INPUT RECORD.ID
+                     END
+                     IF RECORD.ID THEN
+                        READV RECV FROM F.FILE,RECORD.ID,0 ELSE
+                           ERR = RECORD.ID:' does not exist on ':FILE.NAME
+                           GOSUB ERR.HANDLER
+                           RECORD.ID = ''
+                        END
+                     END ELSE
+                        FIELD.NO = 1
+                        FILE.NAME = ''
+                        EXIT
+                     END
+                     FIELD.NO += (NOT(ERR))
+                  UNTIL NOT(ERR) REPEAT
+               CASE FIELD.NO = 3
+                  CRT
+                  CRT
+                  CRT '[LFORMAT V1.0]'
+                  CRT
+                  LOOP
+                     REMOVE STRING FROM OPT.STRING SETTING MORE
+                     IF STRING THEN CRT STRING
+                  WHILE MORE REPEAT
+                  CRT
+                  PERFORM 'FORMAT ':FILE.NAME:' ':RECORD.ID
+                  READ RECV FROM F.FILE,RECORD.ID THEN NULL
+                  MAX.LINES = DCOUNT(RECV,@FM)
+                  REC(VINCLUDE) = RECV
+                  PTR.WIDTH = ''
+                  PTR.LENGTH = ''
+                  PTR.TOP.MAR = ''
+                  PTR.BOT.MAR = ''
+                  PTR.MODE = ''
+                  PTR.OPTIONS = ''
+                  CALL !SET.PTR(-1,PTR.WIDTH,PTR.LENGTH,PTR.TOP.MAR,PTR.BOT.MAR,PTR.MODE,PTR.OPTIONS)
+                  IF LANDSCAPE THEN
+                     CALL !SET.PTR(0,92,99,0,0,3,'BANNER ':RECORD.ID:@USERNO:',NHEAD')
+                     PRINTER.WIDTH = 92-9
+                  END ELSE
+                     CALL !SET.PTR(0,129,PORT.LINES,0,0,PTR.MODE,PTR.OPTIONS)
+                     PRINTER.WIDTH = 129 - 9
+                  END
+                  PRINTER ON
+                  IF NOT(LANDSCAPE) THEN
+                     PRINT ESC:'&l0O':COND:LPI
+                     HEADING "File, Record = ":FILE.NAME:", ":RECORD.ID:"'G'Acc. - ":@WHO:"'GTG'Dev. - ":FIELD(@LOGNAME,'\',2):"'G'Page 'SL'":STR(CHAR(205),129)
+                  END
+                  INDENT = 0
+                  CNT = 0
+                  AMT(VINCLUDE) = MAX.LINES
+                  GRAND.TOT = AMT(VINCLUDE)
+                  CRT STR(@(-10),INT(((AMT(VINCLUDE)/10)/TERM.WIDTH) + 1) + 2):@(-4):'Performing a Lineup Format ...':@(-3)
+                  GOSUB PROCESS.REC
+                  IF LANDSCAPE THEN
+                     FIELD.NO = 4
+                  END ELSE
+                     FIELD.NO = 5
+                  END
+               CASE FIELD.NO = 4
+                  PRINTER CLOSE
+                  PRINTER OFF
+                  CALL !SET.PTR(0,188,LINES.PER.COL + 2,0,0,PTR.MODE,PTR.OPTIONS)
+                  PRINTER ON
+                  PRINT ESC:'&l1O':COND:LPI
+                  HEADING "File Name - ":FILE.NAME:"'G'Record Name - ":RECORD.ID:"'G'Account - ":@WHO:"'G'Date and Time - 'TG'Developer - ":FIELD(@LOGNAME,'\',2):"'G'Page 'SL'":STR(CHAR(205),188)
+                  READ HOLD.REC FROM F.HOLD,RECORD.ID:@USERNO THEN
+*                     DELETE F.HOLD,RECORD.ID:@USERNO
+                     HOLD.TOT = DCOUNT(HOLD.REC,@FM)
+                     FOR CNT = 1 TO HOLD.TOT STEP LINES.PER.PAGE
+                        FOR X = CNT TO CNT+(LINES.PER.COL-1)
+                           PRINT FMT(HOLD.REC<X>,'92L'):' ':CHAR(221):' ':FMT(HOLD.REC<X+LINES.PER.COL>,'92L')
+                        NEXT X
+                     NEXT CNT
+                  END ELSE
+                     PRINT "Couldn't read ":RECORD.ID:@USERNO:" from &HOLD&"
+                  END
+                  FIELD.NO = 5
+               CASE FIELD.NO = 5
+                  PRINTER CLOSE
+                  PRINTER OFF
+                  CRT
+                  IF START.LINE AND END.LINE NE 999999 THEN
+                     CRT 'Lines ':START.LINE:' to ':END.LINE:' printed to unit 0'
+                  END ELSE
+                     CRT GRAND.TOT:' lines printed to unit 0'
+                  END
+                  CALL !SET.PTR(0,PTR.WIDTH,PTR.LENGTH,PTR.TOP.MAR,PTR.BOT.MAR,PTR.MODE,PTR.OPTIONS)
+                  FIELD.NO = 99
+            END CASE
+         UNTIL FIELD.NO = 99 REPEAT
+      WHILE MORE.IDS REPEAT
+      CRT
+      STOP
+PROCESS.REC:
+      LOOP
+         CNT += 1
+         IF NOT(MOD(CNT,10)) THEN
+            CRT ">":
+         END
+         REMOVE LINE FROM REC(VINCLUDE) SETTING MORE
+         IF NOT(VINCLUDE) THEN
+            IF CNT LT START.LINE OR CNT GT END.LINE THEN
+               IF NOT(MORE) THEN EXIT ELSE CONTINUE
+            END
+         END
+         LINE.NO = FMT(CNT,"4'0'R"):(IF VINCLUDE THEN "$:" ELSE ": "):" "
+         TEST = TRIM(LINE)
+         FLINE = TRIMF(LINE)
+         LINE.LEN = LEN(LINE)
+         IF LEN(TEST) = 0 THEN
+            PRINT LINE.NO:MASK[1,INDENT]
+         END ELSE
+            INDENT = LINE.LEN - LEN(FLINE)
+            LINE = MASK[1, INDENT]:FLINE
+            FOR XX = 1 TO LINE.LEN STEP PRINTER.WIDTH
+               PRINT (IF XX = 1 THEN LINE.NO ELSE SPACE(7)):LINE[XX,PRINTER.WIDTH]
+            NEXT XX
+         END
+         IF LINE[1,8] = "$INCLUDE" AND ANS NE "S" THEN
+            IF ANS NE "E" THEN
+               CRT
+               LOOP
+                  CRT 'Expand ':LINE
+                  PREV.ANS = ANS
+                  CRT '(Y)es, (N)o, (E)xpand all, (S)kip all : ':ANS:@(-9): ; INPUT ANS,1
+                  IF ANS = '' THEN ANS = PREV.ANS
+                  ANS = UPCASE(ANS)
+               UNTIL ANS MATCHES 'Y':@VM:'N':@VM:'E':@VM:'S' DO
+                  CRT @SYS.BELL:
+               REPEAT
+            END
+            IF ANS = 'Y' OR ANS = 'E' THEN
+               SAVE.CNT(VINCLUDE) = CNT
+               SAVE.MORE(VINCLUDE) = MORE
+               SAVE.INDENT(VINCLUDE) = INDENT
+               CNT = 0
+               RECORD.ID = FIELD(LINE,' ',3)
+               IF RECORD.ID = '' THEN
+                  RECORD.ID = FIELD(LINE,' ',2)
+               END ELSE
+                  FILE.NAME = FIELD(LINE,' ',2)
+               END
+               HUSH ON ; PRINTER OFF
+               PERFORM 'FORMAT ' : FILE.NAME:' ':RECORD.ID
+               PRINTER ON ; HUSH OFF
+               RECV = TRANS(FILE.NAME,RECORD.ID,-1,'X')
+               VINCLUDE += 1
+               REC(VINCLUDE) = RECV
+               AMT(VINCLUDE) = DCOUNT(REC(VINCLUDE),@FM)
+               INDENT = 0
+               GRAND.TOT += AMT(VINCLUDE)
+               GOSUB PROCESS.REC
+               VINCLUDE -= 1
+               CNT = SAVE.CNT(VINCLUDE)
+               MORE = SAVE.MORE(VINCLUDE)
+               INDENT = SAVE.INDENT(VINCLUDE)
+            END
+         END
+      WHILE MORE REPEAT
+      RETURN
+ERR.HANDLER:
+      CRT
+      CRT @SYS.BELL:'LFORMAT> ':ERR
+      CRT
+      RETURN
+   END

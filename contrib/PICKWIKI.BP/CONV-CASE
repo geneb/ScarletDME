@@ -1,0 +1,237 @@
+!
+** Convert case of record
+** (C) Copyright 1985-2004, Advantos Systems, Inc.  All Rights Reserved.
+!
+** Last Modified: 24 Oct 2003, wph
+** First Created: 01 Jul 1992, wph
+** Program Type-: Utility
+!
+** Notes:
+**
+** This process changes the case of record items.
+!
+AM     = CHAR(254)
+VM     = CHAR(253)
+SP1    = ' '
+NULL$  = ''
+*
+** turn off casing
+CASING OFF                       ; ** D3 version
+*
+** read tcl line
+*TclLine = @COMMAND               ; ** U2 version
+TCLREAD TclLine                  ; ** D3 version
+TclLine  = OCONV(TRIM(FIELD(TclLine, '(', 1)), 'G1 9999')
+*OPTIONS = FIELD(TclLine, '(', 2) ; ** U2 version
+OPTIONS  = SYSTEM(15)            ; ** D3 version
+*
+** convert spaces to attribute marks for string manipulation
+CONVERT ' ' TO AM IN TclLine
+FNAME = OCONV(TclLine<1>, 'MCU')
+IF INDEX(OPTIONS, '?', 1) THEN FNAME = '?'
+*
+** help option
+IF FNAME = '?' THEN GOTO DISPLAY.HELP
+*
+** get file name
+IF FNAME = '' THEN STOP 10
+IF FNAME = 'DICT' OR FNAME = 'DATA' THEN
+   FNAME   = FNAME:' ':TclLine<2>
+   TclLine = DELETE(TclLine,1)
+END
+*
+** open file to process
+OPEN '', FNAME TO FNAME.FV ELSE
+   CRT '...No ' : FNAME : ' file available'
+   GOTO END.OF.PROGRAM
+END
+IF FNAME[LEN(FNAME),1] = ',' THEN
+   ANAME = FIELD(FNAME, ',', 1)
+   DNAME = FIELD(FNAME, ',', 2)
+   IF DNAME = '' ELSE DNAME = DNAME:','
+END ELSE
+*  ACCTP = 2                                   ; ** U2 version
+   IF SYSTEM(29) THEN ACCTP = 2 ELSE ACCTP = 3 ; ** D3 version
+   OPUT  = OCONV('', 'U50BB')
+   ANAME = FIELD(OPUT, ' ', ACCTP)
+   DNAME = ''
+END
+*
+** remove file from command and parse options
+TclLine = DELETE(TclLine, 1)
+IF TclLine = ''           THEN TCLFLG = 0 ELSE TCLFLG = 1
+IF INDEX(OPTIONS, 'I', 1) THEN IDSUPP = 1 ELSE IDSUPP = 0
+IF INDEX(OPTIONS, 'K', 1) THEN UPDKEY = 1 ELSE UPDKEY = 0
+IF INDEX(OPTIONS, 'O', 1) THEN OFLG   = 1 ELSE OFLG   = 0
+IF INDEX(OPTIONS, 'L', 1) THEN
+   LOWER = 1
+   CASCV = 'MCL'
+END ELSE
+   LOWER = 0
+   CASCV = 'MCU'
+END
+IF INDEX(OPTIONS, 'Q', 1) THEN
+   QUOTESW = 1
+   IF INDEX(OPTIONS, 'E', 1) THEN EXEC = 1 ELSE EXEC = 0
+END ELSE
+   QUOTESW = 0
+END
+!
+** Process record(s)
+!
+SEL.LIST = SYSTEM(11)
+FTIME    = 1
+LOOP
+   IF SEL.LIST THEN
+      READNEXT ID ELSE GOTO END.OF.PROGRAM
+   END ELSE
+      IF TCLFLG THEN
+         ID      = TclLine<1>
+         TclLine = DELETE(TclLine, 1)
+         IF ID = '' THEN GOTO END.OF.PROGRAM
+      END ELSE
+         CRT 'ENTER ID: ':
+         INPUT ID
+      END
+   END
+   ID = TRIM(ID)
+UNTIL ID = '' DO
+   IF FTIME THEN
+      FTIME = 0
+      IF ID = '*' THEN
+         SEL.LIST = 1
+         SELECT
+         READNEXT ID ELSE GOTO END.OF.PROGRAM
+      END
+   END
+   READU ITEM FROM FNAME.FV, ID THEN
+      IF SYSTEM(0) = 10 THEN
+         RELEASE FNAME.FV, ID          ; ** a binary item so skip
+      END ELSE
+         NOAM = DCOUNT(ITEM, AM)
+         FOR A = 1 TO NOAM
+            LN  = ITEM<A>
+            IND = INDEX(LN, 'CHAIN ', 1)
+            IF IND ELSE IND = INDEX(LN, 'TCL ',     1)
+            IF IND ELSE IND = INDEX(LN, 'EXECUTE ', 1)
+            GOSUB CASE.CONVERT
+            ITEM<A> = LN
+         NEXT A
+         ID   = OCONV(ID, CASCV)        ; ** convert ID to upper/lower case
+         WRITE ITEM ON FNAME.FV, ID
+         IF OFLG THEN CRT ID:SPACE(SYSTEM(2)-LEN(ID)):CR$: ELSE
+            IF IDSUPP ELSE CRT ID
+         END
+      END
+   END ELSE
+      RELEASE FNAME.FV, ID
+      STOP 202, ID
+   END
+REPEAT
+*
+**----------------------------------------------------------------**
+**                                                                **
+**                     S U B R O U T I N E S                      **
+**                                                                **
+**----------------------------------------------------------------**
+*
+** Convert the case of a line
+***************
+CASE.CONVERT:
+***************
+*
+FIRST.CHAR.YET = 0             ; ** non-space character
+COMMENT.SW     = 0             ; ** is this a comment
+IF QUOTESW THEN
+   DQ.SW   = 0                 ; ** double-quote switch
+   SQ.SW   = 0                 ; ** single-quote switch
+   BS.SW   = 0                 ; ** back-slash switch
+   CC.HIGH = LEN(LN)
+   FOR CCX = 1 TO CC.HIGH
+      CC.CHAR = LN[CCX,1]      ; ** get the character
+*
+** process if we're not in a string$
+      IF NOT(DQ.SW) AND NOT(SQ.SW) AND NOT(BS.SW) THEN
+*
+** is the 1st non-space character of the line?
+         IF NOT(FIRST.CHAR.YET) THEN
+            BEGIN CASE
+               CASE CC.CHAR   = ' '  ; GOTO NEXT.CCX
+               CASE CC.CHAR   = '*'  ; COMMENT.SW = 1
+               CASE CC.CHAR   = '!'  ; COMMENT.SW = 1
+               CASE LN[CCX,4] = 'REM '
+                  COMMENT.SW = 1
+                  CCX       += 4
+                  CC.CHAR    = LN[CCX,1]
+            END CASE
+            FIRST.CHAR.YET = 1
+         END
+*
+** determine if we're starting an un-commented string$
+         IF NOT(COMMENT.SW) THEN
+            BEGIN CASE
+               CASE CC.CHAR = '"'  ; DQ.SW = 1
+               CASE CC.CHAR = "'"  ; SQ.SW = 1
+               CASE CC.CHAR = '\'  ; BS.SW = 1
+               CASE CC.CHAR = ';'  ; FIRST.CHAR.YET = 0
+               CASE 1
+                  CC.CHAR = OCONV(CC.CHAR, CASCV)
+                  LN[CCX,1] = CC.CHAR
+            END CASE
+         END
+      END ELSE
+*
+* see if we need to un-string$ the string otherwise leave it alone
+         IF NOT(COMMENT.SW) THEN
+            BEGIN CASE
+               CASE DQ.SW AND CC.CHAR = '"' ; DQ.SW = 0
+               CASE SQ.SW AND CC.CHAR = "'" ; SQ.SW = 0
+               CASE BS.SW AND CC.CHAR = '\' ; BS.SW = 0
+            END CASE
+         END
+      END
+*
+NEXT.CCX:
+*
+   NEXT CCX
+END ELSE
+   LN = OCONV(LN, CASCV)        ; ** convert entire line
+END
+RETURN
+*
+** Help display
+***************
+DISPLAY.HELP:
+***************
+*
+CRT
+CRT 'Convert CASE of data from Upper-to-Lower or Lower-to-Upper.  This'
+CRT 'is usually done for program files, but can be done for any files.'
+CRT
+CRT 'Syntax:'
+CRT '  CONV-CASE FileName {Item Criteria} {(OPTIONS)}'
+CRT
+CRT '  * options:'
+CRT '       E - Used with Q-Option to Convert Case of Items'
+CRT '           within quotes due to CHAIN, TCL, or EXECUTE'
+CRT '       I - Suppresses Item-Id output'
+CRT '       K - Upper-cases Record Keys (item Ids) only'
+CRT '       L - Convert Upper to Lower Case'
+CRT '       O - Output Item-Ids on Same Line'
+CRT '       Q - Leaves Text within quotes Unchanged.   Also leaves'
+CRT '           program comments unchanged.'
+CRT '       U - Convert Lower to Upper Case (default)'
+CRT
+GOTO END.OF.PROGRAM
+*
+**----------------------------------------------------------------**
+**                                                                **
+**                  E N D   O F   P R O G R A M                   **
+**                                                                **
+**----------------------------------------------------------------**
+*
+***************
+END.OF.PROGRAM:
+***************
+*
+END

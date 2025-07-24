@@ -1,0 +1,50 @@
+*
+* Auto-created by command WALK FILE 09:46:02 25 SEP 2012
+* WALK Code by Will Johnson, Creative Commons CC-BY
+*
+      EQUATE FALSE TO 0, TRUE TO 1
+$INCLUDE FFT.BP TCL.II
+      GOSUB INIT
+      CLEARSELECT ALL
+*
+      PRINT "Checking for, and removing, bad characters":
+      PRINT " from file ":N.FILE
+      SELECT F.FILE
+      DONE = FALSE ; CNT = 0 ; CNT2 = 0
+      LOOP
+         READNEXT K.FILE ELSE DONE = TRUE
+         IF NOT(MOD(CNT,250)) THEN DISPLAY CHAR(13):CNT"R#6":
+      UNTIL DONE DO
+         CNT += 1
+         READ R.FILE FROM F.FILE,K.FILE THEN
+            GOSUB PROCESS.R.FILE
+         END
+      REPEAT
+      DISPLAY
+      PRINT CNT"R#6":' Records processed'
+      PRINT CNT2"R#6":' Records fixed'
+      STOP
+*
+INIT:
+      OPEN N.FILE TO F.FILE ELSE
+         PRINT "Cannot open file ":N.FILE ; STOP
+      END
+      BAD.CHARS =
+      FOR I = 0 TO 31
+         BAD.CHARS := CHAR(I)
+      NEXT I
+      FOR I = 128 TO 250
+         BAD.CHARS := CHAR(I)
+      NEXT I
+      RETURN
+*
+PROCESS.R.FILE:
+      TEST1.R.FILE = CONVERT(@AM:@VM:@SVM:@TM,,R.FILE)
+      IF TEST1.R.FILE # OCONV(TEST1.R.FILE,'MCP') THEN
+         RECORDLOCKU F.FILE,K.FILE ON ERROR RETURN LOCKED RETURN
+         CONVERT BAD.CHARS TO  IN R.FILE
+         WRITE R.FILE ON F.FILE,K.FILE
+         CNT2 += 1 ; PRINT 'Fixed record ':K.FILE
+      END
+      RETURN
+   END

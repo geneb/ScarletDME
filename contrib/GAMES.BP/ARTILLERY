@@ -1,0 +1,270 @@
+*  ARTILLERY
+*
+*     REVISED BY CRAIG SHUCKER
+*       SEPTEMBER, 1975
+*
+************************************************************
+     PRINTER OFF
+     ERASE=@(-1)
+     BELL=CHAR(7)
+     XLINE=SPACE(80)
+     PROMPT BELL
+     PRINT ERASE
+     PI=3.1416
+***********************************************************
+*
+*   ASK IF PLAYER WANTS INSTRUCTIONS
+*
+***********************************************************
+1000 PRINT @(20,3):"DO YOU WANT INSTRUCTIONS? ":
+     INPUT ANS
+     IF ANS<>"YES" AND ANS<>"Y" AND ANS<>"NO" AND ANS<>"N" THEN
+       PRINT @(50,3):"MUST BE 'Y(ES)' OR 'N(O)'":
+       GOSUB 2000
+       PRINT @(0,3):XLINE:
+       GOTO 1000
+     END
+***********************************************************
+*
+*   INSTRUCTIONS
+*
+***********************************************************
+     IF ANS="YES" OR ANS="Y" THEN
+       PRINT ERASE
+       PRINT @(2,2):"YOU ARE AN ARTILLERY COMMANDER AT A":
+       PRINT " FIRE-BASE UNDER ATTACK.":
+       PRINT @(2,4):"YOU HAVE 20 SHELLS TO DESTROY 8 ENEMY TARGETS.":
+       PRINT @(2,6):"A SHOT WITHIN 50 METERS IS A HIT.":
+       PRINT @(2,8):"THE ENEMY MAY MOVE UP TO 150 METERS BETWEEN":
+       PRINT " EACH SHOT.":
+       PRINT @(2,10):"FOR EACH FIRING OF THE GUN, YOU MUST GIVE":
+       PRINT " THE GUN ANGLE (0 TO 90 DEGREES).":
+       PRINT @(26,14):"PRESS <RETURN> TO CONTINUE": ; INPUT ZZ
+     END
+***********************************************************
+*
+*   PRINT HEADINGS
+*
+***********************************************************
+1100 PRINT ERASE
+     PRINT @(0,0):"SHELL":SPACE(13):"TARGET":SPACE(6):"SHELL":
+     PRINT SPACE(16):"TARGETS":
+     PRINT @(0,1):"NUMBER   ANGLE   DISTANCE   ":
+     PRINT "DISTANCE   DIFFERENCE   LEFT":
+     FOR I=0 TO 22
+       PRINT @(59,I):":":
+     NEXT I
+***********************************************************
+*
+*   INITIALIZATION
+*
+***********************************************************
+1200 SHOTS=0
+     HITS=0
+     SCORE=0
+     TOTDIFF=0
+***********************************************************
+*
+*   INITIALIZE TARGET
+*
+***********************************************************
+1250 TARGDIST=RND(11901)+4100
+     PRINT @(68,0):"ENEMY":
+     PRINT @(67,1):"SIGHTED":
+     PRINT @(69,2):"AT":
+     PRINT @(68,3):TARGDIST:
+     PRINT @(68,4):"METERS":
+***********************************************************
+*
+*   UPDATE SHOT COUNT
+*
+***********************************************************
+1300 SHOTS=SHOTS+1
+     PRINT @(3,SHOTS+2):SHOTS "R##":
+***********************************************************
+*
+*   ASK FOR GUN ANGLE
+*
+***********************************************************
+1350 PRINT @(69,7):"GUN":
+     PRINT @(68,8):"ANGLE":
+     PRINT @(68,9):
+     INPUT ANGLE
+     IF NOT(NUM(ANGLE)) THEN GOTO 1400
+     IF ANGLE<=0 THEN GOTO 1400
+     IF ANGLE<=90 THEN GOTO 1500
+***********************************************************
+*
+*   ILLEGAL INPUT
+*
+***********************************************************
+1400 PRINT @(68,11):"WHAT?!"
+     GOSUB 2000
+     FOR I=7 TO 11
+       PRINT @(66,I):SPACE(14):
+     NEXT I
+     GOTO 1350
+***********************************************************
+*
+*   CLEAR SHOT FROM SCREEN
+*
+***********************************************************
+1500 FOR I=0 TO 11
+       PRINT @(66,I):SPACE(14):
+     NEXT I
+***********************************************************
+*
+*   CHECK FOR 90 DEGREE SHOT
+*
+***********************************************************
+     IF ANGLE=90 THEN
+       PRINT ERASE
+       PRINT @(13,3):"WELL, SMARTY, YOU JUST FIRED THAT SHELL":
+       PRINT " AT 90 DEGREES.":
+       PRINT @(13,5):"THAT WARHEAD IS GOING STRAIGHT UP AND":
+       PRINT " STRAIGHT DOWN!!":
+       PRINT @(13,7):"I THINK THAT YOU HAD BEST LEAVE FAS.....":
+       PRINT @(19,10):"#######    ######    ######   ##    ##  ##":
+       PRINT @(19,11):"##    ##  ##    ##  ##    ##  ###  ###  ##":
+       PRINT @(19,12):"##    ##  ##    ##  ##    ##  ########  ##":
+       PRINT @(19,13):"#######   ##    ##  ##    ##  ## ## ##  ##":
+       PRINT @(19,14):"##    ##  ##    ##  ##    ##  ##    ##  ##":
+       PRINT @(19,15):"##    ##  ##    ##  ##    ##  ##    ##":
+       PRINT @(19,16):"#######    ######    ######   ##    ##  ##":
+       GOTO 1800
+     END
+***********************************************************
+*
+*   CALCULATE DISTANCE SHELL IS FIRED
+*
+***********************************************************
+     X=ANGLE*PI/180
+     XSQ=X*X
+     COSX=1
+     FOR I=10 TO 2 STEP -2
+       COSX=COSX*(-XSQ/(I*(I-1)))+1
+     NEXT I
+     SINX=X
+     FOR I=11 TO 3 STEP -2
+       SINX=SINX*(-XSQ/(I*(I-1)))+X
+     NEXT I
+     SHELDIST=INT(SINX*COSX*32000)
+**********************************************************
+*
+*  CALCULATE NEW TARGET DISTANCE
+*
+**********************************************************
+     TARGDIST=TARGDIST-RND(151)
+**********************************************************
+*
+*  PRINT REPORT
+*
+**********************************************************
+     PRINT @(9,SHOTS+2):ANGLE "R2#####":
+     PRINT SPACE(4):TARGDIST "R#####":
+     PRINT SPACE(6):SHELDIST "R#####":
+     DIFF=SHELDIST-TARGDIST
+     PRINT SPACE(7):DIFF "R#####":
+**********************************************************
+*
+*   SHOOTING TOO CLOSE TO BASE
+*
+**********************************************************
+     IF SHELDIST<=50 THEN
+       PRINT @(66,11):"WATCH IT!":
+       GOSUB 2000
+       PRINT @(66,11):SPACE(14):
+       GOTO 1600
+     END
+***********************************************************
+*
+*   TARGET DESTROYED
+*
+***********************************************************
+     IF DIFF<=50 AND DIFF>=-50 THEN
+       TOTDIFF=TOTDIFF+DIFF
+       HITS=HITS+1
+       PRINT @(68,12):"TARGET":
+       PRINT @(70,13):"#":HITS:
+       PRINT @(67,14):"DESTROYED":
+       GOSUB 2000
+       FOR I=12 TO 14
+         PRINT @(66,I):SPACE(14):
+       NEXT I
+*********************************************************
+*
+*   ENEMY IS ELIMINATED
+*
+*********************************************************
+       IF HITS=8 THEN
+         PRINT ERASE:
+         PRINT @(6,8):"CONGRATULATIONS, COMMANDER -- ALL ENEMY":
+         PRINT " TARGETS HAVE BEEN DESTROYED!"
+         GOTO 1700
+       END
+************************************************************
+*
+*   PRINT NUMBER OF TARGETS LEFT
+*
+************************************************************
+       PRINT @(46,SHOTS+2):SPACE(8):8-HITS:
+       IF SHOTS<20 THEN GOTO 1250
+     END
+     PRINT SPACE(8):8-HITS:
+*********************************************************
+*
+*   CHECK IF PLAYER HAS ANY SHOTS LEFT
+*
+*********************************************************
+1600 IF SHOTS<20 THEN
+       GOSUB 2000
+       GOTO 1300
+     END
+*********************************************************
+*
+*   PLAYER HAS NO SHOTS LEFT
+*
+*********************************************************
+     PRINT ERASE
+     PRINT @(13,8):"YOU ARE NOW OUT OF SHELLS.":
+     PRINT @(13,9):"YOU HAVE ONLY DESTROYED ":HITS:
+     PRINT " ENEMY TARGETS.":
+     PRINT @(13,10):"I DON'T KNOW ABOUT YOU, BUT I'M ":
+     PRINT "GETTING OUT OF HERE!!":
+*********************************************************
+*
+*   CALCULATE SCORE
+*
+*********************************************************
+1700 IF TOTDIFF=400 THEN TOTDIFF=399.5
+     SCORE=INT(HITS*(400-TOTDIFF)*(21-SHOTS))
+1800 PRINT @(32,18):"YOUR SCORE: ":SCORE:
+***********************************************************
+*
+*   ASK WHETHER PLAYER WANTS TO TRY AGAIN
+*
+***********************************************************
+1900 PRINT @(10,20):"DO YOU WANT TO TRY AGAIN? ":
+     INPUT ANS
+     IF ANS<>"YES" AND ANS<>"Y" AND ANS<>"NO" AND ANS<>"N" THEN
+       PRINT @(45,15):"MUST BE 'Y(ES)' OR 'N(O)'":
+       GOSUB 2000
+       PRINT @(0,15):XLINE:
+       GOTO 1900
+     END
+     IF ANS="YES" OR ANS="Y" THEN
+       PRINT ERASE
+       GOTO 1100
+     END
+     PRINT ERASE
+     PRINT @(0,0):
+     STOP
+***********************************************************
+*
+*   DELAY TIMER
+*
+************************************************************
+2000 T=TIME()
+2100 IF TIME()-T<3 THEN GOTO 2100
+     RETURN
+END

@@ -1,0 +1,89 @@
+* This program finds file name when given inode. I searches the VOC of the account you are logged into.
+* It searches both "F" and "Q" pointers. I left out opening the dictionaries.
+* So those files are not checked with this version.
+
+PROMPT ''
+PRINT 'inode : ':
+INPUT FILE.INODE
+PRINT 'Continue [Y/N = DEFAULT] : ':
+INPUT GOON
+IF GOON = 'Y' THEN
+  PRINT '1 Opening VOC file...'
+  OPEN 'VOC' TO ACCOUNT.VOC ELSE STOP 201,' VOC'
+  OPEN 'UV.ACCOUNT' TO UV.ACCOUNT ELSE STOP 201,' UV.ACCOUNT'
+*
+  ACCOUNT = FIELD(OCONV('','U50BB'),' ',2)
+  READV ACCOUNT.PATH FROM UV.ACCOUNT,ACCOUNT,11 ELSE ACCOUNT.PATH = ''
+  IF ACCOUNT.PATH = '' THEN
+    PRINT '* ERROR * invalid UV.ACCOUNT record...'
+    STOP
+  END
+*
+  PRINT '2 Selecting files for this account...'
+  CMD = 'SSELECT VOC WITH F1 = "F]"'
+  EXECUTE CMD CAPTURING DISPLAY RETURNING ERRORS
+*
+  FOUND = 0
+  FILE.CNT = 0
+*
+  PRINT '3. Looking for inode, each * represents 100 files...'
+*
+  LOOP
+    READNEXT FILE.KEY THEN EOF = 0 ELSE EOF = 1
+  UNTIL EOF OR FOUND DO
+    FILE.CNT = FILE.CNT+1
+    IF MOD(FILE.CNT,100) = 0 AND FILE.INODE # '' THEN PRINT '*':
+    READ FILE.REC FROM ACCOUNT.VOC,FILE.KEY  THEN
+      FILE.PATH = FILE.REC<2>
+      IF FILE.PATH[1,1] # "/" THEN
+        FILE.PATH = ACCOUNT.PATH:"/":FILE.PATH
+      END
+      OPENPATH FILE.PATH TO FILE.OPEN THEN
+        STATUS FILE.STAT FROM FILE.OPEN THEN
+          IF FILE.INODE = '' THEN
+            PRINT FILE.KEY "L#30":'  ':FILE.STAT<10> "R#10"
+          END ELSE
+            IF FILE.INODE = FILE.STAT<10> THEN
+              FOUND = 1
+              PRINT FILE.KEY:" - ":FILE.STAT<10>
+            END
+          END
+        END
+      END
+    END
+  REPEAT
+*
+  IF NOT(FOUND) THEN
+    PRINT
+    PRINT '4. Looking at QPointers for this account...'
+    CMD = 'SSELECT VOC WITH F1 = "Q"'
+    EXECUTE CMD CAPTURING DISPLAY RETURNING ERRORS
+    LOOP
+      READNEXT FILE.KEY THEN EOF = 0 ELSE EOF = 1
+    UNTIL EOF OR FOUND DO
+      FILE.CNT = FILE.CNT+1
+      IF MOD(FILE.CNT,100) = 0 AND FILE.INODE # '' THEN PRINT '*':
+      READ FILE.REC FROM ACCOUNT.VOC,FILE.KEY  THEN
+        FILE.ACCT = FILE.REC<2>
+        READV ACCOUNT.PATH FROM UV.ACCOUNT,FILE.ACCT,11 THEN
+          FILE.PATH = FILE.REC<3>
+          IF FILE.PATH[1,1] # "/" THEN
+            FILE.PATH = ACCOUNT.PATH:"/":FILE.PATH
+          END
+          OPENPATH FILE.PATH TO FILE.OPEN THEN
+            STATUS FILE.STAT FROM FILE.OPEN THEN
+              IF FILE.INODE = '' THEN
+                PRINT FILE.KEY "L#30":'  ':FILE.STAT<10> "R#10"
+              END ELSE
+                IF FILE.INODE = FILE.STAT<10> THEN
+                  FOUND = 1
+                  PRINT FILE.KEY:" - ":FILE.STAT<10>
+                END
+              END
+            END
+          END
+        END
+      END
+    REPEAT
+  END
+END

@@ -1,0 +1,71 @@
+*
+* Writen Aug 2012 by Will Johnson
+* This routine sorts the LISTU table by date and then by time
+* Builds a multi-sub-valued table, so the times get sorted right
+* Then swaps the SVMs for VMs so it becomes a regular table
+* Then it also allows you to resort it by PID
+*
+      EQUATE FALSE TO 0, TRUE TO 1
+      TODAY = DATE() ; THIS.YEAR = OCONV(TODAY,'DY')
+      SWITCH = "DATE" ; EXIT.PROGRAM = FALSE
+      LOOP
+         EXECUTE "LISTU", OUT > RESULTS
+         SELECTV RESULTS TO L.RESULTS
+         DONE = FALSE ; CNT = 0 ; HEADERS =  ; TABLE =
+         LOOP
+            READNEXT LINE FROM L.RESULTS ELSE DONE = TRUE
+         UNTIL DONE DO
+            CNT += 1
+            T.PID = LINE[16,5]
+            T.TIMEDATE = LINE[62,13]
+            T.DATE = OCONV(T.TIMEDATE,'G0 2'):' ':THIS.YEAR
+            T.TIME = OCONV(T.TIMEDATE,'G2 1')
+            IF SWITCH = "DATE" THEN GOSUB BY.DATE.AND.TIME
+            IF SWITCH = "PID" THEN GOSUB BY.PID
+         REPEAT
+         TABLE<1> = HEADERS:@VM:TABLE<1>
+         TABLE = CONVERT(@SVM,@VM,TABLE)
+*
+         S.TABLE = DCOUNT(TABLE<1>,@VM)
+         FOR I.TABLE = 1 TO S.TABLE
+            IF TABLE<1,I.TABLE> #  THEN
+               PRINT I.TABLE'R%2':' ':TABLE<1,I.TABLE>
+            END
+         NEXT I.TABLE
+         DISPLAY "SORT BY (D)ATE, (P)ID, OR (Q)UIT ": ; INPUT ANYTHING
+         BEGIN CASE
+            CASE ANYTHING = 'Q' ; EXIT.PROGRAM = TRUE
+            CASE ANYTHING = 'P' ; SWITCH = 'PID'
+            CASE ANYTHING = 'D' ; SWITCH = 'DATE'
+         END CASE
+      UNTIL EXIT.PROGRAM DO REPEAT
+      STOP
+*
+BY.DATE.AND.TIME:
+      I.DATE = ICONV(T.DATE,'D') ; I.TIME = ICONV(T.TIME,'MT')
+      IF STATUS() THEN
+         HEADERS<1,-1> = LINE
+      END ELSE
+         LOCATE I.DATE IN TABLE<2,1> BY 'AR' SETTING W.DATE ELSE
+            TABLE = INSERT(TABLE,1,W.DATE;)
+            TABLE = INSERT(TABLE,2,W.DATE;I.DATE)
+            TABLE = INSERT(TABLE,3,W.DATE;)
+         END
+         LOCATE I.TIME IN TABLE<3,W.DATE,1> BY 'AR' SETTING W.TIME ELSE
+            NULL
+         END
+         TABLE = INSERT(TABLE,1,W.DATE,W.TIME;LINE)
+         TABLE = INSERT(TABLE,3,W.DATE,W.TIME;I.TIME)
+      END
+      RETURN
+*
+BY.PID:
+      IF NUM(T.PID) THEN
+         T.PID = TRIM(T.PID) + 0
+         LOCATE T.PID IN TABLE<2,1> BY 'AR' SETTING W.PID ELSE NULL
+         TABLE = INSERT(TABLE,1,W.PID;LINE)
+         TABLE = INSERT(TABLE,2,W.PID;T.PID)
+      END ELSE HEADERS<1,-1> = LINE
+      RETURN
+*
+   END

@@ -1,0 +1,66 @@
+function [[CSV2ARRAY]](doc,opts)
+* function to convert a csv to an array
+* 1.0 23-Jul-2007 stuart boydell - Original
+*
+* doc:  csv document
+*       line breaks in cells get converted to subVal marks (@sm)
+*       nb. U2 autoconverts char(10) / char(13) to normalised (nix/win) crlf - so best to get your csv raw.
+* opts: 'N' returns a normalised dynamic array // eg orthagonal to excel: columns to attributes, cells to values
+*
+
+   equ E.PROG.NAME to '[[CSV2ARRAY]]',
+       E.VERSION   to '1.0',
+       E.COMMA     to ',',
+       E.QUOTE     to '"',
+       E.WINCRLF   to char(10):char(13)   ;*// CSV is usually produced by a win program - so parse win crlf
+
+   returnValue = oconv('','c')            ;*// set RV to '' and status() function to false
+   occurs = 1
+
+   lmx = maximum(counts(doc,E.COMMA))   ;*// <<TODO>> incomplete use of these in normalisation
+   lmn = minimum(counts(doc,E.COMMA))
+
+   doc = change(doc,E.WINCRLF,@am)  ;*// crlf to @am
+   doc = convert(E.COMMA:char(10),@vm:@sm,doc)   ;*// commas to vm // char(10) to sm (manual cell breaks alt-enter)
+
+   loop while findstr E.QUOTE in doc,occurs setting a,v do
+      docLine    = raise(doc<a>)
+      new[[DocLine]] = ''
+      max = dcount(docLine,@am)
+      for i = max to 1 step -1
+         cell = docLine<i>
+         if cell[1] = E.QUOTE then
+            *// make sure commas are replaced // should be an even number of quotes per cell
+            loop while cell[1,1] # E.QUOTE and mod(count(cell,E.QUOTE),2) and i > 0 do
+               i -= 1
+               cell = docLine<i>:E.COMMA:cell
+            repeat
+            if cell[1,1] = E.QUOTE and cell[1] = E.QUOTE then
+               cell = cell[2,len(cell)-2]
+            end
+            cell = change(cell,str(E.QUOTE,2),E.QUOTE)
+         end
+         if len(new[[DocLine]]) then
+            ins cell before new[[DocLine]]<1>
+         end else
+            *// deal with inserting '' into empty array.
+            if i = max-1 and cell = '' then new[[DocLine]] = @am else new[[DocLine]] = cell
+         end
+      next i
+      occurs += count(new[[DocLine]],E.QUOTE)
+      doc<a>  = lower(new[[DocLine]])
+   repeat
+
+   if opts = 'N' then   ;*// do mv normalisation
+      max = dcount(doc,@am)
+      newDoc = raise(doc<1>)
+      if count(newDoc,@am) < lmx then newDoc<lmx+1> = ''
+      for i = 2 to max
+         newDoc = splice(newDoc,char(222),raise(doc<i>))
+      next i
+      doc = convert(char(222),@vm,newDoc)
+   end
+   opts = err
+   returnVal = doc
+return(returnVal)
+end

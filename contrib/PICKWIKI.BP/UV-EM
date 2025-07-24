@@ -1,0 +1,437 @@
+UV.EM is based upon UV.VI and can be used to edit MVDatabase records in Emacs, especially under Unix X(-windows) for extra functionality which depends upon Emacs Lisp packages uv-edit-mode and uv-tools. See the Emacs Lisp source page in this Wiki.
+
+* $Id: UV.EM,v 1.1 2006/05/11 22:32:55 kenf Exp kenf $
+******************************************************************************
+*
+*	Invoke Emacs using uniVerse style command syntax
+*
+*	Module:	UV.EM
+*
+*   Origin: Cloned from UV.VI by Ken Ford ([[NetTeller]] Pty Ltd) - 12th May, 2005.
+*
+* $Revision: 1.1 $
+*
+*******************************************************************************
+      id = "%W%"
+
+$INCLUDE UNIVERSE.INCLUDE MACHINE.NAME
+
+      temp.made = 0
+      titem.num = 0
+      select.active = 0
+      PERMISSIONS = '-PERMISSIONS'
+
+      open 'VOC' to voc.file
+      else
+         call *UVPRINTMSG(1720,"")
+         stop
+      end
+
+      command = trim(@sentence)
+      command = convert(" ",@FM,command)
+      if upcase(command<1>) = "RAID" OR upcase(command<1>) = "RUN" then
+         command = delete(command,1,0,0)           ; * delete command
+         command = delete(command,1,0,0)           ; * delete program file
+      end
+
+      IF DCOUNT(command,@FM) = 1 THEN              ; * No command line arguments
+         emacs.id = ''
+         GOSUB runemacs
+         STOP
+      END
+
+      num.args = dcount(command,@FM) - 2
+      file = command<2>
+      dict = 0
+      write.permissions = 1
+
+      if num.args < 0
+      then
+         call *UVPRINTMSG(39412,"")
+         stop
+      end
+
+      *** read edit file item from voc
+
+      read f.item from voc.file,file
+      else
+         if index(file,",",1) then
+            mainfile = field(file,",",1)
+            read f.item from voc.file,mainfile
+            else
+               call *UVPRINTMSG(1521,mainfile:@fm:"VOC")
+               stop
+            end
+         end
+         else
+            call *UVPRINTMSG(1521,file:@fm:"VOC")
+            stop
+         end
+      end
+
+      *** is edit file a dictionary
+
+      if upcase(trim(f.item<1>)[1,1]) = 'K'
+      then
+         if f.item<2> = 20 and dict = 0
+         then
+            dict = 1
+            file = file:' ':command<3>
+            num.args = num.args - 1
+            if num.args < 0
+            then
+               call *UVPRINTMSG(39412,"")
+               stop
+            end
+         end
+      end
+
+      *** open edit file
+
+      open file to edit.file
+      else
+         call *UVPRINTMSG(1520,file)
+         stop
+      end
+
+      *** get status information on edit file
+
+      status file.info from edit.file
+      else
+         call *UVPRINTMSG(39413,file)
+         stop
+      end
+
+      *** is edit file a directory
+
+      if file.info<21> = 1 or file.info<21> = 19
+      then
+         file.path = file.info<20>
+         dirtype = file.info<21>
+      end
+      else
+
+         *** check permissions on file
+
+         distributed.file = 0
+         if file.info<21> = 27
+         then
+            distributed.file = 1
+         end
+         perm.mode = 1
+         perm.in = 6                     ; * read and write permissions
+         perm.out = ''
+         call @PERMISSIONS(edit.file,perm.mode,perm.in,perm.out)
+         if NOT(perm.out)
+         then
+            oprompt = system(26)
+            prompt " "
+            call *UVPRINTMSG(39419,file)
+            abort.flag = ""
+            input abort.flag
+            prompt oprompt
+            if UPCASE(abort.flag) = "Y"
+            then
+               goto end.program
+            end
+            else
+               write.permissions = 0
+            end
+         end
+
+         gosub mktemp:
+         status file.info from temp.file
+         else
+            call *UVPRINTMSG(39413,new.temp)
+            goto end.program
+         end
+         file.path = file.info<20>
+         dirtype = 0
+      end
+
+      emacs.id = ""
+
+      begin case
+         case num.args = 1 and command<3+dict> = "*"
+            select edit.file
+            readnext f.arg
+            else
+               call *UVPRINTMSG(39411,file)
+               stop
+            end
+
+            gosub process.select.list
+         case num.args = 0
+            readnext f.arg else f.arg = ""
+            if f.arg = ""
+            then
+               oprompt = system(26)
+               prompt " "
+               call *UVPRINTMSG(1082,"")
+               input f.arg
+               prompt oprompt
+               gosub process.argument
+               if emacs.id = "" then goto end.program
+            end
+            else
+               gosub process.select.list
+            end
+         case 1
+            For i = 1 to num.args
+               f.arg = command<i+2+dict>
+               gosub process.argument
+            next i
+            if emacs.id = "" then goto end.program
+      end case
+
+      GOSUB runemacs
+
+      *** end of program tidy up *******************************************
+
+end.program:
+
+      if temp.made
+      then
+         gosub get.new.data:
+         close temp.file
+*         execute "DELETE.FILE ":new.temp capturing output
+* Work around to stop temporary files being left because of DELETE.FILE being a secure verb
+         cmd = 'rm -rf ':'EMACS.TMP00*'
+         execute 'SH -c "':cmd:'"' capturing output
+         execute 'DELETE VOC ':new.temp capturing output
+         call *UVPRINTMSG(39414,new.temp)
+      end
+
+      close edit.file
+
+      release
+
+      stop
+
+      *** subroutines follow ***********************************************
+
+runemacs:
+      *** prepare and execute Emacs command
+
+      convert @FM to " " in emacs.id
+*      cmd = 'sh -c "echo $DISPLAY"'
+*      cmd='sh -c "ps -fu ':@LOGNAME:' | grep -E ':"'[0-9] /.+emacsserver'":' | grep -v grep"'
+      cmd='sh -c "ls -l /tmp/emacs* | grep -E ':'"':@LOGNAME:'"':' | grep -v grep"'
+      EXECUTE cmd CAPTURING output
+      emacs.id = CHANGE(emacs.id,'&','\&',-1)
+      IF output<1> = '' THEN           ; * Don't use X-windows Emacs
+         cmd = 'sh -c "/usr/local/bin/emacs -nw -l uv-edit-mode -f uv-edit-mode'
+         EXECUTE cmd:' ':emacs.id:'"'
+      END ELSE                  ; * Running under X-windows
+         cmd = 'sh -c "/usr/local/bin/emacsclient ':emacs.id:'"'
+         EXECUTE cmd
+         SLEEP 1
+      END
+      RETURN
+*
+      **********************************************************************
+process.select.list:
+
+      select.active = 1
+      f.end = 0
+      loop
+         gosub process.argument
+         readnext f.arg else f.end = 1
+      until f.end do
+      repeat
+      if emacs.id = "" then return to end.program
+      return
+
+      **********************************************************************
+
+process.argument:
+
+      if (dirtype ne 19) then
+         if  not(longnames) then
+         execute 'UNIX.PATH "':f.arg:'"' capturing item.id
+
+         item.id = item.id<1>
+         end else
+            item.id = f.arg
+         end
+      end else
+         item.id = f.arg
+      end
+
+      if dirtype then
+         readu item.data from edit.file,f.arg
+
+         locked
+            if select.active
+            then
+               oprompt = system(26)
+               prompt " "
+               call *UVPRINTMSG(039422,f.arg)
+               abort.flag = ""
+               input abort.flag
+               prompt oprompt
+               if UPCASE(abort.flag) = "Y"
+               else
+                  return
+               end
+            end else
+               call *UVPRINTMSG(39418,f.arg)
+            end
+            return to end.program
+         end
+
+         then
+            item.data = ""
+            emacs.id = emacs.id:" ":file.path:"/":item.id
+         end
+
+         else
+
+            if select.active
+            then
+               emacs.id = emacs.id:" ":file.path:"/":item.id
+            end
+            else
+
+               *** make it use temporary file
+
+               titem.name = f.arg[1,10]: titem.num 'r%3'
+               if not(temp.made) then gosub mktemp:
+               if item.list
+               then
+                  item.list = item.list:@fm:f.arg
+                  titem.list = titem.list:@fm:titem.name
+               end else
+                  item.list = f.arg
+                  titem.list = titem.name
+               end
+               list.size += 1
+               titem.num += 1
+               emacs.id = emacs.id:" ":new.temp:"/":titem.name
+            end
+         end
+      end else
+         [[RecordID]].OK = 1
+         gosub move.to.temp
+         if [[RecordID]].OK then
+            emacs.id = emacs.id:" ":file.path:"/":item.id
+         end
+      end
+
+      return
+
+      **************************************************************
+
+mktemp:
+      mask.count = 1
+      item.list = ""
+      list.size = 0
+
+      loop
+         new.temp = "EMACS.TMP": @userno 'r%4': mask.count 'r%2'
+         open new.temp to temp.file
+         then
+            close temp.file
+         end
+         else
+*            execute "CREATE.BFILE DATA ":new.temp:" UV.EMACS" capturing output
+            execute "CREATE.FILE DATA ":new.temp:" 1,1,19" capturing output
+            if trans('VOC','CREATE.FILE',5,'X') = 'LONGNAMES' then
+               longnames = @true
+            end else
+               longnames = @false
+            end
+            open new.temp to temp.file
+            then
+               temp.made = 1
+            end
+         end
+      until temp.made do
+         mask.count += 1
+         if mask.count > 99
+         then
+            call *UVPRINTMSG(39415,"")
+            stop
+         end
+      repeat
+
+      call *UVPRINTMSG(39416,new.temp)
+      return
+
+move.to.temp:
+      readu item.data from edit.file,f.arg
+      locked
+         call *UVPRINTMSG(39418,f.arg)
+         goto end.program
+      end
+      else
+         df.error = status()
+         if df.error = 1 or df.error = 2 then
+            if distributed.file
+            then
+               call *UVPRINTMSG(970013,f.arg)
+            end
+            else
+               call *UVPRINTMSG(970012,f.arg)
+            end
+            [[RecordID]].OK = 0
+         end else
+            item.data = ""
+         end
+      end
+
+      if [[RecordID]].OK then
+         * if dict then truncate after F10
+         if dict and upcase(item.data<1>[1,1]) = "I" and count(item.data, @AM) > 10
+         then
+            item.data = item.data[1,index(item.data, @AM, 10)-1]
+         end
+         readu temp.data from temp.file,f.arg else temp.data = ""
+         write item.data to temp.file,f.arg
+         else
+            call *UVPRINTMSG(39417,f.arg)
+            goto end.program
+         end
+         if write.permissions
+         then
+            if item.list
+            then
+               item.list = item.list:@fm:f.arg
+               titem.list = titem.list:@fm:f.arg
+            end else
+               item.list = f.arg
+               titem.list = f.arg
+            end
+            list.size += 1
+         end
+         else
+            change.permissions = "SH -c 'chmod 400 ":file.path:"/":item.id:"'"
+            execute change.permissions capturing command.output
+         end
+      end
+      return
+
+get.new.data:
+      for i = 1 to list.size
+
+         f.arg = item.list<i>
+         tf.arg = titem.list<i>
+
+         read item.data from temp.file,tf.arg
+         then
+            write item.data to edit.file,f.arg
+         end
+         else
+            readu item.data from edit.file,f.arg
+            then
+               delete edit.file,f.arg
+               call *UVPRINTMSG(39420,f.arg:@fm:file)
+            end
+            else
+               release edit.file,f.arg
+            end
+         end
+      next i
+      return
+
+   end

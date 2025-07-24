@@ -1,0 +1,45 @@
+REM Program to calculate the checksum of a given file item. It uses the original R83
+REM method of doing so.
+REM
+REM ROBERT NORMAN & ASSOCIATES
+REM 23441 Golden Springs Dr., #289, Diamond Bar, CA 91765
+REM 951/541-1668
+REM ICE@KEYWAY.NET
+REM http://users.keyway.net/~ice/
+REM
+REM Modifications:
+REM Mod#  Date    Programmer        Description of modification
+REM     11-04-01  Robert Norman     Initial coding.
+REM
+      EQU CR TO CHAR(13);EQU LF TO CHAR(10);EQU AM TO CHAR(254)
+      CRLF=CR:LF
+      PROMPT ''
+      SENTENCE=TRIM(@SENTENCE)
+      PARAM.COUNT=COUNT(SENTENCE,' ')+1
+      IF PARAM.COUNT>=2 THEN
+         FOR X=2 TO PARAM.COUNT
+            DOS.PATH=FIELD(SENTENCE,' ',X)
+            GOSUB 10;* GENERATE CHECKSUM
+         NEXT X
+      END ELSE
+         PRINT 'DOS path: ':;INPUT DOS.PATH
+         IF DOS.PATH='' THEN STOP
+         GOSUB 10;* GENERATE CHECKSUM
+      END
+      STOP
+REM
+10REM GENERATE CHECKSUM
+REM
+      OSREAD ITEM FROM DOS.PATH THEN
+         CONVERT CRLF TO AM IN ITEM
+         L=LEN(ITEM)-1
+         CHECKSUM=0
+         FOR I=1 TO L
+            ASC=SEQ(ITEM[I,1])
+            CHECKSUM=CHECKSUM+(ASC*I)
+         NEXT I
+         PRINT CHECKSUM
+      END ELSE
+         PRINT "'":DOS.PATH:"' not on file"
+      END
+      RETURN

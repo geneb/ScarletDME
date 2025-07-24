@@ -1,0 +1,127 @@
+*MISSLE IS A PROJECTILE GAME
+     PRINT @(-1)
+     PRINT @(20,10):"WOULD YOU LIKE INSTRUCTIONS (Y/N):":;INPUT HOW
+     IF HOW="Y" THEN GOSUB 800
+10   *****
+     PRINT @(-1)
+     LINE="---------------------------------------------------"
+     TRAJ1="..................................................."
+     HIT=0;   SHOT=0;   LEFT=20
+     SCORE=0;  PASS=0
+     TRAJ2=SPACE(51)
+     PRINT @(22,2):"HITS ON ENEMY : ":@(50):"PASSES : "
+     PRINT @(22,3):"MISSLES LEFT  : ":@(50):"SCORE  : "
+     PRINT @(20,4):LINE
+     PRINT @(19,4):"!":@(71,4):"!"
+     PRINT @(19,5):"!":@(71,5):"!"
+     PRINT @(19,6):"!":@(71,6):"!"
+     PRINT @(19,7):"!":@(71,7):"!"
+     PRINT @(19,8):"!":@(71,8):"!"
+     PRINT @(19,9):"!":@(71,9):"!"
+     PRINT @(19,10):"!":@(71,10):"!"
+     PRINT @(19,11):"!":@(71,11):"!"
+     PRINT @(19,12):"!":@(71,12):"!"
+     PRINT @(19,13):"!":@(71,13):"!"
+     PRINT @(19,14):"!":@(71,14):"!"
+     PRINT @(19,15):"!":@(71,15):"!"
+     PRINT @(19,16):"!":@(71,16):"!"
+     PRINT @(13,6):"1. #":@(13,10):"2. #":@(13,14):"3. #"
+     PRINT @(20,16):LINE
+     PRINT @(22,18):"#":@(31,18):"#":@(40,18):"#":@(49,18):"#"
+     PRINT @(58,18):"#":@(67,18):"#"
+     PRINT @(22,19):"4.":@(31,19):"5.":@(40,19):"6.":@(49,19):"7."
+     PRINT @(58,19):"8.":@(67,19):"9."
+     T1=TIME()
+50   A=RND(50)+20
+     B=RND(8)+5
+100  PRINT @(A,B):"X"
+     PRINT @(38,2):HIT "R##"
+     PRINT @(38,3):LEFT "R##":@(61,2):PASS
+     C=A;   D=B
+     R=RND(3)
+     MOVE=0
+     IF R=0 AND A>20 THEN MOVE=-1
+     IF R=1 THEN MOVE=0
+     IF R=2 AND A<70 THEN MOVE=1
+     A=A+MOVE
+     S=RND(3)
+     MOVE=0
+     IF S=0 AND B>5 THEN MOVE=-1
+     IF S=1 THEN MOVE=0
+     IF S=2 AND B<12 THEN MOVE=1
+     B=B+MOVE
+     PRINT @(25,21):"FIRE MISSLE NUMBER (1-9) : ":;INPUT FIRE
+     FOR X=1 TO 3
+       IF FIRE=X THEN
+         H=4*(X-1)+6
+         PRINT @(20,H):TRAJ1:@(20,H):TRAJ2
+         SHOT=SHOT+1
+         GOTO 160;   END
+     NEXT X
+     FOR X=4 TO 9
+       IF FIRE=X THEN
+         T=9*(X-4)+22
+         GOSUB 700;  SHOT=SHOT+1
+         GOTO 160;   END
+     NEXT X
+     PASS=PASS+1
+160  LEFT=20-SHOT
+     IF LEFT=0 THEN
+       PRINT @(38,3):LEFT "R##"
+       PRINT @(25,10):"**  YOUR MISSLE SUPPLY IS EXHAUSTED  **"
+       GOTO 400;   END
+     PRINT @(C,D):" "
+     IF FIRE=1 AND B=6 THEN GOTO 300
+     IF FIRE=2 AND B=10 THEN GOTO 300
+     IF FIRE=3 AND B=14 THEN GOTO 300
+     IF FIRE=4 AND A=22 THEN GOTO 300
+     IF FIRE=5 AND A=31 THEN GOTO 300
+     IF FIRE=6 AND A=40 THEN GOTO 300
+     IF FIRE=7 AND A=49 THEN GOTO 300
+     IF FIRE=8 AND A=58 THEN GOTO 300
+     IF FIRE=9 AND A=67 THEN GOTO 300
+     GOTO 100
+200  PRINT @(-1)
+     PRINT @(1,1)
+300  HIT=HIT+1
+     IF HIT=5 THEN
+       PRINT @(25,10):"****  ALL ENEMY AIRCRAFT DESTROYED !!  ****"
+       GOTO 400;   END
+     PRINT @(25,10):"****  ENEMY AIRCRAFT DESTROYED !!  ****"
+     TA=TIME()
+350  TB=TIME()-TA
+     IF TB<2 THEN GOTO 350
+     PRINT @(25,10):SPACE(40)
+     GOTO 50
+400  ***
+     PRINT @(38,2):HIT "R##"
+     PRINT @(38,3):LEFT "R##"
+     SCORE=200*HIT+50*LEFT-10*PASS
+     PRINT @(59,3):SCORE "R####"
+     PRINT @(32,12):"PLAY AGAIN (Y/N) : ":;INPUT AGN
+     IF AGN="Y" THEN GOTO 10
+     STOP
+700  ***
+     FOR J=15 TO 5 STEP -1
+       PRINT @(T,J):"."
+     NEXT J
+     FOR J=15 TO 5 STEP -1
+       PRINT @(T,J):" "
+     NEXT J
+     RETURN
+800  ****  INSTRUCTIONS
+     PRINT @(35,3):"MISSLE":@(35,4):"BOB  7"
+     PRINT @(20,6):"IN THE GAME OF MISSLE THE OBJECT IS TO SHOOT DOWN"
+     PRINT @(20,7):"ENEMY AIRCRAFT WITH YOUR ANTI-AIRCRAFT MISSLES."
+     PRINT @(20,8):"THERE ARE A TOTAL OF FIVE ENEMY PLANES WHICH AP-"
+     PRINT @(20,9):"PEAR ONE AT A TIME AND MOVE IN AN EVASIVE PATTERN"
+     PRINT @(20,10):"AS THEY MOVE TOWARD THEIR TARGET. YOUR MISSLE"
+     PRINT @(20,11):"IMPLACEMENTS ARE NUMBERED 1 THROUGH 9."
+     PRINT @(20,13):"DURING YOUR MISSLES FLIGHT TIME, THE ENERY AIR-"
+     PRINT @(20,14):"CRAFT MAY MOVE ONE POSITION HORIZONTALLY OR"
+     PRINT @(20,15):"VERTICALLY, OR IT MAY REMAIN IN POSITION.  IF YOU"
+     PRINT @(20,16):"DO NOT CHOOSE TO FIRE, PASS BY HITTING RETURN."
+     PRINT @(20,17):"YOU HAVE 20 MISSLES READY FOR LAUNCH."
+     PRINT @(30,19):" HIT <CR> TO CONTINUE ":;INPUT OK
+     RETURN
+END

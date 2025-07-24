@@ -1,0 +1,39 @@
+     PROGRAM SHOWLOCKS
+* Universe Utility program to show locks displaying the file name rather
+* than device and inode numbers. This requires STAT.FILE to be up to date.
+* Author Keith Robert Johnson (New Zealand).
+     SENTENCE = TRIM(@SENTENCE)
+     CONVERT ' ' TO @AM IN SENTENCE
+     WORD = UPCASE(SENTENCE<1>)
+     IF WORD EQ 'RUN' THEN DEL SENTENCE<1> ; DEL SENTENCE<1>
+     DEL SENTENCE<1>
+* You can restrict the output to only show stuff you are interested in.
+* This is useful if the output is long.
+     THIS = SENTENCE<1>
+     OPEN 'STAT.FILE' TO STAT.FILE ELSE CRT 'Cannot open STAT.FILE'; STOP
+* Set up a table of device/inode pairs versus file names
+     THAT = ''
+     SELECT STAT.FILE
+     LOOP WHILE READNEXT ID DO
+        READ REC FROM STAT.FILE,ID ELSE CONTINUE
+        NAME = REC<2>
+        NODE = (REC<8> 'R#10'):(REC<7> 'R#10')
+        LOCATE(NODE,THAT,1;POSN;'AR') ELSE
+           INS NODE BEFORE THAT<1,POSN>
+           INS NAME BEFORE THAT<2,POSN>
+        END
+     REPEAT
+* Get the lock information
+     EXECUTE 'LIST.READU EVERY' CAPTURING JUNK
+     XXNO = DCOUNT(JUNK,@AM)
+     FOR XX = 1 TO XXNO
+        LINE = JUNK<XX>
+        NODE = LINE[1,20]
+        LOCATE(NODE,THAT,1;POSN) THEN
+           NAME = THAT<2,POSN>
+        END ELSE NAME = NODE
+        IF LEN(NAME) LT 25 THEN NAME = NAME 'L#25'
+        LINE = NAME:LINE[26,99]
+        LINE = NAME:LINE[26,99]
+        IF THIS = '' OR INDEX(LINE,THIS,1) THEN CRT LINE
+     NEXT XX

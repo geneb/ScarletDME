@@ -1,0 +1,905 @@
+
+function DATE.UTILITY(method,arguments)
+* DTV: Various date & time methods not handled by OCONV, eg.ISO8601, RFC1123
+*// Stuart Boydell 2003-02-24
+*//
+*//    Change E.DEFAULT.TZ for target server time zone locale.
+*//
+*// see http://www.timeanddate.com for more information about times and time zones
+*//
+*// Catalog this globally.
+*// Call as either function ! i-type subr() with method and arguments.
+*// Methods and arguments are enumerated in the Mainline subroutine.
+*// No method, default datetime() string is returned
+*// No arguments, results for "now" are returned.
+*// Use of Epoch time - seconds since 1970-01-01T00:00Z
+*// Use of iso8601 date time formats (used extensively with xml, html & sql)
+*// general format is: YYYY-MM-DDThh:mmTZD (eg 1997-07-16T19:20+10:00)
+*//
+*// Usage 1: program
+*//      PROGRAM SOME.PROGRAM
+*//      DEFFUN DATE.UTIL(method,arguments) CALLING '*DATE.UTILITY'
+*//      ...
+*//      MY.METHOD     = '[[GetISODateTime]]'
+*//      MY.ARGUMENTS  = ORD.DATE:@AM:ORD.TIME
+*//      ISO.DATE.TIME = DATE.UTIL(MY.METHOD,MY.ARGUMENTS)
+*//
+*// Usage 2: I-type from a file with MY.DATE[[/TIME]].FIELD attributes.
+*//      0001 I
+*//      0002 subr('*DATE.UTILITY','[[GetISODateTime]]',MY.DATE.FIELD:@AM:MY.TIME.FIELD)
+*//      ...
+*//
+*// see Methods below for further information.
+
+*--------------------------------------------
+[[DefineEquates]]:
+*--------------------------------------------
+
+   equ E.THIS.PROG      to 'DATE.UTILITY',
+       E.VERSION        to '1.0'
+
+   *// set this to your local server time as a default/fallback position
+   equ E.DEFAULT.TZ     to 'EET-10EETDT-11,M10.5.0,M3.5.0'
+
+   *// various time constants
+   equ E.SECS.PER.MIN   to 60,
+       E.SECS.PER.HOUR  to 3600,
+       E.SECS.PER.DAY   to 86400,
+       E.SECS.PER.YEAR  to 31556926,  ;*// tropical year seconds (approx 365.25 days)
+       E.EPOCH.SECS     to system(99),;*// seconds from 1970-01-01T00:00Z
+       E.EPOCH.OFFSET   to 732        ;*// iconv('01-Jan-1970','d')
+
+   *// numeric ordinal suffix ; eg 1st 2nd 3rd 4th ...
+   equ E.NUM.SUFFIX     to 'st':@am:'nd':@am:'rd':@am:'th'
+
+   *// codes, characters, conversions and such
+   equ E.ISODATE.CONV   to 'D-YMD[4,2,2]',
+       E.ISOTIME.CONV   to 'MT',
+       E.RFCDATE.CONV   to 'D WBDMBYL[", "]',
+       E.RFCTIME.CONV   to 'MTS',
+       E.TZ.ENVSTR      to 'TZ',     ;*// time zone environment string lead-in
+       E.ISOTIME.SEP    to 'T',
+       E.ISOZONE.SEP    to 'Z',
+       E.PLUS           to '+',
+       E.MINUS          to '-',
+       E.POINT          to '.',
+       E.TMP.ID         to @tty:'tz.vbs'
+
+   *// time[[ZoneArray]]
+   *// 1=tz desc, 2=tz offset, 3=dls desc, 4=dls offset
+   *// 5=start month,  6=week,  7=day,  8=time
+   *// 9=stop  month, 10=week, 11=day, 12=time
+   equ E.GTZO.DESC        to time[[ZoneArray]]<1>,
+       E.GTZO.OFFSET      to time[[ZoneArray]]<2>,
+       E.GTZO.DLS.DESC    to time[[ZoneArray]]<3>,
+       E.GTZO.DLS.OFFSET  to time[[ZoneArray]]<4>,
+       E.GTZO.START.MONTH to time[[ZoneArray]]<5>,
+       E.GTZO.START.WEEK  to time[[ZoneArray]]<6>,
+       E.GTZO.START.DAY   to time[[ZoneArray]]<7>,
+       E.GTZO.START.TIME  to time[[ZoneArray]]<8>,
+       E.GTZO.STOP.MONTH  to time[[ZoneArray]]<9>,
+       E.GTZO.STOP.WEEK   to time[[ZoneArray]]<10>,
+       E.GTZO.STOP.DAY    to time[[ZoneArray]]<11>,
+       E.GTZO.STOP.TIME   to time[[ZoneArray]]<12>
+
+*--------------------------------------------
+Mainline:
+*--------------------------------------------
+
+   returnValue = oconv('','c')               ;*// set RV to '' and status() function to false
+
+   *// handle passed method parameter
+   begin case
+
+   case method = '[[GetDateFormat]]'
+      *// args:   null
+      *// return: true/false
+      gosub [[GetDateFormat]]:
+
+   case method = '[[GetElapsedPeriod]]'
+      *// args:   start date @am stop date
+      *// return: elapsed years am months am days
+      gosub [[GetElapsedPeriod]]:
+
+   case method = '[[GetElapsedTime]]'
+      *// args:   [start date @vm] start time @am [stop date @vm] stop time
+      *// return: difference in seconds
+      gosub [[GetElapsedTime]]:
+
+   case method = '[[GetElapsedTime]].toString'
+      *// args: [start date @vm] start time @am [stop date @vm] stop time
+      *// return: oconv'd time (hh:mm:ss)
+      gosub [[GetElapsedTime]]:
+      returnValue = oconv(returnValue,E.ISOTIME.CONV)
+      if status() then returnValue = ''
+
+   case method = '[[GetEpochTime]]'
+      *// args: [date][@am time][@am time[[ZoneString]]]
+      *// return: epoch time - seconds from epoch
+      gosub [[GetEpochTime]]:
+
+   case method = '[[GetISODateTime]]' ! method = 'get[[ISODateTime]].toString'
+      *// args: [date],[time],[timezone]
+      *// return ISO Date Time string yyyy-mm-ddThh:mm:ssZ
+      gosub [[GetISODateTime]]:
+
+   case method = '[[GetISOWeekOfYear]]'
+      *// args: [date]
+      *// return ISO8601 week of year
+      gosub [[GetISOWeekOfYear]]:
+
+   case method = '[[GetRFCDateTime]]'
+      *// args: [date],[time]
+      *// return rfc1123 Date Time string: Sun, 06 Nov 1994 08:49:37 GMT
+      gosub [[GetRFCDateTime]]:
+
+   case method = '[[GetNumberSuffix]]'
+      *// args: number
+      *// return: numeric ordinal suffix ('st,nd,rd,th')
+      gosub [[GetNumberSuffix]]:
+
+   case method = '[[GetTimeZoneString]]'
+      *// args: null
+      *// return users current TZ string
+      gosub [[GetTimeZoneString]]:
+
+   case method = '[[GetTimeZoneStringFromArray]]'
+      *// args: [[TimeZoneArray]] (eg time[[ZoneArray]])
+      *// return users current TZ string
+      gosub [[GetTimeZoneStringFromArray]]:
+
+   case method = '[[ParseEpochTime]]'
+      *// args: [UTCSeconds][@am time[[ZoneString]]]
+      *// return: date:@am:time [local at the time zone]
+      gosub [[ParseEpochTime]]:
+
+   case method = '[[ParseEpochTime]].toString'
+      *// args: a value being seconds from epoch
+      *// return: iso date time
+      gosub [[ParseEpochTime]]:
+      arguments = returnValue
+      gosub [[GetISODateTime]]:
+
+   case method = '[[ParseISODateTime]]'
+      *// args: ISO formatted date string eg 1997-07-16T19:20+10:00
+      *// return epoch time - seconds from 1/1/70 UTC
+      gosub [[ParseISODateTime]]:
+
+   case method = '[[ParseISODateTime]].local'
+      *// args: ISO formatted date string eg 1997-07-16T19:20+10:00
+      *// return (user local) date:@am:time
+      gosub [[ParseISODateTime]]:
+      if validTime then
+         arguments = returnValue
+         gosub [[ParseEpochTime]]:
+      end
+
+   case method = '[[ParseRFCDateTime]]'
+      *// args: rfc1123 Date Time string: Sun, 06 Nov 1994 08:49:37 GMT
+      *// return Epoch time - seconds from epoch
+      gosub [[ParseRFCDateTime]]:
+
+   case method = '[[ParseRFCDateTime]].local'
+      *// args: rfc1123 Date Time string: Sun, 06 Nov 1994 08:49:37 GMT
+      *// return (user local) date:@am:time
+      gosub [[ParseRFCDateTime]]:
+      arguments = returnValue
+      gosub [[ParseEpochTime]]:
+
+   case method = '[[ParseTimeZoneString]]'
+      *// args: [time zone string]
+      *// return Time Zone Object
+      gosub [[ParseTimeZoneString]]:
+
+   case method = '[[SetDateEuropean]]'
+   *// deprecated - used in legacy calls - use set[[DateFormat]]
+      *// args: null
+      *// return: null
+      arguments = 'ON'
+      gosub [[SetDateFormat]]:
+
+   case method = '[[SetDateFormat]]'
+      *// args: set [ON[[/OFF]]][D new date format]
+      *// return: null
+      gosub [[SetDateFormat]]:
+
+   case @true
+      *// default case, return time date string
+      *// return: timedate eg "15:39:12 22 APR 2003"
+      returnValue = timedate()
+
+   end case
+
+return(returnValue)
+stop
+
+*--------------------------------------------
+[[GetDateFormat]]:    *// International = true, US = false
+*--------------------------------------------
+
+   get[[DateFormatCmd]] = 'DATE.FORMAT INFORM'
+   execute get[[DateFormatCmd]] capturing cap returning returnValue
+
+return(@null)
+
+*--------------------------------------------
+[[GetElapsedPeriod]]:
+*--------------------------------------------
+
+   periodStart = arguments<1>
+   periodEnd   = arguments<2>
+   if (periodEnd >= periodStart) then
+      totalYears  = oconv(periodEnd,'dy') - oconv(periodStart,'dy')
+      totalMonths = oconv(periodEnd,'dm') - oconv(periodStart,'dm')
+      totalDays   = oconv(periodEnd,'dd') - oconv(periodStart,'dd')
+      if (totalDays < 0) then
+         totalDays   += oconv(iconv('1 ':oconv(periodEnd,'d mby'),'d') -1,'dd')
+         totalMonths -= 1
+      end
+      if (totalMonths < 0) then
+         totalMonths += 12
+         totalYears  -= 1
+      end
+      returnValue = totalYears : @am : totalMonths : @am : totalDays
+   end
+
+return(@null)
+
+*--------------------------------------------
+[[GetElapsedTime]]:   *// find elapsed time from 2 second counts
+*--------------------------------------------
+
+   startTime = arguments<1>
+   stopTime  = arguments<2>
+
+   begin case
+   case dcount(startTime,@vm) = 2 & dcount(stopTime,@vm) = 2 ;*// dates & times provided
+      arguments = raise(startTime<1>)
+      gosub [[GetEpochTime]]:        ;*// get start as secs from epoch
+      startTime = returnValue
+      arguments = raise(stopTime<1>)
+      gosub [[GetEpochTime]]:        ;*// get stop as secs from epoch
+      returnValue -= startTime
+
+   case not(num(startTime) & num(stopTime)) ;*// bad data
+
+   case (startTime - stopTime) > E.SECS.PER.DAY
+   case stopTime < startTime
+      *// calculate up to same time over a midnight boundry
+      *// ie start=23:00, end=03:00 : total => (27:00 - 23:00) => 05:00
+      returnValue = stopTime + E.SECS.PER.DAY - startTime
+
+   case @true
+      returnValue = (stopTime - startTime)
+   end case
+
+return(@null)
+
+*--------------------------------------------
+[[GetEpochTime]]:    *// return seconds from 1/1/70 UTC
+*--------------------------------------------
+
+   internalDate   = arguments<1>
+   internalTime   = arguments<2>
+   time[[ZoneString]] = arguments<3>
+
+   if internalDate   = '' then internalDate = date()
+   if internalTime   = '' then internalTime = time()
+   if time[[ZoneString]] = '' then
+      *// get default
+      gosub [[GetTimeZoneString]]:
+      time[[ZoneString]] = returnValue
+   end
+   arguments = time[[ZoneString]]
+   gosub [[ParseTimeZoneString]]:
+
+   arguments = internalDate
+   gosub [[GetTimeZoneOffset]]:
+
+   returnValue += (internalDate - E.EPOCH.OFFSET) * E.SECS.PER.DAY
+   returnValue += internalTime
+
+return(@null)
+
+*--------------------------------------------
+[[GetISODateTime]]:  *// return date in ISO format yyyy-mm-ddThh:mm:ssZhh:mm
+*--------------------------------------------
+
+   internalDate   = arguments<1>
+   internalTime   = arguments<2>
+   if unassigned(time[[ZoneString]]) then time[[ZoneString]] = arguments<3>
+
+   if internalDate = '' then internalDate = date()
+   if internalTime = '' then internalTime = time()
+   if time[[ZoneString]] = '' then
+      *// get default
+      gosub [[GetTimeZoneString]]:
+      time[[ZoneString]] = returnValue
+   end
+
+   isoDate = oconv(internalDate,E.ISODATE.CONV)
+   if not(status()) then
+      isoTime = oconv(internalTime,E.RFCTIME.CONV)
+      if not(status()) then
+         if len(time[[ZoneString]]) then
+            arguments = time[[ZoneString]]
+            gosub [[ParseTimeZoneString]]:
+         end
+         arguments = internalDate
+         gosub [[GetTimeZoneOffset]]:
+         arguments = returnValue
+         gosub [[GetISOZone]]:
+         if not(status()) then
+            returnValue = isoDate : E.ISOTIME.SEP : isoTime : returnValue
+         end
+      end
+   end
+
+return(@null)
+
+*--------------------------------------------
+[[GetISOWeekOfYear]]:
+*--------------------------------------------
+
+   internalDate = arguments<1>
+   if internalDate = '' then internalDate = date()
+   day[[OfWeek]] = oconv(internalDate, 'dw')
+   if status() then                 ;*// test for bad conversion
+      weekNumber = '-1'
+   end else
+      thisThursday = internalDate - day[[OfWeek]] + 4 ;* calculate date for that Thursday
+      day[[OfYear]]    = oconv(thisThursday,'dj')
+      weekNumber   = int((day[[OfYear]] + 6) / 7) ;*// ta WOL
+   end
+   returnValue = weekNumber
+
+return(@null)
+
+*--------------------------------------------
+[[GetISOZone]]:   *// return ISO time zone offset
+*--------------------------------------------
+
+   local[[OffsetSecs]] = arguments
+   isoZone = oconv(abs(local[[OffsetSecs]]),E.ISOTIME.CONV)
+
+   begin case
+   case status()                                ;*// invalid oconv         15-Apr-2003 return default offset for melbourne
+      returnValue = '+10:00'
+   case abs(local[[OffsetSecs]]) >= E.SECS.PER.DAY  ;*// invalid offset value  15-Apr-2003 return default offset for melbourne
+      returnValue = '+10:00'
+   case local[[OffsetSecs]] < 0
+      returnValue = E.PLUS:isoZone
+   case local[[OffsetSecs]] > 0
+      returnValue = E.MINUS:isoZone
+   case local[[OffsetSecs]] = 0
+      returnValue = E.ISOZONE.SEP:isoZone
+   case @true
+      returnValue = '+10:00'
+   end case
+
+return(@null)
+
+*--------------------------------------------
+[[GetRFCDateTime]]:  *// return Date Time string: Sun, 06 Nov 1994 08:49:37 GMT
+*--------------------------------------------
+
+   gosub [[GetEpochTime]]:
+
+   *// get time and date at GMT
+   internalDate = int(returnValue[[/E]].SECS.PER.DAY) + E.EPOCH.OFFSET - (returnValue < 0)
+   internalTime = mod(returnValue,E.SECS.PER.DAY) + (E.SECS.PER.DAY * (returnValue < 0))
+
+   rfcDate = oconv(internalDate,E.RFCDATE.CONV)
+   if not(status()) then
+      rfcTime = oconv(internalTime,E.RFCTIME.CONV)
+      if not(status()) then
+         returnValue = rfcDate : ' ': rfcTime : ' GMT'
+      end
+   end
+
+return(@null)
+
+*--------------------------------------------
+[[GetNumberSuffix]]: *// get numerical ordinal suffix
+*--------------------------------------------
+
+   number = arguments<1>
+   if len(number) then
+      lastChar = number[1] ;*// right(number,1)
+      lastTeen = number[2] ;*// right(number,2)
+
+      begin case
+      case lastTeen >= 11 & lastTeen <= 20
+         returnValue = number:(E.NUM.SUFFIX)<4>
+      case lastChar > 0 & lastChar <= 3
+         returnValue = number:(E.NUM.SUFFIX)<lastChar>
+      case @true
+         returnValue = number:(E.NUM.SUFFIX)<4>
+      end case
+
+   end
+
+return(@null)
+
+*--------------------------------------------
+[[GetTimeZoneOffset]]: *// get time zone offset
+*--------------------------------------------
+
+   *// Args in: internal date
+   *// time[[ZoneArray]] required for accurate offset.
+
+   if unassigned(time[[ZoneArray]]) then time[[ZoneArray]] = ''
+   checkDLSFlag = num(arguments<1>) ;*// date passed in
+   checkDLSFlag = checkDLSFlag * (E.GTZO.OFFSET # E.GTZO.DLS.OFFSET)
+   checkDLSFlag = checkDLSFlag * len(E.GTZO.START.MONTH)
+   checkDLSFlag = checkDLSFlag * len(E.GTZO.START.WEEK)
+   checkDLSFlag = checkDLSFlag * len(E.GTZO.START.DAY)
+   checkDLSFlag = checkDLSFlag * len(E.GTZO.STOP.MONTH)
+   checkDLSFlag = checkDLSFlag * len(E.GTZO.STOP.WEEK)
+   checkDLSFlag = checkDLSFlag * len(E.GTZO.STOP.DAY)
+
+   if checkDLSFlag then
+
+      *// find the dls start date for this year
+      tz[[InternalDate]] = arguments<1>
+      tzYear       = oconv(tz[[InternalDate]],'d4y')
+      tz[[StartMonth]] = E.GTZO.START.MONTH
+      tz[[StartWeek]]  = E.GTZO.START.WEEK
+      tz[[StartDay]]   = E.GTZO.START.DAY
+
+      tz[[StartDate]]  = iconv(tz[[StartMonth]]:'/':tzYear,'dmy') ;*// finds the first
+      tz[[StartOffset]] = tz[[StartDay]] - mod(tz[[StartDate]],7)
+      if tz[[StartOffset]] < 1 then tz[[StartOffset]] += 7
+      tz[[StartDate]] += tz[[StartOffset]]
+      tz[[StartDate]] += tz[[StartWeek]] * 7
+      loop until oconv(tz[[StartDate]],'dm') = tz[[StartMonth]] do tz[[StartDate]] -= 7 repeat
+
+      *// find the dls stop date for this year
+      tz[[StopMonth]] = E.GTZO.STOP.MONTH
+      tz[[StopWeek]]  = E.GTZO.STOP.WEEK
+      tz[[StopDay]]   = E.GTZO.STOP.DAY
+
+      tz[[StopDate]]  = iconv(tz[[StopMonth]]:'/':tzYear,'dmy')   ;*// finds the first
+      tz[[StopOffset]] = tz[[StopDay]] - mod(tz[[StopDate]],7)
+      if tz[[StopOffset]] < 1 then tz[[StopOffset]] += 7
+      tz[[StopDate]] += tz[[StopOffset]]
+      tz[[StopDate]] += tz[[StopWeek]] * 7
+      loop until oconv(tz[[StopDate]],'dm') = tz[[StopMonth]] do tz[[StopDate]] -= 7 repeat
+
+      *// return the appropriate time offset for the date.
+      begin case
+      case tz[[StartDate]] < tz[[StopDate]] & tz[[InternalDate]] > tz[[StartDate]] & tz[[InternalDate]] < tz[[StopDate]] ;*// northern hemisphere dls
+         time[[ZoneOffset]] = E.GTZO.DLS.OFFSET
+      case tz[[StartDate]] > tz[[StopDate]] & (tz[[InternalDate]] < tz[[StopDate]] ! tz[[InternalDate]] > tz[[StartDate]]) ;*// southern hemisphere dls
+         time[[ZoneOffset]] = E.GTZO.DLS.OFFSET
+      case @true
+         time[[ZoneOffset]] = E.GTZO.OFFSET
+      end case
+      returnValue = time[[ZoneOffset]]
+   end else
+      if abs(E.GTZO.OFFSET) > 0 then
+         time[[ZoneOffset]] = E.GTZO.OFFSET
+         returnValue = time[[ZoneOffset]]
+      end else
+         returnValue = 0 ;*// return as UTC
+      end
+   end
+
+return(@null)
+
+*--------------------------------------------
+[[GetTimeZoneString]]:  *// return current unix TZ setting - unix
+*--------------------------------------------
+
+   if system(91) then ;*// WIN NT needs registry reader
+   *// http://msdn.microsoft.com/library/en-us/wmisdk/wmi/win32_timezone.asp
+   *// return unix tz string like: EET-10EETDT-11,M10.5.0/2,M3.5.0/2
+      open '&SAVEDLISTS&' to f.temp then
+         script     = 'Set wbem[[ObjectSet]] = [[GetObject]]("winmgmts:").[[InstancesOf]]("[[Win32_TimeZone]]")'
+         script<-1> = 'For Each wbemObject In wbem[[ObjectSet]] : With wbemObject'
+         script<-1> = '[[StdOffset]] = 0 - .Bias + .[[StandardBias]]'
+         script<-1> = 'SS = mid("+-",1-([[StdOffset]] <0),1)'
+         script<-1> = '[[DltOffset]] = 0 - .Bias + .[[DaylightBias]]'
+         script<-1> = 'DS = mid("+-",1-([[DltOffset]] <0),1)'
+         script<-1> = 'WScript.stdOut.writeline _'
+         script<-1> = '"STD" & SS & formatdatetime(timeserial(0,[[StdOffset]],0),4) & _'
+         script<-1> = '"DLT" & DS & formatdatetime(timeserial(0,[[DltOffset]],0),4) & _'
+         script<-1> = '",M" & .[[DaylightMonth]] & "." & .[[DaylightDay]] & _'
+         script<-1> = '"." & .[[DaylightDayOfWeek]] & "/" & .[[DaylightHour]] & _'
+         script<-1> = '",M" & .[[StandardMonth]] & "." & .[[StandardDay]] & _'
+         script<-1> = '"." & .[[StandardDayOfWeek]] & "/" & .[[StandardHour]]'
+         script<-1> = 'End With : Next : Set wbem[[ObjectSet]] = Nothing'
+         write script on f.temp,E.TMP.ID then
+            execute 'dos /c cscript /[[/B]] /[[/T]]:1 ^&SAVEDLISTS^&/':E.TMP.ID capturing cap
+            returnValue = cap<1>
+         end else
+            returnValue = E.DEFAULT.TZ
+         end
+         delete f.temp,E.TMP.ID
+      end else
+         returnValue = E.DEFAULT.TZ
+      end
+   end else
+      execute 'ENVIRONMENT' capturing envStrings
+      envVars = fields(envStrings,'=',1)
+      locate E.TZ.ENVSTR in envVars setting tzPos then
+         returnValue = field(envStrings<tzPos>,'=',2)
+      end else
+         returnValue = E.DEFAULT.TZ
+      end
+   end
+
+return(@null)
+
+*--------------------------------------------
+[[GetTimeZoneStringFromArray]]:  *// return current unix TZ setting - unix
+*--------------------------------------------
+
+   time[[ZoneArray]] = arguments
+
+   if E.GTZO.DESC then
+      returnValue = E.GTZO.DESC
+      if E.GTZO.OFFSET then
+         z = int(E.GTZO.OFFSET[[/E]].SECS.PER.HOUR)
+         if z > 0 then returnValue := E.PLUS
+         returnValue := z
+         if mod(E.GTZO.OFFSET,E.SECS.PER.HOUR) then returnValue := (':':mod(abs(E.GTZO.OFFSET),E.SECS.PER.HOUR)[[/E]].SECS.PER.MIN)
+      end else
+         returnValue := '0'
+      end
+
+      if E.GTZO.DLS.DESC then
+         returnValue := E.GTZO.DLS.DESC
+         if E.GTZO.DLS.OFFSET then
+            z = int(E.GTZO.DLS.OFFSET[[/E]].SECS.PER.HOUR)
+            if z > 0 then returnValue := E.PLUS
+            returnValue:= z
+            if mod(E.GTZO.DLS.OFFSET,E.SECS.PER.HOUR) then returnValue := ':':mod(abs(E.GTZO.DLS.OFFSET),E.SECS.PER.HOUR)[[/E]].SECS.PER.MIN
+         end else
+            returnValue := '0'
+         end
+
+         returnValue := ',M':E.GTZO.START.MONTH
+         returnValue := '.':E.GTZO.START.WEEK
+         returnValue := '.':E.GTZO.START.DAY:'/2'
+         returnValue := ',M':E.GTZO.STOP.MONTH
+         returnValue := '.':E.GTZO.STOP.WEEK
+         returnValue := '.':E.GTZO.STOP.DAY:'/2'
+      end
+
+   end
+
+return(@null)
+
+*--------------------------------------------
+[[ParseEpochTime]]:    *// return local UV seconds from 1970-01-01T00:00Z
+*--------------------------------------------
+
+   if num(arguments<1>) then
+      time[[ToParse]]    = arguments<1>
+      time[[ZoneString]] = arguments<2>
+
+      *// convert to local time
+      if time[[ToParse]]    = '' then time[[ToParse]] = E.EPOCH.SECS
+      if time[[ZoneString]] = '' then
+         *// get default
+         gosub [[GetTimeZoneString]]:
+         time[[ZoneString]] = returnValue
+      end
+      arguments = time[[ZoneString]]
+      gosub [[ParseTimeZoneString]]:
+
+      arguments = int(time[[ToParse/E]].SECS.PER.DAY) + E.EPOCH.OFFSET - (time[[ToParse]] < 0) ;*// internal date - is DLS applicable?
+      gosub [[GetTimeZoneOffset]]:
+      time[[ToParse]] -= returnValue
+
+      *// get time and date at UTC
+      internalDate = int(time[[ToParse/E]].SECS.PER.DAY) + E.EPOCH.OFFSET - (time[[ToParse]] < 0)
+      internalTime = mod(time[[ToParse]],E.SECS.PER.DAY) + (E.SECS.PER.DAY * (time[[ToParse]] < 0))
+
+      returnValue  = internalDate:@am:internalTime
+
+   end
+
+return(@null)
+
+*--------------------------------------------
+[[ParseISODateTime]]:    *// return Epoch
+*--------------------------------------------
+
+* sample of possible formats for ISO date/time
+* ISO 8601:2000, The full iso8601 date/time spec as at 2000 may be downloaded here:
+* http://www.iso.ch/iso/en/CatalogueDetailPage.CatalogueDetail?CSNUMBER=26780
+*   Year:
+*      YYYY (eg 1997)
+*   Year and month:
+*      YYYY-MM (eg 1997-07)
+*   Complete date:
+*      YYYY-MM-DD (eg 1997-07-16)
+*   Complete date plus hours and minutes:
+*      YYYY-MM-DDThh:mmTZD (eg 1997-07-16T19:20+01:00)
+*   Complete date plus hours, minutes and seconds:
+*      YYYY-MM-DDThh:mm:ssTZD (eg 1997-07-16T19:20:30+01:00)
+*   Complete date plus hours, minutes, seconds and a decimal fraction of a second
+*      YYYY-MM-DDThh:mm:ss.sTZD (eg 1997-07-16T19:20:30.45+01:00)
+
+   isoString   = upcase(arguments<1>)
+
+   if len(isoString) then
+
+      iso[[DateString]]     = field(isoString,E.ISOTIME.SEP,1)
+      iso[[TimeZoneString]] = field(isoString,E.ISOTIME.SEP,2)
+      internalTime      = 0
+      timeOffset        = 0
+      validTime         = @true
+
+      internalDate      = iconv(iso[[DateString]],E.ISODATE.CONV)
+      begin case
+      case status()         ;*// date not parsed
+         validTime    = @false
+      case index(iso[[TimeZoneString]],E.PLUS,1)
+         internalTime = iconv(field(iso[[TimeZoneString]],E.PLUS,1),E.ISOTIME.CONV)
+         if status() then validTime = @false
+         timeOffset   = -1 * iconv(field(iso[[TimeZoneString]],E.PLUS,2),E.ISOTIME.CONV)
+         if status() then validTime = @false
+      case index(iso[[TimeZoneString]],E.MINUS,1)
+         internalTime = iconv(field(iso[[TimeZoneString]],E.MINUS,1),E.ISOTIME.CONV)
+         if status() then validTime = @false
+         timeOffset   = iconv(field(iso[[TimeZoneString]],E.MINUS,2),E.ISOTIME.CONV)
+         if status() then validTime = @false
+      case index(iso[[TimeZoneString]],E.ISOZONE.SEP,1)
+         internalTime = iconv(field(iso[[TimeZoneString]],E.ISOZONE.SEP,1),E.ISOTIME.CONV)
+         if status() then validTime = @false
+      case len(iso[[TimeZoneString]])
+         internalTime = iconv(field(iso[[TimeZoneString]],E.ISOZONE.SEP,1),E.ISOTIME.CONV)
+         if status() then validTime = @false
+      end case
+
+      if validTime then
+         internalDate  = (internalDate - E.EPOCH.OFFSET) * E.SECS.PER.DAY
+         internalTime  = internalTime + timeOffset
+         returnValue   = internalDate + internalTime
+      end
+   end else
+      validTime = @false
+   end
+
+return(@null)
+
+*--------------------------------------------
+[[ParseRFCDateTime]]:    *// return Epoch
+*--------------------------------------------
+* RFC date time string: Sun, 06 Nov 1994 08:49:37 GMT
+
+   time[[ToParse]] = arguments<1>
+   if time[[ToParse]] then
+      datePart = iconv(field(time[[ToParse]],' ',2,3),'D')
+      if not(status()) then
+         timePart = iconv(field(time[[ToParse]],' ',5),'MT')
+         if not(status()) then
+            returnValue = datePart * E.SECS.PER.DAY + timePart
+         end
+      end
+   end
+
+return(@null)
+
+*--------------------------------------------
+[[ParseTimeZoneString]]:  *// parse unix TZ env string
+*--------------------------------------------
+
+   tzString         = arguments<1>
+   returnValue      = ''
+   time[[ZoneArray]]  = ''
+   *// 1=tz desc, 2=tz offset, 3=dls desc, 4=dls offset
+   *// 5=start month,  6=week,  7=day,  8=time
+   *// 9=stop  month, 10=week, 11=day, 12=time
+
+   if len(tzString) then
+      *// get standard and dls offsets (and descriptors)
+      tzPart = field(tzString,',',1)
+      maxCharacter = len(tzPart)
+      for charPos = 1 to maxCharacter
+         character  = tzPart[charPos,1]
+         lastDOChar = time[[ZoneArray]][1]
+
+         begin case
+         case character = ':'
+            time[[ZoneArray]]    := character
+         case not(alpha(character) ! num(character))
+            time[[ZoneArray]]<-1> = character
+         case alpha(lastDOChar) & num(character)
+            time[[ZoneArray]]<-1> = character
+         case num(lastDOChar) & alpha(character)
+            time[[ZoneArray]]<-1> = character
+         case @true
+            time[[ZoneArray]]    := character
+         end case
+
+      next charPos
+
+      if len(E.GTZO.OFFSET) then
+         *// convert offset to seconds
+         utcOffset = ''
+         utc[[OffsetTime]] = E.GTZO.OFFSET
+         if utc[[OffsetTime]][1,1] = E.PLUS ! utc[[OffsetTime]][1,1] = E.MINUS then
+         *// first char is +/-
+            utcOffset = utc[[OffsetTime]][1,1]
+            utc[[OffsetTime]] = utc[[OffsetTime]][2,99]
+         end
+         utc[[OffsetSecs]]  = field(utc[[OffsetTime]],':',1) * E.SECS.PER.HOUR
+         utc[[OffsetSecs]] += field(utc[[OffsetTime]],':',2) * E.SECS.PER.MIN
+         utc[[OffsetSecs]] += field(utc[[OffsetTime]],':',3)
+         E.GTZO.OFFSET = utcOffset:utc[[OffsetSecs]]
+      end
+
+      if len(E.GTZO.DLS.OFFSET) then
+         *// convert offset to seconds
+         utcOffset = ''
+         utc[[OffsetTime]] = E.GTZO.DLS.OFFSET
+         if utc[[OffsetTime]][1,1] = E.PLUS ! utc[[OffsetTime]][1,1] = E.MINUS then
+         *// first char is +/-
+            utcOffset = utc[[OffsetTime]][1,1]
+            utc[[OffsetTime]] = utc[[OffsetTime]][2,99]
+         end
+         utc[[OffsetSecs]]  = field(utc[[OffsetTime]],':',1) * E.SECS.PER.HOUR
+         utc[[OffsetSecs]] += field(utc[[OffsetTime]],':',2) * E.SECS.PER.MIN
+         utc[[OffsetSecs]] += field(utc[[OffsetTime]],':',3)
+         E.GTZO.DLS.OFFSET = utcOffset:utc[[OffsetSecs]]
+      end else
+         if utc[[OffsetSecs]] then ;*// use standard time as default - hour
+*!!        E.GTZO.DLS.OFFSET = utcOffset:(utc[[OffsetSecs]] - E.SECS.PER.HOUR)
+         end
+      end
+
+      if dcount(time[[ZoneArray]],@am) > 4 then
+         ndo = ''
+         for i=1 to 4; ndo<i> = time[[ZoneArray]]<i>; next i
+         time[[ZoneArray]] = ndo
+      end
+
+      *// get summer time start params
+      tzPart       = field(tzString,',',2)
+      if len(tzPart) then
+         E.GTZO.START.MONTH = ''
+         maxCharacter = len(field(tzPart,'/',1)) ;*// assume 2am start/stop
+         for charPos  = 1 to maxCharacter
+            character = tzPart[charPos,1]
+
+            begin case
+            case character = 'M'
+            case character = 'J' ;*!!! julian date - shouldn't happen
+            case character = '.'
+               time[[ZoneArray]] := @am
+            case @true
+               time[[ZoneArray]] := character
+            end case
+
+         next charPos
+         E.GTZO.START.TIME = 7200 ;*// assume 2am
+
+         if dcount(time[[ZoneArray]],@am) > 8 then
+            ndo = ''
+            for i=1 to 8; ndo<i> = time[[ZoneArray]]<i>; next i
+            time[[ZoneArray]] = ndo
+         end
+      end else
+         *// standard default - northern hemisphere
+*!!         E.GTZO.START.MONTH = 4
+*!!         E.GTZO.START.WEEK  = 1
+*!!         E.GTZO.START.DAY   = 0
+*!!         E.GTZO.START.TIME  = '02:00'
+      end
+
+      *//  get summer time stop params
+      tzPart = field(tzString,',',3)
+      if len(tzPart) then
+         E.GTZO.STOP.MONTH = ''
+         maxCharacter = len(field(tzPart,'/',1)) ;*// assume 2am start/stop
+         for charPos  = 1 to maxCharacter
+            character = tzPart[charPos,1]
+
+            begin case
+            case character = 'M'
+            case character = 'J' ;*!!! julian date - shouldn't happen
+            case character = '.'
+               time[[ZoneArray]] := @am
+            case @true
+               time[[ZoneArray]] := character
+            end case
+
+         next charPos
+         E.GTZO.STOP.TIME = 7200 ;*// assume 2am
+
+         if dcount(time[[ZoneArray]],@am) > 12 then
+            ndo = ''
+            for i=1 to 12; ndo<i> = time[[ZoneArray]]<i>; next i
+            time[[ZoneArray]] = ndo
+         end
+      end else
+         *// standard default - northern hemisphere
+*!!         E.GTZO.STOP.MONTH = 10
+*!!         E.GTZO.STOP.WEEK  = 5
+*!!         E.GTZO.STOP.DAY   = 0
+*!!         E.GTZO.STOP.TIME  = '02:00'
+      end
+
+      returnValue = time[[ZoneArray]]
+
+   end
+
+return(@null)
+
+*--------------------------------------------
+[[SetDateFormat]]:       *// 'ON' = International, 'OFF' = US
+*--------------------------------------------
+
+   switch = upcase(trim(arguments<1,1>))
+
+   begin case
+   case switch = 'OFF'
+      set[[DateFormatCmd]] = 'DATE.FORMAT OFF'
+
+   case switch[1,1] = 'D'  ;*// change default date output format
+      set[[DateFormatCmd]] = 'DATE.FORMAT ':arguments<1,1>
+
+   case @true
+      set[[DateFormatCmd]] = 'DATE.FORMAT ON'
+
+   end case
+
+   execute set[[DateFormatCmd]] capturing cap
+   gosub [[GetDateFormat]]: ;*// return current date format
+
+return(@null)
+
+*--------------------------------------------
+[[ThatsAllFolks]]: end
+*--------------------------------------------
+
+Related Pages
+
+    Also, see Ray Wurlod's article, Date Conversion Demystified
+
+
+Open Questions
+
+Question 1:
+I have a field that holds the number of milliseconds since 1/1/1970 GMT, which is how Java handles dates internally. I know UniData stores dates as the number of days since 12/31/1967. I need a UniBasic utility that can convert between these formats.
+
+Answer 1:
+
+DateUtility does quite a bit more but the functionality you want is included. Don't forget to change the default TZ string if you are not from nsw or vic in australia! ;)
+
+This was built for UV on unix and Win NT will require a registry reader if you nead to check a users timezone.
+
+Also, I'm not sure if UD supports system(99).
+
+
+To call as a function:
+      PROGRAM SOME.PROGRAM
+      DEFFUN DATE.UTIL(Method,Arguments) CALLING '*DATE.UTILITY'
+      ...
+      MY.METHOD    = 'parse[[EpochTime]]'
+      MY.ARGUMENTS = javatime:@AM:timezone
+      U2.DATE.TIME = DATE.UTIL(MY.METHOD,MY.ARGUMENTS)
+      U2.DATE = U2.DATE.TIME<1>
+      U2.TIME = U2.DATE.TIME<2>
+
+or call as an I-type
+      0001 I
+      0002 subr('*DATE.UTILITY','parse[[EpochTime]]',JAVADATE.FIELD)
+
+Cheers, Stuart
+
+
+Answer 1: - Option 2
+
+
+Converting between pick dates and unix or java dates is fairly straight forward. It is basically as follows.
+
+UNIXTIME = (DATE() - 732) * 86400
+
+This will return you the unix time in GMT, which is how unix stores all dates. You may need to convert to local time so just add the time diff for your timezone.
+
+Gordon.

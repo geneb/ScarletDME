@@ -1,0 +1,75 @@
+     PROGRAM CSEQ
+
+* Views part of a large Directory-type file
+*
+* Keith Robert Johnson - 6th May 2011 - Public Domain
+*
+* Editors generally cannot handle very large files (like .csv extracts)
+* This program allows the user to get the first line and 20 lines
+* surrounding a given line and writes the result into a VOC item
+* then chains to the editor to see what you have.
+
+     SENT = TRIM(@SENTENCE)
+
+* Trim off any RUN stuff
+     CONVERT ' ' TO @AM IN SENT
+     IF SENT(1) EQ 'RUN' THEN
+        DEL SENT<1>
+        DEL SENT<1>
+     END
+
+* Remove verb
+     DEL SENT<1>
+
+* Get our input
+     FILE = SENT<1>
+     ITEM = SENT<2>
+     LINE = SENT<3>
+
+* Check it
+     IF NOT(NUM(LINE)) THEN
+        CRT 'Non-numeric line "':LINE:'"'
+        STOP
+     END
+     LINE = INT(LINE+0)
+     DAWN = LINE-10 ; IF DAWN LT 2 THEN DAWN = 2
+     DUSK = LINE+10
+     JUST = 'R%':LEN(DUSK)
+
+     IF ITEM EQ '' OR FILE EQ '' THEN STOP 201
+
+* Open the files
+     OPEN 'VOC' TO VOC ELSE STOP 201,'VOC'
+     OPENSEQ FILE,ITEM TO JUNK ELSE STOP 201,FILE:',':ITEM
+
+* Get the header line
+     EOF = @FALSE
+     READSEQ LINE FROM JUNK ELSE EOF = @TRUE
+     IF EOF THEN
+        CRT 'Nothing in file'
+        CLOSESEQ JUNK
+        STOP
+     END
+     TEXT = LINE
+
+* Step to the start line
+     FOR X = 3 TO DAWN
+        READSEQ LINE FROM JUNK ELSE EOF = @TRUE
+        IF EOF THEN
+           CRT 'No such line'
+           CLOSESEQ JUNK
+           STOP
+        END
+     NEXT X
+
+* Get the lines we want
+     FOR X = DAWN TO DUSK
+        READSEQ LINE FROM JUNK ELSE EOF = @TRUE
+        IF EOF THEN EXIT
+        TEXT<-1> = FMT(X,JUST):': ':LINE
+     NEXT X
+     CLOSESEQ JUNK
+
+* Write away the stuff we want and edit it
+     WRITE TEXT ON VOC,'CSEQ:':@USERNO
+     CHAIN 'ED VOC CSEQ:':@USERNO

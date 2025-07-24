@@ -1,0 +1,411 @@
+      REM PICKTETRIS
+      REM Marcos Alonso Vega - 30-XII-98
+      REM ----------------------------------------------------
+      REM
+      *
+      * Etiquetas de subrutinas utilizadas
+      *   COMPROBAR_NUEVA_POSICION * Inicializar juego
+      *   COMPROBAR_DERRUMBES * Comprobar derrumbes
+      *   DIBUJAR_PANTALLA * Dibujar pantalla de juego
+      *   MARCADOR_PUNTOS * Marcador de puntos
+      *   MARCADOR_LINEAS * Marcador de lineas
+      *   GIRAR_FIGURA * Girar figura ACTUAL segun las agujas del reloj
+      *   BORRAR_BLOQUE * Borrar bloque
+      *   DIBUJAR_FIGURA * Dibujar figura ACTUAL
+      *   REDIBUJAR_TABLERO * Redibujar todo el tablero
+      * ------------------------------------------------------------------
+      *
+      * [R01] MAV 18-6-99 - Modificaciones para R83
+      *
+      PRINT @(-1)
+      CLEAR
+      PROMPT ""
+      PUNTOS = 0
+      PARCIALES = 0;           * Puntos parciales
+      LINEAS = 0;              * Numero de lineas conseguidas
+      RETARDO = 20000;          * Cuanto menos, mas rapido ira el juego
+      ALTO = 20;               * Altura del tablero en cuadros
+      ANCHO = 10;              * Anchura del tablero en cuadros
+      DIM TABLERO(20,10);      * Tablero de juego
+      DIM BLOQUE(7);           * Figuras del Tetris
+      MAT TABLERO = ""
+      MAT BLOQUE = ""
+      *
+      * Definicion de las figuras. Solo la posicion inicial; las distintas
+      * rotaciones se calculan por subrutina.
+      * El indice 1 de la parte dinamica indica el tama±o del cuadrado que
+      * contiene a la figura.
+      * El indice 2 de la parte dinamica contiene el conjunto de caracteres
+      * con los que se dibujan la figura.
+      * El indice 3 de la parte dinamica contiene el tipo de figura (1-6)
+      * ------------------------------------------------------------------
+      BLOQUE(1)<1> = 4
+      BLOQUE(1)<2> = CHAR(176):CHAR(176)
+      BLOQUE(1)<3> = 1
+      BLOQUE(1)<4,1> = "  # "
+      BLOQUE(1)<4,2> = "  # "
+      BLOQUE(1)<4,3> = "  # "
+      BLOQUE(1)<4,4> = "  # "
+      *
+      BLOQUE(2)<1> = 3
+      BLOQUE(2)<2> = CHAR(176):CHAR(176)
+      BLOQUE(2)<3> = 2
+      BLOQUE(2)<4,1> = " # "
+      BLOQUE(2)<4,2> = " # "
+      BLOQUE(2)<4,3> = " ##"
+      *
+      BLOQUE(3)<1> = 3
+      BLOQUE(3)<2> = CHAR(178):CHAR(178)
+      BLOQUE(3)<3> = 3
+      BLOQUE(3)<4,1> = "  #"
+      BLOQUE(3)<4,2> = "  #"
+      BLOQUE(3)<4,3> = " ##"
+      *
+      BLOQUE(4)<1> = 3
+      BLOQUE(4)<2> = "()"
+      BLOQUE(4)<3> = 4
+      BLOQUE(4)<4,1> = " # "
+      BLOQUE(4)<4,2> = " ##"
+      BLOQUE(4)<4,3> = "  #"
+      *
+      BLOQUE(5)<1> = 3
+      BLOQUE(5)<2> = "II"
+      BLOQUE(5)<3> = 5
+      BLOQUE(5)<4,1> = "  #"
+      BLOQUE(5)<4,2> = " ##"
+      BLOQUE(5)<4,3> = " # "
+      *
+      BLOQUE(6)<1> = 2
+      BLOQUE(6)<2> = "[]"
+      BLOQUE(6)<3> = 6
+      BLOQUE(6)<4,1> = "##"
+      BLOQUE(6)<4,2> = "##"
+      *
+      BLOQUE(7)<1> = 3
+      BLOQUE(7)<2> = "<>"
+      BLOQUE(7)<3> = 7
+      BLOQUE(7)<4,1> = " # "
+      BLOQUE(7)<4,2> = " ##"
+      BLOQUE(7)<4,3> = " # "
+      *
+      GOSUB DIBUJAR_PANTALLA; * Imprimir pantalla
+      GOSUB INICIALIZAR_JUEGO; * inicializar el juego
+      *
+      * Juego propiamente dicho
+      * -----------------------
+      *
+      ***PRINT CHAR(27):"`0"; * Ocultar cursor [R01]
+      NUEVAPIEZA=1
+      FIN=0
+      SIGUIENTE=BLOQUE(RND(7)+1)
+      LOOP WHILE FIN=0 DO
+         IF NUEVAPIEZA=1 THEN
+            ACTUAL=SIGUIENTE
+            SIGUIENTE=BLOQUE(RND(7)+1)
+            POSY=1
+            POSX=INT((10-ACTUAL<1>)/2)
+            GOSUB DIBUJAR_SIGUIENTE; * Dibujar figura SIGUIENTE
+            GOSUB DIBUJAR_FIGURA; * Dibujar figura ACTUAL
+            NUEVAPIEZA=0
+         END
+         FOR H=1 TO RETARDO
+            * intentar leer teclado un numero de veces. Luego dejar caer la pieza
+            PRINT @(0,0):
+            IF KEYREADY() THEN
+               C = KEYIN(0.01)
+               PRINT @(0,0):"  "
+               BEGIN CASE
+                  CASE C="O"
+                     NUEVOX=POSX-1
+                     NUEVOY=POSY
+                     GOSUB COMPROBAR_NUEVA_POSICION
+                     IF POSIBLE=1 THEN
+                        GOSUB BORRAR_BLOQUE; * Borrar figura ACTUAL
+                        POSX=NUEVOX
+                        GOSUB DIBUJAR_FIGURA
+                     END
+                  CASE C="P"
+                     NUEVOX=POSX+1
+                     NUEVOY=POSY
+                     GOSUB COMPROBAR_NUEVA_POSICION
+                     IF POSIBLE=1 THEN
+                        GOSUB BORRAR_BLOQUE; * Borrar figura ACTUAL
+                        POSX=NUEVOX
+                        GOSUB DIBUJAR_FIGURA; * Dibujar figura ACTUAL
+                     END
+                  CASE C="R"
+                     GOSUB GIRAR_FIGURA; * Girar figura ACTUAL segun agujas del reloj (Si es posible)
+                     IF POSIBLE=1 THEN
+                        GOSUB BORRAR_BLOQUE; * Borrar figura ACTUAL
+                        ACTUAL=ROTADO
+                        GOSUB DIBUJAR_FIGURA; * Dibujar figura ACTUAL
+                     END
+                  CASE C="Q"
+                     PRINT CHAR(27):"`1"; * Activar cursor
+                     STOP
+               END CASE
+            END
+         NEXT H
+         *
+         * Una vez lefdas unas cuantas teclas, dejar que la figura caiga
+         * -------------------------------------------------------------
+         NUEVOX=POSX
+         NUEVOY=POSY+1
+         GOSUB COMPROBAR_NUEVA_POSICION
+         IF POSIBLE=1 THEN
+            GOSUB BORRAR_BLOQUE; * Borrar figura ACTUAL
+            POSY=NUEVOY
+            GOSUB DIBUJAR_FIGURA; * Dibujar figura ACTUAL
+         END ELSE
+            IF POSY=1 THEN
+               FIN=1
+               PRINT @(-13):@(-7):@(31,10):"                ":@(31,11):"  FIN DE JUEGO  ":@(31,12):"                ":@(-8):@(-14)
+            END ELSE
+               GOSUB COMPROBAR_DERRUMBES; * Comprobar "derrumbes"
+               IF HUBODERRUMBE>0 THEN
+                  GOSUB REDIBUJAR_TABLERO
+                  BEGIN CASE
+                     CASE HUBODERRUMBE=1; PUNTOS=PUNTOS+50; PARCIALES=PARCIALES+50
+                     CASE HUBODERRUMBE=2; PUNTOS=PUNTOS+150; PARCIALES=PARCIALES+150
+                     CASE HUBODERRUMBE=3; PUNTOS=PUNTOS+300; PARCIALES=PARCIALES+300
+                     CASE HUBODERRUMBE=4; PUNTOS=PUNTOS+500; PARCIALES=PARCIALES+500
+                  END CASE
+                  LINEAS=LINEAS+HUBODERRUMBE
+                  IF PARCIALES>=2000 THEN
+                     PARCIALES=0
+                     IF RETARDO>1 THEN RETARDO=RETARDO-1; * Subir el nivel
+                  END
+                  GOSUB MARCADOR_LINEAS
+               END
+               NUEVAPIEZA=1
+               PUNTOS=PUNTOS+5; PARCIALES=PARCIALES+5
+               GOSUB MARCADOR_PUNTOS
+            END
+         END
+      REPEAT
+      *
+      *** [R01] PRINT CHAR(27):"`1"; * Activar cursor
+      STOP
+      ***
+      ***
+      ***************************************************************
+      *** Girar la figura ACTUAL según las agujas del reloj
+      ***
+GIRAR_FIGURA:
+      POSIBLE=0
+      ROTADO=ACTUAL
+      FOR FILA=1 TO ACTUAL<1>
+         ROTADO<4,FILA>=""
+         FOR COL=ACTUAL<1> TO 1 STEP -1
+            ROTADO<4,FILA>=ROTADO<4,FILA>:ACTUAL<4,COL>[FILA,1]
+         NEXT COL
+      NEXT FILA
+      * Comprobar que es posible
+      FOR FILA=1 TO ACTUAL<1>
+         FOR COL=1 TO ACTUAL<1>
+            IF ROTADO<4,FILA>[COL,1]="#" THEN
+               * Si se cumplen las siguientes condiciones no sera posible
+               IF (POSY+FILA-1)>ALTO OR (POSX+COL-1)>ANCHO THEN RETURN
+               IF POSX<1 OR POSY<1 THEN RETURN
+               IF TABLERO(POSY+FILA-1,POSX+COL-1)#0 AND ACTUAL<4,FILA>[COL,1]=" " THEN RETURN
+            END
+         NEXT COL
+      NEXT FILA
+      POSIBLE=1
+      RETURN
+      ***************************************************************
+      *** Dibujar la figura actual
+      ***
+DIBUJAR_FIGURA:
+      FOR FILA=1 TO ACTUAL<1>
+         FOR COL=1 TO ACTUAL<1>
+            IF ACTUAL<4,FILA>[COL,1]="#" THEN
+               PRINT @(27+(POSX+COL-1)*2, POSY+FILA+1):ACTUAL<2>
+               TABLERO(POSY+FILA-1, POSX+COL-1)=ACTUAL<3>
+            END
+         NEXT COL
+      NEXT FILA
+      RETURN
+      ***************************************************************
+      *** Redibujar todo el tablero
+      ***
+REDIBUJAR_TABLERO:
+      FOR FILA=1 TO ALTO
+         FOR COL=1 TO ANCHO
+            PRINT @(COL*2+27, FILA+2):
+            IF TABLERO(FILA,COL)=0 THEN
+               PRINT "  "
+            END ELSE
+               PRINT BLOQUE(TABLERO(FILA,COL))<2>
+            END
+         NEXT COL
+      NEXT FILA
+      RETURN
+      ***************************************************************
+      *** Borrar el bloque
+      ***
+BORRAR_BLOQUE:
+      FOR FILA=1 TO ACTUAL<1>
+         FOR COL=1 TO ACTUAL<1>
+            IF ACTUAL<4,FILA>[COL,1]="#" THEN
+               PRINT @(27+(POSX+COL-1)*2, POSY+FILA+1):"  "
+               TABLERO(POSY+FILA-1, POSX+COL-1)=0
+            END
+         NEXT COL
+      NEXT FILA
+      RETURN
+      ***************************************************************
+      *** Inicializar el juego
+      ***
+INICIALIZAR_JUEGO:
+      FOR FILA=1 TO ALTO
+         FOR COL=1 TO ANCHO
+            TABLERO(FILA,COL)=0
+            PRINT @(COL*2+27, FILA+2):"  "
+         NEXT COL
+      NEXT FILA
+      RETURN
+      ***************************************************************
+      *** Comprobar la nueva posición de la figura ACTUAL
+      *** Ret: POSIBLE=1 si la nueva posición es posible
+      ***      POSIBLE=0 si no lo es
+      ***
+COMPROBAR_NUEVA_POSICION:
+      POSIBLE=1
+      * Eliminar los cuadros ocupados por la situacion actual de la ficha
+      FOR FILA=1 TO ACTUAL<1>
+         FOR COL=1 TO ACTUAL<1>
+            IF ACTUAL<4,FILA>[COL,1]="#" THEN TABLERO(POSY+FILA-1,POSX+COL-1)=0
+         NEXT COL
+      NEXT FILA
+      *
+      FOR FILA=1 TO ACTUAL<1>
+         FOR COL=1 TO ACTUAL<1>
+            IF ACTUAL<4,FILA>[COL,1]="#" THEN
+               * Si se cumplen las siguientes condiciones no sera posible
+               IF (NUEVOY+FILA-1)>ALTO OR (NUEVOX+COL-1)>ANCHO THEN POSIBLE=0; GOTO 1101
+               IF (NUEVOY+FILA-1)<1 OR (NUEVOX+COL-1)<1 THEN POSIBLE=0; GOTO 1101
+               IF TABLERO(NUEVOY+FILA-1,NUEVOX+COL-1)#0 THEN POSIBLE=0; GOTO 1101
+            END
+         NEXT COL
+      NEXT FILA
+1101  *
+      FOR FILA=1 TO ACTUAL<1>
+         FOR COL=1 TO ACTUAL<1>
+            IF ACTUAL<4,FILA>[COL,1]="#" THEN TABLERO(POSY+FILA-1,POSX+COL-1)=ACTUAL<3>
+         NEXT COL
+      NEXT FILA
+      RETURN
+      ***************************************************************
+      *** Comprobar los derrumbes de líneas
+      ***
+COMPROBAR_DERRUMBES:
+      HUBODERRUMBE=0
+      FOR H=1 TO ALTO
+         DERRUMBE=1
+         FOR J=1 TO ANCHO
+            IF TABLERO(H,J)=0 THEN
+               DERRUMBE=0
+               J=ANCHO; * Acabar el bucle
+            END
+         NEXT J
+         IF DERRUMBE=1 THEN
+            HUBODERRUMBE=HUBODERRUMBE+1
+            * Bajar una fila lo que hay encima
+            FOR K=H TO 2 STEP -1
+               FOR M=1 TO ANCHO
+                  TABLERO(K,M)=TABLERO(K-1,M)
+               NEXT M
+            NEXT K
+         END
+      NEXT H
+      RETURN
+      ***************************************************************
+      *** Dibujar la siguiente figura
+      ***
+DIBUJAR_SIGUIENTE:
+      FOR H=12 TO 15
+         PRINT @(10,H):SPACE(8)
+      NEXT H
+      FOR FILA=1 TO SIGUIENTE<1>
+         FOR COL=1 TO SIGUIENTE<1>
+            IF SIGUIENTE<4,FILA>[COL,1]="#" THEN
+               PRINT @(8+INT((4-SIGUIENTE<1>)/2+COL)*2, 11+INT((4-SIGUIENTE<1>)/2)+FILA):SIGUIENTE<2>
+            END
+         NEXT COL
+      NEXT FILA
+      RETURN
+      ***************************************************************
+      *** Pantalla de juego
+      ***
+DIBUJAR_PANTALLA:
+      PRINT @(28,2):STR(CHAR(220),ANCHO*2+2)
+      FOR H=3 TO ALTO+2
+         PRINT @(28,H):CHAR(219):SPACE(ANCHO*2):CHAR(219)
+      NEXT H
+      PRINT @(28,ALTO+3):STR(CHAR(223),ANCHO*2+2)
+      *
+      * Siguiente
+      *
+      PRINT @(9,10):@(-7):"SIGUIENTE:"
+      PRINT @(8,11):CHAR(201):STR(CHAR(205),10):CHAR(187)
+      FOR H=12 TO 15
+         PRINT @(8,H):CHAR(186):SPACE(10):CHAR(186)
+      NEXT H
+      PRINT @(8,16):CHAR(200):STR(CHAR(205),10):CHAR(188):@(-8)
+      *
+      * Marcadores
+      *
+      PRINT @(7,5):@(-7):"PUNTOS: ":@(-8):"000000"
+      PRINT @(7,6):@(-7):"LINEAS:    ":@(-8):"000"
+      *
+      * Orlas y Creditos
+      *
+      PRINT @(5,3):
+      FOR H=1 TO 9
+         PRINT "*":@(-7):"*":@(-8):
+      NEXT H
+      PRINT @(5,8):
+      FOR H=1 TO 9
+         PRINT @(-7):"*":@(-8):"*":
+      NEXT H
+      PRINT @(5,18):
+      FOR H=1 TO 9
+         PRINT "*":@(-7):"*":@(-8):
+      NEXT H
+      PRINT @(56,3):
+      FOR H=1 TO 9
+         PRINT "*":@(-7):"*":@(-8):
+      NEXT H
+      PRINT @(56,7):
+      FOR H=1 TO 9
+         PRINT @(-7):"*":@(-8):"*":
+      NEXT H
+      PRINT @(56,12):
+      FOR H=1 TO 9
+         PRINT "*":@(-7):"*":@(-8):
+      NEXT H
+      PRINT @(56,19):
+      FOR H=1 TO 9
+         PRINT @(-7):"*":@(-8):"*":
+      NEXT H
+      PRINT @(55,5):@(-7):"P I C K  T E T R I S":@(-8)
+      PRINT @(55,9):" Marcos Alonso Vega"
+      PRINT @(55,10):"  (m) 1999 INGESCO"
+      PRINT @(56,14):@(-7):"'O'":@(-8):" .... Izquierda"
+      PRINT @(56,15):@(-7):"'P'":@(-8):" ...... Derecha"
+      PRINT @(56,16):@(-7):"'R'":@(-8):" ........ Rotar"
+      PRINT @(56,17):@(-7):"'Q'":@(-8):" .......... Fin"
+      RETURN
+      ***************************************************************
+      *** Marcador de puntos
+      ***
+MARCADOR_PUNTOS:
+      PRINT @(15,5):PUNTOS"R0,%6"
+      RETURN
+      ***************************************************************
+      *** Marcador de lineas
+      ***
+MARCADOR_LINEAS:
+      PRINT @(18,6):LINEAS"R0,%3"
+      RETURN

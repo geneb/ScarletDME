@@ -1,0 +1,92 @@
+     * Will Johnson
+     * Variables passed in, there is nothing that must be passed in, but
+     * Optionally assign PASS.ERROR to TRUE or FALSE.
+     *    PASS.ERROR = TRUE means it is OK to assign ERROR here, but don't
+     *                 display it here, just pass it back
+     *
+     * Variables passed out
+     * SENTENCE is set to @SENTENCE
+     * ERROR is set to any error generated here
+     * C.WORD is set to the word position number of the command line
+     * T2.VERB is set to RUN or RAID if that is the first word, otherwise
+     *    T2.VERB is set to null
+     * T2.FILE is set to the program file that is being RUN or RAID, if that
+     *    is the first word, otherwise T2.FILE is set to null
+     * I.AM is the verb / program with this include in it, this will be the
+     *    third word if being RUN or RAID, otherwise the first word
+     * N.FILE is the text name of the file being acted upon
+     *    This is passed back as [DICT] filename[,mlfile]
+     * F.FILE is the file pointer to the N.FILE
+     * DICT.FLAG is set to TRUE if N.FILE is a DICT, otherwise FALSE
+     * MULTI.LEVEL is set to TRUE if N.FILE is a multi-level file reference,
+     *    otherwise FALSE
+     * DF.FILE is the file pointer to the DICT of the N.FILE, or if the
+     *    N.FILE is itself a DICT, then it points to the VOC
+     *
+     *
+     SENTENCE = @SENTENCE
+     IF NOT(ASSIGNED(PASS.ERROR)) THEN PASS.ERROR = FALSE
+     ERROR =
+     *
+     C.WORD = 1 ; FIRST.WORD = FIELD(SENTENCE,' ',C.WORD)
+     IF FIRST.WORD MATCHES "RUN":@VM:"RAID" THEN
+        T2.VERB = FIRST.WORD
+        C.WORD += 1 ; T2.FILE = FIELD(SENTENCE,' ',C.WORD)
+        C.WORD += 1 ; I.AM = FIELD(SENTENCE,' ',C.WORD)
+     END ELSE T2.VERB = "" ; T2.FILE = "" ; I.AM = FIRST.WORD
+     C.WORD += 1 ; N.FILE = FIELD(SENTENCE,' ',C.WORD)
+     C.FILEEND = COL2()
+     *
+     BEGIN CASE
+        CASE N.FILE = "DICT"
+           C.WORD += 1 ; N.FILE = "DICT ":FIELD(SENTENCE,' ',C.WORD)
+           C.FILEEND = COL2()
+        CASE N.FILE = "DATA"
+           C.WORD += 1 ; N.FILE = "DATA ":FIELD(SENTENCE,' ',C.WORD)
+           C.FILEEND = COL2()
+        CASE N.FILE =
+           PRINT "FILE: ": ; INPUT N.FILE
+           IF N.FILE =  THEN
+              IF PASS.ERROR THEN
+                 ERROR = 'No file entered' ; GOTO TCL.II.EXIT
+              END ELSE STOP
+           END
+     END CASE
+     *
+     * Can handle files entered as:
+     *    CUSTOMER,10-11; CUSTOMER; DICT CUSTOMER; DATA CUSTOMER
+     *
+     DICT.FLAG = FALSE ; MULTI.LEVEL = FALSE
+     BEGIN CASE
+        CASE INDEX(N.FILE,",",1)        ; *MULTI-LEVEL FILE
+           MULTI.LEVEL = TRUE
+           N2.FILE = FIELD(N.FILE,",",2)
+           N.FILE = FIELD(N.FILE,",",1)
+        CASE FIELD(N.FILE," ",1) = "DICT"         ; *DICT FILE
+           DICT.FLAG = TRUE
+           N.FILE = FIELD(N.FILE," ",2)
+        CASE FIELD(N.FILE," ",2) = "DATA"         ; *DATA THROW-AWAY
+           N.FILE = FIELD(N.FILE," ",2)
+        CASE 1                          ; *NORMAL FILE
+     END CASE
+     *
+     IF DICT.FLAG THEN
+        OPEN "VOC" TO DF.FILE ELSE ERR = 'VOC' ; GOTO FILE.ERROR
+     END ELSE
+        OPEN "DICT",N.FILE TO DF.FILE ELSE
+           ERR = 'DICT ':N.FILE ; GOTO FILE.ERROR
+        END
+     END
+     IF MULTI.LEVEL THEN N.FILE = N.FILE:",":N2.FILE
+     IF DICT.FLAG THEN N.FILE = "DICT ":N.FILE
+     OPEN N.FILE TO F.FILE ELSE ERR = N.FILE ; GOTO FILE.ERROR
+     *
+     GOTO TCL.II.EXIT
+     *
+     FILE.ERROR:
+     ERROR = 'Cannot open ':ERR:' file.'
+     IF PASS.ERROR THEN
+        GOTO TCL.II.EXIT
+     END ELSE CRT ERROR:' Hit ENTER': ; INPUT NOTHING ; STOP
+     *
+     TCL.II.EXIT:

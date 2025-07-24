@@ -1,0 +1,25 @@
+* This is just some "shared" text that's appended to the string for security
+* purposes.  It's not required as part of the MD5 scheme.
+X.THE.KEY="key"
+*
+X.TO.BE.HASHED="The quick brown fox jumps over the lazy dog"
+X.TO.BE.HASHED := X.THE.KEY
+*
+X.ERROR.FLAG=0
+X.ERROR.MSG=''
+X.CALCULATED.HASH=''
+***********
+X.ALGORITHM="MD5"
+X.DATA.LOC=1  ;** Data is in a string (2=in a file)
+*
+* This DIGEST command actually does the job of calculating the hash
+*
+A.ERROR.FLAG=DIGEST(X.ALGORITHM, X.TO.BE.HASHED, X.DATA.LOC, A.HASH.VAL)
+*
+A.HASH.VAL=OCONV(A.HASH.VAL,"[[MX0C]]")  ;** convert binary string returned by DIGEST, to ascii hex string
+A.HASH.VAL=DOWNCASE(A.HASH.VAL)
+***********
+CRT A.HASH.VAL
+CRT A.ERROR.FLAG
+
+

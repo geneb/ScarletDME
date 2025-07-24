@@ -1,0 +1,152 @@
+Heap Sort
+
+The first routine creates a heap ...
+
+* HEAP.BUILD builds a heap to take further data from.
+************************************************************************
+
+       SUBROUTINE HEAP.BUILD( DATA, MAT DATARRAY, ITEMCOUNT, DELIM, SORT)
+* Arguments:
+*  DATA - a delimited dynamic array of data to sort
+*  DATARRAY - supplied by the caller - a dimensioned array large enough to hold all the data
+*  ITEMCOUNT - returned - the number of items in the array
+*  DELIM - the dynamic array delimiter
+*  SORT - the sort type eg AL or DR
+
+* If DELIM is "" then it assumes that the dimensioned array has already
+* been set up. Note that the dimensioned array must be correctly sized
+* by the caller. It's okay for it to be too big, but many (all?) MV's
+* can't resize an array passed as an argument, so if it's too small this
+* subroutine can't increase its size.
+
+************************************************************************
+
+* load the dynamic array
+      IF DELIM NE "" THEN
+         MATPARSE DATARRAY FROM DATA USING DELIM SETTING ITEMCOUNT
+      END
+
+* return -1 as an error if there's no data
+      IF ITEMCOUNT EQ 0 THEN
+         ITEMCOUNT = -1
+         RETURN
+      END
+
+* sort out justification, and whether the sort is ascending or descending
+      SORTORDER = UPCASE( SORT[1,1] )
+      JUST = UPCASE( SORT[2,1] )
+
+* for each item, bubble it up into position
+      FOR II = 2 TO ITEMCOUNT
+         CURRENTITEM = II
+         NEXTITEM = INT( CURRENTITEM * 0.5)
+         LOOP WHILE NEXTITEM
+* compare with the item half-way between current and the top of the array
+            TEST = COMPARE( DATARRAY( NEXTITEM), DATARRAY( CURRENTITEM), JUST)
+            IF SORTORDER EQ "D" THEN TEST = 0 - TEST ;* reverse order
+
+            IF TEST LE 0 THEN
+* terminate bubble - this item is in position
+               NEXTITEM = 0
+            END ELSE
+* swap item and loop to see if it goes higher
+               TEMP = DATARRAY( NEXTITEM)
+               DATARRAY( NEXTITEM) = DATARRAY( CURRENTITEM)
+               DATARRAY( CURRENTITEM) = TEMP
+               CURRENTITEM = NEXTITEM
+               NEXTITEM = INT( CURRENTITEM * 0.5)
+            END
+         REPEAT
+      NEXT
+
+      RETURN
+   END
+
+The second routine returns items one by one, in sorted order
+
+* HEAP.GETNEXT removes the next value from a heap
+************************************************************************
+
+      SUBROUTINE HEAP.GETNEXT( RESULT, MAT DATARRAY, ITEMCOUNT, SORT, DEDUP)
+* Arguments:
+*  RESULT - the value returned
+*  DATARRAY - a heap created by HEAP.BUILD
+*  ITEMCOUNT - the number of items in DATARRAY - modified by this routine
+*  SORT - the sort type eg AL or DR
+*  DEDUP - remove duplicates without returning them?
+
+* The calling routine needs to check ITEMCOUNT - when it gets to zero
+* there's nothing left to return. Don't rely on "RESULT EQ ''" because
+* the result could validly be null (or anything else, for that matter).
+
+************************************************************************
+
+      IF ITEMCOUNT LE 0 THEN RETURN ;* don't do anything
+
+* sort out justification, and whether the sort is ascending or descending
+      SORTORDER = UPCASE( SORT[1,1] )
+      JUST = UPCASE( SORT[2,1] )
+
+* save the top entry as the result to be returned
+      RESULT = DATARRAY( 1)
+      CURRENTPOS = 1
+
+* bubble the lower values up
+      LOOP WHILE CURRENTPOS LT ITEMCOUNT
+         NEXTPOS = CURRENTPOS * 2
+
+         IF NEXTPOS GE ITEMCOUNT THEN
+* next test position is off the end of the array (or is the last item)
+            DATARRAY(CURRENTPOS) = DATARRAY(ITEMCOUNT)
+
+            IF NEXTPOS NE ITEMCOUNT THEN
+* this bit is necessary because we shrink the array every time. It's not
+* necessary in a standard heap sort, but because we're moving the bottom
+* element to some place at "random" in the array, we need to make sure it
+* is correctly placed again in the heap. So just bubble this item up the
+* heap like when we built it in the first place.
+               PREVPOS = INT( CURRENTPOS * 0.5)
+               LOOP WHILE PREVPOS
+                  TEST = COMPARE( DATARRAY( PREVPOS), DATARRAY( CURRENTPOS), JUST)
+                  IF SORTORDER EQ "D" THEN TEST = 0 - TEST ;* reverse order
+                  IF TEST LE 0 THEN PREVPOS = 0 ELSE
+	                  TEMP = DATARRAY( PREVPOS)
+                     DATARRAY( PREVPOS) = DATARRAY( CURRENTPOS)
+                     DATARRAY( CURRENTPOS) = TEMP
+                  END
+               REPEAT
+            END
+
+            CURRENTPOS = ITEMCOUNT ;* loop will terminate
+
+         END ELSE
+* Okay, we haven't fallen off the end of the heap - compare next two
+* items. Whichever is smallest, move up to replace current entry, then
+* loop to replace the item we've just moved up.
+            TEST = COMPARE( DATARRAY( NEXTPOS), DATARRAY( NEXTPOS+1), JUST)
+            IF SORTORDER EQ "D" THEN TEST = 0 - TEST ;* reverse order
+            IF TEST LT 0 THEN
+               DATARRAY(CURRENTPOS) = DATARRAY(NEXTPOS)
+               CURRENTPOS = NEXTPOS
+            END ELSE
+               DATARRAY(CURRENTPOS) = DATARRAY(NEXTPOS+1)
+               CURRENTPOS = NEXTPOS+1
+            END
+         END
+
+      REPEAT
+      ITEMCOUNT -= 1
+
+      IF DEDUP THEN
+* if top entry in heap is identical to current result, then call self to
+* throw it away. ITEMCOUNT test is needed because the first test will
+* always be true on the last entry.
+         LOOP WHILE RESULT EQ DATARRAY( 1) AND ITEMCOUNT GT 0
+            CALL *HEAP.GETNEXT( JUNK, MAT DATARRAY, ITEMCOUNT, SORT, 0)
+         REPEAT
+      END
+
+      RETURN
+   END
+
+These two routines could easily be combined into a proper sort routine.

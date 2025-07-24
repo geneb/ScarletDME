@@ -1,0 +1,30 @@
+1        *MENU IS THE GAMES MENU. CGO 6-82
+             CRT @(-1):'        T   H   E             G      A      M      E      S'
+*             OPEN 'DICT','GAMES.BP' ELSE ABORT 201,'GAMES.BP'
+              OPEN 'MD' ELSE ABORT 201,'GAMES.BP'
+             READ GAMES FROM 'GAME-LIST' ELSE CRT 'NO GAME LIST IN MD !!!'; STOP
+             LC = DCOUNT(GAMES,CHAR(254)) ;*NOT 'AM' CAUSE ONLY USED ONCE!
+             ROWS = INT((LC + 19) / 20) ; PROMPT ''
+             MASK = 'L#':INT((80 /ROWS) -4)
+             COLS = INT(LC / ROWS)
+             IF REM(LC,ROWS) THEN COLS = COLS + 1
+             SKIP = INT((20 - COLS) / 2) +1
+             FOR II = 1 TO COLS
+               CRT @(0, II + SKIP):
+               FOR JJ = 0 TO ROWS -1
+                 CNT = II + JJ * COLS
+                 CLIF=EXTRACT(GAMES,CNT,1,0):'  ':EXTRACT(GAMES,CNT,2,0)
+                 IF CNT <= LC THEN CRT CNT 'R##  ':CLIF MASK:
+        *        IF CNT <= LC THEN CRT CNT 'R##  ':GAMES<CNT> MASK:
+               NEXT JJ
+             NEXT II
+        3    *
+             CRT @(4,22):'ENTER NUMBER OF GAME TO PLAY OR NL TO QUIT ':;INPUT OPTN
+             IF OPTN = '' ! OPTN = 'END' THEN GOTO 5 ;*TERMINATE
+             IF NUM(OPTN) & OPTN < LC+1 & OPTN>0 THEN NULL ELSE GOTO 3
+             EXECUTE 'RUN GAMES.BP ':EXTRACT(GAMES,OPTN,1,0)
+             INPUT PAUSE
+             GOTO 1
+        5    *GIVE GOAWAY. CGO
+             PRINT 'TYPE IN OFF OR GAMES. NOW AT TCL':
+           END

@@ -1,0 +1,79 @@
+* sort1 sorts a dynamic array by the requested delimiter
+************************************************************************
+
+      SUBROUTINE SORT1 (ARRAY, DELIM, SORTTYPE)
+
+************************************************************************
+
+* Modifications since date stamp
+* ******************************
+
+* None at present.
+* 07/05/96 : Swap routine made much simpler and shorter. Rewrite done due
+*            to a bug when sorting numbers left justified.
+
+* NOTE
+* ****
+
+* awy Jun93 : This uses the Shell sort (named after Donald Shell at IBM)
+*             It is a general-purpose, pretty efficient sort, and by
+*             using matrices is quite fast. It works by comparing and
+*             swapping if necessary items which are 'n' places apart.
+*             'n' starts at half the total number of items and is halved
+*             for each pass. This makes it an n-log(n) sort. There are a
+*             variety of rules about how to 'tweak' it, but this version
+*             is pretty crude.
+
+      FIELDCOUNT = DCOUNT(ARRAY, DELIM)
+      IF FIELDCOUNT LT 2 THEN RETURN    ;* No point sorting 0 or 1
+
+* Convert dynamic array into matrix
+      DIMENSION MATRIX(FIELDCOUNT)
+      MATPARSE MATRIX FROM ARRAY, DELIM
+
+* Set up ascend/descent, justify, and start interval
+      AD = SORTTYPE[1,1]
+      LR = SORTTYPE[2,1]
+      INTERVAL = INT(FIELDCOUNT*0.5)
+
+* Now to business - the outer LOOP continues until the swap interval
+* has been through 1 to become zero. The inner FOR 'bubbles' each entry
+* up as far as it will go by calling SWAP
+      LOOP UNTIL INTERVAL EQ 0
+         FOR BUBBLE = INTERVAL+1 TO FIELDCOUNT
+            SWAPVAR = BUBBLE
+            GOSUB SWAP:
+         NEXT
+         INTERVAL = INT(INTERVAL*0.5)
+      REPEAT
+
+* Now rebuild dynamic array and return
+*     MATBUILD ARRAY FROM MATRIX USING DELIM ;* Doesn't work - infobasic bug
+      MATBUILD ARRAY FROM MATRIX USING @IM
+      CONVERT @IM TO DELIM IN ARRAY
+      RETURN
+
+********************************
+* This simply compares the current entry with the entry INTERVAL before.
+* If it is in the correct order, or the current entry is too close to the
+* top it returns. Otherwise it swaps the two entries, and loops to see if
+* it can move the current entry even higher.
+SWAP:
+      LOOP
+         COMPVAR = SWAPVAR - INTERVAL
+         IF COMPVAR LT 1 THEN RETURN
+
+         IF LR EQ 'R'
+            THEN COMPVALUE = COMPARE( MATRIX(SWAPVAR), MATRIX( COMPVAR), "R")
+            ELSE COMPVALUE = COMPARE( MATRIX(SWAPVAR), MATRIX( COMPVAR), "L")
+         IF AD EQ "D" THEN COMPVALUE = 0 - COMPVALUE
+
+         IF COMPVALUE GE 0 THEN RETURN
+
+         TEMP = MATRIX(COMPVAR)
+         MATRIX(COMPVAR) = MATRIX(SWAPVAR)
+         MATRIX(SWAPVAR) = TEMP
+         SWAPVAR = COMPVAR
+
+      REPEAT
+   END

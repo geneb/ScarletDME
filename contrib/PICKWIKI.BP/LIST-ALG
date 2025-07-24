@@ -1,0 +1,314 @@
+*-----------------------------------------------------------------------
+* TITLE:  LIST.ALG
+* AUTH: Rich Sias                     Updated 2/11/2003 on PickWiki
+* DATE: 04/17/2002
+* ID:   LIST.ALG
+*-----------------------------------------------------------------------
+*Narrative:
+*----------------------
+* Lists all algorithms from distributed file dictionaries.
+* Lists &PARTFILES& Algorithm, Dict @PART.ALGORITHM, and [Dict] VOC
+* Algorithm and compares them highlights dicontinuities. Process for
+* All accounts and files in &PARTFILES& file.
+* ALG name is name used in VOC for INTERNAL in the DEFINE.DF.
+* [ALG name] is when it is stored in the DICT of the VOC.
+* Fg - flag  for errors in algorithms, 1-9 PtFl # PartBlock in DistFile.
+* Fg 10-90 is when no record exists in &PF& for the identified partfile.
+* If you have no records in &PARTFILES& then this report will be empty.
+*-----------------------------------------------------------------------
+*Notes:
+*---------------------
+* Special codes are set for screen display to bold, and underline.
+* HP printer escape codes are "printed" to activate bold and underline.
+* Near end of program code seeks spooler no. and PID to develop the
+* filename for the printer output. A unix command is issued to bypass
+* our normal printer process which strips out the HP codes before
+* printing.
+* The program will probably work OK for screen display. You will probably
+* need to modify program to suppport methods to get good print with
+* formatting desired.
+*-----------------------------------------------------------------------
+* EXT CALLS            OPEN.FILE
+* FILES READ:          distributed files
+* FILES UPDATE:        NONE
+* CONSTANTS UPDATE:    NONE
+* RESTART INSTRUCTIONS NONE
+*-----------------------------------------------------------------------
+* MODIFICATIONS
+* mm-dd-yy Login (sar######) Description
+* 04/26/2002 rsi Show conflicts tween dict & partfile algs to screen.
+* 06/11/2002 rsi Validate alg in each partfile, then &pf&, then dict.
+* 09/05/2002 rsi Formatting improvements.
+* 11/11/2002 rsi Fixes between KMHP5 & dwh server.
+*-----------------------------------------------------------------------
+*
+* include section: "COMMON" include files should be preceded
+*                  "EQUATES" include files
+*-----------------------------------------------------------------------
+$OPTIONS PICK
+$INCLUDE MERCY.COMMON STANDARD.EQUATES
+*-----------------------------------------------------------------------
+* equate section
+*-----------------------------------------------------------------------
+*-----------------------------------------------------------------------
+* initialization section: do not include variables that are
+*---------------------- re-initialized prior to usage ------------------
+*-----------------------------------------------------------------------
+      PROG.ID = "LIST.ALG"
+      PREAMBLE = ''
+      POSTFIX = ''
+      OFFSET = 32
+      * Set up printer characteristics for restoration before exit.
+      REST.PTR = 'SETPTR 0,':@LPTRWIDE:',':@LPTRHIGH:',0,0,1,INFORM,'
+      REST.PTR := 'HOLD,RETAIN,BRIEF'
+*-----------------------------------------------------------------------
+* open-file section: use OPEN.FILE routine to open files
+*-----------------------------------------------------------------------
+      OPEN "","&PARTFILES&" TO PFI ELSE STOP 204,"VOC"
+      CALL OPEN.FILE(VOC,"","VOC")
+*-----------------------------------------------------------------------
+* main program body
+*-----------------------------------------------------------------------
+      * Set up bold, underline, both for screen or printer.
+      GET(ARG.) TMP1 THEN
+         GET(ARG.) TMP2 ELSE TMP2 = ''
+      END ELSE TMP1 = '' ; TMP2 = ''
+      IF TMP1 = 'LPTR' OR TMP2 = 'LPTR' THEN PTR = 1
+         ELSE PTR = 0
+      IF TMP1 = 'BRIEF' OR TMP2 = 'BRIEF' THEN DET = 0
+         ELSE DET = 1
+      IF PTR THEN
+         * Set up characteristics for HP esc codes for cannon ptr.
+         EXECUTE 'SETPTR 0,172,60,0,0,1,INFORM,HOLD,RETAIN,BRIEF'
+         SP = SPACE(2)
+         PRINTER ON
+         WID = 170
+         * Bold set for printer.
+         TX2 = CHAR(27):"(s4B"
+         * Underline set for printer.
+         UX2 = CHAR(27):"&d1D"
+         * Clear bold & undeline settings for printer.
+         RESET = CHAR(27):"(s0B":CHAR(27):"&d@"
+         * Portrait mode.
+         PREAMBLE = CHAR(27):"&l1O"
+         * Line spacing setting.
+         PREAMBLE := CHAR(27):"&l8D"
+         * Symbol set chosen for the header.
+         PREAMBLE := CHAR(27):"(12U"
+         * Proportional, h-size, v-size, style, stroke, typeface.
+         PREAMBLE := CHAR(27):"(s0p14h0s0b6T"
+         * Set to lp type face and spacing.
+         POSTFIX = CHAR(27):"(s17.5H"
+         * s0p16h6v0s0b4116T":
+      END ELSE
+         * Pass parm not equal to LPTR
+         * Set up for telnet session color selections via bld, undl.
+         WID = @CRTWIDE -OFFSET
+         TX2 = @(-58)
+         UX2 = @(-5)
+         RESET = @(-6)
+         IF @CRTWIDE > 123 THEN
+            SP = SPACE(5)
+         END ELSE
+            SP = SPACE(5)
+         END
+      END
+      * Change term width so heading wont wrap.
+
+      * Build heading.
+      UNIX = 'hostname'
+      EXECUTE "SH -c":QUOTE(UNIX),//OUT.>CAPS
+      HDG = ''
+      HDG := PREAMBLE:PROG.ID:"         "
+      HDG := TX2:UPCASE(CAPS<1>):RESET
+      HDG := "             \      Pg. 'S''L'"
+      IF DET THEN
+         HDG := " Fg  1-9,  # Ptfl ALG wrong     "
+         HDG := UX2:"Underline":RESET:" = bad partfile alg "
+         HDG := "'L' Fg 10-90, # Ptfl ALG missing   "
+         HDG := TX2:"BOLD":RESET:" = bad dict alg   "
+         HDG := UX2:TX2:" BOTH bad ":RESET:"'L'"
+      END
+      HDG := "Dist name ":SP:" Alg name":SP:"Fg Algorithm "
+      HDG := POSTFIX
+      HEADING HDG
+      OLD.ACNT = @WHO
+
+      * Build order of select list of dist files.
+      ECMD = 'SELECT &PARTFILES& WITH PARTNUM="Distributed" '
+      ECMD := ' BY ACCOUNT'
+      ECMD := ' BY DISTFILE '
+      ECMD<-1> = 'SAVE.LIST RSI.ALG.LIST'
+      EXECUTE ECMD,//OUT.>QUIET
+      * Read in whole list to dynamic variable.
+      READLIST LYST FROM "RSI.ALG.LIST" ELSE
+         CRT 'List no good, try after fixing.'
+         STOP
+      END
+
+      * Begin cycling through the list.
+      KNT = DCOUNT(LYST,@FM)
+      FIRST.TIME = 1
+      FOR I1 = 1 TO KNT
+         READ PREC FROM PFI,LYST<I1> ELSE CONTINUE
+         ID = PREC<1>
+         IF NUM(ID[3]) AND ID[3] = LYST<I1>[3] THEN
+            DELETE VOC,"VOO"
+            IF PTR THEN PRINTER OFF
+            ECMD = 'SET.FILE ':PREC<2>:' VOC VOO'
+            EXECUTE ECMD,//OUT.>QUIET
+            ECMD = 'SELECT VOO WITH F2 ="':ID:'" AND WITH F3="D_':ID:'"'
+            EXECUTE ECMD,//OUT.>QUIET,//SELECT.>LYST2
+            READNEXT ID FROM LYST2 ELSE DEBUG      ; * STOP 201,'bad ID ':ID:' ':PREC<1>:' ':LYST<I1>
+         END
+         IF PREC<2> # OLD.ACNT THEN
+            * Changing accounts, print account name for group.
+            OLD.ACNT = PREC<2>
+            PRINT "    Account = ":PREC<2>
+            FIRST.TIME = 0
+            PRINTER OFF
+            EXECUTE "SET.FILE ":PREC<2>:" VOC TEMP.VOC",//OUT.>QUIET
+         END ELSE
+            IF FIRST.TIME THEN
+               * If not changed accounts yet, then set pointers 1st.
+               PRINT "    Account = ":PREC<2>
+               PRINTER OFF
+               EXECUTE "SET.FILE ":PREC<2>:" VOC TEMP.VOC",//OUT.>QUIET
+               FIRST.TIME = 0
+            END
+         END
+         * Turn off printer to avoid the QSET messages.
+         PRINTER OFF
+         EXECUTE "SET.FILE ":PREC<2>:" ":ID:" TEMP.DISTF",//OUT.>QUIET
+         IF PTR THEN PRINTER ON
+         * Begin searching for alg in partfile.
+         PFLAG = 0
+         OPEN "","TEMP.DISTF" TO PFIL THEN
+            STATUS ST.REC FROM PFIL ELSE ST.REC = ''
+         END ELSE ST.REC = ''
+         IF ST.REC<27> # '' THEN
+            * Cycle all of the partfile paths.
+            ST.REC<25> = EREPLACE(ST.REC<25>,'/DATA.30','')
+            CN5 = DCOUNT(ST.REC<25>,@VM)
+            I5 = 1
+            * Get alg from 1st partfile, set to main alg.
+            GOSUB GET.ALG
+            MAIN.ALG = ALGG<2>
+            READ X FROM PFI,ST.REC<25,I5> ELSE PFLAG += 10
+            * Get seach subsequent partfile alg and compare.
+            FOR I5 = 2 TO CN5
+               GOSUB GET.ALG
+               * Increment part file fail flag if unequal.
+               IF MAIN.ALG # ALGG<2> THEN PFLAG += 1
+               READ X FROM PFI,ST.REC<25,I5> ELSE PFLAG += 10
+            NEXT I5
+         END
+         * Test algorithm in partfile.
+         IF MAIN.ALG # PREC<4> THEN
+            * Algorithms are different from partfiles.
+            TX0 = UX2
+            RST = RESET
+         END
+         * Locate algorithm in dict of partfile.
+         OPEN "DICT","TEMP.DISTF" TO PFIL
+            ELSE STOP 204,"DICT TEMP.DISTF ":PREC<2>
+         READ REC FROM PFIL,"@PART.ALGORITHM" ELSE REC = @FM:"mt"
+         IF REC<2> # MAIN.ALG THEN
+            * Algroithms are different, set bold-izers.
+            TX0 := TX2
+            RST = RESET
+         END ELSE TX0 = "" ; RST = ''
+         * Locate algorithm in VOC file.
+         ECM2 = "SELECT TEMP.VOC WITH F2 = \":(MAIN.ALG):"\"
+         EXECUTE ECM2,//SELECT.>LIST,//STATUS.>KN2,//OUT.>QUIET
+         IDV = ''
+         FOR I2 = 1 TO KNT
+            READNEXT IDT FROM LIST THEN
+               IDV<-1> = IDT
+            END
+         NEXT I2
+         IF IDV = "" THEN
+            * Not found?, then Locate algorithm in DICT VOC file.
+            ECM2 = "SELECT DICT TEMP.VOC WITH F2 = \":(MAIN.ALG):"\"
+            EXECUTE ECM2,//SELECT.>LIST,//STATUS.>KN2,//OUT.>QUIET
+            FOR I2 = 1 TO KNT
+               READNEXT IDT FROM LIST THEN
+                  IDV<-1> = '[':IDT:']'
+               END
+            NEXT I2
+         END
+         * Print distributed record data.
+         PRINT ID"16L":IDV<1>"14L":PFLAG"2L":
+         * Print extra line lengths of algorithm.
+         FOR K3 = 1 TO LEN(MAIN.ALG) STEP WID
+            IF K3 > 23 THEN PRINT SPACE(OFFSET):
+            PRINT TX0:MAIN.ALG[K3,WID]:RST
+         NEXT K3
+      NEXT I1
+      PRINT "ALL FINISHED"
+      IF PTR THEN
+         PRINTER OFF
+         * Close printer to get spool number.
+         PRINTER CLOSE
+
+         * Get spool number.
+         UNIX = "SH -c 'smat -p < /dev/null | grep sp_job_id'"
+         EXECUTE UNIX,//OUT.>CAP
+         CNT=DCOUNT(CAP,@FM)
+         SPULNO = ""
+         FOR I =1 TO CNT
+         UNTIL SPULNO # ""
+            IF CAP<I>="" THEN CONTINUE
+            TMP = FIELD(CAP<I>,":",2,1)
+            IF TMP # 0 THEN SPULNO = OCONV(TRIM(TMP),"MR%5")
+         NEXT I
+
+         * Get pid number.
+         UNIX = "ps -f|grep uv/bin/uv| grep -v grep|awk '{print $2}'"
+         EXECUTE "SH -c":QUOTE(UNIX),//OUT.>CAP
+         PID = OCONV(TRIM(CAP<1>),"MR%5")
+         * Assemble line printer command and execute it.
+         CRT "PID = ":PID, SPULNO, "/dsk13s2/uvspool/uv":SPULNO:PID:"aa"
+         * Print raw output directly to printer.
+         UNIX = 'lp -d canonis /dsk13s2/uvspool/uv':SPULNO:PID:'aa'
+         EXECUTE "SH -c":QUOTE(UNIX)
+         PRINT "ALL DONE"
+         EXECUTE REST.PTR
+      END
+      DELETE VOC,"TEMP.DISTF"
+      STOP
+* This is the final return and should cause the logic to exit the pgm
+
+*-----------------------------------------------------------------------
+* subroutines: include desc ( function, variables used and changed, etc)
+*-----------------------------------------------------------------------
+
+************
+GET.ALG:
+************
+      OPENPATH ST.REC<25,I5> TO TFIL THEN
+         OPENSEQ ST.REC<25,I5> TO TPATH THEN
+            READBLK DTA FROM TPATH,2048 ELSE DTA = ''
+            HDRLAYOUT = FILEINFO(TFIL,99)
+            BURP = OCONV(DTA[1+HDRLAYOUT<18,1>,HDRLAYOUT<18,2>],"MX0C")
+            BURP = ICONV(BURP,"MCD")
+            SEEK TPATH,BURP,0 THEN
+               READBLK ALGG FROM TPATH,512 THEN
+                  IF LEN(ALGG<2>) > 4 THEN
+*       CRT 'Algorithm = ':ALGG<2>
+                  END ELSE ALGG = @FM:'plain nothing ':LEN(ALGG<2>):"  ":BURP:"   ":HDRLAYOUT<18>:"  ":ALGG
+*      CRT SPACE(12):ALGG<2>:
+*      INPUT ANS,1
+               END
+            END
+         END
+      END
+      RETURN
+
+************
+TERMINATION:
+************
+      PRINT 'Terminating now '
+      DELETE VOC,"TEMP.DISTF"
+      STOP
+* last statement in a program don't add code after this line
