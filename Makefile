@@ -261,6 +261,7 @@ else
 	@rm -Rf $(INSTROOT)/terminfo/*
 	@cp -R qmsys/terminfo/* $(INSTROOT)/terminfo
 
+
 	@chown -R qmsys:qmusers $(INSTROOT)/terminfo
 	@find $(INSTROOT)/terminfo -type d -print0 | xargs -0 chmod 775
 	@find $(INSTROOT)/terminfo -type f -print0 | xargs -0 chmod 664
@@ -269,6 +270,7 @@ else
 #	@chmod 664 $(INSTROOT)/terminfo/*
 #	make sure all directories are readable
 #	find $(INSTROOT) -type d -print0 | xargs -0 chmod 775
+
 
 
 endif
