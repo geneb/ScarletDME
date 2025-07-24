@@ -1,0 +1,713 @@
+*** GAME OF TWENTY-ONE        ***
+*** JOHN WELLS                ***
+*** MODEL SHOP - SANTA ANA,CA ***
+*** NOV. 30, 1979             ***
+     PROMPT ""
+     EE=0
+     CL=CHAR(27):"K"
+     DIM P(19)
+     DIM D(19)
+     DIM C.ID(19)
+     DIM D.ID(19)
+     DIM SC.ID(19)
+*********************************************
+     PRINT @(-1)
+     PRINT @(10,8):STR('*',51):@(10,14):STR('*',51)
+     PRINT @(20,10):"WELCOME TO THE BLACKJACK CASINO"
+     PRINT @(10,12):"WHERE THE TOUGH GET GOING WHEN THE GOING GETS TOUGH"
+     PRINT @(10,20):"WHAT IS YOUR NAME? ":;INPUT NAME
+     IF NAME="" THEN NAME="BOSCO"
+10   PRINT @(10,21):"HOW MANY DECKS DO YOU WISH TO PLAY WITH (1,2,OR 4)? ":
+     INPUT DECKS
+     IF DECKS="1" THEN
+       GGG=52
+       FFF=4
+       ZZZ=22
+     END
+     IF DECKS="2" THEN
+       GGG=104
+       FFF=8
+       ZZZ=29
+     END
+     IF DECKS="4" THEN
+       GGG=208
+       FFF=16
+       ZZZ=38
+     END
+     IF DECKS # "1" THEN IF DECKS # "2" THEN IF DECKS # "4" THEN GOTO 10
+*****************************
+     CASH=RND(25)+50
+*****************************
+     PRINT @(-1)
+     PRINT "     THE RULES OF TWENTY-ONE ARE SIMPLE"
+     PRINT "   **************************************"
+     PRINT
+     PRINT "   H = HIT"
+     PRINT "   S = STAND"
+     PRINT "   D = DOUBLE-DOWN"
+     PRINT
+     PRINT "   YOU CAN DOUBLE-DOWN ON ANY TWO CARDS PROVIDING YOU HAVE ENOUGH CASH"
+     PRINT "   TO DOUBLE-DOWN WITH."
+     PRINT "   YOU CAN SPLIT EACH HAND ONLY ONCE PROVIDING YOU HAVE ENOUGH CASH."
+     PRINT "   YOU CAN ALSO MAKE INSURANCE BETS."
+     PRINT "   BLACKJACK PAYS ONE-AND-A-HALF YOUR BET AND INSURANCE PAYS TWO-TO-ONE."
+     PRINT "   AN INSURANCE BET IS ONE-HALF YOUR BET."
+     PRINT "   THE DEALER STANDS ON SOFT 17."
+     PRINT "   THE MINIMUM BET IS $2.00 AND THE MAXIMUM BET IS $500.00!!!"
+     PRINT
+     PRINT "   GOOD-LUCK TO ALL YOU HIGH ROLLERS!!!"
+     PRINT
+     PRINT "   HIT RETURN TO CONTINUE":
+     INPUT CON,1
+***********************************************
+15   PRINT @(-1);PRINT @(27,12):"NOW SHUFFLING THE CARDS"
+     FOR SS=1 TO 1300
+     NEXT SS
+     NUM=GGG
+     ACE=FFF
+     DEUCE=FFF
+     THREE=FFF
+     FOUR=FFF
+     FIVE=FFF
+     SIX=FFF
+     SEVEN=FFF
+     EIGHT=FFF
+     NINE=FFF
+     TEN=FFF
+     JACK=FFF
+     QUEEN=FFF
+     KING=FFF
+25   PCT=0
+     DCT=0
+     ZZ=0
+     TT=""
+******************
+     FOR J=1 TO 19
+       P(J)=0
+       D(J)=0
+       C.ID(J)=""
+       D.ID(J)=""
+       SC.ID(J)=""
+     NEXT J
+*************************
+     PRINT @(-1)
+     CASH=ICONV(CASH,"MR2")
+     CASH=OCONV(CASH,"MR2")
+     PRINT @(2,5):NAME:", YOU HAVE $":CASH:" TO BET WITH.":CL
+99   PRINT @(2,8):"HOW MUCH DO YOU WISH TO BET? ":CL:
+     INPUT PBET
+     IF PBET="" THEN PBET=0
+     IF NOT(NUM(PBET)) THEN GOTO 99
+********************************
+100  BET=ICONV(PBET,"MR2")
+     BET=OCONV(BET,"MR2")
+     IF BET > CASH THEN
+       PRINT @(2,10):"C'MON ":NAME:", YOU ONLY HAVE $":CASH:".":CL
+101    PRINT @(2,12):"HOW MUCH DO YOU WISH TO BET? ":CL:
+       INPUT PBET
+       IF PBET="" THEN PBET=0
+       IF NOT(NUM(PBET)) THEN GOTO 101
+       GOTO 100
+     END
+     IF BET < 2 THEN
+       PRINT @(2,10):"C'MON ":NAME:", WE'RE TRYING TO WIN MONEY HERE!!"
+       PRINT @(2,11):"THE MINIMUM BET IS $2.00!"
+102    PRINT @(2,12):"HOW MUCH DO YOU WISH TO BET? ":CL:
+       INPUT PBET
+       IF PBET="" THEN PBET=0
+       IF NOT(NUM(PBET)) THEN GOTO 102
+       GOTO 100
+     END
+     IF BET > 500 THEN
+       PRINT @(2,10):NAME:", THE MAXIMUM BET IS $500.00!":CL
+       PRINT @(2,11):"HOW MUCH DO YOU THINK YOUR WORTH?":CL
+103    PRINT @(2,12):"HOW MUCH DO YOU WISH TO BET - SIR RICH PERSON? ":CL:
+       INPUT PBET
+       IF PBET="" THEN PBET=0
+       IF NOT(NUM(PBET)) THEN GOTO 103
+       GOTO 100
+     END
+*********************************
+     PRINT @(-1)
+     L.CASH=ICONV(CASH-BET,"MR2")
+     Z.CASH=OCONV(L.CASH,"MR2")
+     PRINT @(2,1):NAME:", YOU NOW HAVE $":Z.CASH:" LEFT."
+     PRINT @(2,2):"YOUR BET IS $":BET
+***********************************************
+     NUM=NUM-4
+     PCT=2
+     DCT=2
+     FOR I=1 TO 2
+       P(I)=RND(13)+1
+       D(I)=RND(13)+1
+       C.NUM=P(2)
+       TEST=P(I)
+       TT=1
+       GOSUB 1000
+       C.ID(I)=CARD
+       TEST=D(I)
+       TT=2
+       GOSUB 1000
+       D.ID(I)=CARD
+       IF P(I)>10 THEN P(I)=10
+       IF D(I)>10 THEN D(I)=10
+       IF C.NUM > 10 THEN C.NUM=10
+       IF C.NUM = 1 THEN C.NUM = 11
+       IF I=1 THEN
+         IF P(1)=1 THEN P(1)=11
+         IF D(1)=1 THEN D(1)=11
+       END
+       IF I=2 THEN
+         IF P(1)#11 THEN IF P(2)=1 THEN P(2)=11
+         IF D(1)#11 THEN IF D(2)=1 THEN D(2)=11
+       END
+     NEXT I
+************************************************
+     GOSUB 9000
+     GOSUB 9100
+     GOTO 2000
+1000 IF TEST=1 THEN
+       IF ACE=0 THEN GOTO 1500
+       ACE=ACE-1
+       GOTO 1200
+     END
+     IF TEST=2 THEN
+       IF DEUCE=0 THEN GOTO 1500
+       DEUCE=DEUCE-1
+       GOTO 1200
+     END
+     IF TEST=3 THEN
+       IF THREE=0 THEN GOTO 1500
+       THREE=THREE-1
+       GOTO 1200
+     END
+     IF TEST=4 THEN
+       IF FOUR=0 THEN GOTO 1500
+       FOUR=FOUR-1
+       GOTO 1200
+     END
+     IF TEST=5 THEN
+       IF FIVE=0 THEN GOTO 1500
+       FIVE=FIVE-1
+       GOTO 1200
+     END
+     IF TEST=6 THEN
+       IF SIX=0 THEN GOTO 1500
+       SIX=SIX-1
+       GOTO 1200
+     END
+     IF TEST=7 THEN
+       IF SEVEN=0 THEN GOTO 1500
+       SEVEN=SEVEN-1
+       GOTO 1200
+     END
+     IF TEST=8 THEN
+       IF EIGHT=0 THEN GOTO 1500
+       EIGHT=EIGHT-1
+       GOTO 1200
+     END
+     IF TEST=9 THEN
+       IF NINE=0 THEN GOTO 1500
+       NINE=NINE-1
+       GOTO 1200
+     END
+     IF TEST=10 THEN
+       IF TEN=0 THEN GOTO 1500
+       TEN=TEN-1
+       GOTO 1200
+     END
+     IF TEST=11 THEN
+       IF JACK=0 THEN GOTO 1500
+       JACK=JACK-1
+       GOTO 1200
+     END
+     IF TEST=12 THEN
+       IF QUEEN=0 THEN GOTO 1500
+       QUEEN=QUEEN-1
+       GOTO 1200
+     END
+     IF TEST=13 THEN
+       IF KING=0 THEN GOTO 1500
+       KING=KING-1
+       GOTO 1200
+     END
+1200 BEGIN CASE
+       CASE TEST=1; CARD="A"
+       CASE TEST=11; CARD="J"
+       CASE TEST=12; CARD="Q"
+       CASE TEST=13; CARD="K"
+       CASE 1; CARD=TEST
+     END CASE
+     RETURN
+1500 IF TT=1 THEN
+       P(I)=RND(13)+1
+       TEST=P(I)
+       GOTO 1000
+     END
+     IF TT=2 THEN
+       D(I)=RND(13)+1
+       TEST=D(I)
+       GOTO 1000
+     END
+2000 IF D.SUM<21 THEN IF D.ID(1) # "A" THEN IF P.SUM=21 THEN GOTO 3000
+     IF D.ID(1) # "A" THEN IF D.SUM = 21 THEN
+       IF P.SUM < 21 THEN GOTO 4000
+       IF P.SUM = 21 THEN GOTO 5700
+     END
+     IF D.ID(1) = "A" THEN GOTO 5000
+     GOTO 2130
+2100 IF CASH < BET*2 THEN
+       PRINT @(2,17):"YOU DON'T HAVE ENOUGH CASH TO SPLIT ACES!":CL
+       GOTO 2140
+     END
+     GOSUB 4200
+2110 PRINT @(2,17):"DO YOU WANT TO SPLIT YOUR ACES (Y,N)? ":CL:
+     INPUT SPL,1
+     IF SPL # "Y" THEN IF SPL # "N" THEN GOTO 2110
+     IF SPL = "Y" THEN GOTO 2200
+     IF SPL = "N" THEN GOTO 2150
+2130 IF C.ID(1)=C.ID(2) THEN
+       IF C.ID(1)="A" THEN GOTO 2100
+       GOSUB 4200
+2135   PRINT @(2,17):"DO YOU WANT TO SPLIT YOUR HAND (Y,N)? ":CL:
+       INPUT SPLIT,1
+       IF SPLIT = "Y" THEN
+         IF CASH < BET*2 THEN
+           PRINT @(2,17):"YOU DON'T HAVE ENOUGH CASH TO SPLIT!":CL
+           GOTO 2150
+         END
+         GOTO 8300
+       END
+       IF SPLIT = "N" THEN GOTO 2150 ELSE GO 2135
+     END
+2140 GOSUB 4200
+2150 PRINT @(2,18):"WOULD YOU LIKE TO HIT, STAND, OR DOUBLE-DOWN (H,S,D)? ":CL:
+     INPUT ACTION,1
+     PRINT @(2,17):CL
+     IF ACTION = "H" THEN GOTO 2500
+     IF ACTION = "S" THEN GOTO 3500
+     IF ACTION = "D" THEN GOTO 3700
+     IF ACTION # "H" THEN IF ACTION # "S" THEN IF ACTION # "D" THEN GOTO 2150
+2200 P(1)=11
+     P(2)=11
+     ZZ=2
+     NUM=NUM-2
+     FOR I=3 TO 4
+       P(I)=RND(13)+1
+       TEST=P(I)
+       TT=1
+       GOSUB 1000
+       C.ID(I)=CARD
+       IF P(I) > 10 THEN P(I)=10
+       S.SUM1=P(1)+P(3)
+       S.SUM2=P(2)+P(4)
+       IF I=3 THEN
+         FOR L=1 TO 11
+           SC.ID(L)=C.ID(L)
+         NEXT L
+       END
+     NEXT I
+     P.SUM=S.SUM1:" FOR YOUR FIRST HAND, AND ":S.SUM2:" FOR THE OTHER."
+2300 IF D.SUM > 16 THEN GOTO 2350
+     FOR I=3 TO 19
+       NUM=NUM-1
+       DCT=DCT+1
+       D(I)=RND(13)+1
+       TEST=D(I)
+       TT=2
+       GOSUB 1000
+       D.ID(I)=CARD
+       IF D(I)>10 THEN D(I)=10
+       IF D(I)<11 THEN IF D(I)=1 THEN D(I)=11
+       GOSUB 9100
+       IF D.SUM>21 THEN GOSUB 2800
+2350   IF D.SUM > 16 THEN
+         DSUM=D.SUM
+         GOTO 2400
+       END
+     NEXT I
+2400 IF S.SUM1 >21 THEN S.SUM1=0
+     IF S.SUM2 >21 THEN S.SUM2=0
+     IF DSUM > S.SUM1 THEN CASH=CASH-BET
+     IF DSUM > S.SUM2 THEN CASH=CASH-BET
+     IF DSUM < S.SUM1 THEN CASH=CASH+BET
+     IF DSUM < S.SUM2 THEN CASH=CASH+BET
+     GOTO 4400
+2500 FOR I=3 TO 19
+       NUM=NUM-1
+       PCT=PCT+1
+       P(I)=RND(13)+1
+       TEST=P(I)
+       TT=1
+       GOSUB 1000
+       C.ID(I)=CARD
+       IF P(I)>10 THEN P(I)=10
+       IF P.SUM<11 THEN IF P(I)=1 THEN P(I)=11
+       GOSUB 9000
+       IF P.SUM > 21 THEN GOTO 2700
+2600   GOSUB 4200
+2610   PRINT @(2,18):"DO YOU WANT TO HIT OR STAND (H,S)? ":CL:
+       INPUT ACT,1
+       PRINT @(2,17):CL
+       IF ACT = "S" THEN GOTO 3500
+       IF ACT # "S" THEN IF ACT # "H" THEN GOTO 2610
+     NEXT I
+2700 FOR C=1 TO 19
+       IF P(C)=11 THEN P(C)=1
+       GOSUB 9000
+       IF P.SUM<=21 THEN GOTO 2600
+     NEXT C
+     GOTO 5500
+2800 FOR C=1 TO 19
+       IF D(C)=11 THEN D(C)=1
+       GOSUB 9100
+       IF D.SUM<=21 THEN
+         DSUM=D.SUM
+         RETURN
+       END
+     NEXT C
+     IF ZZ=2 THEN
+       DSUM=0
+       GOTO 2400
+     END
+     GOTO 4500
+2900 FOR C=1 TO 19
+       IF P(C)=11 THEN P(C)=1
+       GOSUB 9000
+       IF P.SUM <= 21 THEN GOTO 8500
+     NEXT C
+     IF ZZ=1 THEN
+       PRINT @(2,17):"YOU ARE OVER 21 WITH YOUR FIRST HAND---BUSTED!":CL
+       GOTO 8600
+     END ELSE GOTO 8700
+3000 GOSUB 4300
+     PRINT @(2,17):"CONGRATULATIONS ":NAME:", YOU HAVE BLACKJACK!!!":CL
+     CASH=CASH+BET+(BET/2)
+     GOTO 6000
+3100 GOSUB 4300
+     PRINT @(2,17):"CONGRATULATIONS ":NAME:", YOU HAVE BLACKJACK!!!":CL
+     PRINT @(2,18):"DEALER DID NOT HAVE BLACKJACK SO YOU LOST THE INSURANCE BET!":CL
+     CASH=CASH + BET + (BET/2)
+     GOTO 6000
+3200 PRINT @(2,17):"DEALER DID NOT HAVE BLACKJACK SO YOU LOST THE INSURANCE BET!":CL
+     GOTO 2130
+3500 IF D.SUM > 16 THEN IF D.SUM > P.SUM THEN GOTO 5500
+     IF D.SUM > 16 THEN IF D.SUM = P.SUM THEN GOTO 5700
+     IF D.SUM > 16 THEN IF D.SUM < P.SUM THEN GOTO 4500
+     FOR I=3 TO 19
+       NUM=NUM-1
+       DCT=DCT+1
+       D(I)=RND(13)+1
+       TEST=D(I)
+       TT=2
+       GOSUB 1000
+       D.ID(I)=CARD
+       IF D(I)>10 THEN D(I)=10
+       IF D.SUM<11 THEN IF D(I)=1 THEN D(I)=11
+       GOSUB 9100
+       IF D.SUM >21 THEN GOSUB 2800
+       IF D.SUM > 16 THEN GOTO 3500
+     NEXT I
+3700 IF CASH < BET*2 THEN
+       PRINT @(2,17):"YOU DON'T HAVE ENOUGH CASH TO DOUBLE-DOWN!":CL
+       GOTO 2150
+     END
+     BET=BET*2
+     NUM=NUM-1
+     PCT=PCT+1
+     P(3)=RND(13)+1
+     TEST=P(3)
+     TT=1
+     GOSUB 1000
+     C.ID(3)=CARD
+     IF P(3) > 10 THEN P(3)=10
+     IF P.SUM < 11 THEN IF P(3)=1 THEN P(3)=11
+     GOSUB 9000
+     IF P.SUM > 21 THEN GOTO 3750 ELSE GO 3500
+3750 FOR C = 1 TO 3
+       IF P(C)=11 THEN P(C)=1
+       GOSUB 9000
+       IF P.SUM <= 21 THEN GOTO 3500
+     NEXT C
+     GOTO 5500
+4000 GOSUB 4300
+     PRINT @(2,17):"TOUGH LUCK ":NAME:", DEALER HAS BLACKJACK!!!":CL
+     CASH=CASH-BET
+     GOTO 5600
+4100 GOSUB 4300
+     PRINT @(2,17):"DEALER HAS BLACKJACK SO YOU WIN THE INSURANCE BET!!!":CL
+     CASH=CASH-BET
+     GOTO 5600
+4200 PRINT @(2,4):"DEALER HAS:":CL
+     Y=5
+     GOSUB 9600
+     PRINT @(2,11):"YOUR CARDS ARE:":CL
+     Y=12
+     GOSUB 9400
+     RETURN
+4300 PRINT @(2,4):"DEALER'S CARDS ARE:":CL
+     Y=12
+     GOSUB 9400
+     PRINT @(2,11):"YOUR CARDS ARE:":CL
+     Y=5
+     GOSUB 9500
+     RETURN
+4400 PRINT @(2,4):"DEALER'S CARDS ARE:":CL
+     Y=12
+     GOSUB 9700
+     PRINT @(2,11):"YOUR HANDS ARE:":CL
+     Y=5
+     GOSUB 9500
+     PRINT @(2,17):"YOU HAVE ":P.SUM:CL
+     PRINT @(2,18):"DEALER HAS ":D.SUM:CL
+     IF DSUM < S.SUM1 THEN IF DSUM < S.SUM2 THEN
+       PRINT @(2,19):"CONGRATULATIONS ":NAME:", YOU HAVE WON BOTH HANDS!!!":CL
+       GOTO 6000
+     END
+     IF DSUM < S.SUM1 THEN IF DSUM=S.SUM2 THEN
+       PRINT @(2,19):"YOU WON THE FIRST HAND AND PUSHED WITH THE DEALER ON THE OTHER!!":CL
+       GOTO 6000
+     END
+     IF DSUM=S.SUM1 THEN IF DSUM < S.SUM2 THEN
+       PRINT @(2,19):"YOU PUSHED WITH THE DEALER ON THE FIRST HAND AND WON THE OTHER!!":CL
+       GOTO 6000
+     END
+     IF DSUM=S.SUM1 THEN IF DSUM=S.SUM2 THEN
+       PRINT @(2,19):"YOU HAVE PUSHED WITH THE DEALER ON BOTH HANDS!!":CL
+       GOTO 6000
+     END
+     IF DSUM < S.SUM1 THEN IF DSUM > S.SUM2 THEN
+       PRINT @(2,19):"YOU WON THE FIRST HAND AND LOST THE OTHER HAND!!":CL
+       GOTO 6000
+     END
+     IF DSUM > S.SUM1 THEN IF DSUM < S.SUM2 THEN
+       PRINT @(2,19):"YOU LOST THE FIRST HAND AND WON THE OTHER HAND!!":CL
+       GOTO 6000
+     END
+     IF DSUM > S.SUM1 THEN IF DSUM > S.SUM2 THEN
+       PRINT @(2,19):"TOO BAD ":NAME:", THE DEALER WINS BOTH HANDS!!!":CL
+       GOTO 5600
+     END
+     IF DSUM = S.SUM1 THEN IF DSUM > S.SUM2 THEN
+       PRINT @(2,19):"YOU PUSHED WITH THE DEALER ON THE FIRST HAND BUT LOST THE OTHER!!":CL
+       GOTO 5600
+     END
+     IF DSUM > S.SUM1 THEN IF DSUM = S.SUM2 THEN
+       PRINT @(2,19):"YOU LOST THE FIRST HAND AND PUSHED WITH THE DEALER ON THE OTHER!!":CL
+       GOTO 5600
+     END
+4500 GOSUB 4300
+     PRINT @(2,17):"YOU HAVE ":P.SUM:CL
+     PRINT @(2,18):"DEALER HAS ":D.SUM:CL
+     PRINT @(2,19):"SAY ALRIGHT ":NAME:", YOU WIN!!!":CL
+     CASH=CASH+BET
+     GOTO 6000
+5000 GOSUB 4200
+5100 PRINT @(2,17):NAME:", WOULD YOU LIKE TO MAKE AN INSURANCE BET(Y,N)?":CL:
+     INPUT INS,1
+     IF INS = 'Y' THEN GOTO 8000
+     IF INS = "N" THEN GOTO 8200 ELSE GO 5100
+5500 GOSUB 4300
+     PRINT @(2,17):"YOU HAVE ":P.SUM:CL
+     PRINT @(2,18):"DEALER HAS ":D.SUM:CL
+     PRINT @(2,19):"TOUGH LUCK ":NAME:", DEALER WINS!!!":CL
+     CASH=CASH-BET
+5600 IF CASH <= 0 THEN GOTO 7000
+     IF CASH < 2 THEN GOTO 7100 ELSE GO 6000
+5700 GOSUB 4300
+     PRINT @(2,17):"YOU HAVE ":P.SUM:CL
+     PRINT @(2,18):"DEALER HAS ":D.SUM:CL
+     PRINT @(2,19):"YOU PUSHED WITH THE DEALER---A TIE!":CL
+     GOTO 6000
+5800 GOSUB 4300
+     PRINT @(2,17):"YOU HAVE ":P.SUM:CL
+     PRINT @(2,18):"DEALER HAS ":D.SUM:CL
+     PRINT @(2,19):"YOU PUSHED WITH THE DEALER BUT WIN THE INSURANCE BET!!":CL
+     GOTO 6000
+6000 PRINT @(2,21):"WOULD YOU LIKE TO TRY YOUR LUCK AGAIN (Y,N)? ":CL:
+     INPUT LK,1
+     IF LK='Y' THEN IF NUM < ZZZ THEN GOTO 15 ELSE GO 25
+     IF LK="" THEN IF NUM < ZZZ THEN GOTO 15 ELSE GO 25
+     IF LK = "N" THEN STOP
+     IF LK # "Y" THEN IF LK # "" THEN IF LK # "N" THEN GOTO 6000
+7000 PRINT @(2,20):"YOU HAVE GONE BROKE---BUSTED!!!":CL
+     GOTO 9200
+7100 PRINT @(2,20):"YOU DON'T HAVE ENOUGH CASH TO MAKE THE MINIMUM $2.00 BET!!":CL
+     PRINT @(2,21):"SO, THE WAY I SEE IT --- YOU LOOSE TURKEY!!!":CL
+     GOTO 9200
+8000 IF CASH < BET+(BET/2) THEN
+       PRINT @(2,17):"YOU DON'T HAVE ENOUGH CASH TO MAKE AN INSURANCE BET!!":CL
+       GOTO 2130
+     END
+     IF D.SUM # 21 THEN
+       CASH=CASH-(BET/2)
+       IF P.SUM = 21 THEN GOTO 3100 ELSE GO 3200
+     END
+     IF D.SUM = 21 THEN
+       CASH=CASH+BET
+       IF P.SUM = 21 THEN GOTO 5800 ELSE GO 4100
+     END
+8200 IF D.SUM # 21 THEN IF P.SUM = 21 THEN GOTO 3000 ELSE GO 2130
+     IF D.SUM = 21 THEN IF P.SUM = 21 THEN GOTO 5700 ELSE GO 4000
+8300 SP.CARD1=C.ID(2)
+8400 ZZ=ZZ+1
+     FOR J=2 TO 19
+       P(J)=0
+     NEXT J
+     PCT=1
+     FOR I=2 TO 19
+       P(I)=RND(13)+1
+       NUM=NUM-1
+       PCT=PCT+1
+       TEST=P(I)
+       TT=1
+       GOSUB 1000
+       C.ID(I)=CARD
+       IF P(I) > 10 THEN P(I)=10
+       IF P(I)=1 THEN P(I)=11
+       GOSUB 9000
+       IF P.SUM > 21 THEN GOTO 2900
+8500   GOSUB 4200
+       PRINT @(2,17):CL
+       PRINT @(2,18):"DO YOU WANT TO HIT OR STAND (H,S)? ":CL:
+       INPUT ACT,1
+       IF ACT="S" THEN IF ZZ=1 THEN
+         PRINT @(2,17):"YOU HAVE ":P.SUM:" FOR THE FIRST HAND.":CL
+8600     P(1)=C.NUM
+         SPCT=PCT
+         FOR L=1 TO 19
+           SC.ID(L)=C.ID(L)
+         NEXT L
+         PRINT @(2,12):CL:@(2,13):CL:@(2,14):CL:@(2,15):CL:@(2,16):CL
+         S.SUM1=P.SUM
+         GOTO 8400
+       END
+       IF ACT="S" THEN IF ZZ=2 THEN
+8700     SPCT2=PCT
+         S.SUM2=P.SUM
+         SUM1=S.SUM1
+         SUM2=S.SUM2
+         P.SUM=SUM1:" FOR THE FIRST HAND AND ":SUM2:" FOR THE OTHER."
+         GOTO 2300
+       END
+     NEXT I
+9000 P.SUM=P(1)+P(2)+P(3)+P(4)+P(5)+P(6)+P(7)+P(8)+P(9)+P(10)+P(11)
+     RETURN
+9100 D.SUM=D(1)+D(2)+D(3)+D(4)+D(5)+D(6)+D(7)+D(8)+D(9)+D(10)+D(11)
+     RETURN
+9200 EE=EE+1
+     IF EE=1 THEN
+       PRINT "  ":NAME:", SINCE YOUR CREDIT IS GOOD AT THE BLACKJACK CASINO,":CL
+       PRINT "  WE HAVE DECIDED TO GIVE YOU ANOTHER CHANCE.":CL
+       PRINT "  HERE'S $50.00 TO TRY YOUR LUCK AGAIN.":CL
+       PRINT "  GOOD-LUCK!!!":CL
+       CASH=50
+       GOTO 9300
+     END
+     IF EE=2 THEN
+       PRINT "  ":NAME:", SINCE YOU BLEW IT THE FIRST TIME, AND YOU KEEP":CL
+       PRINT "  LOOSING MONEY, WE'LL GIVE YOU ONE MORE CHANCE.":CL
+       PRINT "  HERE'S $25.00 TO BLOW IT AGAIN!":CL
+       PRINT "  GOOD-LUCK!!!":CL
+       CASH=25
+       GOTO 9300
+     END
+     IF EE=3 THEN
+       PRINT "  ":NAME:", YOU HAVE LOST ONE TOO MANY TIMES---YOU LOOSE TURKEY!!":CL
+       PRINT @(2,20):CL:@(2,21):CL:@(2,22):CL:@(2,23):CL
+       STOP
+     END
+9300 PRINT "  HIT RETURN TO CONTINUE":CL:
+     INPUT RETURN,1
+     GOTO 15
+9400 X=2
+     FOR M=1 TO 19
+       PRINT @(X,Y):"+----+"
+       IF C.ID(M)=10 THEN
+         PRINT @(X,Y+1):"!":C.ID(M):"  !"
+       END ELSE PRINT @(X,Y+1):"!":C.ID(M):"   !"
+       PRINT @(X,Y+2):"!    !"
+       IF C.ID(M)=10 THEN
+         PRINT @(X,Y+3):"!  ":C.ID(M):"!"
+       END ELSE PRINT @(X,Y+3):"!   ":C.ID(M):"!"
+       PRINT @(X,Y+4):"+----+"
+       IF M=PCT THEN RETURN
+       X=X+7
+     NEXT M
+9500 X=2
+     FOR N=1 TO 19
+       PRINT @(X,Y):"+----+"
+       IF D.ID(N)=10 THEN
+         PRINT @(X,Y+1):"!":D.ID(N):"  !"
+       END ELSE PRINT @(X,Y+1):"!":D.ID(N):"   !"
+       PRINT @(X,Y+2):"!    !"
+       IF D.ID(N)=10 THEN
+         PRINT @(X,Y+3):"!  ":D.ID(N):"!"
+       END ELSE PRINT @(X,Y+3):"!   ":D.ID(N):"!"
+       PRINT @(X,Y+4):"+----+"
+       IF N=DCT THEN RETURN
+       X=X+7
+     NEXT N
+9600 X=2
+     PRINT @(X,Y):"+----+"
+     IF D.ID(1)=10 THEN
+       PRINT @(X,Y+1):"!":D.ID(1):"  !"
+     END ELSE PRINT @(X,Y+1):"!":D.ID(1):"   !"
+     PRINT @(X,Y+2):"!    !"
+     IF D.ID(1)=10 THEN
+       PRINT @(X,Y+3):"!  ":D.ID(1):"!"
+     END ELSE PRINT @(X,Y+3):"!   ":D.ID(1):"!"
+     PRINT @(X,Y+4):"+----+"
+     X=X+7
+     PRINT @(X,Y):"+----+"
+     PRINT @(X,Y+1):"!$$$$!"
+     PRINT @(X,Y+2):"!$$$$!"
+     PRINT @(X,Y+3):"!$$$$!"
+     PRINT @(X,Y+4):"+----+"
+     RETURN
+9700 IF SC.ID(1)="A" THEN
+       PCT=2
+       SC.ID(1)=C.ID(1)
+       SC.ID(2)=C.ID(3)
+       CC=2
+     END ELSE
+       PCT=SPCT
+       CC=19
+     END
+     X=2
+     PRINT @(2,12):CL:@(2,13):CL:@(2,14):CL:@(2,15):CL:@(2,16):CL
+     FOR M=1 TO CC
+       PRINT @(X,Y):"+----+"
+       IF SC.ID(M)=10 THEN
+         PRINT @(X,Y+1):"!":SC.ID(M):"  !"
+       END ELSE PRINT @(X,Y+1):"!":SC.ID(M):"   !"
+       PRINT @(X,Y+2):"!    !"
+       IF SC.ID(M)=10 THEN
+         PRINT @(X,Y+3):"!  ":SC.ID(M):"!"
+       END ELSE PRINT @(X,Y+3):"!   ":SC.ID(M):"!"
+       PRINT @(X,Y+4):"+----+"
+       IF M=PCT THEN GOTO 9800
+       X=X+3
+     NEXT M
+9800 IF C.ID(1)="A" THEN
+       C.ID(1)=C.ID(2)
+       C.ID(2)=C.ID(4)
+     END ELSE
+       PCT=SPCT2
+       C.ID(1)=SP.CARD1
+     END
+     X=X+9
+     FOR M=1 TO CC
+       PRINT @(X,Y):"+----+"
+       IF C.ID(M)=10 THEN
+         PRINT @(X,Y+1):"!":C.ID(M):"  !"
+       END ELSE PRINT @(X,Y+1):"!":C.ID(M):"   !"
+       PRINT @(X,Y+2):"!    !"
+       IF C.ID(M)=10 THEN
+         PRINT @(X,Y+3):"!  ":C.ID(M):"!"
+       END ELSE PRINT @(X,Y+3):"!   ":C.ID(M):"!"
+       PRINT @(X,Y+4):"+----+"
+       IF M=PCT THEN RETURN
+       X=X+3
+     NEXT M
+END

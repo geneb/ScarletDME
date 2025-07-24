@@ -1,0 +1,81 @@
+* The MIT License (MIT)
+*
+* MV.TO.JSON Copyright (c) 2014 Kevin Powick
+*
+* Permission is hereby granted, free of charge, to any person obtaining a copy
+* of this software and associated documentation files (the "Software"), to deal
+* in the Software without restriction, including without limitation the rights
+* to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+* copies of the Software, and to permit persons to whom the Software is
+* furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+* AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+* IN THE SOFTWARE.
+*
+* End of License --------------------------------------------------------------
+
+* Version 1.0.0 - March 2014
+*
+* MV.TO.JSON will convert a given MV dynamic array and META data (see example
+* TEST.MV.TO.JSON) to correctly formatted JavaScript Object Notation (JSON).
+* This code only formats the dynamic array to JSON. Other than numeric type
+* checking, it is your own code must consider escaping string values such as
+* quotations marks, slashes, backslashes, etc.
+*
+* The code will infer JavaScript arrays from multivalues and arrays of arrays
+* from subvalues, but without those markers present, it will not create an
+* array where one might be desired. An example would be an attribute that
+* represents multivalued data, but only contains a single value. MV.TO.JSON
+* will only add the single value to the JSON output.
+*
+* The code has only been tested with D3, but should be generic enough to work
+* on most any MV platform
+
+JSON = '{'
+MAX.ATTRIBUTES = DCOUNT(DYN.ARRAY, @AM)
+FOR A.POS = 1 TO MAX.ATTRIBUTES
+   IF A.POS > 1 THEN JSON := ', '
+   A.KEY = META<1, A.POS>
+   IF A.KEY = '' THEN A.KEY = 'undefined-':A.POS
+   JSON := '"':A.KEY:'": '
+   A.VALUE = DYN.ARRAY<A.POS>
+   MAX.VALUES = DCOUNT(A.VALUE, @VM)
+   IF MAX.VALUES = 0 THEN MAX.VALUES = 1
+   IF MAX.VALUES > 1 THEN JSON := '['
+   SUB.COUNT = COUNT(A.VALUE, @SVM)
+   FOR V.POS = 1 TO MAX.VALUES
+      V.VALUE = A.VALUE<1,V.POS>
+      IF V.POS > 1 THEN JSON := ', '
+      MAX.SUBVALUES = DCOUNT(V.VALUE, @SVM)
+      IF MAX.SUBVALUES = 0 THEN MAX.SUBVALUES = 1
+      IF MAX.SUBVALUES = 1 AND SUB.COUNT > 0 THEN JSON := '['
+      IF MAX.SUBVALUES > 1 THEN
+         IF MAX.VALUES = 1 THEN JSON := '['
+         JSON := '['
+      END
+      FOR S.POS = 1 TO MAX.SUBVALUES
+         IF S.POS > 1 THEN JSON := ', '
+         S.VALUE = V.VALUE<1,1,S.POS>
+         IF S.VALUE # '' AND NUM(S.VALUE) THEN
+            JSON := S.VALUE
+         END ELSE
+            JSON := '"':S.VALUE:'"'
+         END
+      NEXT S.POS
+      IF MAX.SUBVALUES > 1 THEN
+         JSON := ']'
+         IF MAX.VALUES = 1 THEN JSON := ']'
+      END
+      IF MAX.SUBVALUES = 1 AND SUB.COUNT > 0 THEN JSON := ']'
+   NEXT V.POS
+   IF MAX.VALUES > 1 THEN JSON := ']'
+NEXT A.POS
+JSON := '}'

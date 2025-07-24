@@ -1,0 +1,37 @@
+     PROGRAM TRY
+ * ECL - KRJ - Run command line or multiple input lines as a program
+      FOLDER = 'BP'
+      ITEMID = 'TRIAL'
+      THIS = @SENTENCE
+      POSN = INDEX(UPCASE(THIS),'TRY',1)
+      THIS = THIS[POSN+4,99999]
+      OPEN FOLDER TO THAT ELSE
+         CRT 'Cannot open file ':FOLDER
+         CRT 'Edit the program and change the file name to suit'
+         STOP
+      END
+      IF TRIM(THIS) = '' THEN
+         THIS = ''
+         CRT 'Enter lines of code or press <Enter> for help'
+         LOOP
+            INPUT LINE
+         UNTIL LINE = '' DO
+            THIS<-1> = LINE
+         REPEAT
+      END
+      IF TRIM(THIS) = '' THEN
+         CRT 'Utility to run program ccode from TCL[[/ECL]]'
+         CRT
+         CRT 'Syntax:'
+         CRT '   TRY {BASIC COMMANDS}'
+         CRT
+         CRT 'Example:'
+         CRT '   TRY CRT SYSTEM(3)'
+         CRT
+         CRT 'If you just enter TRY, then you can enter multiple lines'
+         CRT 'which will be compiled and run when you enter a blank line'
+         STOP
+      END
+      WRITE THIS ON THAT, ITEMID
+      EXECUTE 'BASIC ':FOLDER:' ':ITEMID
+      EXECUTE 'RUN ':FOLDER:' ':ITEMID

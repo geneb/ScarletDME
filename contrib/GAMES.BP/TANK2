@@ -1,0 +1,295 @@
+* T A N K
+     CLEAR = @(-1):STR(CHAR(127),3)
+     CLEAR.EOL = CHAR(27):CHAR(75)
+     MASTER.LOCK = 1
+     MAP.LOCK = 2
+     BACKGROUND = '.'
+     SHELL = '*'
+     OBSTACLE = 'O'
+     DIM DIRX(9),DIRY(9)
+     DIRX(1)=-1  ;   DIRY(1)=1
+     DIRX(2)=0   ;   DIRY(2)=1
+     DIRX(3)=1 ;   DIRY(3)=1
+     DIRX(4)=-1  ;   DIRY(4)=0
+     DIRX(5)=0   ;   DIRY(5)=0
+     DIRX(6)=1 ;   DIRY(6)=0
+     DIRX(7)=-1  ;   DIRY(7)=-1
+     DIRX(8)=0   ;   DIRY(8)=-1
+     DIRX(9)=1 ;   DIRY(9)=-1
+*
+     AM = CHAR(254)
+     VM = CHAR(253)
+     SVM = CHAR(252)
+*
+     GOTO 1000
+*
+**********************************************************************
+*
+*********************************************************************
+4000 *  PRINT THE BOARD **
+     PRINT CLEAR:
+     GOSUB 8000
+     FOR N = 1 TO 800
+       PRINT DISPLAY[N,1]:' ':
+     NEXT N
+     PRINT @(0,20):'MY TANK = ':MY.TANK.NO:'     TANK(HITS LEFT)  ':
+     PRINT @(35,20):
+     FOR N = 1 TO NO.TANKS
+       PRINT N:'(':EXTRACT(TANK.INFO,0,N,0):')   ':
+     NEXT N
+     PRINT @(0,22):'COMMAND(S): ':
+     RETURN
+***************************************************************************
+*
+**********************************************************************
+5000*  CALCULATE NEXT POSITION SUBROUTINE
+   Y = INT((OLD-1)/40)
+   X = OLD-1-Y*40
+   YY = Y+DIRY(DIRECTION)
+   IF YY<0 OR YY >19 THEN WALL = 1 ; RETURN
+   XX = X+DIRX(DIRECTION)
+   IF XX<0 OR XX>39 THEN WALL = 1 ; RETURN
+   Y = YY
+   X = XX
+   WALL = 0
+   NEW = X + 40 * Y + 1
+   RETURN
+***********************************************************************
+*
+***********************************************************************
+6000* DISPLAY SUBROUTINE
+   START = TIME()
+   GOSUB 8000 ; *  READ INFO
+   NEW.MOVES = REPLACE(MOVES,0,MY.TANK.NO,0,'')
+   LOCK MAP.LOCK
+   WRITEV NEW.MOVES ON MAPS,'TANK.BATTLE.FIELD',4
+   UNLOCK MAP.LOCK
+*** PRINT THE MOVES IN MY MOVE LIST *****
+6100MY.MOVES = EXTRACT(MOVES,0,MY.TANK.NO,0)
+   FOR N = 1 TO 9999
+     MY.MOVE = EXTRACT(MY.MOVES,0,0,N)
+     IF MY.MOVE = '' THEN GOTO 6200
+     Y = INT((MY.MOVE-1)/40)
+     X = MY.MOVE-1-Y*40
+     PRINT @(2*X,Y):DISPLAY[MY.MOVE,1]:
+   NEXT N
+6200PRINT @(35,20):
+   FOR N = 1 TO NO.TANKS
+     PRINT N:'(':EXTRACT(TANK.INFO,0,N,0):')  ':
+   NEXT N
+   RETURN
+*********************************************************************
+*
+********************************************************************
+7000* INITIALIZE THE BATTLEFIELD AND INSERT THE TANK
+   LOCK MAP.LOCK
+   READVU NO.TANKS FROM MAPS,'TANK.BATTLE.FIELD',2  ELSE
+     PRINT "LINE 92"
+     STOP
+   END
+   IF NO.TANKS = 9 THEN
+     PRINT 'TOO MANY TANKS'
+     STOP
+   END
+   WRITEV NO.TANKS +1 ON MAPS,'TANK.BATTLE.FIELD',2
+   READVU TANK.INFO FROM MAPS,'TANK.BATTLE.FIELD',3  ELSE
+     PRINT "LINE 101"
+     STOP
+   END
+   TANK.INFO = INSERT(TANK.INFO,0,-1,0,'4')
+   WRITEV TANK.INFO ON MAPS,'TANK.BATTLE.FIELD',3
+   READVU DISPLAY FROM MAPS,'TANK.BATTLE.FIELD',1  ELSE
+     PRINT "LINE 107"
+     STOP
+   END
+7010POSITION = RND(800) + 1
+   IF DISPLAY[POSITION,1] # BACKGROUND THEN GOTO 7010
+   DISPLAY = DISPLAY[1,POSITION-1]:NO.TANKS+1:DISPLAY[POSITION+1,800]
+   WRITEV DISPLAY ON MAPS,'TANK.BATTLE.FIELD',1
+   MOVES = ""
+   FOR N = 1 TO NO.TANKS
+     MOVES = INSERT(MOVES,0,N,-1,POSITION)
+   NEXT N
+   WRITEV MOVES ON MAPS,'TANK.BATTLE.FIELD',4
+   UNLOCK MAP.LOCK
+   RETURN
+*******************************************************************
+*
+********************************************************************
+8000* READ REALTIME BATTLEFIELD DATA
+   LOCK MAP.LOCK
+   READU BATTLEFIELD FROM MAPS,'TANK.BATTLE.FIELD' ELSE
+     PRINT "LINE 127"
+     STOP
+   END
+   RELEASE MAPS,'TANK.BATTLE.FIELD'
+   UNLOCK MAP.LOCK
+   DISPLAY = EXTRACT(BATTLEFIELD,1,0,0)
+   NO.TANKS = EXTRACT(BATTLEFIELD,2,0,0)
+   TANK.INFO = EXTRACT(BATTLEFIELD,3,0,0)
+   MOVES = EXTRACT(BATTLEFIELD,4,0,0)
+   RETURN
+*******************************************************************
+*
+*******************************************************************
+*
+*******************************************************************
+9000* UPDATE NEW MOVE INFORMATION SUBROUTINE
+   FOR N = 1 TO NO.TANKS
+     MOVES = INSERT(MOVES,0,N,-1,OLD:SVM:NEW)
+   NEXT N
+   IF OLD # NEW THEN
+     IF OLD>NEW THEN
+       DISPLAY=DISPLAY[1,NEW-1]:CHAR:DISPLAY[NEW+1,OLD-NEW-1]:BACKGROUND:DISPLAY[OLD+1,800]
+     END ELSE
+       DISPLAY=DISPLAY[1,OLD-1]:BACKGROUND:DISPLAY[OLD+1,NEW-OLD-1]:CHAR:DISPLAY[NEW+1,800]
+     END
+   END ELSE
+     DISPLAY = DISPLAY[1,OLD-1]:BACKGROUND:DISPLAY[OLD+1,800]
+   END
+   LOCK MAP.LOCK
+   WRITE DISPLAY:AM:NO.TANKS:AM:TANK.INFO:AM:MOVES ON MAPS,'TANK.BATTLE.FIELD'
+   UNLOCK MAP.LOCK
+   RETURN
+*******************************************************************
+*
+********************************************************************
+1000* INITIALIZE
+   PRINT CLEAR:
+   PRINT 'NAME OF MAP TO USE - ':; INPUT MAP
+   OPEN '','TANK.MAPS' TO MAPS ELSE
+     PRINT "CAN'T OPEN TANK.MAPS"
+     STOP
+   END
+   READU DISPLAY FROM MAPS,MAP ELSE
+     PRINT "LINE 170"
+     STOP
+   END
+   RELEASE MAPS,MAP
+   OPEN 'DICT','TANK.MAPS' TO MAPS ELSE PRINT 'CANNOT OPEN DICT TANK.MAPS';STOP
+   LOCK MASTER.LOCK ELSE GOTO 1100
+   LOCK MAP.LOCK ELSE PRINT "CANNOT LOCK MAP.LOCK"; UNLOCK; STOP
+   WRITEV DISPLAY ON MAPS,'TANK.BATTLE.FIELD',1
+   WRITEV '0' ON MAPS,'TANK.BATTLE.FIELD',2
+   WRITEV '' ON MAPS,'TANK.BATTLE.FIELD',3
+   WRITEV '' ON MAPS,'TANK.BATTLE.FIELD',4
+1100GOSUB 7000
+   MY.TANK.NO = NO.TANKS + 1
+*****  DISPLAY THE BATTLE GROUND *********************
+   GOSUB 4000 ; *  PRINT INITIAL BOARD
+   PROMPT ' '
+*** START THE GAME -- MAIN LOOP -- INPUT COMMANDS ***
+1400PRINT @(10,22):; INPUT COMMAND
+   IF COMMAND = "D" THEN
+     GOSUB 4000 ; * REFRESH ENTIRE BOARD
+     GOTO 1400
+   END
+1410IF COMMAND[1,1] MATCHES '1N' THEN
+     DIRECTION = COMMAND[1,1]
+     IF COMMAND[2,1] MATCHES '1N' THEN GOTO 1500 ELSE GOTO 1600
+   END
+1420IF COMMAND = "" THEN
+     PRINT @(10,22):CLEAR.EOL:
+     GOSUB 6000 ; * DISPLAY SUB
+     GOTO 1400
+   END ELSE
+     PRINT @(10,22):COMMAND:CLEAR.EOL:
+     GOTO 1410
+   END
+1500* MOVE THE TANK FOLKS !!!!
+   DISTANCE = COMMAND[2,1]
+   COMMAND = COMMAND[4,99]
+   IF DISTANCE = 0 THEN GOTO 1420
+1510GOSUB 8000; * GET INFO SUB
+   OLD = POSITION
+   GOSUB 5000 ; * CALCULATE NEW POSITION SUB
+   IF WALL = 1 THEN GOTO 1550
+   OCCUPANT = DISPLAY[NEW,1]
+*** CHECK FOR AN OPEN SQUARE ****
+   IF OCCUPANT = BACKGROUND THEN
+1520 CHAR = MY.TANK.NO
+     GOSUB 9000 ; *   UPDATE DISPLAY
+     POSITION = NEW
+     GOSUB 6000 ; * DISPLAY IT
+     DISTANCE = DISTANCE - 1
+     IF DISTANCE <= 0 THEN GOTO 1420
+     GOTO 1510
+   END
+*** CHECK FOR ANOTHER TANK OR AN OBSTACLE ***
+   IF OCCUPANT MATCHES '1N' THEN GOTO 1550
+   IF OCCUPANT = OBSTACLE THEN GOTO 1550
+*** CHECK FOR SHELL ***
+   IF OCCUPANT = SHELL THEN
+     HITS = EXTRACT(TANK.INFO,0,MY.TANK.NO,0) - 1
+     IF HITS = 0 THEN
+       PRINT CLEAR
+       PRINT @(19,6):" #######    ######    ######   ##    ##  ##":
+       PRINT  @(19,7):"##    ##  ##    ##  ##    ##  ###  ###  ##":
+       PRINT  @(19,8):"##    ##  ##    ##  ##    ##  ########  ##":
+       PRINT  @(19,9):"#######   ##    ##  ##    ##  ## ## ##  ##":
+       PRINT @(19,10):"##    ##  ##    ##  ##    ##  ## ## ##  ##":
+       PRINT @(19,11):"##    ##  ##    ##  ##    ##  ## ## ##":
+       PRINT @(19,12):"#######    ######    ######   ## ## ##  ##":
+       STOP
+     END
+     TANK.INFO = REPLACE(TANK.INFO,0,MY.TANK.NO,0,HITS)
+     LOCK MAP.LOCK
+     WRITEV TANK.INFO ON MAPS,'TANK.BATTLE.FIELD',3
+     UNLOCK MAP.LOCK
+     GOTO 1520
+   END
+1550*** DROVE INTO A WALL, OBSTACLE OR ANOTHER TANK...DAMN ***
+*** PENALTY IS A ONE TO TEN SECOND DELAY...TOUGH ***
+   FOR N = 0 TO RND(10)+1
+     GOSUB 6000; * DISPLAY
+   NEXT N
+   GOTO 1420
+1600* FIRE AT THE MOTHER ***
+   COMMAND = COMMAND[3,99]
+   SHELL.POSITION = POSITION
+1610GOSUB 8000 ; * GET INFO
+   OLD = SHELL.POSITION
+   GOSUB 5000 ; *** CALCULATE NEW SHELL.POSITION
+   IF DISPLAY[OLD,1] = MY.TANK.NO THEN
+     CHAR = SHELL
+     GOTO 1650
+   END ELSE
+     CHAR = SHELL
+     BACKGROUND = "."
+   END
+   IF DISPLAY[OLD,1] # SHELL THEN
+     CHAR = MY.TANK.NO
+     GOTO 1420
+   END
+1650IF WALL = 1 THEN
+     GOSUB 9000 ; *** UPDATE DISPLAY
+     GOSUB 6000 ; *** DISPLAY
+     GOTO 1420
+   END
+   OCCUPANT = DISPLAY[NEW,1]
+*** CHECK FOR A CLEAR SQUARE ***
+   IF OCCUPANT = BACKGROUND THEN
+     IF DISPLAY[OLD,1] = MY.TANK.NO THEN BACKGROUND = MY.TANK.NO
+     GOSUB 9000 ; *** UPDATE THE DISPLAY
+     SHELL.POSITION = NEW
+     BACKGROUND = "."
+     GOSUB 6000 ; * DISPLAY IT
+     GOTO 1610
+   END
+*** CHECK IF SHELL HIT TANK
+   IF OCCUPANT MATCHES '1N' THEN
+     GOSUB 9000 ; *** UPDATE THE DISPLAY
+     SHELL.POSITION = NEW
+     GOSUB 6000 ; **  DISPLAY IT
+     HITS = EXTRACT(TANK.INFO,0,OCCUPANT,0)
+     IF HITS > 0 THEN
+       TANK.INFO = REPLACE(TANK.INFO,0,OCCUPANT,0,HITS-1)
+     END
+   END
+*** CHECK IF SHELL HIT ANOTHER SHELL OR AN OBSTACLE ***
+   CHAR = BACKGROUND
+   GOSUB 9000 ; ***  UPDATE THE DISPLAY
+   GOSUB 6000 ; *** DISPLAY IT
+   CHAR = MY.TANK.NO
+   GOTO 1420
+ END

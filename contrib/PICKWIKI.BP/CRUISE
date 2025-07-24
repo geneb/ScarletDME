@@ -1,0 +1,526 @@
+     * Display file entries like REVISE does (using file's DICT)
+     * Written by Will Johnson
+     * BE SURE TO INSTALL THE TCL.II INCLUDE BEFORE TRYING TO COMPILE THIS!
+     *
+     * Apply conversions if any to each multi-value
+     * Use DICT VOC to control DICTs if specified
+     * Don't display multi-value only fields
+     * Use MCP to suppress non-printables
+     * Allow edit as a command
+     * Allow exploding one multi-valued field
+     *
+     EQUATE FALSE TO 0, TRUE TO 1
+     TEST.MODE = FALSE
+     $INCLUDE FFT.BP TCL.II
+     GOSUB OPEN.FILES
+     GOSUB GET.ITEMLIST
+     GOSUB BUILD.DICT.TABLE     * Display file entries like REVISE does (using file's DICT)
+     * Written by Will Johnson
+     * BE SURE TO INSTALL THE TCL.II INCLUDE BEFORE TRYING TO COMPILE THIS!
+     *
+     * Apply conversions if any to each multi-value
+     * Use DICT VOC to control DICTs if specified
+     * Don't display multi-value only fields
+     * Use MCP to suppress non-printables
+     * Allow edit as a command
+     * Allow exploding one multi-valued field
+     *
+     EQUATE FALSE TO 0, TRUE TO 1
+     TEST.MODE = FALSE
+     $INCLUDE FFT.BP TCL.II
+     GOSUB OPEN.FILES
+     GOSUB GET.ITEMLIST
+     GOSUB BUILD.DICT.TABLE
+     IF TEST.MODE THEN GOSUB DISPLAY.DICT.TABLE
+     FOR I.DICT.TABLE = 1 TO S.DICT.TABLE
+        T.LABEL = DICT.TABLE<1,I.DICT.TABLE>
+        IF T.LABEL =  THEN T.LABEL = "<NO LABEL>"
+     NEXT I.DICT.TABLE
+     GOSUB PROCESS.RECORDS
+     STOP
+     *
+     OPEN.FILES:
+     OPEN 'VOC' TO F.VOC ELSE
+        N.OFE = 'VOC' ; GOSUB OPEN.FILE.ERROR
+     END
+     K.VOC = "F2R"
+     READ EXISTS FROM F.VOC,K.VOC ELSE
+        R.VOC = "D":@AM:"2":@AM:@AM:"3R":@AM:"S"
+        WRITE R.VOC ON F.VOC,K.VOC
+     END
+     RETURN
+     *
+     OPEN.FILE.ERROR:
+     PRINT 'Cannot open file ':N.OFE:'. Hit ENTER':
+     INPUT CONT ; STOP
+     RETURN
+     *
+     GET.ITEMLIST:
+     WORD.COUNT = DCOUNT(TRIMB(SENTENCE),' ')
+     LAST.WORD = FIELD(TRIMB(SENTENCE),' ',WORD.COUNT)
+     IF LAST.WORD[1,1] = '(' THEN
+        OPTIONS.EXIST = TRUE ; OPTIONS = LAST.WORD[2,LEN(LAST.WORD)]
+        WORD.COUNT -= 1
+     END ELSE OPTIONS.EXIST = FALSE ; OPTIONS =
+     IF C.WORD < WORD.COUNT THEN
+        ITEM.SPECIFIED = TRUE
+        SELECT.LIST = FALSE ; GROUPCODE = "G":(C.WORD-1):" 99"
+        ITEM.LIST = OCONV(SENTENCE,GROUPCODE)
+        CONVERT "'" TO "" IN ITEM.LIST
+        CONVERT " " TO @AM IN ITEM.LIST
+     END ELSE
+        ITEM.SPECIFIED = FALSE
+        READLIST LISTEXISTS THEN
+           SELECT.LIST = TRUE ; SELECT LISTEXISTS
+        END ELSE SELECT.LIST = FALSE
+     END
+     RETURN
+     *
+     * Select the DICT of the target file, or if already a DICT
+     * then select the DICT VOC file, sorting it by field number
+     * Then for each dict entry, if it's a D type and it's not the key
+     *  to the file, and we haven't found a definition for this field
+     *  number before then: we add the label to the field number
+     *  position in the table line 1, and the conversion (if any) to
+     *  the field number position in the table line 2.
+     *
+     BUILD.DICT.TABLE:
+     IF DICT.FLAG THEN CMD = "VOC" ELSE CMD = N.FILE
+     CMD = "SSELECT DICT ":CMD:" BY F2R"
+     EXECUTE CMD, SELECT > DICT.LIST
+     DICT.TABLE =  ; DONE = FALSE ; LABEL.WIDTH = 0
+     LOOP
+        READNEXT DK.FILE FROM DICT.LIST ELSE DONE = TRUE
+     UNTIL DONE DO
+        READ DR.FILE FROM DF.FILE, DK.FILE THEN
+           DICT.TYPE = DR.FILE<1>
+           IF DICT.TYPE[1,1] = 'D' THEN
+              IF NUM(DR.FILE<2>) AND DR.FILE<2> > 0 THEN
+                 IF DICT.TABLE<2,DR.FILE<2>> =  THEN
+                    T.LABEL = DR.FILE<4>
+                    CONVERT @VM TO ' ' IN T.LABEL
+                    T.LABEL = TRIM(T.LABEL)
+                    IF T.LABEL =  THEN T.LABEL = DK.FILE
+                    DICT.TABLE<1,DR.FILE<2>> = T.LABEL
+                    L.LABEL = LEN(T.LABEL)
+                    IF L.LABEL > LABEL.WIDTH THEN LABEL.WIDTH = L.LABEL
+                    DICT.TABLE<2,DR.FILE<2>> = DR.FILE<3>
+                 END
+                 IF DR.FILE<7> # "" THEN
+                    DICT.TABLE<3,DR.FILE<2>> = DR.FILE<7>
+                 END
+                 DICT.TABLE<4,DR.FILE<2>> = DK.FILE
+              END
+           END
+        END
+     REPEAT
+     IF LABEL.WIDTH<10 THEN LABEL.WIDTH=10        ; *set min label wdt
+     IF LABEL.WIDTH>35 THEN LABEL.WIDTH=35        ; *set max label wdt
+     LEFT.JUST = "L#":LABEL.WIDTH ; RIGHT.JUST = "R#":LABEL.WIDTH
+     S.DICT.TABLE = DCOUNT(DICT.TABLE<1>,@VM)
+     RETURN
+     *
+     DISPLAY.DICT.TABLE:
+     PRINT "NUM":" ":"FIELD DESC" ("L#":LABEL.WIDTH):" ":
+     PRINT "CONVERSION":" ":"ASSOCIATION"
+     FOR I.DICT.TABLE = 1 TO S.DICT.TABLE
+        GOSUB DISPLAY.A.DICT.ENTRY
+     NEXT I.DICT.TABLE
+     PRINT "Hit ENTER. ": ; INPUT CONT
+     RETURN
+     *
+     DISPLAY.A.DICT.ENTRY:
+     PRINT I.DICT.TABLE"R%3":" ":
+     PRINT DICT.TABLE<1,I.DICT.TABLE> ("L#":LABEL.WIDTH):" ":
+     PRINT DICT.TABLE<2,I.DICT.TABLE>"L#8":" ":
+     PRINT DICT.TABLE<3,I.DICT.TABLE>"L#12":" ":
+     IF DICT.TABLE<4,I.DICT.TABLE> =  THEN
+        PRINT
+     END ELSE
+        PRINT DICT.TABLE<4,I.DICT.TABLE>
+     END
+     RETURN
+     *
+     PROCESS.RECORDS:
+     IF TEST.MODE THEN
+        IF SELECT.LIST THEN PRINT "SELECT ": ELSE PRINT "NO SELECT ":
+        PRINT "LIST ACTIVE.  HIT ENTER": ; INPUT CONT
+     END
+     BEGIN CASE
+        CASE SELECT.LIST ; NULL
+        CASE ITEM.SPECIFIED ; SELECT ITEM.LIST
+        CASE 1 ; SELECT F.FILE
+     END CASE
+     DONE = FALSE
+     LOOP
+        READNEXT K.FILE ELSE DONE = TRUE
+     UNTIL DONE DO
+     REREAD:
+        READ R.FILE FROM F.FILE,K.FILE THEN
+           PRINT @(-1): N.FILE:' ':K.FILE:' ':@LOGNAME
+           S.FILE = DCOUNT(R.FILE,@AM) ; GOSUB PROCESS.ONE.RECORD
+           IF UPCASE(FIELD(@LOGNAME,'\',2)) = "W.JOHNSON" THEN
+              PRINT 'ENTER for next rec, E TO Edit, H for Help,':
+              PRINT ' Q to stop, # to expand ':
+              INPUT CONT
+              BEGIN CASE
+                 CASE CONT = 'Q'
+                    CLEARSELECT ; STOP
+                 CASE NUM(CONT)
+                    BEGIN CASE
+                       CASE CONT < 1 ; NULL
+                       CASE CONT > S.FILE ; NULL
+                       CASE CONT # INT(CONT) ; NULL
+                       CASE 1 ; GOSUB EXPAND.FIELD
+                    END CASE
+                 CASE CONT = 'E'
+                    EXECUTE "ED ":N.FILE:" ":K.FILE
+                    GO REREAD
+                 CASE CONT = 'H'
+                    GOSUB HELP
+              END CASE
+           END
+        END
+     REPEAT
+     RETURN
+     *
+     * Don't show me anything for fields with nothing in them. However:
+     * If I have a field with something in it and NO corresponding
+     *  Dict entry, then we show '<no label>' on that line.
+     * So the size I walk through, is the size of the record itself
+     * not the size of the Dict table I've here built.
+     *
+     * Don't show fields composed only of value-marks
+     * Suppress non-printables, but tell me when I've done that
+     PROCESS.ONE.RECORD:
+     EXPLODE = FALSE
+     FOR I.DICT.TABLE = 1 TO S.FILE
+        GOSUB PROCESS.ONE.FIELD
+     NEXT I.DICT.TABLE
+     RETURN
+     *
+     PROCESS.ONE.FIELD:
+     T.FILE = R.FILE<I.DICT.TABLE>
+     * SKIP FIELD IF EMPTY OR ONLY VMS
+     IF CONVERT(@VM,,T.FILE) =  THEN RETURN
+     *
+     IF EXPLODE THEN GOSUB DISPLAY.A.DICT.ENTRY
+     GOSUB OUTPUT.LABEL
+     GOSUB CONVERT.OUTPUT
+     GOSUB SUPPRESS.CONTROL.CHARS
+     *
+     IF EXPLODE THEN
+        CONVERT "_" TO @VM IN T.OUTPUT
+        VALUE.WIDTH = 78-LABEL.WIDTH
+        SPACE.PAD = SPACE(LABEL.WIDTH)
+        S.T.OUTPUT = DCOUNT(T.OUTPUT,@VM)
+        PRINT T.OUTPUT<1,1>
+        FOR I.T.OUTPUT = 2 TO S.T.OUTPUT
+           T.T.OUTPUT = T.OUTPUT<1,I.T.OUTPUT>
+           PRINT SPACE.PAD:" (":I.DICT.TABLE"R%3":
+           PRINT ".":I.T.OUTPUT"R%3":"): ": T.T.OUTPUT
+        NEXT I.T.OUTPUT
+     END ELSE
+        CONVERT "_" TO "]" IN T.OUTPUT
+        VALUE.WIDTH = 78-(LABEL.WIDTH + 8)
+        SPACE.PAD = SPACE(78-VALUE.WIDTH)
+        T.OUTPUT = FOLD(T.OUTPUT,VALUE.WIDTH)
+        S.T.OUTPUT = DCOUNT(T.OUTPUT,@AM)
+        PRINT T.OUTPUT<1>
+        FOR I.T.OUTPUT = 2 TO S.T.OUTPUT
+           PRINT SPACE.PAD: T.OUTPUT<I.T.OUTPUT>
+        NEXT I.T.OUTPUT
+     END
+     RETURN
+     *
+     OUTPUT.LABEL:
+     T.LABEL = DICT.TABLE<1,I.DICT.TABLE>
+     IF T.LABEL =  THEN T.LABEL = '<no label>'
+     IF LEN(T.LABEL) > LABEL.WIDTH THEN
+        PRINT T.LABEL LEFT.JUST:
+     END ELSE
+        PRINT T.LABEL RIGHT.JUST:
+     END
+     IF EXPLODE THEN
+        PRINT " (":I.DICT.TABLE"R%3":".001":"):":
+     END ELSE
+        PRINT " (":I.DICT.TABLE"R%3":"):":
+     END
+     RETURN
+     *
+     CONVERT.OUTPUT:
+     T.CONV = DICT.TABLE<2,I.DICT.TABLE>
+     S.T.FILE = DCOUNT(T.FILE,@VM) ; T.OUTPUT =
+     FOR I.T.FILE = 1 TO S.T.FILE
+        T.OUTPUT<1,I.T.FILE> = OCONV(T.FILE<1,I.T.FILE>,T.CONV)
+     NEXT I.T.FILE
+     CONVERT @VM TO "_" IN T.OUTPUT
+     RETURN
+     *
+     SUPPRESS.CONTROL.CHARS:
+     CT.OUTPUT = OCONV(T.OUTPUT,'MCP')  ; *REM NON-PRINTABLES
+     IF CT.OUTPUT = T.OUTPUT THEN PRINT " ": ELSE
+        PRINT ".": ; T.OUTPUT = CT.OUTPUT
+     END
+     RETURN
+     *
+     EXPAND.FIELD:
+     EXPLODE = TRUE
+     I.DICT.TABLE = CONT
+     GOSUB PROCESS.ONE.FIELD
+     PRINT 'Hit ENTER, or Q TO STOP ': ; INPUT CONT
+     IF CONT = 'Q' THEN STOP
+     RETURN
+     *
+     HELP:
+     PRINT "Help doesn't yet work, press ENTER": ; INPUT CONT
+     RETURN
+     *
+  END
+
+     IF TEST.MODE THEN GOSUB DISPLAY.DICT.TABLE
+     FOR I.DICT.TABLE = 1 TO S.DICT.TABLE
+        T.LABEL = DICT.TABLE<1,I.DICT.TABLE>
+        IF T.LABEL =  THEN T.LABEL = "<NO LABEL>"
+     NEXT I.DICT.TABLE
+     GOSUB PROCESS.RECORDS
+     STOP
+     *
+     OPEN.FILES:
+     OPEN 'VOC' TO F.VOC ELSE
+        N.OFE = 'VOC' ; GOSUB OPEN.FILE.ERROR
+     END
+     K.VOC = "F2R"
+     READ EXISTS FROM F.VOC,K.VOC ELSE
+        R.VOC = "D":@AM:"2":@AM:@AM:"3R":@AM:"S"
+        WRITE R.VOC ON F.VOC,K.VOC
+     END
+     RETURN
+     *
+     OPEN.FILE.ERROR:
+     PRINT 'Cannot open file ':N.OFE:'. Hit ENTER':
+     INPUT CONT ; STOP
+     RETURN
+     *
+     GET.ITEMLIST:
+     WORD.COUNT = DCOUNT(TRIMB(SENTENCE),' ')
+     LAST.WORD = FIELD(TRIMB(SENTENCE),' ',WORD.COUNT)
+     IF LAST.WORD[1,1] = '(' THEN
+        OPTIONS.EXIST = TRUE ; OPTIONS = LAST.WORD[2,LEN(LAST.WORD)]
+        WORD.COUNT -= 1
+     END ELSE OPTIONS.EXIST = FALSE ; OPTIONS =
+     IF C.WORD < WORD.COUNT THEN
+        ITEM.SPECIFIED = TRUE
+        SELECT.LIST = FALSE ; GROUPCODE = "G":(C.WORD-1):" 99"
+        ITEM.LIST = OCONV(SENTENCE,GROUPCODE)
+        CONVERT "'" TO "" IN ITEM.LIST
+        CONVERT " " TO @AM IN ITEM.LIST
+     END ELSE
+        ITEM.SPECIFIED = FALSE
+        READLIST LISTEXISTS THEN
+           SELECT.LIST = TRUE ; SELECT LISTEXISTS
+        END ELSE SELECT.LIST = FALSE
+     END
+     RETURN
+     *
+     * Select the DICT of the target file, or if already a DICT
+     * then select the DICT VOC file, sorting it by field number
+     * Then for each dict entry, if it's a D type and it's not the key
+     *  to the file, and we haven't found a definition for this field
+     *  number before then: we add the label to the field number
+     *  position in the table line 1, and the conversion (if any) to
+     *  the field number position in the table line 2.
+     *
+     BUILD.DICT.TABLE:
+     IF DICT.FLAG THEN CMD = "VOC" ELSE CMD = N.FILE
+     CMD = "SSELECT DICT ":CMD:" BY F2R"
+     EXECUTE CMD, SELECT > DICT.LIST
+     DICT.TABLE =  ; DONE = FALSE ; LABEL.WIDTH = 0
+     LOOP
+        READNEXT DK.FILE FROM DICT.LIST ELSE DONE = TRUE
+     UNTIL DONE DO
+        READ DR.FILE FROM DF.FILE, DK.FILE THEN
+           DICT.TYPE = DR.FILE<1>
+           IF DICT.TYPE[1,1] = 'D' THEN
+              IF NUM(DR.FILE<2>) AND DR.FILE<2> > 0 THEN
+                 IF DICT.TABLE<2,DR.FILE<2>> =  THEN
+                    T.LABEL = DR.FILE<4>
+                    CONVERT @VM TO ' ' IN T.LABEL
+                    T.LABEL = TRIM(T.LABEL)
+                    IF T.LABEL =  THEN T.LABEL = DK.FILE
+                    DICT.TABLE<1,DR.FILE<2>> = T.LABEL
+                    L.LABEL = LEN(T.LABEL)
+                    IF L.LABEL > LABEL.WIDTH THEN LABEL.WIDTH = L.LABEL
+                    DICT.TABLE<2,DR.FILE<2>> = DR.FILE<3>
+                 END
+                 IF DR.FILE<7> # "" THEN
+                    DICT.TABLE<3,DR.FILE<2>> = DR.FILE<7>
+                 END
+                 DICT.TABLE<4,DR.FILE<2>> = DK.FILE
+              END
+           END
+        END
+     REPEAT
+     IF LABEL.WIDTH<10 THEN LABEL.WIDTH=10        ; *set min label wdt
+     IF LABEL.WIDTH>35 THEN LABEL.WIDTH=35        ; *set max label wdt
+     LEFT.JUST = "L#":LABEL.WIDTH ; RIGHT.JUST = "R#":LABEL.WIDTH
+     S.DICT.TABLE = DCOUNT(DICT.TABLE<1>,@VM)
+     RETURN
+     *
+     DISPLAY.DICT.TABLE:
+     PRINT "NUM":" ":"FIELD DESC" ("L#":LABEL.WIDTH):" ":
+     PRINT "CONVERSION":" ":"ASSOCIATION"
+     FOR I.DICT.TABLE = 1 TO S.DICT.TABLE
+        GOSUB DISPLAY.A.DICT.ENTRY
+     NEXT I.DICT.TABLE
+     PRINT "Hit ENTER. ": ; INPUT CONT
+     RETURN
+     *
+     DISPLAY.A.DICT.ENTRY:
+     PRINT I.DICT.TABLE"R%3":" ":
+     PRINT DICT.TABLE<1,I.DICT.TABLE> ("L#":LABEL.WIDTH):" ":
+     PRINT DICT.TABLE<2,I.DICT.TABLE>"L#8":" ":
+     PRINT DICT.TABLE<3,I.DICT.TABLE>"L#12":" ":
+     IF DICT.TABLE<4,I.DICT.TABLE> =  THEN
+        PRINT
+     END ELSE
+        PRINT DICT.TABLE<4,I.DICT.TABLE>
+     END
+     RETURN
+     *
+     PROCESS.RECORDS:
+     IF TEST.MODE THEN
+        IF SELECT.LIST THEN PRINT "SELECT ": ELSE PRINT "NO SELECT ":
+        PRINT "LIST ACTIVE.  HIT ENTER": ; INPUT CONT
+     END
+     BEGIN CASE
+        CASE SELECT.LIST ; NULL
+        CASE ITEM.SPECIFIED ; SELECT ITEM.LIST
+        CASE 1 ; SELECT F.FILE
+     END CASE
+     DONE = FALSE
+     LOOP
+        READNEXT K.FILE ELSE DONE = TRUE
+     UNTIL DONE DO
+     REREAD:
+        READ R.FILE FROM F.FILE,K.FILE THEN
+           PRINT @(-1): N.FILE:' ':K.FILE:' ':@LOGNAME
+           S.FILE = DCOUNT(R.FILE,@AM) ; GOSUB PROCESS.ONE.RECORD
+           IF UPCASE(FIELD(@LOGNAME,'\',2)) = "W.JOHNSON" THEN
+              PRINT 'ENTER for next rec, E TO Edit, H for Help,':
+              PRINT ' Q to stop, # to expand ':
+              INPUT CONT
+              BEGIN CASE
+                 CASE CONT = 'Q'
+                    CLEARSELECT ; STOP
+                 CASE NUM(CONT)
+                    BEGIN CASE
+                       CASE CONT < 1 ; NULL
+                       CASE CONT > S.FILE ; NULL
+                       CASE CONT # INT(CONT) ; NULL
+                       CASE 1 ; GOSUB EXPAND.FIELD
+                    END CASE
+                 CASE CONT = 'E'
+                    EXECUTE "ED ":N.FILE:" ":K.FILE
+                    GO REREAD
+                 CASE CONT = 'H'
+                    GOSUB HELP
+              END CASE
+           END
+        END
+     REPEAT
+     RETURN
+     *
+     * Don't show me anything for fields with nothing in them. However:
+     * If I have a field with something in it and NO corresponding
+     *  Dict entry, then we show '<no label>' on that line.
+     * So the size I walk through, is the size of the record itself
+     * not the size of the Dict table I've here built.
+     *
+     * Don't show fields composed only of value-marks
+     * Suppress non-printables, but tell me when I've done that
+     PROCESS.ONE.RECORD:
+     EXPLODE = FALSE
+     FOR I.DICT.TABLE = 1 TO S.FILE
+        GOSUB PROCESS.ONE.FIELD
+     NEXT I.DICT.TABLE
+     RETURN
+     *
+     PROCESS.ONE.FIELD:
+     T.FILE = R.FILE<I.DICT.TABLE>
+     * SKIP FIELD IF EMPTY OR ONLY VMS
+     IF CONVERT(@VM,,T.FILE) =  THEN RETURN
+     *
+     IF EXPLODE THEN GOSUB DISPLAY.A.DICT.ENTRY
+     GOSUB OUTPUT.LABEL
+     GOSUB CONVERT.OUTPUT
+     GOSUB SUPPRESS.CONTROL.CHARS
+     *
+     IF EXPLODE THEN
+        CONVERT "_" TO @VM IN T.OUTPUT
+        VALUE.WIDTH = 78-LABEL.WIDTH
+        SPACE.PAD = SPACE(LABEL.WIDTH)
+        S.T.OUTPUT = DCOUNT(T.OUTPUT,@VM)
+        PRINT T.OUTPUT<1,1>
+        FOR I.T.OUTPUT = 2 TO S.T.OUTPUT
+           T.T.OUTPUT = T.OUTPUT<1,I.T.OUTPUT>
+           PRINT SPACE.PAD:" (":I.DICT.TABLE"R%3":
+           PRINT ".":I.T.OUTPUT"R%3":"): ": T.T.OUTPUT
+        NEXT I.T.OUTPUT
+     END ELSE
+        CONVERT "_" TO "]" IN T.OUTPUT
+        VALUE.WIDTH = 78-(LABEL.WIDTH + 8)
+        SPACE.PAD = SPACE(78-VALUE.WIDTH)
+        T.OUTPUT = FOLD(T.OUTPUT,VALUE.WIDTH)
+        S.T.OUTPUT = DCOUNT(T.OUTPUT,@AM)
+        PRINT T.OUTPUT<1>
+        FOR I.T.OUTPUT = 2 TO S.T.OUTPUT
+           PRINT SPACE.PAD: T.OUTPUT<I.T.OUTPUT>
+        NEXT I.T.OUTPUT
+     END
+     RETURN
+     *
+     OUTPUT.LABEL:
+     T.LABEL = DICT.TABLE<1,I.DICT.TABLE>
+     IF T.LABEL =  THEN T.LABEL = '<no label>'
+     IF LEN(T.LABEL) > LABEL.WIDTH THEN
+        PRINT T.LABEL LEFT.JUST:
+     END ELSE
+        PRINT T.LABEL RIGHT.JUST:
+     END
+     IF EXPLODE THEN
+        PRINT " (":I.DICT.TABLE"R%3":".001":"):":
+     END ELSE
+        PRINT " (":I.DICT.TABLE"R%3":"):":
+     END
+     RETURN
+     *
+     CONVERT.OUTPUT:
+     T.CONV = DICT.TABLE<2,I.DICT.TABLE>
+     S.T.FILE = DCOUNT(T.FILE,@VM) ; T.OUTPUT =
+     FOR I.T.FILE = 1 TO S.T.FILE
+        T.OUTPUT<1,I.T.FILE> = OCONV(T.FILE<1,I.T.FILE>,T.CONV)
+     NEXT I.T.FILE
+     CONVERT @VM TO "_" IN T.OUTPUT
+     RETURN
+     *
+     SUPPRESS.CONTROL.CHARS:
+     CT.OUTPUT = OCONV(T.OUTPUT,'MCP')  ; *REM NON-PRINTABLES
+     IF CT.OUTPUT = T.OUTPUT THEN PRINT " ": ELSE
+        PRINT ".": ; T.OUTPUT = CT.OUTPUT
+     END
+     RETURN
+     *
+     EXPAND.FIELD:
+     EXPLODE = TRUE
+     I.DICT.TABLE = CONT
+     GOSUB PROCESS.ONE.FIELD
+     PRINT 'Hit ENTER, or Q TO STOP ': ; INPUT CONT
+     IF CONT = 'Q' THEN STOP
+     RETURN
+     *
+     HELP:
+     PRINT "Help doesn't yet work, press ENTER": ; INPUT CONT
+     RETURN
+     *
+  END

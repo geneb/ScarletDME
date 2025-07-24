@@ -1,0 +1,135 @@
+      SUBROUTINE QUICKSORT(ITEM, VMC, SORTORDER)
+******
+* QUICKSORT  $Revision: 1.1 $
+* uniVerse BASIC implementation of the quick sort algorithm.
+* Copyright (C) 2004 Rex Gozar
+*
+* This library is free software; you can redistribute it and/or
+* modify it under the terms of the GNU Lesser General Public
+* License as published by the Free Software Foundation; either
+* version 2.1 of the License, or (at your option) any later version.
+*
+* This library is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+* Lesser General Public License for more details.
+*
+* You should have received a copy of the GNU Lesser General Public
+* License along with this library; if not, write to the Free Software
+* Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+* http://www.gnu.org/licenses/lgpl.html
+*
+* Rex Gozar
+* rkgozar@juno.com
+******
+* NOTES:
+*    This implementation of the quick sort algorithm is intended for sorting
+* fields in a dynamic array, either by a specified value within the field or
+* the entire field itself.  This makes it useful for sorting tables of values,
+* where the fields/values represent the rows/columns of a table.
+*    When you want to sort by the entire field, set VMC to 0.  Otherwise,
+* to sort by a specific value set VMC to the appropriate value number.
+******
+$OPTIONS DEFAULT
+      EQU QSORT$MIN TO 101
+      IF NOT(VMC MATCHES "0N") THEN
+         ABORTM "INVALID VMC"
+      END
+      BEGIN CASE
+         CASE SORTORDER = "AL"
+         CASE SORTORDER = "AR"
+         CASE SORTORDER = "DL"
+         CASE SORTORDER = "DR"
+         CASE 1
+            ABORTM "INVALID SORTORDER"
+      END CASE
+      MAXFIELDS = DCOUNT(ITEM, @FM)
+      IF MAXFIELDS < 2 THEN
+         RETURN
+      END
+      DIM ARRAY(MAXFIELDS)
+      MATPARSE ARRAY FROM ITEM
+***
+* Since recursive calls in BASIC are expensive, keep the
+* arguments for recursive processing in a stack.
+***
+      STACK = 1:@VM:MAXFIELDS
+      LOOP
+         RANGE = STACK<1>
+         DEL STACK<1>
+      WHILE RANGE # "" DO
+         BEGPOS = RANGE<1,1>
+         ENDPOS = RANGE<1,2>
+         IF (ENDPOS-BEGPOS) LT QSORT$MIN THEN
+            GOSUB LOCATE.SORT
+         END ELSE
+            GOSUB QUICK.SORT
+         END
+      REPEAT
+      MATBUILD ITEM FROM ARRAY
+      RETURN
+
+
+LOCATE.SORT:
+      NEW = ""
+      FOR J = BEGPOS TO ENDPOS
+         VALUE = LOWER(ARRAY(J)<1,VMC>)
+         ROW = LOWER(ARRAY(J))
+         LOCATE(VALUE, NEW, 1 ; FOUND ; SORTORDER) ELSE NULL
+         INS VALUE BEFORE NEW<1,FOUND>
+         INS ROW BEFORE NEW<2,FOUND>
+      NEXT J
+      FOUND = 0
+      FOR J = BEGPOS TO ENDPOS
+         FOUND += 1
+         ARRAY(J) = RAISE(NEW<2,FOUND>)
+      NEXT J
+      RETURN
+
+
+QUICK.SORT:
+      PPOS = BEGPOS + INT((ENDPOS-BEGPOS)/2)
+      PIVOT = ARRAY(PPOS)
+      ARRAY(PPOS) = ARRAY(ENDPOS)
+      ARRAY(ENDPOS) = PIVOT
+      PIVOT = PIVOT<1,VMC>
+      BEGPTR = BEGPOS
+      ENDPTR = ENDPOS
+      LOOP
+         LOOP
+            VALUE = ARRAY(BEGPTR)<1,VMC>
+            LOCATE(VALUE, PIVOT; FOUND ; SORTORDER) ELSE NULL
+         WHILE BEGPTR < ENDPTR AND FOUND <= 1 DO
+            BEGPTR += 1
+         REPEAT
+         LOOP
+            VALUE = ARRAY(ENDPTR)<1,VMC>
+            LOCATE(VALUE, PIVOT; FOUND ; SORTORDER) ELSE NULL
+         WHILE BEGPTR < ENDPTR AND FOUND > 1 DO
+            ENDPTR -= 1
+         REPEAT
+      WHILE BEGPTR < ENDPTR DO
+         SCRAP = ARRAY(BEGPTR)
+         ARRAY(BEGPTR) = ARRAY(ENDPTR)
+         ARRAY(ENDPTR) = SCRAP
+      REPEAT
+      BEGPTR = ENDPTR - 1
+***
+* special logic to handle repeating values in large
+* data sets
+***
+      LOOP
+      WHILE BEGPOS < BEGPTR AND ARRAY(BEGPTR)<1,VMC> = PIVOT DO
+         BEGPTR -= 1
+      REPEAT
+***
+* sort the two partitions
+***
+      IF BEGPOS < BEGPTR THEN
+         STACK<-1> = BEGPOS:@VM:BEGPTR
+      END
+      IF ENDPTR < ENDPOS THEN
+         STACK<-1> = ENDPTR:@VM:ENDPOS
+      END
+      RETURN
+   END

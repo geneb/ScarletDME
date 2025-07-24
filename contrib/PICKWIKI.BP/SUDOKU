@@ -1,0 +1,176 @@
+This is a simple program to play a sudoku game.
+
+I found a file SUDOKU17.TXT on the Internet which had over 30,000 games and assume you could use it. The program can save and restore a game as "GAME" in whatever file you keep the sudoku text file.
+
+If there is an "H" in the command line, the display is larger.
+
+     PROGRAM SUDOKU
+
+* Public Domain program provided by Keith Robert Johnson
+
+     OPEN 'YOUR.FILE' TO YOUR.FILE ELSE STOP 201,'YOUR.FILE'
+
+     DIM GAME(3)
+     EQU THAT TO GAME(1), BASE TO GAME(2), MINE TO GAME(3)
+
+     MAT GAME = ''
+     AUTO = @FALSE
+
+     THAT = RND(35396)+1
+     READV THAT FROM YOUR.FILE, 'SUDOKU17.TXT', THAT ELSE
+        THAT = ' 8   3     7   2 8   5 84  8    9 244       '
+        THAT := '192 1    6  52 1   1 2   3     4   7 '
+     END
+     CONVERT '0' TO ' ' IN THAT
+     Z = 0
+     FOR Y = 1 TO 9
+        FOR X = 1 TO 9
+           Z += 1
+           BIT = THAT[Z,1]
+           IF BIT MATCHES '1N' THEN BASE<1,X,Y> = BIT
+        NEXT X
+     NEXT Y
+     MINE = BASE
+
+START:
+* Display the grid
+     CRT @(-1)
+     CRT @(0,1):
+     HUGE = INDEX(@SENTENCE,'H',1)
+     IF HUGE THEN
+        XSIZ = 19; YSIZ = 37; XREM = 6; YREM = 12
+     END ELSE
+        XSIZ = 13; YSIZ = 19; XREM = 4; YREM = 6
+     END
+     FOR X = 1 TO XSIZ
+        CRT '  ':
+        FOR Y = 1 TO YSIZ
+           IF REM(X,XREM) EQ 1 THEN
+              IF REM(Y,YREM) EQ 1 THEN CRT '+': ELSE CRT '-':
+           END ELSE
+              IF REM(Y,YREM) EQ 1 THEN CRT '|': ELSE CRT ' ':
+           END
+        NEXT Y
+        CRT
+     NEXT X
+
+     CRT 'Use SEXD to move around, 1-9 to write or 0 to clear number'
+     CRT '  C to check position, A to toggle autocheck, Q to quit'
+     CRT '  K to keep game, G to get saved game'
+
+* Display the contents
+     FOR Y = 1 TO 9
+        FOR X = 1 TO 9
+           Z += 1
+           BIT = MINE<1,X,Y>
+           IF HUGE
+              THEN CRT @(4*X,2*Y):
+              ELSE CRT @(2*X+1,Y+INT((Y+2)/3)):
+           IF BIT MATCHES '1N' THEN
+              IF BASE<1,X,Y> MATCHES '1N'
+                 THEN CRT @(-58):BIT:@(-59):
+                 ELSE CRT BIT:
+           END ELSE CRT '.':
+        NEXT X
+     NEXT Y
+
+* Play loop
+     X = 1; Y = 1
+     LOOP
+        IF HUGE
+           THEN POSN = @(4*X,2*Y)
+           ELSE POSN = @(2*X+1,Y+INT((Y+2)/3))
+        CRT POSN:
+        THIS = UPCASE(KEYIN())
+        CRT @(0,23):@(-4):
+     UNTIL THIS EQ 'Q' DO
+        LOOP
+           INPUT FULL,-1
+        WHILE FULL DO
+           FULL = KEYIN()
+        REPEAT
+        CRT POSN:
+        BEGIN CASE
+           CASE THIS EQ 'A'; AUTO = NOT(AUTO)
+           CASE THIS EQ 'S' AND X GT 1 ; X -= 1
+           CASE THIS EQ 'D' AND X LT 9 ; X += 1
+           CASE THIS EQ 'E' AND Y GT 1 ; Y -= 1
+           CASE THIS EQ 'X' AND Y LT 9 ; Y += 1
+           CASE THIS EQ 'C' ; GOSUB CHECK
+           CASE THIS EQ 'K' ; MATWRITE GAME ON YOUR.FILE,'GAME'
+           CASE THIS EQ 'G'
+              READ TEST FROM YOUR.FILE,'GAME' THEN
+                 MATREAD GAME FROM YOUR.FILE,'GAME' THEN
+                    GO START
+                 END
+              END
+              CRT @(0,23):'NO GAME SAVED':
+           CASE BASE<1,X,Y> MATCHES '1N' ; CRT CHAR(7):
+           CASE THIS EQ '0' OR THIS EQ ' ' ; MINE<1,X,Y> = '' ; CRT '.':
+           CASE THIS MATCHES '1N' ; MINE<1,X,Y> = THIS ; CRT THIS:
+           CASE 1 ; CRT CHAR(7):
+        END CASE
+        IF AUTO THEN GOSUB CHECK
+     REPEAT
+     STOP
+
+CHECK:
+     CRT @(0,23):
+     GOOD = 'Everything good so far!'
+* Check Columns
+     THIS = ' Column '
+     FOR AA = 1 TO 9
+        LINE = ''
+        FOR BB = 1 TO 9
+           BIT = MINE<1,AA,BB>
+           IF BIT NE '' THEN
+              IF INDEX(LINE,BIT,1) THEN
+                 CRT THIS:AA: ; THIS = ',' ; BB = 99 ; GOOD = ' BAD'
+              END ELSE LINE := BIT
+           END
+        NEXT BB
+     NEXT AA
+
+* Check Rows
+     THIS = ' Row '
+     FOR AA = 1 TO 9
+        LINE = ''
+        FOR BB = 1 TO 9
+           BIT = MINE<1,BB,AA>
+           IF BIT NE '' THEN
+              IF INDEX(LINE,BIT,1) THEN
+                 CRT THIS:AA: ; THIS = ',' ; BB = 99 ; GOOD = ' BAD'
+              END ELSE LINE := BIT
+           END
+        NEXT BB
+     NEXT AA
+
+* Check Cells - couldn't figure out an algorithm
+     THIS = ' Cell '
+     CELL = '1*11,12,13,21,22,23,31,32,33'; GOSUB DOCELL
+     CELL = '2*41,42,43,51,52,53,61,62,63'; GOSUB DOCELL
+     CELL = '3*71,72,73,81,82,83,91,92,93'; GOSUB DOCELL
+     CELL = '4*14,15,16,24,25,26,34,35,36'; GOSUB DOCELL
+     CELL = '5*44,45,46,54,55,56,64,65,66'; GOSUB DOCELL
+     CELL = '6*74,75,76,84,85,86,94,95,96'; GOSUB DOCELL
+     CELL = '7*17,18,19,27,28,29,37,38,39'; GOSUB DOCELL
+     CELL = '8*47,48,49,57,58,59,67,68,69'; GOSUB DOCELL
+     CELL = '9*77,78,79,87,88,89,97,98,99'; GOSUB DOCELL
+
+     CRT GOOD:
+     RETURN
+
+DOCELL:
+     ID = CELL[1,1]
+     CELL = CELL[3,99]
+     CONVERT ',' TO @AM IN CELL
+     LINE = ''
+     FOR AA = 1 TO 9
+        BIT = MINE<1,CELL<AA>[1,1],CELL<AA>[2,1]>
+        IF BIT NE '' THEN
+           IF INDEX(LINE,BIT,1) THEN
+              CRT THIS:ID: ; THIS = ',' ; AA = 99 ; GOOD = ' BAD'
+           END ELSE LINE := BIT
+        END
+     NEXT AA
+     RETURN

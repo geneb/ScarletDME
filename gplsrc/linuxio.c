@@ -21,6 +21,7 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 30Nov23 mab Added "$y$" -  yescrypt to login_user()
  * 17Jan22 gwb Added a fix to login_user() to be able to grok SHA-512
  *             hashes ($6$) along with the exiting MD5 hashes ($1$).
  *             Thanks to Tom D. for the fix.
@@ -690,7 +691,7 @@ char socket_byte() {
 //  to: if ((memcmp(p, "$1$", 3) == 0) || /* MD5 algorithm */
 //         (memcmp(p, "$6$", 3) == 0)
 // 17Jan22 gwb Added above change
-
+// 30Nov23 mab Added (memcmp(p,"$y$", 3) == 0)) {  /* yescrypt */
 bool login_user(char *username, char *password) {
   FILE *fu;
   struct passwd *pwd;
@@ -716,7 +717,8 @@ bool login_user(char *username, char *password) {
 
   if (p != NULL) {
     if ((memcmp(p, "$1$", 3) == 0) || /* MD5 algorithm */
-        (memcmp(p, "$6$", 3) == 0)) { /* SHA512 */
+        (memcmp(p, "$6$", 3) == 0) || /* SHA512 */
+        (memcmp(p,"$y$", 3) == 0)) {  /* yescrypt */
       if ((q = strchr(p, ':')) != NULL)
         *q = '\0';
       if (strcmp((char *)crypt(password, p), p) == 0) {

@@ -1,0 +1,74 @@
+     SUBROUTINE GET.REMOTE.IP(REMOTE_IP)
+     *
+     * clients connect from 192.168.0.0 network
+     *
+     NETWORK = "192.168.0.0"
+     *
+     * get linux device name
+     *
+     PORT.NUM = SYSTEM(22)
+     EXECUTE 'LIST-LINES ':PORT.NUM CAPTURING OUTPUT
+     OUTPUT = OUTPUT<2>
+     CONVERT CHAR(32) TO CHAR(254) IN OUTPUT
+     LASTIDX = DCOUNT(OUTPUT,CHAR(254))
+     DEVID = OUTPUT<LASTIDX>
+     DEVID = SWAP(DEVID,"/dev/","")
+     *
+     * get the hostname for the device
+     *
+     EXECUTE '!w -h' CAPTURING OUTPUT
+     LNS = DCOUNT(OUTPUT,CHAR(254))
+     IDX = 0
+     FOR PTR = 1 TO LNS
+        TLINE = OUTPUT<PTR>
+        CONVERT CHAR(32) TO CHAR(254) IN TLINE
+        LOCATE DEVID IN TLINE SETTING VM THEN
+           IDX = PTR
+        END
+     NEXT PTR
+     IF IDX > 0 THEN
+        WLINE = OUTPUT<IDX>
+     END ELSE
+        RETURN
+     END
+     CONVERT CHAR(32) TO CHAR(254) IN WLINE
+     LNS = DCOUNT(WLINE,CHAR(254))
+     IPCOL = 0
+     HOSTNAME =
+     OK = 0
+     FOR PTR = 1 TO LNS
+        IF WLINE<PTR> # "" AND IPCOL = 1 THEN
+           HOSTNAME = WLINE<PTR>
+           OK = 1
+           EXIT
+        END
+        IF WLINE<PTR> = DEVID THEN
+           IPCOL = 1
+        END
+     NEXT PTR
+     *
+     * bail! we can't get an IP!
+     *
+     IF OK = 0 THEN
+        REMOTE_IP =
+        RETURN
+     END
+     *
+     * we got an IP!
+     *
+     HOSTNAME = TRIM(HOSTNAME)
+     *
+     * determine if this hostname is an IP address or
+     * a DNS resolved hostname
+     * if it is not an IP address then resolve it locally
+     *
+     IPADDR =
+     IF HOSTNAME[1,3] # NETWORK[1,3] THEN
+        EXECUTE '!host ':HOSTNAME CAPTURING IPADDR
+        CONVERT CHAR(32) TO CHAR(254) IN IPADDR
+        LNS = DCOUNT(IPADDR,CHAR(254))
+        REMOTE_IP = IPADDR<LNS>
+     END ELSE
+        REMOTE_IP = HOSTNAME
+     END
+     RETURN

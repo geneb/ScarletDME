@@ -1,0 +1,155 @@
+***************************************************************************
+* Program: BASIC FORMAT PROGRAM
+* Author : Ian McGowan
+* Date   : 08/30/1989
+* Edited : $Id: BFORMAT,v 1.2 2003/05/15 18:54:51 dsiroot Exp $
+* Comment: Program to indent BASIC programs according to user defined options
+***************************************************************************
+* 11/16/1997 Ian  Modified to sort subroutines alphabetically
+* 07/23/2002 Ian  Deal with tabs
+
+* $Log: BFORMAT,v $
+* Revision 1.2  2003/05/15 18:54:51  dsiroot
+* mcgowan:Remove code for sorting subroutines
+*
+
+PROMPT ":"
+SPACE = ' ' ; STAR  = '*' ; COLON = ':' ; TAB=CHAR(9)
+IND = 0
+ID=UPCASE(@LOGNAME)
+HOME.DIR=GETENV("HOME")
+HOME.FILE='HOME.':UPCASE(ID)
+OPEN 'VOC' TO VOC ELSE STOP 201,'VOC'
+OPEN HOME.FILE TO HOME.F ELSE
+    R='DIR' ; R<2>=HOME.DIR ; R<3>='D_VOC'
+    WRITE R ON VOC, HOME.FILE
+    OPEN HOME.FILE TO HOME.F ELSE STOP 201, HOME.FILE
+END
+
+* These are all commands that may have ELSE or THEN statements
+* (or blocks) following them
+SPECIAL.CASES = "GET":@AM:"INPUT":@AM:"LOCATE":@AM:"LOCK":@AM:"MATREAD":@AM:"MATREADU":@AM
+SPECIAL.CASES:= "MATWRITE":@AM:"MATWRITEU":@AM:"OPEN":@AM:"PROCREAD":@AM
+SPECIAL.CASES:= "PROCWRITE":@AM:"READ":@AM:"READNEXT":@AM:"READSEQ":@AM:"READT":@AM:"READU":@AM:"READV":@AM
+SPECIAL.CASES:= "READVU":@AM:"REWIND":@AM:"SEEK":@AM:"WEOF":@AM:"WRITESEQ":@AM
+SPECIAL.CASES:= "WRITET"
+
+DEF.INDENT=4
+READ FORMATS FROM HOME.F,'.STACK.FORMAT_':ID ELSE
+    FORMATS=":":@VM:"BEGIN":@VM:"CASE":@VM:"ELSE":@VM:"END":@VM:"FOR":@VM
+    FORMATS:="IF":@VM:"LOOP":@VM:"NEXT":@VM:"REPEAT":@VM:"RETURN":@VM
+    FORMATS:="THEN":@VM:"UNTIL":@VM:"WHILE"
+    * THIS.IND is the amount this line will be in or outdented
+    FORMATS<2>=0:@VM:0:@VM:-1:@VM:0:@VM:-1:@VM:0:@VM:0:@VM
+    FORMATS<2>:=0:@VM:-1:@VM:-1:@VM:-1:@VM:0:@VM:-1:@VM:-1
+    * NEXT.IND is the amount that all following lines will be indented
+    FORMATS<3>=1:@VM:2:@VM:0:@VM:1:@VM:-1:@VM:1:@VM:1:@VM
+    FORMATS<3>:=1:@VM:-1:@VM:-1:@VM:-1:@VM:1:@VM:0:@VM:0
+    FORMATS<4>=DEF.INDENT
+END
+DEF.INDENT=FORMATS<4>
+
+ERR = "Usage - BFORMAT file-name item-name"
+F.NAME = FIELD(TRIM(@SENTENCE),' ',2)
+IF F.NAME = '' THEN
+    PRINT "File :": ; INPUT F.NAME
+END
+IF F.NAME = "" OR F.NAME = "/" THEN STOP
+OPEN F.NAME TO FI ELSE PRINT ERR ; STOP
+
+B.NAME = FIELD(TRIM(@SENTENCE),' ',3)
+IF B.NAME = '' THEN
+    PRINT "Item :": ; INPUT B.NAME
+END
+IF B.NAME = "" OR B.NAME = "/" THEN STOP
+
+READ REC FROM FI,B.NAME ELSE PRINT "CANNOT READ ":F.NAME:",":B.NAME ; STOP
+WRITE REC ON FI,B.NAME:".BAK"
+
+I = DCOUNT(REC,@AM)
+IF I < 2 THEN STOP
+FOR F = 1 TO I
+    PRINT STAR:
+    L = REC<F> ; NEXT.LINE=REC<F+1>
+    GOSUB FORMAT.LINE
+    REC<F> = L
+NEXT F
+WRITE REC ON FI,B.NAME
+PRINT STAR ; PRINT I:" lines of ":B.NAME:" formatted"
+STOP
+
+FORMAT.LINE:
+    GOSUB TRIM.LINE
+    CONVERT TAB TO "" IN L
+    FIRST.WORD = FIELD(L,SPACE,1)
+    LEN.FIRST.WORD = LEN(FIRST.WORD)
+    LOCATE FIRST.WORD IN SPECIAL.CASES BY 'AL' SETTING SPECIAL ELSE SPECIAL = 0
+    NUM.SPACES = COUNT(L,SPACE) + 1
+    LAST.WORD = FIELD(L,SPACE,NUM.SPACES)
+    NEXT.TO.LAST.WORD = FIELD(L,SPACE,NUM.SPACES-1)
+    THIS.IND = 0
+    NEXT.IND = 0
+    IF L # "" THEN
+        BEGIN CASE
+            CASE FIRST.WORD[LEN.FIRST.WORD,1] = COLON OR NUM(FIRST.WORD)
+                * A label
+                IND = 0
+                LOCATE COLON IN FORMATS<1> SETTING POS ELSE POS = 0
+                THIS.IND = FORMATS<2,POS>
+                NEXT.IND = FORMATS<3,POS>
+            CASE FIRST.WORD = "IF"
+                LOCATE FIRST.WORD IN FORMATS<1> SETTING POS ELSE POS = 0
+                IF LAST.WORD = "THEN" THEN
+                    THIS.IND = FORMATS<2,POS>
+                    NEXT.IND = FORMATS<3,POS>
+                END
+            CASE FIRST.WORD = "END"
+                SECOND.WORD = FIELD(L,SPACE,2)
+                IF SECOND.WORD = "ELSE" THEN
+                    LOCATE "ELSE" IN FORMATS<1> SETTING POS ELSE POS = 0
+                    THIS.IND = -FORMATS<3,POS>
+                    NEXT.IND = FORMATS<2,POS>
+                END ELSE
+                    IF SECOND.WORD = "CASE" THEN
+                        LOCATE "BEGIN" IN FORMATS<1> SETTING POS ELSE POS = 0
+                        THIS.IND = -FORMATS<3,POS>
+                        NEXT.IND = -FORMATS<3,POS>
+                    END ELSE
+                        LOCATE FIRST.WORD IN FORMATS<1> SETTING POS ELSE POS = 0
+                        THIS.IND = FORMATS<2,POS>
+                        NEXT.IND = FORMATS<3,POS>
+                    END
+                END
+            CASE SPECIAL
+                * Find last word - skip until a space
+                IF LAST.WORD = "ELSE" OR LAST.WORD = "THEN" THEN
+                    LOCATE LAST.WORD IN FORMATS<1> SETTING POS ELSE POS = 0
+                    THIS.IND = FORMATS<2,POS>
+                    NEXT.IND = FORMATS<3,POS>
+                END
+            CASE FIRST.WORD = "FOR" AND NEXT.TO.LAST.WORD = "NEXT"
+                * FOR loop on one line means do nothing
+            CASE FIRST.WORD = "RETURN" AND NEXT.LINE # ""
+                * RETURN without a blank line means do nothing
+            CASE 1
+                LOCATE FIRST.WORD IN FORMATS<1> SETTING POS ELSE POS = 0
+                IF POS # 0 THEN
+                    THIS.IND = FORMATS<2,POS>
+                    NEXT.IND = FORMATS<3,POS>
+                END
+        END CASE
+    END
+    L = SPACE((IND+THIS.IND)*DEF.INDENT):L
+    *L = STR(TAB,IND+THIS.IND):L
+    IND = IND + NEXT.IND
+RETURN
+
+TRIM.LINE:
+    * Trim leading and trailing spaces, but not included
+    XXLENGTH = LEN(L)
+    FOR J = 1 TO XXLENGTH UNTIL L[J,1] # SPACE ; NEXT J
+    IF J = XXLENGTH THEN L = "" ELSE L = L[J,XXLENGTH]
+    XXLENGTH = LEN(L)
+    FOR J = XXLENGTH TO 1 STEP -1 UNTIL L[J,1] # SPACE ; NEXT J
+    L = L[1,J]
+RETURN

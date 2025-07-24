@@ -1,0 +1,527 @@
+UdtService
+
+This program is designed to run as a phantom service on a UD server. It has run successfully on D3 and currently runs on UD. This routine needs one file to run, (DTASERVICES). I'm not a very good programmer so if anyone has suggestions to improve this code, please let me know by posting onto the U2 mail list.
+
+The general idea of this process is to start a service as a phantom within U2. Then, every minute, wake up, read the services file to see if a service needs to be run, if it does phantom that, then go back to sleep. This following file contains the defined service and looks like:
+
+Dictionary of File: DTASERVICES                                                        10:15:38 Jun 27 2007
+Dict Name...... Typ # Col-Heading. Field-Definition.............. Conversion............... Formt Assoc...
+
+@UQ             Phr                USER CDATE ACCOUNT COMMANDS
+                                   OKTORUN OPTIONS
+@ID             D 0   SERVICES                                                              12L   S
+USER            D 1   USER                                                                  10L   S
+DATETIME        D 2   CREATED                                                               12L   S
+ACCOUNT         D 3   ACCOUNT                                                               12L   S
+PASSWORD        D 4   PASSWORD                                                              12L   S
+COMMANDS        D 5   COMMAND(S)                                                            17L   S
+CRON            D 6   CRON                                                                  5L    M
+DESC            D 7   DESC                                                                  30L   S
+OKTORUN         D 8   OK                                                                    1R    S
+OPTIONS         D 9   OPTIONS                                                               10L   S
+JOBSID          D 10  JOBSID                                                                12L   S
+STATUS          D 11  STATUS                                                                30L   S
+CAPTURE         D 12  CAPTURE                                                               30L   M
+CDATE           I     CDATE        EXTRACT(@RECORD, 2, 0, 0)[1,5] D2                        9R    S
+CTIME           I     CTIME        EXTRACT(@RECORD, 2, 0, 0)[6,5] MTH                       7R    S
+
+A record in this file would look like:
+
+Top of "[[CABFTP_HAM]]" in "DTASERVICES", 12 lines, 268 characters.
+*--: P
+001: wph
+002: 1432900782
+003: E:\UDAccounts\Ham
+004:
+005: RUN DTABP TRINFO.CAB FTP
+006: 00
+     22
+     *
+     *
+     5
+007: The Local Community Bank Ftp process
+008: 1
+009:
+010: command
+011: Process last run at 22:00:00 Jun 22 2007
+012: The command completed successfully.
+     PHANTOM Process  3184 started.
+     COMO file is'_PH_\dtaservices79200_3184'.
+Bottom.
+*--:
+
+The service program has several includes in it. These includes are used throughout our application to setup common variables, open a couple of files, and initialize variables. An example of one of the variables initialized is PATHSEP$. This variable is a "/" in .nix and a "\" in Windows. Other general variables are NULL$ (empty string), HLDMSG (a common message variable), WKAMT (a common scratch variable), and a few others. Two subroutine calls are to "LOGMSG" (a centralized logging subroutine) and "SERVICE.ISRUNNING", which is a subroutine that looks like:
+
+SUBROUTINE SERVICE.ISRUNNING ([[ServiceName]], [[IsRunning]])
+** [[DataTrust]] phantom service manager
+** (C) Copyright 1985-2007, Advantos Systems, Inc.  All Rights Reserved.
+!
+** Last Modified: 08 Feb 2007, wph
+** First Created: 28 Sep 2004, wph
+** Program Type-: Utility
+!
+** Notes:
+**
+** This subroutine tests if a particular service is running in the
+** mvDbms environment.
+**
+** Input-:
+**   [[ServiceName]] - the name of the service to test for
+**
+** Output:
+**   [[IsRunning]]   - is the service running? 0-No, 1-Yes
+**
+** it is read from the DTA,SYSTBL, as the default.
+**
+**-------------------------------------------------------------------**
+**                                                                   **
+**                    I N I T I A L I Z A T I O N                    **
+**                                                                   **
+**-------------------------------------------------------------------**
+*
+** Initialization
+INCLUDE DTABP,INCLUDES SET.COMMON
+*
+[[IsRunning]] = 0              ; ** initialize progress cnt
+*
+**------------------------------------------------------------------**
+**                                                                  **
+**                 S T A R T   P R O G R A M   R U N                **
+**                                                                  **
+**------------------------------------------------------------------**
+*
+** Test if service is running
+*[[TclCmd]]  = \COUNT JOBS WITH TCL-COMMAND = "[\      ; ** D3 version
+*[[TclCmd]] :=  [[ServiceName]] : \]"\                     ; ** D3 version
+*[[TclCmd]] := \ AND WITH A1 = "R"\                    ; ** D3 version
+*EXECUTE [[TclCmd]] CAPTURING Output                   ; ** D3 version
+*
+** Extract count from captured output
+*[[ItemCount]] = FIELD(TRIM(Output), SP1, 2)           ; ** D3 version
+*IF NOT(NUM([[ItemCount]])) THEN [[ItemCount]] = 0         ; ** D3 version
+*IF [[ItemCount]] THEN [[IsRunning]] = 1                   ; ** D3 version
+*
+IF [[ServiceName]] = 'DTA.SERVICE' THEN                           ; ** UD version
+   [[PhPortID]] = OCONV('DTA.SERVICE', 'TDICT DTASERVICES;X;;2')  ; ** UD version
+   [[PhIDLoc]]  = COUNT([[PhPortID]], PATHSEP$) + 1                   ; ** UD version
+   [[PhPortID]] = TRIM(FIELD([[PhPortID]], PATHSEP$, [[PhIDLoc]]))        ; ** UD version
+   [[PhPortID]] = FIELD([[PhPortID]], '_', 2)                         ; ** UD version
+END ELSE                                                      ; ** UD version
+   [[PhPortID]] = OCONV([[ServiceName]], 'TDTASERVICES;X2;;10')       ; ** UD version
+END                                                           ; ** UD version
+IF [[PhPortID]] NE NULL$ THEN                                     ; ** UD version
+   EXECUTE \PORT.STATUS PID \ : [[PhPortID]] CAPTURING OUTPUT     ; ** UD version
+   IF TRIM(OUTPUT<7>) NE NULL$ THEN [[IsRunning]] = 1             ; ** UD version
+END                                                           ; ** UD version
+*
+**------------------------------------------------------------------**
+**                                                                  **
+**                    E N D   O F   P R O G R A M                   **
+**                                                                  **
+**------------------------------------------------------------------**
+*
+***************
+END.OF.PROGRAM:
+***************
+*
+RETURN
+END
+
+This service manager needs to be started when the dbms starts. In D3, this was very simple as "RUN DTABP DTA.SERVICE" only had to be added to the "dm,, user-coldstart" macro. In U2, however, it's much more complex and I end up having to start it manually every time I restart UD (fortunately, this isn't too often).
+
+!
+** [[DataTrust]] phantom service manager
+** (C) Copyright 1985-2007, Advantos Systems, Inc.  All Rights Reserved.
+!
+** Last Modified: 21 Jun 2007, wph
+** First Created: 24 Sep 2004, wph
+** Program Type-: Utility
+!
+** Notes:
+**
+** This process runs and phantoms any (SERVICES) entry specified.  It
+** wakes up every minute (on the minute) and checks if a job should
+** be started.  If so, it does.  Then it goes back to sleep.
+**
+** The meaning and format of the Cron field in the (SERVICES) file
+** is as follows:
+**    1 - Minute    0-59
+**    2 - Hour      0-23 (0=midnight)
+**    3 - Day       1-31
+**    4 - Month     1-12
+**    5 - Weekday   0-6  (0=Sunday)
+**
+** When this service starts it updates the DICT item in (DTASERVICES)
+** named "DTA.SERVICE", with a "1" in field# 1, the _PH_ item in field#
+** 2, and the time/date started in field# 3.  It looks like:
+**
+** 'DTA.SERVICE'
+** 001: 1
+** 002: _PH_\wphaskett51560_3884
+** 003: 16:16:00 Jan 08 2007
+**
+** In order to terminate this program, simply change field# 1 to "0".
+**
+** This process should be started from within the USER-COLDSTART, or
+** from the 'DM' account, in D3.
+**
+**-------------------------------------------------------------------**
+**                                                                   **
+**                    I N I T I A L I Z A T I O N                    **
+**                                                                   **
+**-------------------------------------------------------------------**
+*
+CRT "...DTA.SERVICE is now starting at " : TIMEDATE() : "..."
+*
+** Initialization
+INCLUDE DTABP,INCLUDES SET.COMMON
+INCLUDE DTABP,INCLUDES SET.FILES
+INCLUDE DTABP,INCLUDES SET.INIT
+*
+[[DisplayCnt]] = 0              ; ** initialize progress cnt
+*
+** assign phantom command
+[[JobsName]]   = '_PH_'         ; ** UD version
+[[PhantomCmd]] = 'PHANTOM '     ; ** U2 version
+*[[PhantomCmd]] = 'Z'            ; ** D3 version
+*[[JobsName]]   = 'JOBS'         ; ** D3 version
+*
+** # of seconds to divide into the current time.  The remainder is
+** subtracted from the sleep time to determine exactly for how long
+** the process must sleep for to wake up right on the proper time.
+** Don't set for less than a 60 seconds, as this process CANNOT
+** run at less than a 60 second interval.
+[[SleepValue]] = 60
+*
+** Open File(s)
+[[FileErr]]  = NULL$
+OPEN 'DICT', 'DTASERVICES' TO DTASERVICES.D ELSE [[FileErr]] := ' Dict DTASERVICES'
+OPEN     '', 'DTASERVICES' TO DTASERVICES   ELSE [[FileErr]] := ' DTASERVICES'
+OPEN     '', [[JobsName]]      TO JOBS.FV       ELSE [[FileErr]] := SP1:[[JobsName]]
+IF [[FileErr]] NE NULL$ THEN
+   HLDMSG = "No file(s):" : [[FileErr]]
+   GOTO ABORT.PROGRAM
+END
+*
+**-------------------------------------------------------------------**
+**                                                                   **
+**           R E A D   C O N F I G U R A T I O N   D A T A           **
+**                                                                   **
+**-------------------------------------------------------------------**
+*
+** synchronize mvDbms service status with [[DataTrust]] service flag
+[[PhantomID]] = SYSTEM(48)                                  ; ** UD version
+[[IsRunning]] = NULL$
+CALL SERVICE.ISRUNNING ('DTA.SERVICE', [[IsRunning]])
+READU [[ServiceRec]] FROM DTASERVICES.D, 'DTA.SERVICE' THEN
+   [[ServiceRun]] = TRIM([[ServiceRec]]<1>)
+   [[PhantomID]]  = TRIM([[ServiceRec]]<2>)
+   [[PhIDLoc]]    = COUNT([[PhantomID]], PATHSEP$) + 1
+   [[PhantomID]]  = TRIM(FIELD([[PhantomID]], PATHSEP$, [[PhIDLoc]]))
+   IF NOT([[IsRunning]]) THEN
+      HLDMSG = "[[DataTrust]] service manager flag deleted because service not running."
+      CALL LOGMSG ('', 'N[[/A]]', HLDMSG, '')
+      DELETE DTASERVICES.D, 'DTA.SERVICE'
+      IF [[PhantomID]] NE NULL$ THEN                        ; ** UD version
+         DELETE JOBS.FV, [[PhantomID]]                      ; ** UD version
+      END                                               ; ** UD version
+   END ELSE
+      RELEASE DTASERVICES.D, 'DTA.SERVICE'
+   END
+END ELSE
+   [[ServiceRec]] = NULL$
+   IF [[IsRunning]] THEN
+      HLDMSG = "[[DataTrust]] service manager flag created because service is running."
+      CALL LOGMSG ('', 'N[[/A]]', HLDMSG, '')
+      [[ServiceRec]]<1> = 1
+      [[ServiceRec]]<2> = SYSTEM(48)                        ; ** UD version
+   END
+   WRITE [[ServiceRec]] ON DTASERVICES.D, 'DTA.SERVICE'
+END
+*
+** log process start
+[[SleepFor]] = [[SleepValue]] - MOD(TIME(), [[SleepValue]])
+HLDMSG   = "[[DataTrust]] background service started to " : [[PhantomID]]
+CALL LOGMSG ('', 'N[[/A]]', HLDMSG, '')
+*
+**-------------------------------------------------------------------**
+**                                                                   **
+**                 S T A R T   P R O G R A M   R U N                 **
+**                                                                   **
+**-------------------------------------------------------------------**
+*
+***************
+START.PROGRAM:
+***************
+*
+LOOP
+*
+** test if we should shut down the service
+   READU [[ServiceRec]] FROM DTASERVICES.D, 'DTA.SERVICE' THEN
+      [[ServiceRun]] = TRIM([[ServiceRec]]<1>)
+      [[PhantomID]]  = TRIM([[ServiceRec]]<2>)
+      [[PhIDLoc]]    = COUNT([[PhantomID]], PATHSEP$) + 1
+      [[PhantomID]]  = TRIM(FIELD([[PhantomID]], PATHSEP$, [[PhIDLoc]]))
+      IF NOT([[ServiceRun]]) THEN
+         HLDMSG = "[[DataTrust]] service manager terminated by stop flag."
+         [[ServiceRec]] = NULL$
+         WRITE [[ServiceRec]] ON DTASERVICES.D, 'DTA.SERVICE'
+         IF [[PhantomID]] NE NULL$ THEN                ; ** UD version
+            DELETE JOBS.FV, [[PhantomID]]              ; ** UD version
+         END                                       ; ** UD version
+         GOTO ABORT.PROGRAM
+      END
+      [[ServiceRec]]<3> = TIMEDATE()
+      WRITE [[ServiceRec]] ON DTASERVICES.D, 'DTA.SERVICE'
+   END ELSE
+      [[ServiceRec]]    = NULL$
+      [[ServiceRec]]<1> = 1
+      [[ServiceRec]]<2> = SYSTEM(48)                   ; ** UD version
+      [[ServiceRec]]<3> = TIMEDATE()
+      WRITE [[ServiceRec]] ON DTASERVICES.D, 'DTA.SERVICE'
+      GOTO CONTINUE.SLEEP
+   END
+*
+** select services to process
+   [[ServiceList]] = NULL$
+   EXECUTE \SSELECT DTASERVICES\ CAPTURING Output
+   [[NoOfItems]]   = SYSTEM(11)
+   IF [[NoOfItems]] THEN
+      SELECT DTASERVICES TO [[ServiceList]]
+   END ELSE
+      GOTO CONTINUE.SLEEP
+   END
+*
+** read services selected
+   LOOP
+      READNEXT [[ServiceId]] FROM [[ServiceList]] ELSE EXIT
+      READ [[ServiceRec]] FROM DTASERVICES, [[ServiceId]] THEN
+         [[LogToAccount]]   = TRIM([[ServiceRec]]<3>)
+         [[LogToPassword]]  = TRIM([[ServiceRec]]<4>)
+         [[ProgramToRun]]   = [[ServiceRec]]<5>
+         [[CronTab]]        = [[ServiceRec]]<6>
+         [[OkToStart]]      = [[ServiceRec]]<8> + 0
+         [[PhantomOptions]] = [[ServiceRec]]<9>
+         [[PhantomId]]      = [[ServiceRec]]<10>
+*
+** read if phantom currently running
+         READ [[PhantomRec]] FROM JOBS.FV, [[PhantomId]] ELSE [[PhantomRec]] = NULL$
+         [[PhStatus]] = OCONV([[PhantomRec]]<1>[1,1], 'MCU')
+         IF [[PhStatus]] = 'R' THEN
+            HLDMSG = "Service " : [[ServiceId]] : " already running as job# " : [[PhantomId]]
+            GOTO EXIT.CASE
+         END
+*
+** assign current time
+         setTime  = OCONV(TIME(), 'MTS')
+         setDate  = DATE()
+         [[CurrMon]]  = OCONV(setDate, 'DM') + 0
+         [[CurrDom]]  = OCONV(setDate, 'DD') + 0
+         [[CurrDow]]  = OCONV(setDate, 'DW') + 0 ; IF [[CurrDow]] = 7 THEN [[CurrDow]] = 0
+         [[CurrHour]] = FIELD(setTime, ':', 1) + 0
+         [[CurrMin]]  = FIELD(setTime, ':', 2) + 0
+         [[CurrSec]]  = FIELD(setTime, ':', 3) + 0
+*
+** test conditions to either process or abort.
+         [[CronSkip]] = 0                     ; ** not yet time to run?
+         [[UpdSw]]    = 0                     ; ** update services record?
+         HLDMSG   = NULL$                 ; ** initialize error message
+         BEGIN CASE
+            CASE NOT([[OkToStart]])
+               HLDMSG = "Service " : [[ServiceId]] : " is on Hold."
+            CASE [[CronTab]] = NULL$
+               HLDMSG = "No CRON Table for Service " : [[ServiceId]] : "."
+            CASE DCOUNT([[CronTab]], @VM) NE 5
+               HLDMSG = "Cron format requires five (5) values for Service " : [[ServiceId]] : "."
+*
+** test service for starting
+            CASE 1
+               Minutes = [[CronTab]]<1,1>
+               Hours   = [[CronTab]]<1,2>
+               DOMs    = [[CronTab]]<1,3>   ; IF DOMs   = 0 THEN DOMs   = '*'
+               Months  = [[CronTab]]<1,4>   ; IF Months = 0 THEN Months = '*'
+               DOWs    = [[CronTab]]<1,5>   ; ** this ORs the DOMs
+*
+** start building actual command(s) to execute
+               [[LogToCmd]] = NULL$          ; ** initialize cron commands
+               IF [[LogToAccount]] NE NULL$ THEN
+                  [[LogToCmd]] = \LOGTO \ : [[LogToAccount]]
+                  IF [[LogToPassword]] NE NULL$ THEN
+                     [[LogToCmd]] := ',' : [[LogToPassword]]
+                  END
+*
+** add an extra @AM in [[LogTo]] command so [[D3Linux]] works.  It doesn't
+** matter for [[D3NT]].
+*                 [[LogToCmd]] := @AM        ; ** D3 version
+               END
+*
+** test if we're in a configured month
+               IF Months NE '*' THEN
+                  [[CronVal]] = Months ; [[TestVal]] = [[CurrMon]]
+                  [[MinVal]]  = 1      ; [[MaxVal]]  = 12
+                  GOSUB BUILD.CRON.VALUE
+                  IF [[CronSkip]] THEN GOTO EXIT.CASE
+               END
+*
+** test if we're in a configured day of month or day of week
+               IF DOMs NE '*' THEN
+                  [[CronVal]] = DOMs ; [[TestVal]] = [[CurrDom]]
+                  [[MinVal]]  = 1    ; [[MaxVal]]  = 31
+                  GOSUB BUILD.CRON.VALUE
+               END
+               IF DOWs NE '*' THEN
+                  [[CronVal]] = DOWs ; [[TestVal]] = [[CurrDow]]
+                  [[MinVal]]  = 0    ; [[MaxVal]]  = 6
+                  GOSUB BUILD.CRON.VALUE
+               END
+               IF [[CronSkip]] THEN GOTO EXIT.CASE
+*
+** test if we're in a configured hour of the day
+               IF Hours NE '*' THEN
+                  [[CronVal]] = Hours ; [[TestVal]] = [[CurrHour]]
+                  [[MinVal]]  = 0     ; [[MaxVal]]  = 23
+                  GOSUB BUILD.CRON.VALUE
+                  IF [[CronSkip]] THEN GOTO EXIT.CASE
+               END
+*
+** test if we're in a configured minute of the current hour
+               IF Minutes NE '*' THEN
+                  [[CronVal]] = Minutes ; [[TestVal]] = [[CurrMin]]
+                  [[MinVal]]  = 0       ; [[MaxVal]]  = 59
+                  GOSUB BUILD.CRON.VALUE
+                  IF [[CronSkip]] THEN GOTO EXIT.CASE
+               END
+         END CASE
+*
+***************
+EXIT.CASE:
+***************
+*
+** update log if we have an error
+         IF HLDMSG NE NULL$ THEN
+            READVU Attr FROM DTASERVICES, [[ServiceId]], 11 ELSE Attr = NULL$
+            WRITEV HLDMSG ON DTASERVICES, [[ServiceId]], 11
+            GOTO CONTINUE.LOOP
+         END
+         IF [[CronSkip]] THEN GOTO CONTINUE.LOOP
+*
+** Run the command(s)
+         IF [[LogToCmd]] NE NULL$ THEN
+            [[TclCmd]] = [[LogToCmd]]
+         END ELSE
+            [[TclCmd]] = NULL$
+         END
+         [[TclCmd]]<-1> = [[PhantomCmd]] : [[PhantomOptions]] : SP1 : [[ProgramToRun]]
+         EXECUTE [[TclCmd]] CAPTURING Output
+*
+** prepare commands for output to log
+         o[[TclCmd]] = CONVERT(@AM, '^', [[TclCmd]])  ; ** U2 version
+*        o[[TclCmd]] = CONVERT([[TclCmd]], @AM, '^')  ; ** D3 version
+         oOutput = CONVERT(@AM, @VM, Output)   ; ** U2 version
+*        oOutput = CONVERT(Output, @AM, @VM)   ; ** D3 version
+*
+** calculate job#
+         [[ColStart]] = INDEX(Output, 'Job #', 1) + 5
+         IF [[ColStart]] THEN
+            [[JobNo]] = FIELD(Output[[[ColStart]],99], ' ', 1)
+         END ELSE
+            [[JobNo]] = NULL$
+         END
+         HLDMSG = o[[TclCmd]] : @VM : "Phantomed as Job# " : [[JobNo]]
+*
+** update service item
+         READU [[ServiceRec]] FROM DTASERVICES, [[ServiceId]] ELSE [[ServiceRec]] = NULL$
+         [[ServiceRec]]<10> = [[JobNo]]
+         [[ServiceRec]]<11> = "Process last run at " : TIMEDATE()
+         [[ServiceRec]]<12> = oOutput
+         WRITE [[ServiceRec]] ON DTASERVICES, [[ServiceId]]
+*
+** log job run
+         CALL LOGMSG ('', 'N[[/A]]', HLDMSG, '')
+      END
+*
+***************
+CONTINUE.LOOP:
+***************
+*
+   REPEAT
+*
+** sleep until the next [[SleepValue]] (usually the next minute)
+***************
+CONTINUE.SLEEP:
+***************
+*
+   [[DisplayCnt]]  += 1
+   [[SleepFor]] = [[SleepValue]] - MOD(TIME(), [[SleepValue]])
+   SLEEP [[SleepFor]]
+REPEAT
+*
+GOTO END.OF.PROGRAM
+*
+**------------------------------------------------------------------**
+**                                                                  **
+**                       S U B R O U T I N E S                      **
+**                                                                  **
+**------------------------------------------------------------------**
+*
+***************
+BUILD.CRON.VALUE:
+***************
+*
+** convert to comma-delimited data
+IF COUNT([[CronVal]], '-') THEN
+   [[FrNo]]    = FIELD([[CronVal]], '-', 1)
+   [[ToNo]]    = FIELD([[CronVal]], '-', 2)
+   [[CronVal]] = NULL$
+   FOR X = [[FrNo]] TO [[ToNo]]
+      [[CronVal]]<1,-1> = X
+   NEXT X
+   [[CronVal]] = CONVERT(@VM, ',', [[CronVal]])  ; ** U2 version
+*  [[CronVal]] = CONVERT([[CronVal]], @VM, ',')  ; ** D3 version
+END
+*
+** initialize variables
+[[CronSkip]]  = 1                 ; ** default an error
+[[NewVal]]  = [[CronVal]]             ; ** save it to read values
+[[CronVal]] = NULL$               ; ** clear to rebuild
+*
+** test for valid data (else abort program)
+xHigh = DCOUNT([[NewVal]], ',')
+FOR X = 1 TO xHigh
+   wkVal = FIELD([[NewVal]], ',', X)
+   IF NUM(wkVal) THEN
+      IF wkVal > [[MaxVal]] THEN wkVal = [[MaxVal]]
+      IF wkVal < [[MinVal]] THEN wkVal = [[MinVal]]
+   END ELSE
+      HLDMSG = "Non-numeric format for Cron value in " : [[NewVal]] : ". Service stopped."
+      RETURN TO ABORT.PROGRAM
+   END
+   [[CronVal]]<1,-1> = wkVal
+NEXT X
+[[CronVal]] = CONVERT(@VM, ',', [[CronVal]])  ; ** U2 version
+*[[CronVal]] = CONVERT([[CronVal]], @VM, ',')  ; ** D3 version
+*
+xHigh = DCOUNT([[CronVal]], ',')
+FOR X = 1 TO xHigh
+   wkVal = FIELD([[CronVal]], ',', X)
+   IF wkVal = [[TestVal]] THEN [[CronSkip]] = 0
+NEXT X
+RETURN
+*
+**------------------------------------------------------------------**
+**                                                                  **
+**                    E N D   O F   P R O G R A M                   **
+**                                                                  **
+**------------------------------------------------------------------**
+*
+***************
+ABORT.PROGRAM:
+***************
+*
+CALL LOGMSG ('', 'N[[/A]]', HLDMSG, '')
+*
+***************
+END.OF.PROGRAM:
+***************
+*
+END

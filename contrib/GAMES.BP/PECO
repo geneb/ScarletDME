@@ -1,0 +1,203 @@
+*   PECO
+*   CREATED BY JIM ESPARZA
+*     CALIFORNIA STATE UNIVERSITY, LONG BEACH
+*
+*   REVISED BY CRAIG SHUCKER
+*     SEPTEMBER, 1975
+*
+************************************************************
+     DIM MACH(3),TRY(3)
+     PRINTER OFF
+     ERASE=@(-1)
+     BELL=CHAR(7)
+     XLINE=SPACE(80)
+     PROMPT BELL
+     PRINT ERASE
+     GAME=0
+************************************************************
+*
+*   DOES PLAYER WANT INSTRUCTIONS?
+*
+************************************************************
+1000 PRINT @(25,10):"DO YOU WANT INSTRUCTIONS? ":
+     INPUT ANS
+     IF ANS<>"YES" AND ANS<>"Y" AND ANS<>"NO" AND ANS<>"N" THEN
+       PRINT @(26,12):"MUST BE 'Y(ES)' OR 'N(O)'":
+       GOSUB 1800
+       PRINT @(0,10):XLINE:
+       PRINT @(0,12):XLINE:
+       GOTO 1000
+     END
+     IF ANS="NO" OR ANS="N" THEN
+       PRINT @(0,10):XLINE:
+       GOTO 1100
+     END
+************************************************************
+*
+*   INSTRUCTIONS
+*
+************************************************************
+     PRINT ERASE
+     PRINT @(7,5):"THIS IS A GAME OF LOGIC AND GUESSING.":
+     PRINT @(7,6):"THE COMPUTER RANDOMLY GENERATES A NUMBER":
+     PRINT " BETWEEN 000 AND 999.":
+     PRINT @(7,7):"THE OBJECT OF THIS GAME IS TO GUESS THE":
+     PRINT " NUMBER WITH THE CLUES GIVEN":
+     PRINT @(7,8):"IN AS FEW TRIES AS POSSIBLE.":
+     PRINT @(7,9):"THE COMPUTER PRINTS THE MESSAGES LISTED BELOW."
+************************************************************
+*
+*   MESSAGES
+*
+************************************************************
+1100 PRINT @(7,17):"PECO -- ONE DIGIT IS CORRECT BUT IS IN THE":
+     PRINT " WRONG POSITION":
+     PRINT @(7,18):"DOUBLE PECO -- TWO DIGITS ARE CORRECT BUT ARE":
+     PRINT " IN THE WRONG POSITION":
+     PRINT @(7,19):"tTRIPLE PECO -- THREE DIGITS ARE CORRECT BUT":
+     PRINT " ARE IN THE WRONG POSITION":
+     PRINT @(7,20):"FERMI -- THERE IS A CORRECT DIGIT IN THE":
+     PRINT " CORRECT POSITION":
+     PRINT @(7,21):"DOUBLE FERMI -- THERE ARE TWO CORRECT DIGITS IN":
+     PRINT " THE CORRECT POSITION":
+     PRINT @(7,22):"TRIPLE FERMI -- YOU'VE GUESSED THE NUMBER!":
+     PRINT @(7,23):"BEGAL -- NONE OF THE DIGITS ARE CORRECT OR":
+     PRINT " INPUT IS ILLEGAL":
+************************************************************
+*
+*   CLEAR INSTRUCTIONS FROM SCREEN
+*
+************************************************************
+     IF ANS="YES" OR ANS="Y" THEN
+       PRINT @(7,11):"(PRESS <NEWLINE> TO CONTINUE)":
+       INPUT Z
+       FOR I=5 TO 11
+         PRINT @(0,I):XLINE:
+       NEXT I
+     END
+************************************************************
+*
+*   GAME NUMBER
+*
+************************************************************
+     GAME=GAME+1
+     COUNT=0
+************************************************************
+*
+*   COMPUTER PICKS RANDOM NUMBER
+*
+************************************************************
+1200 FOR I=1 TO 3
+       MACH(I)=RND(10)
+     NEXT I
+************************************************************
+*
+*   COUNT GUESSES
+*
+************************************************************
+1300 COUNT=COUNT+1
+     IF COUNT>50 THEN GOTO 1500
+************************************************************
+*
+*   ASK FOR GUESS
+*
+************************************************************
+     COL=19*INT((COUNT-1)/13)+5
+     ROW=(COUNT-1)-13*INT((COUNT-1)/13)
+     PRINT @(COL,ROW):">":
+     INPUT GUESS
+     IF NOT(NUM(GUESS)) THEN GOTO 1400
+     IF GUESS<0 OR GUESS>999 THEN GOTO 1400
+     TRY(1)=INT(GUESS/100)
+     TRY(2)=INT((GUESS-TRY(1)*100)/10)
+     TRY(3)=GUESS-10*INT(GUESS/10)
+************************************************************
+*
+*   COMPARE GUESS WITH NUMBER
+*
+************************************************************
+     FERMI=0
+     PECO=0
+     FOR I=1 TO 3
+       IF TRY(I)=MACH(I) THEN
+         FERMI=FERMI+1
+         TRY(I)=-1
+       END
+     NEXT I
+     IF FERMI=0 THEN
+       FOR I=1 TO 3
+         FOR J=1 TO 3
+           IF J<>I AND TRY(J)=MACH(I) THEN
+             PECO=PECO+1
+             TRY(J)=-1
+             J=3
+           END
+         NEXT J
+       NEXT I
+     END
+************************************************************
+*
+*   PRINT MESSAGE
+*
+************************************************************
+     PRINT @(COL+5,ROW):
+     IF FERMI=3 THEN
+       PRINT "TRIPLE FERMI":
+       PRINT @(31,14):"YOU TOOK ":COUNT:" TRIES":
+       GOTO 1600
+     END
+     IF FERMI=2 THEN
+       PRINT "DOUBLE FERMI":
+       GOTO 1300
+     END
+     IF FERMI=1 THEN
+       PRINT "FERMI":
+       GOTO 1300
+     END
+     IF PECO=3 THEN
+       PRINT "TRIPLE PECO":
+       GOTO 1300
+     END
+     IF PECO=2 THEN
+       PRINT "DOUBLE PECO":
+       GOTO 1300
+     END
+     IF PECO=1 THEN
+       PRINT "PECO":
+       GOTO 1300
+     END
+1400 PRINT @(COL+5,ROW):
+     PRINT "BEGAL":
+     GOTO 1300
+1500 PRINT @(25,14):"50 TRIES IS MORE THAN ENOUGH":
+************************************************************
+*
+*   DOES PLAYER WANT TO TRY AGAIN?
+*
+************************************************************
+1600 PRINT @(25,15):"DO YOU WANT TO TRY AGAIN? ":
+     INPUT REP
+     IF REP<>"YES" AND REP<>"Y" AND REP<>"NO" AND REP<>"N" THEN
+       PRINT @(26,16):"MUST BE 'Y(ES)' OR 'N(O)'":
+       GOSUB 1800
+       PRINT @(0,15):XLINE:
+       PRINT @(0,16):XLINE:
+       GOTO 1600
+     END
+     IF REP="YES" OR REP="Y" THEN
+       PRINT ERASE
+       ANS="NO"
+       GOTO 1100
+     END
+     PRINT ERASE
+     PRINT @(0,0):
+     STOP
+************************************************************
+*
+*   DELAY TIMER
+*
+************************************************************
+1800 T=TIME()
+1900 IF TIME()-T<3 THEN GOTO 1900
+     RETURN
+END

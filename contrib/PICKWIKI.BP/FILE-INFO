@@ -1,0 +1,137 @@
+     PROGRAM FILEINFO
+* ECL - KRJ - Universe - information about a file using FILEINFO()
+*
+      EQU AM TO CHAR(254), VM TO CHAR(253), SM TO CHAR(252)
+      TRUE = 1 = 1; FALSE = NOT(TRUE); QT = '"\':"'"
+      REST = @SENTENCE
+      KEEPQUOT = FALSE
+      GOSUB PARSE.REST
+      TEMP = DCOUNT(BITE,AM)
+      OPTIONS = BITE<TEMP>
+      IF OPTIONS[1,1] = '(' THEN
+         OPTIONS = FIELD(FIELD(OPTIONS,'(',2),')',1)
+         BITE = DELETE(BITE,TEMP,0,0)
+      END ELSE OPTIONS = ''
+      IF OCONV(BITE<1>,'MCU') = 'RUN' THEN
+         BITE = DELETE(BITE,1,0,0)
+         BITE = DELETE(BITE,1,0,0)
+      END
+      BITE = DELETE(BITE,1,0,0)
+*
+      FNAM = BITE<1>
+      BITE = DELETE(BITE,1,0,0)
+      IF FNAM = 'DICT' THEN
+         FNAM = FNAM:' ':BITE<1>
+         BITE = DELETE(BITE,1,0,0)
+      END
+* Get file
+      LOOP
+         GOT.FILE = FALSE
+         IF FNAM = '' THEN
+            CRT 'File >':
+            INPUT FNAM
+         END
+         IF FNAM = '' THEN STOP
+         DPRT = FIELD(FNAM,' ',1)
+         FPRT = FIELD(FNAM,' ',2)
+         IF FPRT = '' THEN FPRT = DPRT ; DPRT = ''
+         OPEN DPRT, FPRT TO FILE THEN
+            GOT.FILE = TRUE
+         END ELSE
+            CRT 'Unable to find file "':FNAM:'".'
+            FNAM = ''
+         END
+      UNTIL GOT.FILE DO
+      REPEAT
+*
+$INCLUDE UNIVERSE.INCLUDE FILEINFO.INS.IBAS
+
+      CRT '      Is Filevar :': FILEINFO(FILE, FINFO$IS.FILEVAR)
+      CRT '        VOC Name :': FILEINFO(FILE, FINFO$VOCNAME)
+      CRT '       Path Name :': FILEINFO(FILE, FINFO$PATHNAME)
+      HASH = FILEINFO(FILE, FINFO$HASHALG)
+      CRT '  Hash Algorithm :': HASH:
+      BEGIN CASE
+         CASE HASH = '2' ; CRT ' General'
+         CASE HASH = '3' ; CRT ' Sequential'
+         CASE HASH = ''  ; CRT '  No Algorithm'
+         CASE 1 ; CRT ' **** UNKNOWN HASH ALGORITHM **** '
+      END CASE
+      TYPE = FILEINFO(FILE, FINFO$TYPE)
+      CRT '            Type :': TYPE:
+      BEGIN CASE
+         CASE TYPE = '1' ; CRT ' Static Hashed'
+         CASE TYPE = '3' ; CRT ' Dynamic Hashed'
+         CASE TYPE = '4' ; CRT ' Directory (Type 1)'
+         CASE TYPE = '5' ; CRT ' Sequential'
+         CASE TYPE = '7' ; CRT ' Distributed & Multi Volume'
+         CASE TYPE = ''  ; CRT '  No Type'
+         CASE 1 ; CRT ' **** UNKNOWN TYPE **** '
+      END CASE
+      CRT '         Modulus :': FILEINFO(FILE, FINFO$MODULUS)
+      CRT '     Min Modulus :': FILEINFO(FILE, FINFO$MINMODULUS)
+      SIZE = FILEINFO(FILE, FINFO$GROUPSIZE)
+      CRT '      Group Size :': SIZE :
+      IF SIZE NE '' THEN CRT ' KB' ELSE CRT
+      SIZE = FILEINFO(FILE, FINFO$LARGERECORDSIZE)
+      CRT 'Large Record Size:': SIZE :
+      IF SIZE NE '' THEN CRT ' Bytes' ELSE CRT
+      CRT '      Merge Load :': FILEINFO(FILE, FINFO$MERGELOAD)
+      CRT '      Split Load :': FILEINFO(FILE, FINFO$SPLITLOAD)
+      CRT '    Current Load :': FILEINFO(FILE, FINFO$CURRENTLOAD)
+      CRT '       Node Name :': FILEINFO(FILE, FINFO$NODENAME)
+      CRT '       Is AKfile :': FILEINFO(FILE, FINFO$IS.AKFILE):
+      ISAK = FILEINFO(FILE, FINFO$IS.AKFILE)
+      BEGIN CASE
+         CASE ISAK = '1' ; CRT ' Secondary Indices exist '
+         CASE ISAK = '0' ; CRT ' No Secondary Indices'
+         CASE 1 ; CRT ' **** NOT KNOWN IF INDICES EXIST **** ':ISAK
+      END CASE
+      CRT '    Current Line :': FILEINFO(FILE, FINFO$CURRENTLINE)
+      CRT '        Part Num :': FILEINFO(FILE, FINFO$PARTNUM)
+      CRT '          Status :': FILEINFO(FILE, FINFO$STATUS)
+      CRT '   Recovery Type :': FILEINFO(FILE, FINFO$RECOVERYTYPE)
+      CRT '     Recovery ID :': FILEINFO(FILE, FINFO$RECOVERYID)
+      CRT 'Is Fixed Modulus :': FILEINFO(FILE, FINFO$IS.FIXED.MODULUS)
+      CRT '         NLS Map :': FILEINFO(FILE, FINFO$NLSMAP)
+* Next two kill [[UniVerse]]
+*     CRT '    Max Key Size :': FILEINFO(FILE, FINFO$MAXKEYSIZE)
+*     CRT '      Max Option :': FILEINFO(FILE, FINFO$MAXOPTION)
+* Next one is junk
+*     CRT '      Hdr Layout :': FILEINFO(FILE, FINFO$HDRLAYOUT)
+
+      STOP
+*
+PARSE.REST:
+      BITE = ''
+      FLAG = ''
+      POSN = 1
+      XXCNT = LEN(REST)
+      FOR XX = 1 TO XXCNT
+         BIT = REST[XX,1]
+         IF FLAG EQ '' THEN
+            IF BIT = ' ' THEN
+               IF BITE<POSN> NE '' THEN POSN = POSN + 1
+            END ELSE
+               IF INDEX(QT,BIT,1) THEN
+                  FLAG = BIT
+                  IF KEEPQUOT THEN BITE<POSN> = BITE<POSN>:BIT
+               END ELSE
+                  IF BIT = '(' THEN
+                     FLAG = ')'
+                     IF BITE<POSN> NE '' THEN POSN = POSN + 1
+                     BITE<POSN> = '('
+                  END ELSE BITE<POSN> = BITE<POSN>:BIT
+               END
+            END
+         END ELSE
+            IF BIT NE FLAG THEN
+               BITE<POSN> = BITE<POSN>:BIT
+            END ELSE
+               IF KEEPQUOT OR BIT = ')' THEN BITE<POSN> = BITE<POSN>:BIT
+               POSN = POSN + 1
+               FLAG = ''
+            END
+         END
+      NEXT XX
+      RETURN

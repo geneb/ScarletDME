@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 13Oct24 mab Correct format code for op_dtx (BASIC DTX()) 
+ *
  * 09Jan22 gwb Fixed a cast warning. (search for 09Jan22 for details)
  *             Fixed a format specifier warning.
  *
@@ -302,7 +304,8 @@ void op_dtx() {
 
   descr = e_stack - 1;
   GetInt(descr);
-  n = sprintf(value, "%d", descr->data.value);
+  /* 13Oct24 mab correct format code */
+  n = sprintf(value, "%x", descr->data.value);
 
   p = s;
   if (n < min_width) {

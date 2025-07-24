@@ -1,0 +1,92 @@
+* HOLLDUMP - does a hollerith dump of a data file
+************************************************************************
+
+      PROGRAM HOLLDUMP
+
+* takes the file name and a list of field names, dumping them into the
+* &HOLD& file as a fixed-width dump. The width is recovered from the dict.
+* Multi-values are handled by leaving blanks (not needed for re-import)
+* for single-value items. Sub-values are not handled.
+
+************************************************************************
+
+      ARGS = CONVERT( " ", @FM, TRIM( UPCASE( @SENTENCE)))
+      LOCATE "HOLLDUMP" IN ARGS<1> SETTING NAMEPOSN ELSE GOTO SYNTAX:
+
+      FILENAME = ARGS<NAMEPOSN+1>
+      IF FILENAME EQ "" THEN GOTO SYNTAX:
+      HOLDFILENAME = ARGS<NAMEPOSN+2>
+      FIELDCOUNT = DCOUNT( ARGS, @FM) - (NAMEPOSN+2)
+
+      DIM DICTENTRIES( FIELDCOUNT)
+
+      OPEN "", FILENAME TO FILEPTR ELSE STOP "Unable to open ":FILENAME
+      OPEN "DICT", FILENAME TO DICTPTR ELSE STOP "Unable to open DICT ":FILENAME
+      OPEN "", "&HOLD&" TO HOLD ELSE STOP "Unable to open the &HOLD& file"
+
+      MAXFIELD = 0
+      FOR II = 1 TO FIELDCOUNT
+         IF ARGS<NAMEPOSN+2+II> EQ "FMT" THEN
+            DICTENTRIES(II-1)<5> = CONVERT( \'"\ , "", ARGS<NAMEPOSN+3+II>)
+            DEL ARGS<NAMEPOSN+2+II>; DEL ARGS<NAMEPOSN+2+II>
+            FIELDCOUNT -= 2
+            IF II GT FIELDCOUNT THEN EXIT
+         END
+
+         READ DICTENTRIES(II) FROM DICTPTR, ARGS<NAMEPOSN+2+II> ELSE STOP "Unable to read ":ARGS(NAMEPOSN+2+II):" from dictionary"
+         IF DICTENTRIES(II)[1,1] NE "D" THEN STOP "Fields for dumping must be D-type"
+         IF DICTENTRIES(II)<2> GT MAXFIELD THEN MAXFIELD = DICTENTRIES(II)<2>
+      NEXT
+      IF DICTENTRIES(1)<2> NE 0 THEN STOP "First field to dump must be @ID or equivalent"
+
+      SELECT FILEPTR
+      READLIST KEYLIST THEN CONVERT @IM TO @FM IN KEYLIST
+      IF KEYLIST EQ "" THEN STOP "Unable to find any records on ":FILENAME
+
+      DELETE HOLD, HOLDFILENAME
+      WRITE "" TO HOLD, HOLDFILENAME
+      WRITE "" TO HOLD, HOLDFILENAME:".ERROR"
+      OPENSEQ "&HOLD&", HOLDFILENAME TO SEQPTR ELSE STOP "Unable to open ":HOLDFILENAME:" in &HOLD&"
+      OPENSEQ "&HOLD&", HOLDFILENAME:".ERROR" TO SEQERRPTR ELSE STOP "Unable to open ":HOLDFILENAME:".ERROR in &HOLD&"
+
+      DIM DATAREC( MAXFIELD)
+      LOOP
+         REMOVE KEY FROM KEYLIST SETTING MER
+         MATREAD DATAREC FROM FILEPTR, KEY THEN
+            ERRORS = 0
+
+* count max no of values...
+            VALUECOUNT = 1
+            FOR II = 1 TO FIELDCOUNT
+               IF DICTENTRIES(II)<6> EQ "M" THEN
+                  VALUES = DCOUNT( DATAREC(DICTENTRIES(II)<2>), @VM)
+                  IF VALUES GT VALUECOUNT THEN VALUECOUNT = VALUES
+               END
+            NEXT
+
+* now loop processing
+            FOR II = 1 TO VALUECOUNT
+               LINE = FMT( KEY, DICTENTRIES(1)<5>)
+               FOR JJ = 2 TO FIELDCOUNT
+                  LINE := FMT( DATAREC(DICTENTRIES(JJ)<2>)<1,II>, DICTENTRIES(JJ)<5>)
+               NEXT
+
+               IF COUNT( LINE, @TM) THEN
+                  IF ERRORS ELSE PRINT "Format Error processing ":KEY; ERRORS += 1
+                  WRITESEQ LINE TO SEQERRPTR ELSE PRINT "Sequential-write error processing ":KEY
+               END ELSE
+                  WRITESEQ LINE TO SEQPTR ELSE PRINT "Sequential-write error processing ":KEY
+               END
+            NEXT
+         END ELSE PRINT "Error reading ":KEY:" from file"
+      WHILE MER REPEAT
+
+      RETURN
+
+********************************
+SYNTAX:
+      PRINT "Syntax is:"
+      PRINT "RUN GBP HOLLDUMP filename holdfilename id-field [FMT code] [fieldname [FMT code] [fieldname...]]"
+      RETURN
+
+   END

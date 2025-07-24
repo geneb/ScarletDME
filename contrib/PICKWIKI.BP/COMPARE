@@ -1,0 +1,250 @@
+     PROGRAM COMPARE
+* TCL - KRJ - Comparison program; should run and display on anything
+
+     PROMPT ''
+     BELL = CHAR(7)
+     TRUE = (1=1)
+     FALSE = NOT(TRUE)
+
+     OFFSET = 20
+     ASK = TRUE
+     SHOW = TRUE
+
+     LL = 1
+     BAD = ''
+     FOR XX = 0 TO 31
+        BAD := CHAR(XX)
+     NEXT XX
+     FOR XX = 128 TO 250
+        BAD := CHAR(XX)
+     NEXT XX
+     GOOD = STR('~',LEN(BAD))
+
+     CRT 'Comparison Program'
+     CRT
+
+     LOOP
+        CRT 'Enter 1st file :':
+        INPUT F1
+        IF F1 EQ '' THEN CRT; STOP
+        GOTIT = FALSE
+        OPEN F1 TO FH1 THEN GOTIT = TRUE ELSE
+           CRT BELL:' Cannot open the file ':F1
+        END
+     UNTIL GOTIT DO
+     REPEAT
+
+     LOOP
+        CRT 'Enter 1st item :':
+        INPUT I1
+        IF I1 EQ '' THEN CRT; STOP
+        GOTIT = FALSE
+        READ R1 FROM FH1, I1 THEN GOTIT = TRUE ELSE
+           CRT BELL:'  Cannot read item ':I1
+        END
+     UNTIL GOTIT DO
+     REPEAT
+
+     LOOP
+        CRT 'Enter 2nd file : OR "." for ':F1:':':
+        INPUT F2
+        IF F2 = '.' THEN F2 = F1
+        IF F2 EQ '' THEN CRT; STOP
+        GOTIT = FALSE
+        OPEN F2 TO FH2 THEN GOTIT = TRUE ELSE
+           CRT BELL:' Cannot open the file ':F2
+        END
+     UNTIL GOTIT DO
+     REPEAT
+
+     LOOP
+        CRT 'Enter 2nd item : OR "." for ':I1:':':
+        INPUT I2
+        IF I2 = '.' THEN I2 = I1
+        IF I2 EQ '' THEN CRT; STOP
+        GOTIT = FALSE
+        READ R2 FROM FH2, I2 THEN GOTIT = TRUE ELSE
+           CRT BELL:'  Cannot read item ':I2
+        END
+     UNTIL GOTIT DO
+     REPEAT
+
+     IF R1 EQ R2 THEN CRT 'SAME' ELSE
+        CRT 'DIFFERENT'
+        GOSUB COMPARE.LINES
+     END
+     STOP
+
+
+COMPARE.LINES:
+     WIDTH = SYSTEM(2)
+     DEPTH = SYSTEM(3)
+     HALF = INT(WIDTH/2)
+     LHS = 'L#':HALF
+     SPC = SPACE(HALF)
+     LHL = HALF - 3
+     FUL = WIDTH - 3
+
+     XXCNT = DCOUNT(R1,CHAR(254))
+     YYCNT = DCOUNT(R2,CHAR(254))
+     MINM = XXCNT
+     MAXM = XXCNT
+     IF YYCNT LT MINM THEN MINM = YYCNT
+     IF YYCNT GT MAXM THEN MAXM = YYCNT
+     XSIDE = TRUE
+     XX = 0; YY = 0
+LOOPHERE:
+     XX += 1; YY += 1
+     IF XX GT MAXM AND YY GT MAXM THEN
+        IF NOT(SHOW) THEN CRT 'Same until end of items'
+STOPIT:
+        CRT
+        STOP
+     END
+     IF XX GT MAXM THEN
+        START = YY
+        FINISH = YYCNT
+        DISP = R2
+        PG = 'i ':SPC
+        GOSUB DISPZZ
+        GO STOPIT
+     END
+     IF YY GT MAXM THEN
+        START = XX
+        FINISH = XXCNT
+        DISP = R1
+        PG = 'd '
+        GOSUB DISPZZ
+        GO STOPIT
+     END
+     LINEX = R1<XX>
+     LINEY = R2<YY>
+*    TESTX = TRIM(LINEX,' ','L')
+*    TESTY = TRIM(LINEY,' ','L')
+     TESTX = TRIM(LINEX)
+     TESTY = TRIM(LINEY)
+     IF TESTY EQ TESTX THEN
+        LCT = XX 'R#4':' '
+        LINE = '  ':(LCT:TESTX)[1,FUL]
+        CONVERT BAD TO GOOD IN LINE
+        GOSUB DISP.LINE
+        GO LOOPHERE
+     END
+* they're different - now resolve it
+     ASK = TRUE
+     SHOW = TRUE
+* first go up to OFFSET from YY - if we hit YYCNT then back up
+     YYLIM = YY + OFFSET
+     IF YYLIM GT YYCNT THEN YYLIM = YYCNT
+     FOR BB = YY TO YYLIM
+*       TESTIT = TRIM(R2<BB>,' ','L')
+        TESTIT = TRIM(R2<BB>)
+        IF TESTIT EQ TESTX THEN
+           START = YY
+           FINISH = BB-1
+           DISP = R2
+           PG = 'i ':SPC
+           GOSUB DISPZZ
+           XX = XX-1
+           YY = BB-1
+           GO LOOPHERE
+        END
+     NEXT BB
+* then go up to OFFSET from XX
+     XXLIM = XX + OFFSET
+     IF XXLIM GT XXCNT THEN XXLIM = XXCNT
+     FOR BB = XX TO XXLIM
+*       TESTIT = TRIM(R1<BB>,' ','L')
+        TESTIT = TRIM(R1<BB>)
+        IF TESTIT EQ TESTY THEN
+           START = XX
+           FINISH = BB-1
+           DISP = R1
+           PG = 'd '
+           GOSUB DISPZZ
+           YY = YY-1
+           XX = BB-1
+           GO LOOPHERE
+        END
+     NEXT BB
+     LCT = XX 'R#4':' '
+     LINE = 'c ':(LCT:TESTX)[1,LHL]
+     LINE = LINE LHS
+     LCT = YY 'R#4':' '
+     LINE = LINE:'  ':(LCT:TESTY)[1,LHL]
+     CONVERT BAD TO GOOD IN LINE
+     GOSUB DISP.LINE
+     GO LOOPHERE
+
+
+DISPZZ:
+     FOR ZZ = START TO FINISH
+        LINE = DISP<ZZ>
+        LINE = TRIM(LINE,' ','L')
+        LCT = XX 'R#4':' '
+        LINE = PG:(LCT:LINE)[1,LHL]
+        CONVERT BAD TO GOOD IN LINE
+        GOSUB DISP.LINE
+     NEXT ZZ
+     RETURN
+
+
+DISP.LINE:
+     IF SHOW THEN CRT LINE
+     LL += 1
+     IF ASK AND LL GE DEPTH THEN
+        CRT XX,YY,'Enter <New line> to continue...':
+        LOOP
+           HELP = FALSE
+           INPUT NL:
+           NL = OCONV(NL,'MCU')
+           BEGIN CASE
+              CASE NL[1,1] EQ 'Q'
+                 GO STOPIT
+              CASE NL[1,1] EQ 'N'
+                 ASK = FALSE
+              CASE NL[1,1] EQ 'S'
+                 ASK = FALSE
+                 SHOW = FALSE
+              CASE NL[1,1] EQ 'T'
+                 XX = 0; YY = 0
+              CASE NL MATCHES '1N0N'
+                 XX = NL; YY = NL
+              CASE NL MATCHES "1N0N','1N0N"
+                 XX = FIELD(NL,',',1)
+                 YY = FIELD(NL,',',2)
+              CASE NL MATCHES "'-'1N0N"
+                 NL = NL[2,LEN(NL)]
+                 XX = XX - NL
+                 IF XX LT 0 THEN XX = 0
+                 YY = YY - NL
+                 IF YY LT 0 THEN YY = 0
+              CASE NL = ''
+              CASE 1
+                 HELP = TRUE
+           END CASE
+           CRT
+        WHILE HELP DO
+           GOSUB SHOW.HELP
+        REPEAT
+        LL = 1
+     END
+     RETURN
+
+SHOW.HELP:
+     CRT
+     CRT 'Note that only the first character of a command is required'
+     CRT
+     CRT '  Q - Quit'
+     CRT '  N - No prompt: display until there is a mismatch'
+     CRT '  S - Scan until there is a mismatch'
+     CRT '  T - Top (start again)'
+     CRT
+     CRT 'line number commands'
+     CRT
+     CRT '  n - Start at line number "n".'
+     CRT ' -n - Go up "n" lines'
+     CRT 'n,m - Start again with line "n" from ':F1:' item ':I1
+     CRT '      and line "m" from ':F2:' item ':I2
+     CRT
+     RETURN

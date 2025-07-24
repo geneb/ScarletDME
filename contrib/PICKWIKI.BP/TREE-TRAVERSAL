@@ -1,0 +1,104 @@
+TreeTraversal
+
+A function to find the ultimate parent of a particular node, assuming that you provide the key, the file, and the field that holds keys to parents. It will return -1 if the tree contains more than one "top" node.
+
+FUNCTION A51.ULTIMATE.PARENT( ID, FILENAME, FIELD.NUM )
+
+      X.NODE.ID = ID
+
+      ;*OPEN FILENAME TO F.FILE ELSE RETURN -2
+
+      ;* Changed after posting to u2-users... seems to work from [[UniBasic]].
+      IF NOT(FILEINFO(FILENAME,0)) THEN
+          CRT 'Opening file'
+          OPEN FILENAME TO F.FILE ELSE RETURN -2
+      END ELSE
+          CRT 'Assigning file handle'
+          F.FILE = FILENAME
+      END
+
+      X.PARENT = ''
+      X.STACK = ''
+      X.STATUS = ''
+
+      LOOP
+         CRT 'X.NODE.ID is ':X.NODE.ID
+         READV X.DATA FROM F.FILE, X.NODE.ID, FIELD.NUM THEN
+            X.STATUS = 0
+         END ELSE
+            X.STATUS = 1
+         END
+         IF X.DATA = '' AND X.STATUS = 0 THEN
+            CRT X.NODE.ID: ' has no parents, keep it'
+            IF X.PARENT NE '' AND X.PARENT NE X.NODE.ID THEN
+               CRT 'We already found an ultimate parent, ':X.PARENT
+               CRT 'and this would be a second one - ERROR'
+               RETURN -1
+            END ELSE
+               CRT 'Setting X.PARENT to ':X.NODE.ID
+               X.PARENT = X.NODE.ID
+            END
+         END ELSE
+            CRT 'Pushing ':X.DATA:' onto stack'
+            INS X.DATA BEFORE X.STACK<1,1>
+         END
+         CRT 'X.STACK is ':X.STACK
+         X.NODE.ID = X.STACK<1,1>
+         DEL X.STACK<1,1>
+         CRT 'Popping ':X.NODE.ID:' from stack'
+      WHILE X.NODE.ID DO REPEAT
+
+      RETURN X.PARENT
+
+The companion function which, given a key to an 'ultimate parent', finds all of the children of that node. For any child that has multiple parents, it looks back up the tree to make sure they all trace to the same ultimate parent that we started with.
+
+FUNCTION A51.ALL.CHILDREN( ID, FILENAME, CHILD.FIELD.NUM, PARENT.FIELD.NUM )
+
+      DEFFUN A51.ULTIMATE.PARENT( ARG1, FILENAME, FIELD.NUM )
+
+      CRT 'A51.ALL.CHILDREN CALLED'
+
+      X.NODE.ID = ID
+      ;*OPEN FILE.NAME TO F.FILE ELSE RETURN -2
+      IF NOT(FILEINFO(FILENAME,0)) THEN
+          CRT 'Opening file'
+          OPEN FILENAME TO F.FILE ELSE RETURN -2
+      END ELSE
+          CRT 'Assigning file handle'
+          F.FILE = FILENAME
+      END
+
+      X.STACK = ''
+      X.LIST = ''
+
+      LOOP
+         READ R.DATA FROM F.FILE, X.NODE.ID THEN END
+         X.DATA = R.DATA<CHILD.FIELD.NUM>
+         CRT 'Direct children of ':X.NODE.ID:' are ':X.DATA
+         IF X.DATA NE '' AND NOT(STATUS()) THEN
+            ;* Check that this record has only one parent
+            ;* If not, look up the tree to make sure they
+            ;* all have the same ultimate parent
+            X.COUNT = DCOUNT(R.DATA<CHILD.FIELD.NUM>,@VM)
+            IF X.COUNT GT 1 THEN
+               CRT X.NODE.ID:' has multiple parents '
+               FOR X = 1 TO X.COUNT
+                  X.KEY = R.DATA<CHILD.FIELD.NUM,X>
+                  X.PARENT = A51.ULTIMATE.PARENT(X.KEY,F.FILE,PARENT.FIELD.NUM)
+                  IF X.PARENT NE ID THEN
+                     CRT 'Ultimate parent of ':X.KEY:' is ':X.PARENT:' which differs from ':ID
+                     RETURN -1
+                  END
+               NEXT X
+            END
+
+            INS X.DATA BEFORE X.LIST<1,1>
+            CRT 'Pushing ':X.DATA:' onto stack'
+            INS X.DATA BEFORE X.STACK<1,1>
+         END
+         X.NODE.ID = X.STACK<1,1>
+         DEL X.STACK<1,1>
+         CRT 'Popping ':X.NODE.ID:' from stack'
+      WHILE X.NODE.ID DO REPEAT
+
+      RETURN X.LIST

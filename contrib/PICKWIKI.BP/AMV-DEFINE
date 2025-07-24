@@ -1,0 +1,163 @@
+     SUBROUTINE [[AMVDEFINE_AE]](MAT AEJUNK)
+
+* Defines an associated multivalue group for [[AMVEDIT_AE]].
+* The definition is kept in VOC item FILENAME_amv
+*
+* AE runs $xxx programs by having an item in [[AE_XCOMS]] keyed $xxx where
+*    the second line is the named of a cataloged program ending in _AE
+*
+* For example, if you have $DA set up with [[AMVDEFINE_AE]] on line 2,
+*              it will run this program if you enter "$DA" within AE
+
+
+     BELL = CHAR(7)
+     FILENAME = AEJUNK(24)
+     IF FILENAME EQ '' THEN
+        CRT 'There is no file name':BELL
+        RETURN
+     END
+     IF FILENAME NE OCONV(FILENAME,'MCP') THEN
+        CRT 'The file name has unprintable characters':BELL
+        RETURN
+     END
+     OPEN 'VOC' TO VOC ELSE
+        CRT 'Cannot open VOC file':BELL
+        RETURN
+     END
+     AMID = FILENAME:'_amv'
+     READ JUNK FROM VOC, AMID ELSE
+        JUNK = 'X - Associated [[MultiValue]] definitions'
+     END
+     IF JUNK<1>[1,1] NE 'X' THEN
+        CRT 'The definition for ':AMID
+        RETURN
+     END
+     SAVE = JUNK
+     MARK = JUNK<2>
+
+
+     PROMPT ':'
+
+
+     LOOP
+        LOOP
+           GOSUB PACK
+           CRT 'Defining Associated Multivalues for ':FILENAME
+           CRT 'Delimiter = >':MARK:'<'
+           CRT '     AMVs = ':SIGN
+           CRT
+           CRT 'Commands - 1-9 for AMVs, [D]elimiter, ':
+           CRT '[R]eturn, [Q]uit. Enter command ':
+           INPUT COMD,1
+           COMD = UPCASE(COMD)
+           IF COMD GT '0' AND COMD LE '9' THEN
+              GOSUB DOAMV
+              CONTINUE
+           END
+        UNTIL INDEX('[[/D/Q/R]]/','/':COMD:'/',1) DO
+           CRT 'Command unknown - Must be one of D, R or Q':BELL
+        REPEAT
+        BEGIN CASE
+* Delimiter change - must be printable, but not a letter or number
+           CASE COMD EQ 'D'
+              LOOP
+                 CRT 'Press the key for the delimiter you want to use'
+                 CRT 'or just press [ENTER] to use a value mark ':
+                 INPUT MUCK,1
+                 BEGIN CASE
+                    CASE MUCK = ''
+                       MARK = ''
+                    CASE MUCK MATCHES '1N'
+                       MUCK = 'Cannot use a number'
+                    CASE MUCK MATCHES '1A'
+                       MUCK = 'Cannot use a letter'
+                    CASE MUCK NE OCONV(MUCK,'MCP')
+                       MUCK = 'Cannot use a non-printable character'
+                    CASE 1
+                       MARK = MUCK
+                       MUCK = ''
+                 END CASE
+              UNTIL MUCK EQ '' DO
+                 CRT MUCK:BELL
+              REPEAT
+* Update Definition
+           CASE COMD EQ 'R'
+              GOSUB PACK
+              IF CRAP THEN
+                 CRT CRAP
+                 COMD = ''
+                 CONTINUE
+              END ELSE
+                 JUNK<1> = 'X - Associated [[MultiValue]] definitions'
+                 JUNK<2> = MARK
+                 JUNK<3> = THIS
+                 JUNK<4> = THAT
+                 WRITE JUNK ON VOC, AMID
+              END
+        END CASE
+     UNTIL COMD EQ 'R' OR COMD EQ 'Q' DO
+     REPEAT
+     RETURN
+
+PACK:
+     THIS = ''; THAT = ''; SIGN = ''; CRAP = ''
+     FOR XX = 5 TO 13
+        LINE = JUNK<XX>
+        YYNO = DCOUNT(LINE,@VM)
+        FOR YY = 1 TO YYNO
+           BITE = LINE<1,YY>
+           LOCATE(BITE,THIS,1;HERE) THEN
+              THERE = THAT<1,HERE> - 4
+              CRAP = 'Line ':BITE:' is in two AMVs -':THERE:' and ':XX-4
+           END ELSE
+              THIS<1,-1> = BITE
+              THAT<1,-1> = XX
+           END
+           SIGN<XX> = XX-4
+        NEXT YY
+     NEXT XX
+     CONVERT @AM TO ' ' IN SIGN
+     SIGN = TRIM(SIGN)
+     RETURN
+
+
+DOAMV:
+     POSN = COMD + 4
+     KITH = JUNK<POSN>
+     LOOP
+        SHOW = CHANGE(KITH,@VM,' ')
+        CRT 'AMV ':COMD:', Fields = ':SHOW
+        CRT ' Press [C]lear, [R]eturn, [Q]uit, or [F]ields ':
+        INPUT WHAT,1
+        BEGIN CASE
+* Clear everything for this AMV definition
+           CASE WHAT = 'C'
+              KITH = ''
+* Field add & delete - unordered as the first is the controlling one
+*                      also I want to be able to define the order
+           CASE WHAT EQ 'F'
+              LOOP
+                 SHOW = CHANGE(KITH,@VM,' ')
+                 CRT 'AMV definition ':POSN-4
+                 CRT '   Fields = ':SHOW
+                 CRT
+                 CRT 'Enter a field number to add or delete - ':
+                 CRT 'or nothing to end editing ':
+                 INPUT MUCK
+                 BEGIN CASE
+                    CASE MUCK MATCHES '1[[N0N]]'
+                       LOCATE(MUCK,KITH,1;POSV)
+                          THEN DEL KITH<1,POSV>
+                          ELSE INS MUCK BEFORE KITH<1,POSV>
+                    CASE MUCK = ''
+                    CASE 1
+                       CRT 'The input was not an integer':BELL
+                 END CASE
+              UNTIL MUCK = '' DO
+              REPEAT
+           CASE WHAT EQ 'R'
+              JUNK<POSN> = KITH
+        END CASE
+     UNTIL WHAT EQ 'R' OR WHAT EQ 'Q' DO
+     REPEAT
+     RETURN

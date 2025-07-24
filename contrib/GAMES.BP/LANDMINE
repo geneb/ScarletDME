@@ -1,0 +1,212 @@
+*  LANDMINE
+*  CREATED BY CRAIG SHUCKER
+*     CALIFORNIA STATE UNIVERSITY, LONG BEACH
+*     FEBRUARY, 1975
+*
+*  REVISED BY CRAIG SHUCKER
+*     AUGUST, 1975
+*
+*  VERSION TWO WRITTEN BY NEAL SCHNEIER
+*     FEBRUARY 21, 1976
+*
+*************************************************************
+     DIM GRID(576),M(8),DIR(16)
+     XLINE=SPACE(80)
+     BELL=CHAR(7)
+*     PROMPT BELL
+PROMPT ''
+     PRINT @(-1)
+     X=0
+122  MAT GRID = '.'
+     FOR I=1 TO 50
+       GRID(I)='X'
+     NEXT I
+     FOR I=71 TO 503 STEP 24
+       GRID(I)='X'
+       GRID(I+1)='X'
+       GRID(I+2)='X'
+       GRID(I+3)='X'
+     NEXT I
+     FOR I=527 TO 576
+       GRID(I)='X'
+     NEXT I
+     IF X=1 THEN GOTO 10
+     X=1
+     DIR(1)=24;  DIR(2)=25;  DIR(3)=1;  DIR(4)=-23
+     DIR(5)=-24; DIR(6)=-25; DIR(7)=-1;  DIR(8)=23
+     DIR(9)=13; DIR(10)=24.5; DIR(11)=23.5; DIR(12)=11
+     DIR(13)=-13; DIR(14)=-24.5; DIR(15)=-23.5; DIR(16)=-11
+     I=0
+*************************************************************
+*
+*  MESSAGES
+*
+*************************************************************
+     M(1)="ALL CLEAR -- NO MINES WITHIN 2 MOVES RANGE"
+     M(2)="WARNING -- 1 MINE 2 MOVES AWAY"
+     M(3)="DOUBLE WARNING -- 2 MINES 2 MOVES AWAY"
+     M(4)="TRIPLE WARNING -- 3 OR MORE MINES 2 MOVES AWAY"
+     M(5)="DANGER -- 1 MINE 1 MOVE AWAY"
+     M(6)="DOUBLE DANGER -- 2 MINES 1 MOVE AWAY"
+     M(7)="TRIPLE DANGER -- 3 OR MORE MINES 1 MOVE AWAY"
+     M(8)='BOOM -- THIS ONE IS RATHER OBVIOUS'
+************************************************************
+*
+*  ANALYSIS OF INPUT
+*
+************************************************************
+1    PRINT @(20,8):'DO YOU WANT INSTRUCTIONS? ':
+2    INPUT ANS
+     IF ANS = 'N' OR ANS = 'NO' THEN
+       ON I+1 GOTO 10,124,2000
+     END ELSE
+       IF ANS # 'Y' AND ANS # 'YES' THEN
+         PRINT @(50,8):"MUST BE 'Y(ES)' OR 'N(O)'":
+         GOSUB 1700
+         PRINT @(0,8):XLINE:
+         ON I+1 GOTO 1,120,2000
+       END
+     END
+     ON I+1 GOTO 4,121,122
+***********************************************************
+*
+*  INSTRUCTIONS
+*
+***********************************************************
+4    PRINT @(2,0):'THIS GAME IS PLAYED ON A GRID WITH DIMENSIONS 20 BY 20.  EACH POSITION IS'
+     PRINT "STATED AS A PAIR OF NUMBERS IN THE FORM I,J WHERE 'I' IS THE ROW NUMBER"
+     PRINT "AND 'J' IS THE COLUMN NUMBER.  THE ROWS ARE NUMBERED SEQUENTIALLY FROM 1 TO"
+     PRINT '20 WHERE 1 IS THE BOTTOM ROW AND 20 IS THE TOP ROW.  THE COLUMNS ARE'
+     PRINT 'SIMILARLY NUMBERED, WITH 1 FOR THE LEFTMOST COLUMN AND 20 FOR THE RIGHTMOST.'
+     PRINT 'THE GAMES STARTS AT 1,1 (THE LOWER LEFT-HAND CORNER).  THE OBJECT OF THE GAME'
+     PRINT 'IS TO GET TO 20,20 (THE UPPER RIGHT-HAND CORNER) WITHOUT LANDING ON ONE OF'
+     PRINT 'THE 32 MINES RANDOMLY PLACED ON THE GRID.  ON EACH TURN YOU MAY MOVE ONE'
+     PRINT 'SPACE IN ANY DIRECTION.  EACH NUMBER IN THE DIAGRAM ON THE LOWER RIGHT OF'
+     PRINT "THE SCREEN CORRESPONDS TO A MOVE IN THAT DIRECTION FROM POSITION 'X'.  YOU"
+     PRINT 'WILL ALSO BE AIDED EACH TURN BY THE MESSAGES LISTED ON THE LOWER LEFT.'
+3    PRINT @(26,13):'MESSAGES'; PRINT @(26,14):STR("-",8)
+     PRINT @(65,13):'MOVES'
+     PRINT @(64,14):STR("-",7)
+     PRINT @(64,15):'8  1  2'
+     PRINT @(64,17):'7  X  3'
+     PRINT @(64,19):'6  5  4'
+     PRINT @(62,21):'YOU ARE AT'
+     PRINT @(62,22):'POSITION X'
+     PRINT @(0,14):' '
+     FOR K=1 TO 8
+       PRINT M(K)
+     NEXT K
+     IF I=1 THEN GOTO 11
+     PRINT @(2,11):"GOOD LUCK AND 'WATCH YOUR STEP'.  ":
+     PRINT "**** PRESS <NEW LINE> TO CONTINUE ****":
+     INPUT Z
+************************************************************
+*
+*  RANDOMLY PLACE MINES INTO THE GRID
+*
+************************************************************
+10   PRINT @(-1)
+     I=1
+     GOTO 3
+11   FOR I=1 TO 32
+12     J=RND(526); IF J=0 THEN GOTO 12
+       IF J=51 THEN GOTO 12
+       IF GRID(J) # '.' THEN GOTO 12 ELSE GRID(J) ='M'
+     NEXT I
+************************************************************
+*
+*  INITIALIZE PLAYER AND DISPLAY
+*
+************************************************************
+     PRINT @(31,2):"YOUR LOCATION:":
+     PRINT @(29,5):"MESSAGE:":
+************************************************************
+*
+*  PRINT INFORMATION
+*
+************************************************************
+     J=51; GRID(51)='*'
+1250 PRINT @(33,8):SPACE(20):
+     PRINT @(46,2):SPACE(7):
+     MM=INT(J/24)-1
+     PRINT @(46,2):MM:',':J-(MM+1)*24-2
+     PRINT @(37,5):SPACE(25):
+************************************************************
+*
+*  PRINT APPROPRIATE MESSAGE
+*
+************************************************************
+     PTR=1
+     FOR I=1 TO 8
+       IF GRID(J+DIR(I))='M' THEN PTR=PTR+1
+     NEXT I
+     IF PTR # 1 THEN
+       PTR=PTR+3
+       IF PTR > 7 THEN PTR = 7
+       GOTO 110
+     END
+     FOR I=1 TO 16
+       IF GRID(J+2*DIR(I))='M' THEN PTR=PTR+1
+     NEXT I
+     IF PTR # 1 THEN
+       IF PTR > 4 THEN PTR = 4
+     END
+110  PRINT @(38,5):FIELD(M(PTR),'-',1)
+************************************************************
+*
+*  ASK FOR THE PLAYER'S MOVE
+*
+************************************************************
+     PRINT @(34,8):"YOUR MOVE: ":
+     INPUT DIR1
+     IF DIR1 < 1 OR DIR1 > 8 THEN
+115    PRINT @(48,8):'ILLEGAL MOVE'
+       GOSUB 1700
+       PRINT @(48,8):XLINE
+       GOTO 110
+     END
+     NN=J+DIR(DIR1)
+     IF GRID(NN)='X' THEN GOTO 115
+     IF GRID(NN)='M' THEN GOTO 150
+     GRID(NN)='*'
+     J=NN
+     IF J # 526 THEN GOTO 1250
+     PRINT @(-1); PRINT @(24,8):'CONGRATULATIONS -- YOU MADE IT!'
+119  I=1
+120  PRINT @(17,15):'DO YOU WANT A DISPLAY? ':
+     GOTO 2
+121  ROW=20; COL=0
+     PRINT @(-1)
+     PRINT @(COL,ROW):
+     FOR I=51 TO 526
+       IF GRID(I) = 'X' THEN GOTO 129
+       PRINT GRID(I):' ':
+       COL=COL+2
+       IF COL > 38 THEN COL=0; ROW=ROW-1; PRINT @(COL,ROW):
+129  NEXT I
+     PRINT @(62,8):'KEY'
+     PRINT @(52,10):'. -- A CLEAR SPACE'
+     PRINT @(52,11):'M -- A MINE'
+     PRINT @(52,12):'* -- YOU WERE HERE'
+     PRINT @(52,13):'! -- YOU BLEW IT HERE'
+124  I=2
+     PRINT @(1,22):'DO YOU WISH TO PLAY AGAIN? ':
+     GOTO 2
+150  GRID(NN)='!'
+     PRINT @(-1)
+     PRINT @(19,6):"#######    ######    ######   ##    ##  ##":
+     PRINT @(19,7):"##    ##  ##    ##  ##    ##  ###  ###  ##":
+     PRINT @(19,8):"##    ##  ##    ##  ##    ##  ########  ##":
+     PRINT @(19,9):"#######   ##    ##  ##    ##  ## ## ##  ##":
+     PRINT @(19,10):"##    ##  ##    ##  ##    ##  ## ## ##  ##":
+     PRINT @(19,11):"##    ##  ##    ##  ##    ##  ## ## ##":
+     PRINT @(19,12):"#######    ######    ######   ## ## ##  ##":
+     GOTO 119
+************************************************************
+*  DELAY TIMER
+************************************************************
+1700 T=TIME()
+1800 IF TIME()-T<3 THEN GOTO 1800
+     RETURN
+2000 *
+END

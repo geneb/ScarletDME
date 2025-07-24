@@ -1,0 +1,222 @@
+      PROGRAM MENU
+*
+* Utility program to run a menu system - very simple and short.
+* The code is supplied on an as-is basis as a source-code resource.
+* No representation whatever is made as to the operation of the program.
+*
+* Keith Johnson.
+*
+* Items in the menu file have 37 attributes, any more are ignored
+* The first line is the menu title.  The other 36 are options
+* which can be called by numbers 0-9 and letters A-Z>
+*
+* Each option line consists of X fields using \ as separator
+* so they can be easily edited (or a value mark can be used)
+*
+* The fields are
+* 1: TYPS - 'M' for another menu, 'T' a title, 'C' a command to execute
+* 2: CMDS - The letter or number to select this option (is highlighted)
+* 3: THIS - Display line
+* 4: ACTS - The command to execute or menu to read
+* 5: INPS - 'Y' if input is required or help is available
+* 6: PMTS - Prompt used before input requested or a help text
+* 7: HIGH - 'Y' if the user requires high security to access this
+*
+* High security is that the users @LOGNAME is held on a file
+* called XXXXXX in line 2 of an item called HIGHSECURITY
+* in a list separated by value marks or backslashes (\).
+* This is actually subverted in the following code - you can
+* roll your own (and I encourage you to do so).
+
+      PROMPT ''
+      GOOD = (1=1)
+      EVIL = NOT(GOOD)
+      ATTM = CHAR(254)
+      VALM = CHAR(253)
+      BELL = STR(CHAR(7),20)
+
+      CLRS = @(-01); CEOL = @(-04)
+      RVON = @(-13); RVOF = @(-14)
+      ULON = @(-15); ULOF = @(-16)
+
+      NEWP = GOOD
+      NAME = 'MAIN'
+      MENULIST = ''
+      NUMBMENU = 0
+      OPEN 'MENUFILE' TO MENUFILE ELSE STOP 201,'MENUFILE'
+      READ MENU FROM MENUFILE,NAME ELSE
+         STOP 'Cannot read ':NAME:' from MENUFILE'
+      END
+
+* These next 4 lines may have to be changed
+      USER = @LOGNAME
+      PORT = @USERNO
+      ACCT = @WHO
+      PATH = @PATH
+
+      USER = OCONV(USER,'MCT')
+      MAST = OCONV('XXXXXXX','THIGHSECURITY;X;;2')
+      MAST = OCONV(MAST,'MCT')
+      CONVERT '\' TO VALM IN MAST
+      CONVERT VALM TO ATTM IN MAST
+*
+* Above is control mechanism, we will now subvert it deliberately.
+      MAST = USER
+*
+
+      LOOP
+         GOSUB SHOW.MENU
+      UNTIL CHOICE = ''
+         IF CHOICE = 'M' THEN MENU = THISUN ELSE
+            IF CHOICE = 'C' THEN
+               EXECUTE THISUN
+               CRT 'Press <ENTER> to return to menu':;INPUT WAIT:
+               NEWP = GOOD
+            END
+         END
+      REPEAT
+      GOSUB ERASE.SCREEN
+      STOP
+
+
+************************************************************************
+* SUBROUTINES
+************************************************************************
+ERASE.SCREEN:
+      FOR AA = SYSTEM(3)-1 TO 0 STEP -1
+         CRT @(00,AA):CEOL:
+      NEXT AA
+      RETURN
+
+
+SHOW.MENU:
+      IF NEWP THEN
+         CRT CLRS:
+         NEWP = EVIL
+      END ELSE
+         GOSUB ERASE.SCREEN
+      END
+      TITLE = NAME:' MENU'
+      IF MENU<1> NE ''THEN TITLE = MENU<1>
+      TPOS = 40-((LEN(TITLE))/2)
+      TITLE = @(TPOS,00):ULON:TITLE:ULOF
+      TITLE := @(00,00):PATH
+      TITLE := @(00,01):TIMEDATE()
+      TITLE := @(70,00):ACCT
+
+      TITLE := @(70,01):USER:'|':PORT
+      CRT TITLE
+      LINCNT = DCOUNT(MENU,ATTM)
+      IF LINCNT GT 37 THEN LINCNT = 37
+      NUMB = 0
+      TYPS = ''
+      CMDS = ''
+      THIS = ''
+      ACTS = ''
+      INPS = ''
+      PMTS = ''
+      HIGH = ''
+      XPOS = 1
+      IF LINCNT LE 19 THEN XPOS = 25
+      FOR LIN = 2 TO LINCNT
+         LINE = MENU<LIN>
+         CONVERT '\' TO VALM IN LINE
+         IF LIN GT 19 THEN XPOS = 40
+         YPOS = REM(LIN-2,18) + 3
+         SUPP = EVIL
+         IF LINE<1,7> THEN
+            LOCATE(USER,MAST;MPOS) ELSE SUPP = GOOD
+         END
+         BEGIN CASE
+            CASE TRIM(LINE) = ''
+               NULL
+            CASE LINE<1,1> = 'T'
+               CRT @(XPOS,YPOS):'  ':ULON:LINE<1,3>:ULOF:
+            CASE SUPP
+               CRT @(XPOS,YPOS):LINE<1,3>:
+            CASE 1
+               ZPOS = INDEX(OCONV(LINE<1,3>,'MCU'),OCONV(LINE<1,2>,'MCU'),1)
+               IF ZPOS THEN
+                  CRT @(XPOS,YPOS):LINE<1,3>[1,ZPOS-1]:
+                  CRT RVON:LINE<1,3>[ZPOS,1]:
+                  CRT RVOF:LINE<1,3>[ZPOS+1,LEN(LINE<1,3>)-ZPOS]:
+               END ELSE
+                  CRT @(XPOS,YPOS):RVON:LINE<1,2> 'L#1':
+                  CRT RVOF:' ':LINE<1,3>:
+               END
+               NUMB += 1
+               TYPS<NUMB> = LINE<1,1>
+               CMDS<NUMB> = LINE<1,2>
+               THIS<NUMB> = LINE<1,3>
+               ACTS<NUMB> = LINE<1,4>
+               INPS<NUMB> = LINE<1,5>
+               PMTS<NUMB> = LINE<1,6>
+               HIGH<NUMB> = LINE<1,7>
+         END CASE
+      NEXT LIN
+
+LOOP.INPUT:
+      LOOP
+         CRT @(00,22):CEOL:'Press choice ':
+         IF SYSTEM(11) THEN CRT '>': ELSE CRT ':':
+         INPUT REPLY,1:
+         REPLY = OCONV(REPLY,'MCU')
+         CPOS = 0
+         IF REPLY = '/' OR REPLY = CHAR(27) THEN REPLY = ''
+         IF REPLY = '' THEN
+            IF NUMBMENU THEN
+               NAME = MENULIST<NUMBMENU>
+               READ THISUN FROM MENUFILE, NAME ELSE
+                  STOP 'Cannot read ':NAME:' from MENUFILE'
+               END
+               DEL MENULIST<NUMBMENU>
+               NUMBMENU -= 1
+               CHOICE = 'M'
+            END ELSE CHOICE = ''
+         END ELSE
+            LOCATE(REPLY,CMDS;CPOS) THEN
+               REPLY = ''
+            END ELSE NULL
+         END
+      UNTIL REPLY = ''
+         CRT BELL:
+      REPEAT
+
+      IF CPOS THEN
+         IF HIGH<CPOS> THEN
+            LOCATE(USER,MAST;MPOS) ELSE RETURN
+         END
+         CHOICE = TYPS<CPOS>
+         DISP = THIS<CPOS>
+         THISUN = ACTS<CPOS>
+         IF CHOICE = 'M' THEN
+            READ THISUN FROM MENUFILE, THISUN ELSE
+               CRT BELL:
+               GO LOOP.INPUT
+            END
+            NUMBMENU += 1
+            MENULIST<NUMBMENU> = NAME
+            NAME = ACTS<CPOS>
+         END
+         PRMT = PMTS<CPOS>
+         GOSUB ERASE.SCREEN
+         CRT RVON:OCONV(DISP,'MCU'):RVOF
+         IF INPS<CPOS> = 'Y' THEN
+            IF PRMT = '' THEN
+               PRMT = 'Input possible - or null to see help'
+            END
+            CRT PRMT
+            CRT THISUN:' ':
+            INPUT BIGUN:
+            BEGIN CASE
+               CASE BIGUN = CHAR(27) OR BIGUN = '/'
+                  CHOICE = 'M'
+                  THISUN = MENU
+               CASE BIGUN NE ''
+                  THISUN := ' ':BIGUN
+            END CASE
+         END ELSE
+            IF PRMT NE '' THEN CRT PRMT
+         END
+      END
+      RETURN

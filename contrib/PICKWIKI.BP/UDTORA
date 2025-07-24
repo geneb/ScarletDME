@@ -1,0 +1,68 @@
+Driver program to call perl glue script
+
+SUBROUTINE UDTORA.SYNC(RTN,COL.HEADING,SQL,OPTIONS,ERRCODE)
+***************************************************************************
+* Program: UDTORA.SYNC
+* Author : IAN MCG
+* Date   : 3/27/2000
+* Edited : 16:00:23 Dec 09 2001 By MCGOWAN
+* Comment: PASS SQL STATEMENT TO ORACLE DB, RETURNS DYN. ARRAY
+***************************************************************************
+* Date       By   Desc
+* ---------- ---- ---------------------------------------------------------
+* 07/08/2000 ian  Always attempt to create named pipe (no more UDTORA.PREP)
+* 11/30/2000 MATT get account, and create the pipe in a new account dir: trin or
+ sfsi
+* 02/15/2001 Ian  Set errcode=0 if no rows returned
+* 10/09/2001 Ian  Send data on one line
+* 11/07/2001 Ian  Check return status of OSBWRITE
+
+ERRCODE=0
+RTN=""
+
+COL.HEADING="" ; ERRCODE=0 ; RTN=""
+ACCT = ""
+IF INDEX(@ACCOUNT,"STEELCASE",1)>0 THEN ACCT="sfsi"
+IF INDEX(@ACCOUNT,"TRINITY",1)>0   THEN ACCT="trinity"
+IF ACCT="" THEN PRINT "UDTORA.SYNC not valid in @ACCOUNT" ; RETURN
+
+* First piece of data is where to send the output to
+FNAME = "/samba_share/oracle/":ACCT:"/":@USERNO
+IN.PIPE.NAME="/samba_share/oracle/":ACCT:"/in/"
+
+* Send the request statement to the perl prog
+REQ=FNAME:"__":SQL
+OSOPEN IN.PIPE.NAME WRITEONLY TO IN.PIPE ELSE ABORT
+IF STATUS() # 0 THEN RTN="OSOPEN FAILED" ; RETURN
+
+TRY=0
+LOOP
+    OSBWRITE REQ:CHAR(13):CHAR(10) ON IN.PIPE
+UNTIL STATUS()=0 OR TRY>10 DO
+    TRY+=1
+REPEAT
+IF TRY>10 THEN RTN="OSWRITE FAILED" ; RETURN
+
+* Get back the results
+OSREAD RTN FROM "/samba_share/oracle/":ACCT:"/":@USERNO ON ERROR
+   PRINT "OSREAD ERROR, SQL=":SQL
+   RTN='OSREAD ERROR' ; RETURN
+END ELSE
+   PRINT "OSREAD ERROR2, SQL=":SQL
+   RTN='OSREAD RETURNED NULL' ; RETURN
+END
+
+* Massage them
+CONVERT CHAR(10) TO @AM IN RTN
+ERRCODE=RTN<1>
+IF ERRCODE > 0 THEN
+   * Success!  col headings are in line 2, data follows
+   COL.HEADING=RTN<2>
+   DEL RTN<1>
+   DEL RTN<1>
+END ELSE
+   * There was a problem.  No column heading, error description is line 2
+   COL.HEADING=""
+   DEL RTN<1>
+END
+RETURN

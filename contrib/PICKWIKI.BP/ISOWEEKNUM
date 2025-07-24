@@ -1,0 +1,21 @@
+* Returns the ISO week number for a given date
+************************************************************************
+
+      FUNCTION ISOWEEKNUM( USERDATE)
+
+************************************************************************
+
+      INTERNALDATE = ICONV( USERDATE, "D")
+
+      DAYOFWEEK = OCONV( INTERNALDATE, "DW") ;* return day number
+
+      IF DAYOFWEEK = 0 THEN DAYOFWEEK = 7     ;* some variants of Pick return a 0 for Sunday instead of 7
+
+      THURSDAY = INTERNALDATE - DAYOFWEEK + 4 ;* calculate date for that Thursday
+
+      JULIANDAY = OCONV( THURSDAY, "DJ") ;* This is the days so far this year
+
+      WEEKNUM = INT( (JULIANDAY + 6) / 7 ) ;* Add 6 so "Thu 1 Jan" returns 1
+
+      RETURN (WEEKNUM)
+   END

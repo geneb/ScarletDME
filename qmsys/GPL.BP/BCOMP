@@ -19,6 +19,7 @@
 * Ladybridge Systems can be contacted via the www.openqm.com web site.
 * 
 * START-HISTORY:
+* 13 Oct 24 mab(njs) correct len of function.args test in ST.DEFFUN (len() missing)
 * 05 May 22 NJS convert mode.names to use @VM not hard coded hex fd
 *           NJS convert various local reserved.names<2> to use @VM not hard coded hex fd
 * 18 Mar 22 rdm Added OPTIONAL.THEN.ELSE mode.
@@ -6900,8 +6901,8 @@ st.deffun:
       err.msg = sysmsg(2898) ;* Too many arguments is function definition
       goto error
    end
-
-   if function.args > greatest.call.arg.count then
+* 13 Oct 24 mab mab len() of function.args missing 
+   if len(function.args) > greatest.call.arg.count then
       greatest.call.arg.count = len(function.args)
    end
 

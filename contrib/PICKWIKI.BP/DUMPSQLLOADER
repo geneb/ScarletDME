@@ -1,0 +1,249 @@
+***************************************************************************
+* Program: TRIN.DUMP.SQLLDR
+* Author : Ian McG
+* Date   : 12/13/1999
+* Edited : 09:52:19 Oct 22 2002 By MGC
+* Comment: Dump a recall  in sql*loader format for transfer to oracle
+***************************************************************************
+* Date       By   Desc
+* ---------- ---- ---------------------------------------------------------
+* 01/18/2000 Ian  Run sqlldr after making dump file, delete dmp
+* 01/21/2000 Ian  Send right date format
+* 02/28/2000 Ian  Email log file to dump user when done
+* 07/15/2000 Ian  Check for specific ORACLE.FIELD.SIZE
+* 07/15/2000 Ian  Do not send < or > chars
+* 03/20/2001 Ian  Set oracle_sid based on account
+
+* Sample of dump format
+*LOAD DATA
+*INFILE *
+*INTO TABLE dept
+*REPLACE
+*FIELDS TERMINATED BY '|'
+*(deptno,dname,loc)
+*BEGINDATA
+*10|ACCOUNTING|NEW YORK
+*20|RESEARCH|DALLAS
+*30|SALES|RESTON
+
+OPEN 'RECALLS' TO RECALLS ELSE STOP 201,'RECALLS'
+OPEN 'TRIN.SQLLDR.DATA' TO TRIN.SQLLDR.DATA ELSE STOP 201,'TRIN.SQLLDR.DATA'
+PROMPT ''
+
+S=@SENTENCE
+RECALL.NAME=FIELD(S, ' ', 2)
+IF RECALL.NAME = '' THEN
+   PRINT @(-1):'ENTER RECALL NAME: ':
+   INPUT RECALL.NAME
+   IF RECALL.NAME = '' OR RECALL.NAME = '/' THEN STOP
+END
+READ RECALL FROM RECALLS, RECALL.NAME ELSE STOP 'CANNOT READ RECALLS ':RECALL.NAME
+READ SQLREC FROM TRIN.SQLLDR.DATA, RECALL.NAME ELSE
+   STOP 'CANNOT READ TRIN.SQLLDR.DATA ':RECALL.NAME
+END
+ORACLE.TABLE.NAME=SQLREC<1>
+
+* See if there's a select or get-list statement
+GOSUB FIND.SELECT.LINE
+
+* Get rid of the select line and other stuff
+RECALL=RECALL<1>
+DEL RECALL<1,1>
+
+OUTFILE.BASE="/samba_share/recall_dump/":RECALL.NAME:"_":OCONV(TIME(),"MT")
+CONVERT ":" TO "" IN OUTFILE.BASE
+OUTFILE=OUTFILE.BASE:".DMP"
+EXECUTE "!rm ":OUTFILE
+EXECUTE "!touch ":OUTFILE
+OPENSEQ OUTFILE TO OUTFILE.F ELSE STOP 201,OUTFILE
+BAD=OUTFILE.BASE:'.DMP.bad'
+EXECUTE "!rm ":BAD
+
+IF SELECT.LINE = '' THEN STOP 'MUST HAVE A SELECT LIST '
+PRINT SELECT.LINE
+EXECUTE SELECT.LINE
+
+GOSUB PARSE.ATB.NAMES
+
+OUTREC=\LOAD DATA\ ; GOSUB ADD.ROW
+OUTREC=\INFILE *\ ; GOSUB ADD.ROW
+OUTREC=\INTO TABLE \:ORACLE.TABLE.NAME
+GOSUB ADD.ROW
+OUTREC=\REPLACE\ ; GOSUB ADD.ROW
+OUTREC=\FIELDS TERMINATED BY '|'\ ; GOSUB ADD.ROW
+OUTREC=\(\ ; GOSUB ADD.ROW
+FOR COL=1 TO NUM.FLDS
+   IF COL=1 THEN
+     OUTREC=FLD.LIST<6,COL>
+   END ELSE
+     OUTREC=\,\:FLD.LIST<6,COL>
+   END
+   IF FLD.LIST<2,COL>[1,1]='D' THEN
+      * Dates need format specified
+      OUTREC:=\ DATE "MM/DD/YYYY"    END ELSE
+      IF FLD.LIST<7,COL> <> "" THEN OUTREC:=\ char(\:FLD.LIST<7,COL>:\)    END
+   GOSUB ADD.ROW
+NEXT COL
+
+OUTREC=\)\ ; GOSUB ADD.ROW
+
+* Now do the actual data records
+OUTREC=\BEGINDATA\ ; GOSUB ADD.ROW
+
+LOOP
+   READNEXT @ID ELSE EXIT
+   *PRINT @ID
+   READ @RECORD FROM INFILE.F, @ID ELSE STOP 'CANNOT READ ':@ID
+   TEMP.REC=''
+   FOR COL=1 TO NUM.FLDS
+      FLD.NAME=FLD.LIST<1,COL>
+      CNV=FLD.LIST<2,COL>
+      TYP=FLD.LIST<3,COL>
+      ATB=FLD.LIST<4,COL>
+      WID=FLD.LIST<5,COL>
+      IF TYP='D' THEN
+         IF ATB = 0 THEN VALUE=@ID ELSE VALUE=@RECORD<ATB>
+      END ELSE
+         VALUE=CALCULATE(FLD.NAME)
+      END
+      CONVERT "," TO "" IN CNV
+      IF CNV # '*' THEN VALUE=OCONV(VALUE,CNV)
+      IF INDEX(VALUE,@VM,1) THEN
+         * Oh-oh, multivalued
+         CONVERT @VM TO " " IN VALUE
+      END
+      CONVERT \|\ TO \,\ IN VALUE
+      CONVERT \'\ TO \@\ IN VALUE
+      CONVERT \&\ TO \+\ IN VALUE
+      CONVERT \~\ TO \\ IN VALUE
+      CONVERT \<\ TO \[\ IN VALUE
+      CONVERT \>\ TO \]\ IN VALUE
+      TEMP.REC:=TRIM(VALUE):"|"
+   NEXT F
+   * Get rid of trailing delimiter
+   OUTREC=TEMP.REC[1,LEN(TEMP.REC)-1]
+   GOSUB ADD.ROW
+REPEAT
+
+CLOSESEQ OUTFILE.F
+* Okey dokeley, now to lod the file in with sqlldr
+CALL TRIN.GET.ACCOUNT(ACCOUNT)
+BEGIN CASE
+   CASE ACCOUNT='TRINITY'
+      PWD='******'
+      SCHEMA='system1@sunrise'
+   CASE ACCOUNT='STEELCASE'
+      PWD='******'
+      SCHEMA='system2@sunrise'
+   CASE 1
+      PRINT 'Cannot set ORACLE_SID - this program must be run'
+      PRINT ' from TRINITY or STEELCASE account'
+      STOP
+END CASE
+
+EXECUTE "!/usr/local/bin/dump_sqlldr ":SCHEMA:" ":PWD:" ":OUTFILE
+*EXECUTE "!rm ":OUTFILE
+
+* Mail the log file to the calling user
+RECIP=@LOGNAME
+FRM=@LOGNAME
+SOURCE=OUTFILE.BASE:'.DMP.log'
+PRINT "SOURCE: ":SOURCE
+SUBJECT='SQLLDR log file'
+OPTIONS='PATH'
+OPTIONS<2>='UU'
+*CALL TRIN.MAIL.SUB(RECIP, FRM, SOURCE, SUBJECT, OPTIONS)
+SUBJECT='SQLLDR errors'
+CALL TRIN.MAIL.SUB(RECIP, FRM, BAD, SUBJECT, OPTIONS)
+STOP
+
+ADD.ROW:
+   * Write OUTREC to OUTFILE, line at a time
+   WRITESEQ OUTREC APPEND ON OUTFILE.F ELSE STOP 'ERROR WRITING ':OUTFILE
+RETURN
+
+PARSE.ATB.NAMES:
+   PRINT 'Parsing Recall'
+   CONVERT " " TO @VM IN RECALL
+   CONVERT "~" TO "" IN RECALL
+   TOT.FLDS=DCOUNT(RECALL<1>,@VM)
+   NUM.FLDS=0
+   FLD.LIST='' ; COL.HEAD.LINE=''
+   INFILE=''
+   FOR F=1 TO TOT.FLDS
+      FLD.NAME=RECALL<1,F>
+      * Check this word to see if it's a file name, select,
+      * get-list or dictionary atb
+      IF INFILE='' THEN
+         OPEN FLD.NAME TO DUMMY THEN
+            INFILE=FLD.NAME
+            OPEN INFILE TO INFILE.F ELSE STOP 201,INFILE
+            OPEN 'DICT',INFILE TO @DICT ELSE STOP 201,'DICT ':INFILE
+            CLOSE DUMMY
+         END
+      END ELSE
+         * Add a field to field list, if it's in the dictionary
+         * and it's not already in the list and it's type I or D
+         LOCATE FLD.NAME IN FLD.LIST<1> SETTING POS ELSE
+            * Check to see if this field is mapped to an oracle column name
+            * ...silently discard, if it is not
+            LOCATE FLD.NAME IN SQLREC<2> SETTING POS THEN
+               ORACLE.FIELD.NAME=SQLREC<3,POS>
+               ORACLE.FIELD.SIZE=SQLREC<4,POS>
+               READ DREC FROM @DICT, FLD.NAME THEN
+                  IF DREC<1>='I' OR DREC<1>='D' THEN GOSUB STORE.FIELD
+               END
+            END
+         END
+      END
+   NEXT F
+   IF NUM.FLDS = 0 THEN
+      PRINT 'NO ATB NAMES FOUND IN RECALL'
+      STOP
+   END
+   PRINT
+RETURN
+
+STORE.FIELD:
+   NUM.FLDS+=1
+   COL=NUM.FLDS
+   TYP=DREC<1>
+   ATB=DREC<2>
+   CNV=DREC<3>
+   HED=DREC<4>
+   WID=DREC<5>
+   IF CNV[1,1]='D' THEN CONVERT 'R' TO 'D' IN WID
+   IF CNV='' THEN CNV='*'
+   FLD.LIST<1,COL>=FLD.NAME
+   FLD.LIST<2,COL>=CNV
+   FLD.LIST<3,COL>=TYP
+   FLD.LIST<4,COL>=ATB
+   FLD.LIST<5,COL>=WID
+   FLD.LIST<6,COL>=ORACLE.FIELD.NAME
+   FLD.LIST<7,COL>=ORACLE.FIELD.SIZE
+   IF HED='' THEN HED=FLD.NAME
+   CONVERT @VM TO "_" IN HED
+   CONVERT " " TO "_" IN HED
+   * This is the first line of the output file
+   COL.HEAD.LINE<1,COL>=HED
+   IF DREC<1> # 'D' THEN EXECUTE \CD \:INFILE:\ \:FLD.NAME CAPTURING DUMMY
+RETURN
+
+FIND.SELECT.LINE:
+   SELECT.LINE=''
+   PRE="EXECUTE \" ; LEN.PRE=LEN(PRE)
+   * Skip the first "source" code line
+   LINE.NUM=2 ; MAX.LINE=DCOUNT(RECALL,@AM)
+   LOOP
+      * Strip the line to it's actual code
+      LINE=RECALL<LINE.NUM>[LEN.PRE+1, 999]
+      LINE=FIELD(LINE,'\',1)
+      * Is it a GET.LIST or SELECT?
+      FIRST.WORD=FIELD(TRIM(LINE),' ',1)
+      IF FIRST.WORD='GET.LIST' OR FIRST.WORD='GET-LIST' OR FIRST.WORD='SELECT' OR FIRST.WORD='SSELECT' THEN
+         SELECT.LINE=LINE
+      END
+   UNTIL SELECT.LINE#'' OR LINE.NUM>MAX.LINE DO
+      LINE.NUM += 1
+   REPEAT
+RETURN

@@ -1,0 +1,122 @@
+      PROGRAM PREPASS
+*
+* Utility program to pre-pass programs to use the same $DEFN stuff
+* as UNIVERSE UNIDATA and QM.  Note that the string '!@#$' used in
+* the first four positions are removed as it does a pass.
+*
+* Keith Johnson
+* The code is supplied on an as-is basis as a source-code resource.
+* No representation whatever is made as to the operation of the program.
+*
+* This code SEEMS to run correctly, but I haven't done a lot
+* of checking.  The  variable THIS can be pre-set to your own
+* system (For example, R83 or D3) so that you seem to always
+* have "$DEFINE R83" or "$DEFINE D3" in your code.
+
+      GOOD = (1=1)
+      EVIL = NOT(GOOD)
+
+      PREF = '!@#$'
+      THIS = 'YOURSYSTEM'
+      THAT = GOOD
+      NUMT = 1
+
+      SHOW = GOOD
+      LIST = ''
+      NUML = 0
+
+      LOOP
+         CRT 'Enter file :':
+         INPUT FILE
+         IF FILE EQ '' THEN CRT; STOP
+         GAIN = EVIL
+         OPEN FILE TO INFILE THEN GAIN = GOOD ELSE
+            CRT BELL:' Cannot open the file ':FILE
+         END
+      UNTIL GAIN DO
+      REPEAT
+
+      LOOP
+         CRT 'Enter item name :':
+         INPUT NAME
+         IF NAME EQ '' THEN CRT; STOP
+         GAIN = EVIL
+         READ ITEM FROM FILE, NAME THEN GAIN = GOOD ELSE
+            CRT BELL:'  Cannot read item ':NAME
+         END
+      UNTIL GAIN DO
+      REPEAT
+
+
+      XXCNT = DCOUNT(ITEM,@AM)
+      NEW1 = ''
+      FOR XX = 1 TO XXCNT
+         LINE = ITEM<XX>
+         IF LINE[1,4] = PREF THEN LINE = LINE[5,99999]
+         LIN = TRIM(LINE)
+         FIRST = FIELD(LIN,' ',1)
+         IF FIRST[1,1] = '$' THEN
+            GOSUB DOIT
+         END ELSE
+            IF SHOW ELSE LINE = PREF:LINE
+         END
+         NEW1<XX> = LINE
+      NEXT XX
+      WRITE NEW1 ON INFILE,'QK':NAME
+      STOP
+
+
+DOIT:
+      SECOND = FIELD(LIN,' ',2)
+      BEGIN CASE
+         CASE FIRST = '$DEFINE'
+            LOCATE SECOND IN THIS<1> SETTING POSN THEN
+               THAT<POSN> = GOOD
+            END ELSE
+               NUMT += 1
+               THIS<NUMT> = SECOND
+               THAT<NUMT> = GOOD
+            END
+            LINE = PREF:LINE
+            RETURN
+         CASE FIRST = '$UNDEFINE'
+            LOCATE SECOND IN THIS<1> SETTING POSN THEN
+               THAT<POSN> = EVIL
+            END ELSE
+               NUMT += 1
+               THIS<NUMT> = SECOND
+               THAT<NUMT> = EVIL
+            END
+            LINE = PREF:LINE
+            RETURN
+         CASE FIRST = '$IFDEF'
+            LOCATE SECOND IN THIS<1> SETTING POSN THEN
+               TEMP = THAT<POSN>
+            END ELSE TEMP = EVIL
+            NUML += 1
+            LIST<NUML> = TEMP
+         CASE FIRST = '$IFNDEF'
+            LOCATE SECOND IN THIS<1> SETTING POSN THEN
+               TEMP = NOT(THAT<POSN>)
+            END ELSE TEMP = GOOD
+            NUML += 1
+            LIST<NUML> = TEMP
+         CASE FIRST = '$ENDIF'
+            IF NUML LT 1 THEN RETURN
+            DEL LIST<NUML>
+            NUML -= 1
+         CASE FIRST = '$ELSE'
+            LIST<NUML> = NOT(LIST<NUML>)
+         CASE 1
+            IF SHOW ELSE LINE = PREF:LINE
+            RETURN
+      END CASE
+      LINE = PREF:LINE
+      SHOW = GOOD
+      FOR YY = 1 TO NUML
+         IF NOT(LIST<YY>) THEN
+            SHOW = EVIL
+            RETURN
+         END
+      NEXT YY
+      RETURN
