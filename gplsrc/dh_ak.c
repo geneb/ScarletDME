@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  *
  * START-HISTORY (Scarlet DME):
+ * 03Sep25 gwb Fix for potential buffer overrun due to an insufficiently sized sprintf() target.
+ *             git issue #82
  * 06Feb22 gwb Fixed an uninitialized variable warning in ak_read().
  * 
  * 15Jan22 gwb Fixed argument formatting issues (CwE-686) 
@@ -1918,7 +1920,7 @@ exit_create_ak:
 Private bool delete_ak(char *pathname, /* File path name */
                        int16_t akno)   /* AK number */
 {
-  char path[MAX_PATHNAME_LEN + 1];
+  char path[MAX_PATHNAME_LEN + 1 + 256]; /* git issue #82 */
   bool relocated;
   OSFILE fu = INVALID_FILE_HANDLE;
   DH_HEADER header;

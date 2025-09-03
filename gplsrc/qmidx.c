@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 03Sep25 gwb Fix for potential buffer overrun due to an insufficiently sized sprintf() target.
+ *             git issue #82
  * 15Jan22 gwb Reformatted code.
  * 
  * 27Feb20 gwb Changed integer declarations to be portable across address
@@ -413,7 +415,7 @@ bool write_primary_header() {
 
 bool cross_check(char *path) {
   bool status = FALSE;
-  char pathname[MAX_PATHNAME_LEN + 1];
+  char pathname[MAX_PATHNAME_LEN + 1 + 256]; /* git issue #82*/
   int16_t ak;
   DH_AK_HEADER ak_header;
   int akfu = -1;
@@ -465,8 +467,8 @@ exit_cross_check:
 
 bool copy_indices() {
   bool status = FALSE;
-  char src[MAX_PATHNAME_LEN + 1];
-  char tgt[MAX_PATHNAME_LEN + 1];
+  char src[MAX_PATHNAME_LEN + 1 + 256]; /* git issue #82*/
+  char tgt[MAX_PATHNAME_LEN + 1 + 256]; /* git issue #82*/
   int16_t ak;
   int src_fu = -1;
   int tgt_fu = -1;
