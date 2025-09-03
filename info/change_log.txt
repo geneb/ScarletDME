@@ -1,6 +1,16 @@
 ******************************************************************************
 *            THIS CHANGE LOG ONLY APPLIES TO THE "DEV" BRANCH                *
 ******************************************************************************
+03Sep25 -gwb
+------------
+I made a number of small changes due to issues discovered when compiling with
+newer versions of gcc.  Many thanks to Lance Olson for bringing these to my
+attention!
+
+A number of buffer sizing issues were also address in relation to sprintf().
+
+CodeQL has been configured to run on the dev branch, so we'll see how that works.
+
 06Feb22 -gwb
 ------------
 I ran ScarleDME through valgrind and discovered a few function calls that were
