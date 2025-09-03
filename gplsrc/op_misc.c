@@ -21,6 +21,7 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 03Sep25 gwb Fix potential overflow (github issue #79)
  * 13Oct24 mab Correct format code for op_dtx (BASIC DTX()) 
  *
  * 09Jan22 gwb Fixed a cast warning. (search for 09Jan22 for details)
@@ -1740,7 +1741,7 @@ char* day_to_ddmmmyyyy(int32_t day_no) /* QM format day number */
   int16_t mon;
   int16_t day;
   int16_t day_of_year;
-  static char date_string[11 + 1];
+  static char date_string[24 + 1]; /* github issue #79 */
 
   day_to_dmy(day_no, &day, &mon, &year, &day_of_year);
 

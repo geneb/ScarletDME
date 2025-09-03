@@ -21,6 +21,7 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 03Sep25 gwb Fix potential overflow (github issue #79)
  * 02Jan22 gwb Cleaned up a number of warnings related to using the wrong
  *             format specifier vs the variable type being formatted.
  *
@@ -84,7 +85,7 @@ Private void dump_syscom_var(char* tag, int16_t offset);
 /* ====================================================================== */
 
 void pdump() {
-  char path[MAX_PATHNAME_LEN + 1];
+  char path[MAX_PATHNAME_LEN + 255];  /* github issue #79 */
   struct PROGRAM* pgm;
   int32_t offset;
   char* sym;

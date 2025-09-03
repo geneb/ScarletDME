@@ -21,6 +21,7 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 03Sep25 gwb Fix potential overflow (github issue #79)
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
@@ -188,7 +189,7 @@ void op_clrcom() {
   ARRAY_HEADER* a_hdr;
   ARRAY_CHUNK* a_chunk;
   STRING_CHUNK* str_hdr;
-  char block_name[3 + 1];
+  char block_name[12 + 1];  /* github issue #79 */
 
   /* Find blank common */
 

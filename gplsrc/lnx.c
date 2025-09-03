@@ -21,6 +21,7 @@
 * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 03Sep25 gwb Fix potential overflow (github issue #79)
  * 03Sep25 gwb Remove K&R-isms.
  * START-HISTORY (OpenQM):
  * 01 Jul 07  2.5-7 Extensive change for PDA merge.
@@ -51,7 +52,7 @@ bool qmsendmail(char *sender, char *recipients, char *cc_recipients, char *bcc_r
                 char *subject, char *text, char *attachments) {
 
   bool status = FALSE;
-  char tempname[12 + 1]; /* .qm_mailnnnn */
+  char tempname[16 + 1]; /* .qm_mailnnnn */ /* github issue #79 */
   char command[1024 + 1];
   int tfu;
   int n;
