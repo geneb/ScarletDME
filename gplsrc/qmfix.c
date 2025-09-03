@@ -21,6 +21,7 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 03Sep25 gwb Remove K&R-isms.
  * 15Jan22 gwb Fixed dozens of instances of "Wrong type of arguments to fomatting
  *             function" that were reported by CodeQL. Tagged as CWE-686 by CodeQL.
  * 
@@ -232,9 +233,7 @@ void event_handler(int signum);
 
 /* ====================================================================== */
 
-int main(argc, argv) int argc;
-char *argv[];
-{
+int main(int argc, char *argv[]) {
   int status = 1;
   int arg;
   int argx;

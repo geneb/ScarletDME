@@ -21,6 +21,7 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 03Sep25 gwb Remove K&R-isms.
  * 27Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
@@ -168,8 +169,7 @@ void check_lost_users() {
 /* ======================================================================
    Signal handler                                                         */
 
-void signal_handler(signum) int signum;
-{
+void signal_handler(int signum) {
   switch (signum) {
     case SIGTERM:
       signal(SIGTERM, SIG_IGN);

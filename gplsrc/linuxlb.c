@@ -21,9 +21,9 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 03Sep25 gwb Remove K&R-isms.
  * 10Jan22 gwb Fixed a format specifier warning.
- *
- * 28Feb20 gwb Changed integer declarations to be portable across address
+  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
  * START-HISTORY (OpenQM):
@@ -56,8 +56,7 @@
 /* ======================================================================
    filelength64()  -  Return file size in bytes                           */
 
-int64 filelength64(fd) int fd;
-{
+int64 filelength64(int fd) {
   struct stat statbuf;
 
   fstat(fd, &statbuf);
@@ -74,10 +73,8 @@ bool IsAdmin(void) {
 /* ======================================================================
    itoa()  -  Convert integer to string                                   */
 
-char* itoa(value, string, radix) int value;
-char* string;
-int radix; /* Ignored */
-{
+char* itoa(int value, char *string, int radix) {
+  /* radix is ignored */
   sprintf(string, "%d", value);
   return string;
 }
@@ -85,10 +82,8 @@ int radix; /* Ignored */
 /* ======================================================================
    Ltoa()  -  Convert long integer to string                              */
 
-char* Ltoa(value, string, radix) int32_t value;
-char* string;
-int radix; /* Ignored */
-{
+char* Ltoa(int32_t value, char *string, int radix) {
+  /* radix is ignored */
   sprintf(string, "%d", value);
   return string;
 }
@@ -96,9 +91,9 @@ int radix; /* Ignored */
 /* ======================================================================
    GetUserName()  -  Return user name for logged in user.                 */
 
-bool GetUserName(name, bytes) char* name;
-u_int32_t* bytes; /* Buffer size - updated to actual size on exit */
-{
+bool GetUserName(char *name, u_int32_t *bytes) {
+ /* bytes - Buffer size - updated to actual size on exit */
+
   char* p;
   int n = 0;
   struct passwd* pw;
@@ -249,8 +244,7 @@ char* qmrealpath(char* inpath,  /* Supplied path */
 /* ======================================================================
    Sleep()  -  Sleep for period in milliseconds                           */
 
-void Sleep(n) int32_t n;
-{
+void Sleep(int32_t n){
   struct timespec period;
   struct timespec remaining;
 

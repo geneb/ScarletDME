@@ -21,6 +21,7 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 03Sep25 gwb Remove K&R-isms.
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
@@ -56,22 +57,21 @@ void to_file(PRINT_UNIT* pu, char* str, int16_t bytes);
 /* ======================================================================
    to_printer  -  Send text to printer                                    */
 
-void to_printer(pu, str, bytes) PRINT_UNIT* pu;
-char* str;
-int16_t bytes;
-{ to_file(pu, str, bytes); }
+void to_printer(PRINT_UNIT *pu, char *str, int16_t bytes) { 
+  to_file(pu, str, bytes); 
+}
 
 /* ======================================================================
    validate_printer()  -  Check printer name is valid                     */
 
-bool validate_printer(printer_name) char* printer_name;
-{ return TRUE; }
+bool validate_printer(char *printer_name) { 
+  return TRUE; 
+}
 
 /* ======================================================================
    end_printer()  -  End access to printer                                */
 
-void end_printer(pu) PRINT_UNIT* pu;
-{
+void end_printer(PRINT_UNIT *pu) {
   if (!(pu->flags & PU_KEEP_OPEN)) {
     end_file(pu);
   }

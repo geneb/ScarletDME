@@ -21,6 +21,7 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 03Sep25 gwb Remove K&R-isms.
  * 27Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
@@ -155,8 +156,7 @@ Private void convert_strings(char* buf,
 /* ======================================================================
    tsettermtype()  -  Set terminal type                                   */
 
-bool tsettermtype(termname) char* termname;
-{
+bool tsettermtype(char *termname) {
   bool status = FALSE;
   char tname[32 + 1];
   char filename[MAX_PATHNAME_LEN + 1];
@@ -382,8 +382,7 @@ int tgetnum(char* str) {
 /* ======================================================================
    qmtgetstr()  -  Get pointer to string parameter                        */
 
-char* qmtgetstr(id) char* id;
-{
+char* qmtgetstr(char *id) {
   int i;
   char* result = NULL;
   static char buff[100];
@@ -1212,10 +1211,7 @@ Private char* spop(void) {
 
 /* ====================================================================== */
 
-Private char* parse_format(s, format, len) char* s;
-char* format;
-int* len;
-{
+Private char* parse_format(char* s, char* format, int* len) {
   bool done = FALSE;
   bool allowminus = FALSE;
   bool dot = FALSE;
@@ -1305,10 +1301,7 @@ int* len;
 /* ======================================================================
    convert_shorts()  -  Convert short integer format                      */
 
-Private void convert_shorts(buf, numbers, count) char* buf;
-int16_t* numbers;
-int count;
-{
+Private void convert_shorts(char *buf, int16_t *numbers, int count) {
   int i;
 
   for (i = 0; i < count; i++) {
@@ -1319,12 +1312,7 @@ int count;
 /* ======================================================================
    convert_strings()  -  Convert string data                              */
 
-Private void convert_strings(buf, Strings, count, size, table) char* buf;
-char** Strings;
-int count;
-int size;
-char* table;
-{
+Private void convert_strings(char *buf, char **Strings, int count, int size, char *table) {
   int i;
   char* p;
 

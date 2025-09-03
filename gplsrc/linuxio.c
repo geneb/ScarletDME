@@ -21,6 +21,7 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 03Sep25 gwb Cleaned up K&R-isms.
  * 30Nov23 mab Added "$y$" -  yescrypt to login_user()
  * 17Jan22 gwb Added a fix to login_user() to be able to grok SHA-512
  *             hashes ($6$) along with the exiting MD5 hashes ($1$).
@@ -283,10 +284,10 @@ bool init_console() {
 }
 
 /* ======================================================================
-   set_term()  -  Set or reset terminal modes                             */
-
-void set_term(trap_break) bool trap_break; /* Treat break char as a break? */
-{
+ *  set_term()  -  Set or reset terminal modes                            
+ *  trap_break = true will treat break char as a break.
+ */
+void set_term(bool trap_break) {
   trap_break_char = trap_break;
 
   if (connection_type == CN_CONSOLE) {
@@ -388,8 +389,8 @@ bool keyready() {
   return TRUE;
 }
 
-int16_t keyin(timeout) int timeout; /* Milliseconds */
-{
+/* timeout in milliseconds */
+int16_t keyin(int timeout) {
   char c;
   struct timeval tv;
   int64 t1;
@@ -621,12 +622,7 @@ STRING_CHUNK *inblk(int max_bytes) {
 /* ======================================================================
    save_screen()  -  Save screen image                                    */
 
-bool save_screen(scrn, x, y, w, h) SCREEN_IMAGE *scrn;
-int16_t x;
-int16_t y;
-int16_t w;
-int16_t h;
-{
+bool save_screen(SCREEN_IMAGE *scrn, int16_t x, int16_t y, int16_t w, int16_t h) {
   char *p;
   char *q;
   static int32_t image_id = 0;
@@ -646,9 +642,7 @@ int16_t h;
 
 /* ====================================================================== */
 
-void restore_screen(scrn, restore_cursor) SCREEN_IMAGE *scrn;
-bool restore_cursor;
-{
+void restore_screen(SCREEN_IMAGE *scrn, bool restore_cursor) {
   char *p;
   char *q;
   int n;
@@ -664,9 +658,7 @@ bool restore_cursor;
 
 /* Interludes to map onto Windows style interfaces */
 
-bool read_socket(str, bytes) char *str;
-int bytes;
-{
+bool read_socket(char *str, int bytes) {
   while (bytes--)
     *(str++) = (char)keyin(0);
   return 1;
@@ -736,8 +728,7 @@ bool login_user(char *username, char *password) {
 /* ======================================================================
    Signal handler                                                         */
 
-void signal_handler(signum) int signum;
-{
+void signal_handler(int signum) {
   switch (signum) {
     case SIGINT:
       break_key();
