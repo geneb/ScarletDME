@@ -1113,7 +1113,7 @@ void op_trimx() {
   int16_t src_bytes_remaining; /* Remaining bytes in this chunk */
 
   bool front_of_string;
-  bool skip_count;
+  int32_t  skip_count; /* was bool */
 
   bool skip_leading;
   bool skip_trailing;
@@ -1231,9 +1231,9 @@ void op_trimx() {
         if ((skip_count == 0) || !compress)
           skip_count++;
       } else {
-        if (skip_count) /* We have skipped some embedded characters.
-                                Do we need to put them back?              */
-        {
+        if (skip_count > 0) { /* this was if(skip_count)...*/
+        /* We have skipped some embedded characters. Do we need to put them back?              */
+        
           if (!skip_all) {
             if (!front_of_string || !skip_leading) {
               ts_fill(ch, skip_count);
@@ -1251,9 +1251,9 @@ void op_trimx() {
     src_str = src_str->next;
   }
 
-  if (skip_count) /* We have skipped some trailing characters.  Do we need
-                     to put them back?                                     */
-  {
+  if (skip_count > 0 ) {
+    /* We have skipped some trailing characters.  Do we need to put them back? */
+  
     if (!skip_trailing && !(skip_leading && front_of_string)) {
       ts_fill(ch, skip_count);
     }
