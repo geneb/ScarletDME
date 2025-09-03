@@ -24,6 +24,7 @@
 #
 # Changelog
 # ---------
+# 03Sep25 gwb Updated CFLAGS for newer gcc versions.
 # 05Nov22 awy Fix systemd install for unified /usr
 # 13Mar22 awy Update install target to create master account if required,
 #             and update NEWVOC
@@ -126,7 +127,7 @@ QMUSERS := $(shell cat /etc/group | grep qmusers)
 
 qm: ARCH :=
 qm: BITSIZE := 64
-qm: C_FLAGS  := -Wall -Wformat=2 -Wno-format-nonliteral -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH) -fPIE
+qm: C_FLAGS  := -std=c17 -Wall -Wformat=2 -Wno-format-nonliteral -D_DEFAULT_SOURCE=1 -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH) -fPIE
 qm: $(QMOBJS) qmclilib.so qmtic qmfix qmconv qmidx qmlnxd
 	@echo Linking $@
 	@cd $(GPLOBJ)
