@@ -21,6 +21,7 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 03Sep25 gwb Don't redeclare 'bool' if we're using a C23-compliant compiler.
  * 11Jan22 gwb Created a couple of new defines to eliminate some magic number use
  *             in the k_error() function.
  * 
@@ -148,7 +149,10 @@ extern char **environ;
 /* ======================================================================
    Type definitions                                                       */
 
-typedef int16_t bool;
+#if __STDC_VERSION__ <= 201710L
+  typedef int16_t bool; /* bool is now a defined type as of C23 */
+#endif
+
 #define FALSE 0
 #define TRUE 1
 
