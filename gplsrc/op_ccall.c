@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 03Sep25 gwb Make a function declaration standards compliant (C23 in this case)
+ *             git issue #81
  * 09Jan22 gwb Cleaned up outstanding cast warnings when building for 64 bit.
  *
  * 28Feb20 gwb Changed integer declarations to be portable across address
@@ -74,20 +76,22 @@
 /* ======================================================================
    op_ccall(str1,str2)  -  ccall(...,...) function                                                */
 
-Private void ccall_c(unsigned char* s1, void* s2) {
-  char* p;
+Private void ccall_c(unsigned char *s1, void *s2) {
+  char *p;
   unsigned char ch;
+
   #ifndef __LP64__ /* 09Jan22 gwb - 64 bit fixup */
   u_int32_t Val;
   #else
   u_int64 Val;
   #endif
+  
   u_int32_t Stk[50];
   int StkCnt;
   u_int64 res64;
-  void* v;
+  void *v;
 
-  u_int64 (*Fn0)();
+  u_int64 (*Fn0)(...); /* git issue #81 */
 
   StkCnt = 0;
 
@@ -98,12 +102,14 @@ Private void ccall_c(unsigned char* s1, void* s2) {
       case 1: /* dlload / LoadLibrary */
         p = (char*)s1;
         s1 += strlen(p) + 1;
+
         /* 09Jan22 gwb - fix for 64 bit */
 #ifndef __LP64__        
         res64 = (u_int32_t)dlopen(p, RTLD_NOW | RTLD_GLOBAL);
 #else
         res64 = (u_int64)dlopen(p, RTLD_NOW | RTLD_GLOBAL);
 #endif
+
         break;
 
       case 2: /* dlsym / GetProcAddr */
@@ -111,6 +117,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
         s1 += strlen(p) + 1;
         v = *(void**)s1;
         s1 += sizeof(void*);
+
         /* 09Jan22 gwb - fix for 64 bit */
 #ifndef __LP64__        
         res64 = (u_int32_t)dlsym(v, p);
@@ -132,6 +139,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
         Stk[StkCnt++] = *(u_int64_t*)s1 + (u_int64_t)s2;
         s1 += sizeof(u_int64_t*);
 #endif
+
         break;
 
       case 5: /* Inc stack */
@@ -140,113 +148,138 @@ Private void ccall_c(unsigned char* s1, void* s2) {
       case 6: /* call function */
         Fn0 = *(void**)s1;
         s1 += sizeof(void*);
+
         switch (StkCnt) {
           case 0:
             res64 = (*Fn0)();
             break;
+
           case 1:
             res64 = (*Fn0)(Stk[0]);
             break;
+
           case 2:
             res64 = (*Fn0)(Stk[0], Stk[1]);
             break;
+
           case 3:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2]);
             break;
+
           case 4:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3]);
             break;
+
           case 5:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4]);
             break;
+
           case 6:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5]);
             break;
+
           case 7:
             res64 =
                 (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5], Stk[6]);
             break;
+
           case 8:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7]);
             break;
+
           case 9:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8]);
             break;
+
           case 10:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9]);
             break;
+
           case 11:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9], Stk[10]);
             break;
+
           case 12:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9], Stk[10], Stk[11]);
             break;
+
           case 13:
             res64 =
                 (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5], Stk[6],
                        Stk[7], Stk[8], Stk[9], Stk[10], Stk[11], Stk[12]);
             break;
+
           case 14:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9], Stk[10], Stk[11],
                            Stk[12], Stk[13]);
             break;
+
           case 15:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9], Stk[10], Stk[11],
                            Stk[12], Stk[13], Stk[14]);
             break;
+
           case 16:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9], Stk[10], Stk[11],
                            Stk[12], Stk[13], Stk[14], Stk[15]);
             break;
+
           case 17:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9], Stk[10], Stk[11],
                            Stk[12], Stk[13], Stk[14], Stk[15], Stk[16]);
             break;
+
           case 18:
             res64 =
                 (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5], Stk[6],
                        Stk[7], Stk[8], Stk[9], Stk[10], Stk[11], Stk[12],
                        Stk[13], Stk[14], Stk[15], Stk[16], Stk[17]);
             break;
+
           case 19:
             res64 =
                 (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5], Stk[6],
                        Stk[7], Stk[8], Stk[9], Stk[10], Stk[11], Stk[12],
                        Stk[13], Stk[14], Stk[15], Stk[16], Stk[17], Stk[18]);
             break;
+
           case 20:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9], Stk[10], Stk[11],
                            Stk[12], Stk[13], Stk[14], Stk[15], Stk[16], Stk[17],
                            Stk[18], Stk[19]);
             break;
+
           case 21:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9], Stk[10], Stk[11],
                            Stk[12], Stk[13], Stk[14], Stk[15], Stk[16], Stk[17],
                            Stk[18], Stk[19], Stk[20]);
             break;
+
           case 22:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9], Stk[10], Stk[11],
                            Stk[12], Stk[13], Stk[14], Stk[15], Stk[16], Stk[17],
                            Stk[18], Stk[19], Stk[20], Stk[21]);
             break;
+
           case 23:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9], Stk[10], Stk[11],
                            Stk[12], Stk[13], Stk[14], Stk[15], Stk[16], Stk[17],
                            Stk[18], Stk[19], Stk[20], Stk[21], Stk[22]);
             break;
+
           case 24:
             res64 =
                 (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5], Stk[6],
@@ -254,6 +287,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                        Stk[13], Stk[14], Stk[15], Stk[16], Stk[17], Stk[18],
                        Stk[19], Stk[20], Stk[21], Stk[22], Stk[23]);
             break;
+
           case 25:
             res64 =
                 (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5], Stk[6],
@@ -261,6 +295,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                        Stk[13], Stk[14], Stk[15], Stk[16], Stk[17], Stk[18],
                        Stk[19], Stk[20], Stk[21], Stk[22], Stk[23], Stk[24]);
             break;
+
           case 26:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9], Stk[10], Stk[11],
@@ -268,6 +303,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                            Stk[18], Stk[19], Stk[20], Stk[21], Stk[22], Stk[23],
                            Stk[24], Stk[25]);
             break;
+
           case 27:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9], Stk[10], Stk[11],
@@ -275,6 +311,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                            Stk[18], Stk[19], Stk[20], Stk[21], Stk[22], Stk[23],
                            Stk[24], Stk[25], Stk[26]);
             break;
+
           case 28:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9], Stk[10], Stk[11],
@@ -282,6 +319,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                            Stk[18], Stk[19], Stk[20], Stk[21], Stk[22], Stk[23],
                            Stk[24], Stk[25], Stk[26], Stk[27]);
             break;
+
           case 29:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9], Stk[10], Stk[11],
@@ -289,6 +327,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                            Stk[18], Stk[19], Stk[20], Stk[21], Stk[22], Stk[23],
                            Stk[24], Stk[25], Stk[26], Stk[27], Stk[28]);
             break;
+
           case 30:
             res64 =
                 (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5], Stk[6],
@@ -297,6 +336,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                        Stk[19], Stk[20], Stk[21], Stk[22], Stk[23], Stk[24],
                        Stk[25], Stk[26], Stk[27], Stk[28], Stk[29]);
             break;
+      
           case 31:
             res64 =
                 (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5], Stk[6],
@@ -305,6 +345,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                        Stk[19], Stk[20], Stk[21], Stk[22], Stk[23], Stk[24],
                        Stk[25], Stk[26], Stk[27], Stk[28], Stk[29], Stk[30]);
             break;
+
           case 32:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9], Stk[10], Stk[11],
@@ -313,6 +354,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                            Stk[24], Stk[25], Stk[26], Stk[27], Stk[28], Stk[29],
                            Stk[30], Stk[31]);
             break;
+
           case 33:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9], Stk[10], Stk[11],
@@ -321,6 +363,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                            Stk[24], Stk[25], Stk[26], Stk[27], Stk[28], Stk[29],
                            Stk[30], Stk[31], Stk[32]);
             break;
+
           case 34:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9], Stk[10], Stk[11],
@@ -329,6 +372,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                            Stk[24], Stk[25], Stk[26], Stk[27], Stk[28], Stk[29],
                            Stk[30], Stk[31], Stk[32], Stk[33]);
             break;
+
           case 35:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9], Stk[10], Stk[11],
@@ -337,6 +381,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                            Stk[24], Stk[25], Stk[26], Stk[27], Stk[28], Stk[29],
                            Stk[30], Stk[31], Stk[32], Stk[33], Stk[34]);
             break;
+
           case 36:
             res64 = (*Fn0)(
                 Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5], Stk[6], Stk[7],
@@ -345,6 +390,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                 Stk[22], Stk[23], Stk[24], Stk[25], Stk[26], Stk[27], Stk[28],
                 Stk[29], Stk[30], Stk[31], Stk[32], Stk[33], Stk[34], Stk[35]);
             break;
+
           case 37:
             res64 =
                 (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5], Stk[6],
@@ -354,6 +400,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                        Stk[25], Stk[26], Stk[27], Stk[28], Stk[29], Stk[30],
                        Stk[31], Stk[32], Stk[33], Stk[34], Stk[35], Stk[36]);
             break;
+
           case 38:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9], Stk[10], Stk[11],
@@ -363,6 +410,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                            Stk[30], Stk[31], Stk[32], Stk[33], Stk[34], Stk[35],
                            Stk[36], Stk[37]);
             break;
+
           case 39:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9], Stk[10], Stk[11],
@@ -372,6 +420,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                            Stk[30], Stk[31], Stk[32], Stk[33], Stk[34], Stk[35],
                            Stk[36], Stk[37], Stk[38]);
             break;
+
           case 40:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9], Stk[10], Stk[11],
@@ -381,6 +430,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                            Stk[30], Stk[31], Stk[32], Stk[33], Stk[34], Stk[35],
                            Stk[36], Stk[37], Stk[38], Stk[39]);
             break;
+
           case 41:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9], Stk[10], Stk[11],
@@ -390,6 +440,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                            Stk[30], Stk[31], Stk[32], Stk[33], Stk[34], Stk[35],
                            Stk[36], Stk[37], Stk[38], Stk[39], Stk[40]);
             break;
+
           case 42:
             res64 = (*Fn0)(
                 Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5], Stk[6], Stk[7],
@@ -399,6 +450,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                 Stk[29], Stk[30], Stk[31], Stk[32], Stk[33], Stk[34], Stk[35],
                 Stk[36], Stk[37], Stk[38], Stk[39], Stk[40], Stk[41]);
             break;
+
           case 43:
             res64 = (*Fn0)(
                 Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5], Stk[6], Stk[7],
@@ -408,6 +460,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                 Stk[29], Stk[30], Stk[31], Stk[32], Stk[33], Stk[34], Stk[35],
                 Stk[36], Stk[37], Stk[38], Stk[39], Stk[40], Stk[41], Stk[42]);
             break;
+
           case 44:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9], Stk[10], Stk[11],
@@ -418,6 +471,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                            Stk[36], Stk[37], Stk[38], Stk[39], Stk[40], Stk[41],
                            Stk[42], Stk[43]);
             break;
+
           case 45:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9], Stk[10], Stk[11],
@@ -428,6 +482,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                            Stk[36], Stk[37], Stk[38], Stk[39], Stk[40], Stk[41],
                            Stk[42], Stk[43], Stk[44]);
             break;
+
           case 46:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9], Stk[10], Stk[11],
@@ -438,6 +493,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                            Stk[36], Stk[37], Stk[38], Stk[39], Stk[40], Stk[41],
                            Stk[42], Stk[43], Stk[44], Stk[45]);
             break;
+
           case 47:
             res64 = (*Fn0)(Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5],
                            Stk[6], Stk[7], Stk[8], Stk[9], Stk[10], Stk[11],
@@ -448,6 +504,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                            Stk[36], Stk[37], Stk[38], Stk[39], Stk[40], Stk[41],
                            Stk[42], Stk[43], Stk[44], Stk[45], Stk[46]);
             break;
+
           case 48:
             res64 = (*Fn0)(
                 Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5], Stk[6], Stk[7],
@@ -458,6 +515,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                 Stk[36], Stk[37], Stk[38], Stk[39], Stk[40], Stk[41], Stk[42],
                 Stk[43], Stk[44], Stk[45], Stk[46], Stk[47]);
             break;
+
           case 49:
             res64 = (*Fn0)(
                 Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5], Stk[6], Stk[7],
@@ -468,6 +526,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                 Stk[36], Stk[37], Stk[38], Stk[39], Stk[40], Stk[41], Stk[42],
                 Stk[43], Stk[44], Stk[45], Stk[46], Stk[47], Stk[48]);
             break;
+
           case 50:
             res64 = (*Fn0)(
                 Stk[0], Stk[1], Stk[2], Stk[3], Stk[4], Stk[5], Stk[6], Stk[7],
@@ -479,6 +538,7 @@ Private void ccall_c(unsigned char* s1, void* s2) {
                 Stk[43], Stk[44], Stk[45], Stk[46], Stk[47], Stk[48], Stk[49]);
             break;
         }
+
         break;
 
       case 7: /* save 32-bit result */
