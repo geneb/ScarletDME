@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY:
+ * 10Sep25 gwb git issue #84 - Fix include for deprecated termio.h
+ * 
  * 21Feb20 gwb Removed forward declaration for crypt() as it conflicted with the
  *              one found in unistd.h.
  * 
@@ -45,10 +47,13 @@
 #ifdef __APPLE__
 #include <termios.h>
 #else
-#include <termio.h>
+#include <termios.h>    /* git issue #84 */
+#include <sys/ioctl.h>  /*               */
 #endif
+
 #include <netdb.h>
 #include <arpa/inet.h>
+
 #define PASSWD_FILE_NAME "/etc/shadow"
 /* removed due to conflict with unistd.h */
 /* char * crypt(char * password, char * p); */
@@ -59,7 +64,9 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
+
 typedef int SOCKET;
+
 #define INVALID_SOCKET -1
 #define closesocket(s) close(s)
 #define NetError errno
