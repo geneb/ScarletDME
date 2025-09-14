@@ -21,6 +21,7 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 13Sep25 mab Fix seg fault on empty (null) btree sselect item
  * 15Jan22 gwb Fixed an waring regarding "comparison of narrow type with wide type in 
  *             loop condition."
  * 
@@ -581,7 +582,9 @@ void op_sortdata() {
       if (sort_has_data)
         ts_copy(bte->data, strlen(bte->data));
       else
-        ts_copy(bte->key[0], strlen(bte->key[0]));
+//  13Sep25 mab Fix seg fault on empty (null) btree sselect item      
+        if (bte->key[0] != NULL)
+          ts_copy(bte->key[0], strlen(bte->key[0]));
       process.status += 1;
 
       /* Locate next item */
