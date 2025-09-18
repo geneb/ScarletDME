@@ -115,6 +115,14 @@ endif
 
 RM       := rm
 
+# The CodeQL CI process fails if we use -std=c23, so we use -std=c2x only for those builds.
+# 
+ifeq ($(CODEQL_RUNNING), 1)
+CSTD	 := -std=c23
+else
+CSTD	 := -std=c2x
+endif
+
 QMHDRS   := $(wildcard *.h)
 QMSRCS   := $(shell cat $(GPLDOTSRC))
 QMTEMP   := $(addsuffix .o,$(QMSRCS))
@@ -129,7 +137,7 @@ QMUSERS := $(shell cat /etc/group | grep qmusers)
 
 qm: ARCH :=
 qm: BITSIZE := 64
-qm: C_FLAGS  := -std=c23 -Wall -Wformat=2 -Wno-format-nonliteral -D_DEFAULT_SOURCE=1 -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH) -fPIE
+qm: C_FLAGS  := $(CSTD) -Wall -Wformat=2 -Wno-format-nonliteral -D_DEFAULT_SOURCE=1 -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH) -fPIE
 qm: $(QMOBJS) qmclilib.so qmtic qmfix qmconv qmidx qmlnxd
 	@echo Linking $@
 	@cd $(GPLOBJ)
