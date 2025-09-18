@@ -91,7 +91,11 @@ Private void ccall_c(unsigned char *s1, void *s2) {
   u_int64 res64;
   void *v;
 
+#if defined(__GNUC__) && __GNUC__ > 11
   u_int64 (*Fn0)(...); /* git issue #81 */
+#else
+  u_int64 (*Fn0)(); /* git issue #81 */
+#endif
 
   StkCnt = 0;
 
