@@ -149,7 +149,7 @@ extern char **environ;
 /* ======================================================================
    Type definitions                                                       */
 
-#if __STDC_VERSION__ <= 201710L
+#if __STDC_VERSION__ <= 202000L // 201710L
   typedef int16_t bool; /* bool is now a defined type as of C23 */
 #endif
 
