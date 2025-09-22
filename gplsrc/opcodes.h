@@ -21,6 +21,7 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 22Sep25 gwb Git Issue #93 - Incorrect stack value for OP_SRVRSKT opcode.
  * 
  * START-HISTORY (OpenQM):
  * 16 Sep 04  2.0-1 OpenQM launch. Earlier history details suppressed.
@@ -547,7 +548,7 @@ _opc_(0xCFC0, OP_OPENSKT,  "OPENSKT",    op_openskt,   OPCODE_BYTE,        -3)
 _opc_(0xCFC1, OP_CLOSESKT, "CLOSESKT",   op_closeskt,  OPCODE_BYTE,        -1)
 _opc_(0xCFC2, OP_READSKT,  "READSKT",    op_readskt,   OPCODE_BYTE,        -3)
 _opc_(0xCFC3, OP_WRITESKT, "WRITESKT",   op_writeskt,  OPCODE_BYTE,        -3)
-_opc_(0xCFC4, OP_SRVRSKT,  "SRVRSKT",    op_srvrskt,   OPCODE_BYTE,        -2)
+_opc_(0xCFC4, OP_SRVRSKT,  "SRVRSKT",    op_srvrskt,   OPCODE_BYTE,        -3)  /* git issue #93 */
 _opc_(0xCFC5, OP_ACCPTSKT, "ACCPTSKT",   op_accptskt,  OPCODE_BYTE,        -1)
 _opc_(0xCFC6, OP_SKTINFO,  "SKTINFO",    op_sktinfo,   OPCODE_BYTE,        -1)
 _opc_(0xCFC7, OP_SETSKT,   "SETSKT",     op_setskt,    OPCODE_BYTE,        -2)
