@@ -21,7 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
- *
+ * 18Sep25 gwb Git Issue #89: Prevent SIGPIPE in op_writeskt() if the peer drops the connection.
+ * 
  * START-HISTORY (OpenQM):
  * 10 Apr 09 gcb Added SO_REUSEADDR socket option to op_srvrskt() so that the
  *               network subsystem will allow rebinding during TIME_WAIT. 
@@ -109,8 +110,11 @@
  * var = SERVER.ADDR(name)
  *
  * bytes = WRITE.SOCKET(skt, data, flags, timeout)
+ *  Flags:
  *      0x0001 = SKT$BLOCKING        Blocking     } If neither, uses socket
  *      0x0002 = SKT$NON.BLOCKING    Non-Blocking } default from open.
+ *      0x4000 = SKT$MSG.NOSIGNAL    Don't throw SIGPIPE when peer disconnects.
+ * 
  *   timeout = max wait time (mS), zero for infinite
  *
  * END-DESCRIPTION
@@ -1169,12 +1173,12 @@ void op_writeskt() {
     p = str->data;
     bytes = str->bytes;
     do {
+
       if (!socket_wait(skt, FALSE, (blocking) ? timeout : 0))
         goto exit_op_writeskt;
 
-      bytes_sent = send(skt, p, bytes, 0);
-      if (bytes_sent < 0) /* Lost connection */
-      {
+      bytes_sent = send(skt, p, bytes, MSG_NOSIGNAL); /* git issue #89 */
+      if (bytes_sent < 0) {  /* Lost connection */
         process.status = ER_FAILED;
         process.os_error = NetError;
         goto exit_op_writeskt;
@@ -1183,7 +1187,9 @@ void op_writeskt() {
       bytes -= bytes_sent;
       total_bytes += bytes_sent;
       p += bytes_sent;
+
     } while (bytes);
+
     str = str->next;
   }
 
