@@ -1,21 +1,9 @@
 [Make sure to check out the change_log.txt file to see the most
  current work being done!]
 
-As of January 10th, 2022, ScarletDME can be built as a fully native 64 bit
-application!  More testing needs to be done, but the 64 bit build appears
-to function identically to the 32 bit build.
-
-The 64-bit version is the default for the dev branch, but there is a
-qm32 target to build the 32-bit version on the dev branch.
-
-These packages are needed to build ScarletDME as a 32 bit application,
-for most Linux distributions:
-libgcc.i686
-glibc-devel.i686
-
-For proper terminal operation, you'll need to install:
-ncurses-devel
-ncurses-compat-libs
+ScarletDME now mostly favors 64 bit platforms.  The 32 bit code has been
+"retired" to the "master32" and "Release32" branches.  No pull requests will
+be accepted for the 32 bit branches.
 
 If you would like to support remote access to your ScarletDME system via
 the QMClient API or telnet services, you'll need to install xinetd, or
@@ -48,9 +36,14 @@ the document root as docs/build/html/index. To build other formats (pdf,
 epub) read the Sphinx documentation, then run the Sphinx makefile from
 inside the docs directory. (Make sure you get the right Sphinx - www.sphinx-doc.org)
 
+Got a pull request for us?  GREAT!  However, all pull requests must be tied to 
+a git Issue # in order to help keep things a bit better documented and much
+more organized!  Make sure your commit message includes the Issue # you created.
+
 Code formatting notes:
+=====================================================================
 I'm using Visual Studio code with the Microsoft C/C++ IntelliSense, debugging,
-and code browsing extension installed.  
+and code browsing extension installed.
 
 Each time I need to edit a code file, it's reformatted using the clang-format
 feature in the extension.  The .clang-format file in this repository is based
@@ -58,8 +51,7 @@ upon the Chromium format, but it will not reflow comments, nor will it
 sort includes.  The settings can be found in ScarletDME/.clang-format.
 
 Some files have been reformatted, most have not.  However, eventually they all
-will be.  There's also instances of K&R-style function parameter declarations
-and those will be converted to ANSI-style as I discover them.
+will be.
 
 There's a mailing list available at https://groups.google.com/g/scarletdme. 
 Both developers and regular users are welcome!
@@ -77,18 +69,6 @@ That's how most open source software is done apparently. :)
 
 I should note that at the moment, the contents of this git repo builds and
 works for *me*.  I'm not guaranteeing it'll work for anyone else. :)
-
-I'm not sure what the future holds for this project, but I would like to get 
-a clean, working build of a 64 bit ScarletDME.  I had originally thought that
-this was very difficult due to the pre-compiled p-code that the system depended
-on.  However, after actually doing some research into what was going on, it 
-may be a much less dramatic task than I'd originally thought.  My original 
-assumption about the p-code issue was *wildly* incorrect.  That happens when
-you just glance at an issue without actually digging into it.
-
-This means that a 64 bit version of ScarletDME isn't that far fetched after
-all.  Time well tell I suppose.  I know what needs to be done and how to do 
-it, so at least I've got that going for me. :)
 
 I would also like to finish the "re-branding" of OpenQM to ScarletDME.
 While some things will forever be "OpenQM-isms" like the names of the binaries,

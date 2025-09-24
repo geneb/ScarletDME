@@ -24,6 +24,8 @@
 #
 # Changelog
 # ---------
+# 18Sep15 gwb Specifically copy the gcat and GPL.BP directories if a previous
+#             installation exists. (Git issue #90)
 # 03Sep25 gwb Updated CFLAGS for newer gcc versions.
 # 05Nov22 awy Fix systemd install for unified /usr
 # 13Mar22 awy Update install target to create master account if required,
@@ -113,6 +115,14 @@ endif
 
 RM       := rm
 
+# The CodeQL CI process fails if we use -std=c23, so we use -std=c2x only for those builds.
+# 
+ifeq ($(CODEQL_RUNNING), 1)
+CSTD	 := -std=c23
+else
+CSTD	 := -std=c2x
+endif
+
 QMHDRS   := $(wildcard *.h)
 QMSRCS   := $(shell cat $(GPLDOTSRC))
 QMTEMP   := $(addsuffix .o,$(QMSRCS))
@@ -127,7 +137,7 @@ QMUSERS := $(shell cat /etc/group | grep qmusers)
 
 qm: ARCH :=
 qm: BITSIZE := 64
-qm: C_FLAGS  := -std=c2x -Wall -Wformat=2 -Wno-format-nonliteral -D_DEFAULT_SOURCE=1 -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH) -fPIE
+qm: C_FLAGS  := $(CSTD) -Wall -Wformat=2 -Wno-format-nonliteral -D_DEFAULT_SOURCE=1 -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH) -fPIE
 qm: $(QMOBJS) qmclilib.so qmtic qmfix qmconv qmidx qmlnxd
 	@echo Linking $@
 	@cd $(GPLOBJ)
@@ -266,6 +276,17 @@ else
 	@chown -R qmsys:qmusers $(INSTROOT)/terminfo
 	@find $(INSTROOT)/terminfo -type d -print0 | xargs -0 chmod 775
 	@find $(INSTROOT)/terminfo -type f -print0 | xargs -0 chmod 664
+
+#       Copy compiled binaries from the global catalog file (gcat) as well as the source
+#       code from qmsys/GPL.BP.
+
+	@cp qmsys/gcat/* $(INSTROOT)/gcat
+	@chown qmsys:qmusers $(INSTROOT)/gcat/*
+	@chmod 664 $(INSTROOT)/gcat/*
+
+	@cp qmsys/GPL.BP/* $(INSTROOT)/GPL.BP
+	@chown qmsys:qmusers $(INSTROOT)/GPL.BP/*
+	@chmod 664 $(INSTROOT)/GPL.BP/*
 
 #	@chown qmsys:qmusers $(INSTROOT)/terminfo/*
 #	@chmod 664 $(INSTROOT)/terminfo/*

@@ -21,6 +21,7 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 22Sep25 gwb Git issue #92 - add a check for MacOS.
  * 03Sep25 gwb Make a function declaration standards compliant (C23 in this case)
  *             git issue #81
  * 09Jan22 gwb Cleaned up outstanding cast warnings when building for 64 bit.
@@ -91,7 +92,11 @@ Private void ccall_c(unsigned char *s1, void *s2) {
   u_int64 res64;
   void *v;
 
+#if defined(__GNUC__) && __GNUC__ > 11  || defined(__APPLE__) /* part of git issue #92 */
   u_int64 (*Fn0)(...); /* git issue #81 */
+#else
+  u_int64 (*Fn0)(); /* git issue #81 */
+#endif
 
   StkCnt = 0;
 

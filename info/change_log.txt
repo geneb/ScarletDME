@@ -1,6 +1,26 @@
 ******************************************************************************
 *            THIS CHANGE LOG ONLY APPLIES TO THE "DEV" BRANCH                *
 ******************************************************************************
+10Sep25 -gwb
+------------
+Today I made some major changes to the source code repository on github.com.
+This was done in order to properly "retire" the 32 bit source tree.  The 32 bit
+code base is (charitably) long in the tooth and requires a lot of effort to
+get it to build on a 64 bit Linux host.  In order to make things easier for
+new users, it was decided to retire it.
+
+Here's a list of the changes I've made for this:
+
+1. The old master branch was renamed master32 - this is all the 32 bit code.
+2. The old Release branch was renamed Release32 - same.
+3. The old dev branch was renamed to master and made the default branch.
+4. A new dev branch was created, based on the new master branch.
+
+I'm also instituting a new rule - any PRs must be tied to an existing Issue
+number.  This will help keep better track of things going forward.
+
+Thanks folks!
+
 03Sep25 -gwb
 ------------
 I made a number of small changes due to issues discovered when compiling with
