@@ -148,7 +148,7 @@ int16_t swap2(int16_t data);
 
 /* Type definitions */
 
-#if __STDC_VERSION__ <= 202000L // 201710L /* git issue #92 */
+#if __STDC_VERSION__ <= 201710L /* git issue #92 */
 typedef int16_t bool;
 #endif
 
