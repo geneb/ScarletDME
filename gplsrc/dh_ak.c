@@ -21,6 +21,7 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  *
  * START-HISTORY (Scarlet DME):
+ * 17Oct25 mab Change dyn file prefix to %
  * 03Sep25 gwb Fix for potential buffer overrun due to an insufficiently sized sprintf() target.
  *             git issue #82
  * 06Feb22 gwb Fixed an uninitialized variable warning in ak_read().
@@ -1729,7 +1730,8 @@ Private int16_t create_ak(char *data_path,          /* Data file path name */
   /* Open primary subfile.  We do this outside of the file sharing mechanism
      to guarantee that we are the only user of the file.                     */
 
-  sprintf(path, "%s%c~0", data_path, DS);
+// 17Oct25 mab Change dyn file prefix to %
+  sprintf(path, "%s%c%%0", data_path, DS);
   fu = dio_open(path, DIO_UPDATE);
   if (!ValidFileHandle(fu)) {
     dh_err = DHE_FILE_NOT_FOUND;
@@ -1787,7 +1789,8 @@ Private int16_t create_ak(char *data_path,          /* Data file path name */
     strcpy(header.akpath, ak_path); /* Only relevant on first index */
   }
 
-  sprintf(path, "%s%c~%d", ak_path, DS, subfile);
+// 17Oct25 mab Change dyn file prefix to %
+  sprintf(path, "%s%c%%%d", ak_path, DS, subfile);
   akfu = dio_open(path, DIO_NEW);
   if (!ValidFileHandle(akfu)) {
     dh_err = DHE_AK_CREATE_ERR;
@@ -1927,8 +1930,9 @@ Private bool delete_ak(char *pathname, /* File path name */
 
   /* Open primary subfile.  We do this outside of the file sharing mechanism
      to guarantee that we are the only user of the file.                     */
-
-  sprintf(path, "%s%c~0", pathname, DS);
+	 
+//  17Oct25 mab Change dyn file prefix to %
+  sprintf(path, "%s%c%%0", pathname, DS);
   fu = dio_open(path, DIO_UPDATE);
   if (!ValidFileHandle(fu)) {
     dh_err = DHE_FILE_NOT_FOUND;
@@ -1966,8 +1970,9 @@ Private bool delete_ak(char *pathname, /* File path name */
   relocated = (header.akpath[0] != '\0');
 
   /* Delete the AK subfile */
-
-  sprintf(path, "%s%c~%d", (relocated) ? header.akpath : pathname, DS, (int)(akno + AK_BASE_SUBFILE));
+  
+// 17Oct25 mab Change dyn file prefix to %
+  sprintf(path, "%s%c%%%d", (relocated) ? header.akpath : pathname, DS, (int)(akno + AK_BASE_SUBFILE));
   if (remove(path) != 0) {
     dh_err = DHE_AK_DELETE_ERROR;
     process.os_error = OSError;

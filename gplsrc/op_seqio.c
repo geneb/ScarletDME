@@ -21,6 +21,7 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 17Oct25 mab Change dyn file prefix to %
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
@@ -488,11 +489,11 @@ Private void openseq(bool map_name) {
       process.status = ER_FNF;
       goto exit_op_openseq;
     }
-
+    // 17Oct25 mab Change dyn file prefix to %
     /* Check if it is a directory file. The best we can do here is to check that
-      it is a directory and that there is no ~0 subfile.                     */
+      it is a directory and that there is no %0 subfile.                     */
     /* converted to snprintf() -gwb 22Feb20 */
-    if (snprintf(pathname, MAX_PATHNAME_LEN + 1, "%s%c~0", file_name, DS) >=
+    if (snprintf(pathname, MAX_PATHNAME_LEN + 1, "%s%c%%0", file_name, DS) >=
         (MAX_PATHNAME_LEN + 1)) {
       /* TODO: this should be logged to disk with more information */
       k_error("Overflowed path/filename size in openseq()");

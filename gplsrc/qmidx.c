@@ -21,6 +21,7 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 17Oct25 mab Change dyn file prefix to %
  * 03Sep25 gwb Fix for potential buffer overrun due to an insufficiently sized sprintf() target.
  *             git issue #82
  * 15Jan22 gwb Reformatted code.
@@ -174,8 +175,9 @@ int main(int argc, char *argv[]) {
         for (ak = 0; ak < MAX_INDICES; ak++) {
           if (header.ak_map & (1 << ak)) {
             // converted to snprintf() -gwb 25Feb20
-            if (snprintf(path, MAX_ACCOUNT_NAME_LEN + 1, "%s%c~%d", data_path, DS, SF(ak)) >= (MAX_ACCOUNT_NAME_LEN + 1)) {
-              printf("Overflowed path/filename buffer.  Truncated to:\n%s%c~%d", data_path, DS, SF(ak));
+            // 17Oct25 mab Change dyn file prefix to %
+            if (snprintf(path, MAX_ACCOUNT_NAME_LEN + 1, "%s%c%%%d", data_path, DS, SF(ak)) >= (MAX_ACCOUNT_NAME_LEN + 1)) {
+              printf("Overflowed path/filename buffer.  Truncated to:\n%s%c%%%d", data_path, DS, SF(ak));
             }
             remove(path);
           }
@@ -249,8 +251,9 @@ int main(int argc, char *argv[]) {
         for (ak = 0; ak < MAX_INDICES; ak++) {
           if (header.ak_map & (1 << ak)) {
             // converted to snprintf() -gwb 25Feb20
-            if (snprintf(path, MAX_ACCOUNT_NAME_LEN + 1, "%s%c~%d", data_path, DS, SF(ak)) >= (MAX_ACCOUNT_NAME_LEN + 1)) {
-              printf("Overflowed path/filename buffer.  Truncated to:\n%s%c~%d", data_path, DS, SF(ak));
+            // 17Oct25 mab Change dyn file prefix to %
+            if (snprintf(path, MAX_ACCOUNT_NAME_LEN + 1, "%s%c%%%d", data_path, DS, SF(ak)) >= (MAX_ACCOUNT_NAME_LEN + 1)) {
+              printf("Overflowed path/filename buffer.  Truncated to:\n%s%c%%%d", data_path, DS, SF(ak));
             }
             remove(path);
           }
@@ -350,8 +353,10 @@ bool open_primary() {
   int fno;
   FILE_ENTRY *fptr;
   // converted to snprintf() -gwb 25Feb20
-  if (snprintf(pathname, MAX_PATHNAME_LEN + 1, "%s%c~0", data_path, DS) >= (MAX_PATHNAME_LEN + 1)) {
-    printf("Overflowed path/filename buffer.  Truncated to:\n%s%c~0\n", data_path, DS);
+  // 17Oct25 mab Change dyn file prefix to %
+  
+  if (snprintf(pathname, MAX_PATHNAME_LEN + 1, "%s%c%%0", data_path, DS) >= (MAX_PATHNAME_LEN + 1)) {
+    printf("Overflowed path/filename buffer.  Truncated to:\n%s%c%%0\n", data_path, DS);
   }
 
   /* Check that this file is not currently in use within QM */
@@ -422,7 +427,8 @@ bool cross_check(char *path) {
 
   for (ak = 0; ak < MAX_INDICES; ak++) {
     if (header.ak_map & (1 << ak)) {
-      sprintf(pathname, "%s%c~%d", (path[0] != '\0') ? path : data_path, DS, SF(ak));
+      // 17Oct25 mab Change dyn file prefix to %
+      sprintf(pathname, "%s%c%%%d", (path[0] != '\0') ? path : data_path, DS, SF(ak));
       akfu = open(pathname, (int)(O_RDONLY | O_BINARY), default_access);
       if (akfu < 0) {
         printf("Cannot open index subfile %d [%d]\n", SF(ak), errno);
@@ -479,8 +485,9 @@ bool copy_indices() {
       printf("Moving index subfile %d\n", SF(ak));
 
       /* Form source path and open subfile */
+      // 17Oct25 mab Change dyn file prefix to %
 
-      sprintf(src, "%s%c~%d", (header.akpath[0] != '\0') ? header.akpath : data_path, DS, SF(ak));
+      sprintf(src, "%s%c%%%d", (header.akpath[0] != '\0') ? header.akpath : data_path, DS, SF(ak));
 
       src_fu = open(src, (int)(O_RDONLY | O_BINARY), default_access);
       if (src_fu < 0) {
@@ -489,8 +496,9 @@ bool copy_indices() {
       }
 
       /* Form target path and open subfile */
-
-      sprintf(tgt, "%s%c~%d", (ak_path[0] != '\0') ? ak_path : data_path, DS, SF(ak));
+      // 17Oct25 mab Change dyn file prefix to %
+ 
+      sprintf(tgt, "%s%c%%%d", (ak_path[0] != '\0') ? ak_path : data_path, DS, SF(ak));
 
       tgt_fu = open(tgt, (int)(O_RDWR | O_CREAT | O_EXCL | O_BINARY), default_access);
       if (tgt_fu < 0) {

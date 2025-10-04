@@ -21,6 +21,7 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 17Oct25 mab Change dyn file prefix to %
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  * 
@@ -143,8 +144,9 @@ bool dh_create_file(char path[],
   }
 
   /* Create primary subfile */
-
-  sprintf(primary_subfile, "%s%c~0", path, DS);
+  
+// 17Oct25 mab Change dyn file prefix to %
+  sprintf(primary_subfile, "%s%c%%0", path, DS);
   fu = dio_open(primary_subfile, DIO_NEW);
 
   if (!ValidFileHandle(fu)) {
@@ -206,7 +208,8 @@ bool dh_create_file(char path[],
 
   /* Create overflow subfile */
 
-  sprintf(overflow_subfile, "%s%c~1", path, DS);
+// 17Oct25 mab Change dyn file prefix to %
+  sprintf(overflow_subfile, "%s%c%%1", path, DS);
   fu = dio_open(overflow_subfile, DIO_NEW);
 
   if (!ValidFileHandle(fu)) {

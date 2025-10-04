@@ -21,6 +21,7 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  *
  * START-HISTORY (ScarletDME):
+ * 17Oct25 mab Change dyn file prefix to %
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  *
@@ -709,18 +710,20 @@ Private void open_file(bool map_name) /* Map file name via VOC entry */
   /* !LINUX! There appears to be no reliable way to do this */
 
   /* Determine file type by examination of the directory. This should contain
-     a file named ~0 if it is a DH file. Otherwise assume it to be directory. */
+     a file named %0 if it is a DH file. Otherwise assume it to be directory. */
 
   if (pathname[strlen(pathname) - 1] == DS) {
      /* converted to snprintf() -gwb 22Feb20 */
-    if (snprintf(s, MAX_PATHNAME_LEN + 1, "%s~0", pathname) >= (MAX_PATHNAME_LEN + 1)) {
+	 // 17Oct25 mab Change dyn file prefix to %
+    if (snprintf(s, MAX_PATHNAME_LEN + 1, ""%s%%0"", pathname) >= (MAX_PATHNAME_LEN + 1)) {
        /* TODO: this error should be sent out to a log file with more info */
        k_error("Overflow of path/filename max lengthn in open_file()");
        goto exit_op_open;
     }
   } else
      /* converted to snprintf() - gwb 22Feb20 */
-    if (snprintf(s, MAX_PATHNAME_LEN + 1,"%s%c~0", pathname, DS) >= (MAX_PATHNAME_LEN + 1)) {
+     // 17Oct25 mab Change dyn file prefix to %
+    if (snprintf(s, MAX_PATHNAME_LEN + 1,"%s%c%%0", pathname, DS) >= (MAX_PATHNAME_LEN + 1)) {
        /* TODO: this error should be sent out to a log file with more info */
        k_error("Overflow of path/filename max lengthn in open_file()");
        goto exit_op_open;
