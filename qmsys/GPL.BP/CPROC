@@ -2521,18 +2521,22 @@ int.logto:
 
    * new.account contains the account name, null if attaching by path
    * acc.rec contains the pathname of the account (other fields removed)
-   * 17Oct25 mab as part of dyn file prefix to %, test for converted account
-   if not( ospath(acc.rec:@ds:"VOC":@ds:"%0",OS$EXISTS)) then
-      display 'Notice - Account is using outdated subfile names, update required.'
-      return
-   end
+
    if not(ospath(acc.rec, OS$CD)) then
       display sysmsg(5161) ;* Unable to change to new directory
       if ospath(account.path, OS$CD) then return
       display sysmsg(5162) ;* Fatal error : Cannot return to previous account
       return to abort.cproc
    end
-
+   
+   * 17Oct25 mab as part of dyn file prefix to %, test for converted account
+   if not( ospath(acc.rec:@ds:"VOC":@ds:"%0",OS$EXISTS)) then
+      display 'Notice - Account is using outdated subfile names, update required.'
+      if ospath(account.path, OS$CD) then return
+      display sysmsg(5162) ;* Fatal error : Cannot return to previous account
+      return to abort.cproc
+   end
+   
    openpath "VOC" to new.voc else
       display sysmsg(5163) ;* Directory is not a QM account
       if ospath(account.path, OS$CD) then return
