@@ -19,6 +19,7 @@
 * Ladybridge Systems can be contacted via the www.openqm.com web site.
 * 
 * START-HISTORY:
+* 17 Oct 25 mab as part of dyn file prefix mod, test for converted account
 * 10 Jan 22 gwb Rebranded signon message.
 * 20 Mar 09 gwb Took the sharp edges off the signon message.
 * 03 Oct 07  2.6-5 Use parse.pathname.tokens() when processing ACCOUNTS record.
@@ -470,7 +471,11 @@ $include keycode.h
    end case
 
    * Open the VOC file
-
+   * 17Oct25 mab as part of dyn file prefix to %, test for converted account
+   if not( ospath(account.path:@ds:"VOC":@ds:"%0",OS$EXISTS)) then
+      display 'Notice - Account is using outdated subfile names, update required.'
+      goto terminate.connection
+   end
    openpath "VOC" to voc on error
       display 'Error ' : status() : ' opening VOC file. Check access rights.'
       goto terminate.connection
