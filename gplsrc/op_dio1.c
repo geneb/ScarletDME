@@ -715,7 +715,7 @@ Private void open_file(bool map_name) /* Map file name via VOC entry */
   if (pathname[strlen(pathname) - 1] == DS) {
      /* converted to snprintf() -gwb 22Feb20 */
 	 // 17Oct25 mab Change dyn file prefix to %
-    if (snprintf(s, MAX_PATHNAME_LEN + 1, ""%s%%0"", pathname) >= (MAX_PATHNAME_LEN + 1)) {
+    if (snprintf(s, MAX_PATHNAME_LEN + 1, "%s%%0", pathname) >= (MAX_PATHNAME_LEN + 1)) {
        /* TODO: this error should be sent out to a log file with more info */
        k_error("Overflow of path/filename max lengthn in open_file()");
        goto exit_op_open;
