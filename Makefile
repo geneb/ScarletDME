@@ -163,6 +163,11 @@ qmfix: qmfix.o ctype.o linuxlb.o dh_hash.o inipath.o
 	@echo Linking $@
 	@$(COMP) $(C_FLAGS) -lc $(GPLOBJ)qmfix.o $(GPLOBJ)ctype.o $(GPLOBJ)linuxlb.o $(GPLOBJ)dh_hash.o $(GPLOBJ)inipath.o -o $(GPLBIN)qmfix
 
+prefix: prefix.o ctype.o linuxlb.o inipath.o
+	@echo Linking $@
+	@$(COMP) $(C_FLAGS) -lc $(GPLOBJ)prefix.o $(GPLOBJ)ctype.o $(GPLOBJ)linuxlb.o $(GPLOBJ)inipath.o -o $(GPLBIN)prefix
+
+
 qmconv: qmconv.o ctype.o linuxlb.o dh_hash.o
 	@echo Linking $@
 	@$(COMP) $(C_FLAGS) -lc $(GPLOBJ)qmconv.o $(GPLOBJ)ctype.o $(GPLOBJ)linuxlb.o $(GPLOBJ)dh_hash.o -o $(GPLBIN)qmconv
