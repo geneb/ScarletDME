@@ -24,6 +24,7 @@
 #
 # Changelog
 # ---------
+# 29Oct25 mab add prefix program
 # 18Sep15 gwb Specifically copy the gcat and GPL.BP directories if a previous
 #             installation exists. (Git issue #90)
 # 03Sep25 gwb Updated CFLAGS for newer gcc versions.
@@ -138,7 +139,7 @@ QMUSERS := $(shell cat /etc/group | grep qmusers)
 qm: ARCH :=
 qm: BITSIZE := 64
 qm: C_FLAGS  := $(CSTD) -Wall -Wformat=2 -Wno-format-nonliteral -D_DEFAULT_SOURCE=1 -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH) -fPIE
-qm: $(QMOBJS) qmclilib.so qmtic qmfix qmconv qmidx qmlnxd
+qm: $(QMOBJS) qmclilib.so qmtic qmfix qmconv qmidx qmlnxd prefix
 	@echo Linking $@
 	@cd $(GPLOBJ)
 	@$(COMP) $(ARCH) $(L_FLAGS) $(QMOBJSD) -o $(GPLBIN)qm
@@ -146,7 +147,7 @@ qm: $(QMOBJS) qmclilib.so qmtic qmfix qmconv qmidx qmlnxd
 qm32: ARCH := -m32
 qm32: BITSIZE := 32
 qm32: C_FLAGS  := -Wall -Wformat=2 -Wno-format-nonliteral -DLINUX -D_FILE_OFFSET_BITS=64 -I$(GPLSRC) -DGPL -g $(ARCH)
-qm32: $(QMOBJS) qmclilib.so qmtic qmfix qmconv qmidx qmlnxd
+qm32: $(QMOBJS) qmclilib.so qmtic qmfix qmconv qmidx qmlnxd prefix
 	@echo Linking $@
 	@$(COMP) $(ARCH) $(L_FLAGS) $(QMOBJSD) -o $(GPLBIN)qm
 
@@ -216,6 +217,9 @@ qmconv.o: qmconv.c qm.h dh_int.h header.h revstamp.h
 
 qmfix.o: qmfix.c qm.h dh_int.h revstamp.h
 	@$(COMP) $(C_FLAGS) -c $< -o $(GPLOBJ)qmfix.o
+	
+prefix.o: prefix.c qm.h dh_int.h revstamp.h
+	@$(COMP) $(C_FLAGS) -c $< -o $(GPLOBJ)prefix.o	
 
 qmidx.o: qmidx.c qm.h dh_int.h revstamp.h
 	@$(COMP) $(C_FLAGS) -c $< -o $(GPLOBJ)qmidx.o

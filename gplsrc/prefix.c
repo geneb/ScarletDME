@@ -1,5 +1,6 @@
 /* PREFIX.C
  * convert dynamic (hashed) files from ~ prefix to %
+ *  assume usage: prefix path_to_account/wildcard* 
  * based on QM program QMFIX
  * QM file fix tool
  * Copyright (c) 2007 Ladybridge Systems, All Rights Reserved
@@ -58,11 +59,7 @@ static u_char cfg_debug = 0; /* DEBUG config parameter */
 
 static FILE *log = NULL;
 static bool logging = FALSE;      
-
-static bool file_found = FALSE;
 static char filename[MAX_PATHNAME_LEN + 1] = ""; /* File being processed */
-static int fu[MAX_SUBFILES];                     /* File variables */
-
 
 int16_t display_lines; /* Available lines for display */
 int16_t emitted_lines; /* Lines emitted */
@@ -72,7 +69,8 @@ static bool quit = FALSE;
 bool read_qmconfig(void);
 bool is_dh_file(void);
 bool rename_subfile(int16_t subfile);
-int process_file(void);
+void process_file(void);
+void fix_file(char *fn);
 bool yesno(char *prompt);
 void emit(char msg[], ...);
 void event_handler(int signum);
@@ -89,10 +87,6 @@ char *strupr(char *s);
  int main(int argc, char *argv[]) {
   int status = 1;
   int arg;
-  int16_t sf;
-
-  for (sf = 0; sf < MAX_SUBFILES; sf++)
-    fu[sf] = -1;
 
   set_default_character_maps();
 
@@ -120,7 +114,7 @@ char *strupr(char *s);
   arg = 1;
   while (arg < argc) {
     printf("File: %s\n",argv[arg]);
-    // fix_file(argv[arg]);
+    fix_file(argv[arg]);
     arg++;
   }
 
@@ -136,33 +130,30 @@ usage:
    fix_file()                                                             */
 
 void fix_file(char *fn) {
-  //int status;
 
   strcpy(filename, fn);
 
   if (is_dh_file()) {
-    if (file_found)
-      emit("\n\n");
-    file_found = TRUE;
-    //status = process_file(); /* git issue #86 */
     process_file();
-
   }
+
+  return;
 }
 
 /* ======================================================================
-   is_dh_file()                                                           */
+   is_dh_file()  by looking for ~0 file                                 */
 
 bool is_dh_file() {
   bool status = FALSE;
   char pathname[MAX_PATHNAME_LEN + 1];
   struct stat statbuf;
   // converted to snprintf() -gwb 23Feb20
-  // 17Oct25 mab Change dyn file prefix to %
-  if (snprintf(pathname, MAX_PATHNAME_LEN + 1, "%s%c%%0", filename, DS) >= (MAX_PATHNAME_LEN + 1)) {
+  // rem looking for old style blob name (~0)
+  if (snprintf(pathname, MAX_PATHNAME_LEN + 1, "%s%c~0", filename, DS) >= (MAX_PATHNAME_LEN + 1)) {
     emit("Overflow of max file/pathname size. Truncated to:\n\"%s\"\n", pathname);
   }
 
+   /* file exist?, if not skip */
   if (stat(pathname, &statbuf) != 0){
     goto exit_is_dh_file;
   }  
@@ -172,7 +163,7 @@ bool is_dh_file() {
     goto exit_is_dh_file;
   }  
 
-    status = TRUE;
+  status = TRUE;
 
 exit_is_dh_file:
   return status;
@@ -181,8 +172,7 @@ exit_is_dh_file:
 /* ======================================================================
    process_file()  -  Process a file                                      */
 
-int process_file() {
-  int status = 1;
+void process_file() {
 
   int16_t i;
 
@@ -193,32 +183,22 @@ int process_file() {
 
   /* look for primary and overflow subfiles, renmae here? */
 
-  if (!rename_subfile(PRIMARY_SUBFILE)) {
-    perror("Cannot open primary subfile");
+  if (rename_subfile(PRIMARY_SUBFILE) != 0) {
+    perror("Cannot rename primary subfile");
     goto exit_process_file;
   }
 
-  if (!rename_subfile(OVERFLOW_SUBFILE)) {
-    perror("Cannot open overflow subfile");
+  if (rename_subfile(OVERFLOW_SUBFILE) != 0) {
+    perror("Cannot rename overflow subfile");
     goto exit_process_file;
   }
 
   for (i = 0; i < MAX_INDICES; i++) {
-    (void)rename_subfile(AK_BASE_SUBFILE + i);
+    rename_subfile(AK_BASE_SUBFILE + i);
   }
 
-
-
- 
 exit_process_file:
- /* for (sf = 0; sf < MAX_SUBFILES; sf++) {
-    if (fu[sf] >= 0) {
-      close(fu[sf]);
-      fu[sf] = -1;
-    }
-  }*/
-
-  return status;
+  return;
 }
 
 /* ======================================================================
@@ -227,17 +207,25 @@ exit_process_file:
 bool rename_subfile(int16_t sf) {
   char new_path[MAX_PATHNAME_LEN + 1];  // was hardcoded to 160.
   char old_path[MAX_PATHNAME_LEN + 1];  // was hardcoded to 160.
-  // converted to snprintf() -gwb 23Feb20
-    // 17Oct25 mab Change dyn file prefix to %
-  if (snprintf(new_path, MAX_PATHNAME_LEN + 1, "%s%c~%d", filename, DS, (int)sf) >= (MAX_PATHNAME_LEN + 1)) {
+  struct stat statbuf; 
+  int status;
+
+  if (snprintf(old_path, MAX_PATHNAME_LEN + 1, "%s%c~%d", filename, DS, (int)sf) >= (MAX_PATHNAME_LEN + 1)) {
     emit("Overflow of max file/pathname size. Truncated to:\n\"%s\"\n", old_path);
   }
 
   if (snprintf(new_path, MAX_PATHNAME_LEN + 1, "%s%c%%%d", filename, DS, (int)sf) >= (MAX_PATHNAME_LEN + 1)) {
     emit("Overflow of max file/pathname size. Truncated to:\n\"%s\"\n", new_path);
   }
-  
-  return (rename(old_path,new_path));
+
+  /* file exist?, if not skip */
+  if (stat(old_path, &statbuf) != 0){
+    status = 1;  // file does not exist or is not accessable
+  } else {
+    emit("Renaming %s to %s\n", old_path,new_path);
+    status = rename(old_path,new_path);
+  }
+  return status;
 }
 
 /* ======================================================================
