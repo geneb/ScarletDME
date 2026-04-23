@@ -21,6 +21,7 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 17Oct25 mab Change dyn file prefix to %
  * 12Sep25 gwb Git Issue #86: Uncomment out code that was commented out in error...in 2020.
  * 03Sep25 gwb Remove K&R-isms.
  * 15Jan22 gwb Fixed dozens of instances of "Wrong type of arguments to fomatting
@@ -390,7 +391,8 @@ bool is_dh_file() {
   char pathname[MAX_PATHNAME_LEN + 1];
   struct stat statbuf;
   // converted to snprintf() -gwb 23Feb20
-  if (snprintf(pathname, MAX_PATHNAME_LEN + 1, "%s%c~0", filename, DS) >= (MAX_PATHNAME_LEN + 1)) {
+  // 17Oct25 mab Change dyn file prefix to %
+  if (snprintf(pathname, MAX_PATHNAME_LEN + 1, "%s%c%%0", filename, DS) >= (MAX_PATHNAME_LEN + 1)) {
     emit("Overflow of max file/pathname size. Truncated to:\n\"%s\"\n", pathname);
   }
 
@@ -2027,11 +2029,13 @@ bool open_subfile(int16_t sf) {
   char path[MAX_PATHNAME_LEN + 1];  // was hardcoded to 160.
   // converted to snprintf() -gwb 23Feb20
   if ((sf >= AK_BASE_SUBFILE) && (header.akpath[0] != '\0')) {
-    if (snprintf(path, MAX_PATHNAME_LEN + 1, "%s%c~%d", header.akpath, DS, (int)sf) >= (MAX_PATHNAME_LEN + 1)) {
+    // 17Oct25 mab Change dyn file prefix to %
+    if (snprintf(path, MAX_PATHNAME_LEN + 1, "%s%c%%%d", header.akpath, DS, (int)sf) >= (MAX_PATHNAME_LEN + 1)) {
       emit("Overflow of max file/pathname size. Truncated to:\n\"%s\"\n", path);
     }
   } else {
-    if (snprintf(path, MAX_PATHNAME_LEN + 1, "%s%c~%d", filename, DS, (int)sf) >= (MAX_PATHNAME_LEN + 1)) {
+    // 17Oct25 mab Change dyn file prefix to %
+	if (snprintf(path, MAX_PATHNAME_LEN + 1, "%s%c%%%d", filename, DS, (int)sf) >= (MAX_PATHNAME_LEN + 1)) {
       emit("Overflow of max file/pathname size. Truncated to:\n\"%s\"\n", path);
     }
   }
@@ -2105,11 +2109,13 @@ bool delete_subfile(int16_t sf) {
   char path[MAX_PATHNAME_LEN + 1];  // was hardcoded 160
   // converted to snprintf() -gwb 23Feb20
   if ((sf >= AK_BASE_SUBFILE) && (header.akpath[0] != '0')) {
-    if (snprintf(path, MAX_PATHNAME_LEN + 1, "%s%c~%d", header.akpath, DS, (int)sf) >= (MAX_PATHNAME_LEN + 1)) {
+    // 17Oct25 mab Change dyn file prefix to %
+    if (snprintf(path, MAX_PATHNAME_LEN + 1, "%s%c%%%d", header.akpath, DS, (int)sf) >= (MAX_PATHNAME_LEN + 1)) {
       emit("Overflow of max file/pathname size. Truncated to:\n\"%s\"\n", path);
     }
   } else {
-    if (snprintf(path, MAX_PATHNAME_LEN + 1, "%s%c~%d", filename, DS, (int)sf) >= (MAX_PATHNAME_LEN + 1)) {
+    // 17Oct25 mab Change dyn file prefix to %
+    if (snprintf(path, MAX_PATHNAME_LEN + 1, "%s%c%%%d", filename, DS, (int)sf) >= (MAX_PATHNAME_LEN + 1)) {
       emit("Overflow of max file/pathname size. Truncated to:\n\"%s\"\n", path);
     }
   }
@@ -2490,10 +2496,12 @@ bool recover_space() {
 
   /* ---------- Overflow subfile  -  Create a new overflow subfile */
   // converted to snprintf() -gwb 23Feb20
-  if (snprintf(oldpath, MAX_PATHNAME_LEN + 1, "%s%c~1", filename, DS) >= (MAX_PATHNAME_LEN + 1)) {
+  // 17Oct25 mab Change dyn file prefix to %
+  if (snprintf(oldpath, MAX_PATHNAME_LEN + 1, "%s%c%%1", filename, DS) >= (MAX_PATHNAME_LEN + 1)) {
     emit("Overflow of max file/pathname size. Truncated to:\n\"%s\"\n", oldpath);
   }
-  if (snprintf(newpath, MAX_PATHNAME_LEN + 1, "%s%c~~1", filename, DS) >= (MAX_PATHNAME_LEN + 1)) {
+  // 17Oct25 mab Change dyn file prefix to %
+  if (snprintf(newpath, MAX_PATHNAME_LEN + 1, "%s%c%%%%1", filename, DS) >= (MAX_PATHNAME_LEN + 1)) {
     emit("Overflow of max file/pathname size. Truncated to:\n\"%s\"\n", newpath);
   }
   ofu = open(newpath, O_RDWR | O_BINARY | O_CREAT, default_access);

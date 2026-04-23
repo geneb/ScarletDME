@@ -21,6 +21,7 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  * 
  * START-HISTORY (ScarletDME):
+ * 17Oct25 mab Change dyn file prefix to %
  * 09Jan22 gwb Fixups for 64 bit builds.  (see #ifndef __LP64__ blocks)
  *
  * 28Feb20 gwb Changed integer declarations to be portable across address
@@ -228,8 +229,9 @@ bool is_dh_file(char* filename) {
   int dhfu = -1;
   char pathname[MAX_PATHNAME_LEN + 1];
   struct stat statbuf;
-
-  sprintf(pathname, "%s%c~0", filename, DS);
+  
+  //* 17Oct25 mab Change dyn file prefix to %
+  sprintf(pathname, "%s%c%%0", filename, DS);
 
   if (stat(pathname, &statbuf) != 0)
     goto exit_is_dh_file;
@@ -747,8 +749,9 @@ exit_process_file:
 
 bool open_subfile(char* filename, int16_t sf) {
   char path[160 + 1];
-
-  sprintf(path, "%s%c~%d", filename, DS, (int)sf);
+  
+  // 17Oct25 mab Change dyn file prefix to %
+  sprintf(path, "%s%c%%%d", filename, DS, (int)sf);
   fu[sf] = open(path, (int)(O_RDWR | O_BINARY), default_access);
   return (fu[sf] >= 0);
 }

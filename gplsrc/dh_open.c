@@ -21,6 +21,7 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  *
  * START-HISTORY (ScarletDME):
+ * 17Oct25 mab Change dyn file prefix to %
  * 28Feb20 gwb Changed integer declarations to be portable across address
  *             space sizes (32 vs 64 bit)
  * 22Feb20 gwb Replaced a pair of sprintf() with snprintf() in dh_open().
@@ -138,7 +139,8 @@ DH_FILE* dh_open(char path[]) {
 
   /* Open primary subfile */
   /* replaced sprintf() -gwb 22Feb20 */
-  if (snprintf(pathname, MAX_PATHNAME_LEN + 1, "%s%c~0", filename, DS) >= (MAX_PATHNAME_LEN + 1)) {
+// 17Oct25 mab Change dyn file prefix to %
+  if (snprintf(pathname, MAX_PATHNAME_LEN + 1, "%s%c%%0", filename, DS) >= (MAX_PATHNAME_LEN + 1)) {
     /* TODO: this should be added to the system log file. */
      k_error("Overflowed directory/filename path length in dh_open()!");
      goto exit_dh_open;
@@ -197,7 +199,8 @@ DH_FILE* dh_open(char path[]) {
 
   /* Open overflow subfile */
   /* converted to snprintf() -gwb 22Feb20 */
-  if (snprintf(pathname, MAX_PATHNAME_LEN + 1, "%s%c~1", filename, DS) >= (MAX_PATHNAME_LEN + 1)) {
+  // 17Oct25 mab Change dyn file prefix to %
+  if (snprintf(pathname, MAX_PATHNAME_LEN + 1, "%s%c%%1", filename, DS) >= (MAX_PATHNAME_LEN + 1)) {
     /* TODO: this should be added to the system log file. */
      k_error("Overflowed directory/filename path length in dh_open()!");
      goto exit_dh_open;

@@ -1,0 +1,123 @@
+*
+* pref_t
+* test changes to dyn file prefix (~ to %)
+* assumes TEST_FILE exists
+* create some records
+* select some records
+* delete some records
+$define rec_cnt 100000
+DIM recs(26)
+* create some dummy record templates
+crt 'create template records'
+for i = 1 to 26
+  rec = ''
+  imod = mod(i-1,26)   ;* char offset A - Z
+  ltr = char(imod+65)
+  sz = (i*10) + 300
+  rec = str(ltr,sz)
+  recs(i) = rec
+next i
+
+*
+open "TEST_FILE" to tf else abort 'cannot open TEST_FILE'
+*
+* create some records
+crt 'create ':rec_cnt: ' records'
+* 
+for i = 1 to rec_cnt
+  rec = ''
+  imod = mod(i,26)   
+  if imod = 0 then imod = 26
+  ltr = char(imod+64)
+
+  id = ltr : i
+  write recs(imod) on tf, id
+next i
+*
+* select some records
+*
+sselect tf to 1
+crt @SELECTED : ' records selected, read the "A" ones'
+
+rc = 0
+
+next.id:
+readnext id from 1 then
+* 
+* only read the 'A' records
+  if id[1,1] = "A" then
+    read rec from tf, id then
+	  rc += 1
+    end else
+	  crt id: ' not found??!'
+	  input ok
+	end
+  end	
+  goto next.id
+end
+*
+crt 'we read ':rc:' "A" records'
+*compare some records
+crt 'compare records to templates'
+*
+for i = 1 to rec_cnt
+  imod = mod(i,26)   
+  if imod = 0 then imod = 26
+  ltr = char(imod+64)
+  id = ltr : i
+  
+  read rec from tf, id then
+    if rec = recs(imod) then
+	  null   ;* crt id:' match'
+	end else
+	  crt Id:' no match!!!!'
+	  input ok
+	end
+  end else
+    crt 'cannot find ':id
+	input ok
+  end
+next i
+*
+* deleted some records
+*
+sselect tf to 1
+crt @SELECTED : ' records selected, delete the "A" ones'
+
+rc = 0
+
+next.del.id:
+readnext id from 1 then
+* 
+* only delete the 'A' records
+  if id[1,1] = "A" then
+    delete tf ,id
+	rc += 1
+  end	
+  goto next.del.id
+end
+*
+crt 'we deleted ':rc:' "A" records'
+*
+* look for "A" records
+*
+sselect tf to 1
+crt @SELECTED : ' records selected, look for the "A" ones'
+
+rc = 0
+
+next.find.id:
+readnext id from 1 then
+* 
+* count 'A' records
+  if id[1,1] = "A" then
+    crt id : ' found???!'
+	rc += 1
+  end 	
+  goto next.find.id
+end
+*
+crt rc : ' "A" records found'
+*
+crt 'all done folks!'
+end

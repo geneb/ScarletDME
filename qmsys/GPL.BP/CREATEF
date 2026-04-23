@@ -17,6 +17,9 @@
 * Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 * 
 * Ladybridge Systems can be contacted via the www.openqm.com web site.
+*
+* START-HISTORY (ScarletDME):
+* 17Oct25 mab Change dyn file prefix to %
 * 
 * START-HISTORY:
 * 02 Nov 06  2.4-15 VOC record types now case insensitive.
@@ -326,12 +329,12 @@ $define default.split.load 80
                if not(ospath(new.path, OS$MKDIR)) then
                   stop sysmsg(6196, new.path) ;* Unable to create %1
                end
-
-               * Move the ~n components down into the new sub directory
+               * 17Oct25 mab Change dyn file prefix to %
+               * Move the %n components down into the new sub directory
 
                for i = dcount(subfiles, @fm) to 1 step -1
                   s = subfiles<i,1>
-                  if s[1,1] = '~' then
+                  if s[1,1] = '%' then
                      if not(osrename(old.path:@ds:s, new.path:@ds:s)) then
                         stop sysmsg(6197, status(), os.error(), old.path:@ds:s)
                               * Error %1.%2 moving %3

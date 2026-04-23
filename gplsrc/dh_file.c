@@ -21,6 +21,8 @@
  * ScarletDME Wiki: https://scarlet.deltasoft.com
  *
  * START-HISTORY (ScarletDME):
+ 
+ * 17Oct25 mab Change dyn file prefix to %
  * 15Jan22 gwb Fixed argument formatting issues (CwE-686) 
  * 
  * 29Feb20 gwb Changed LONG_MAX to INT32_MAX.  When building for a 64 bit 
@@ -141,9 +143,10 @@ bool dh_open_subfile(DH_FILE* dh_file,
     mode = DIO_UPDATE;
 
   if ((subfile >= AK_BASE_SUBFILE) && (dh_file->akpath != NULL)) {
-    sprintf(filename, "%s%c~%d", dh_file->akpath, DS, (int)subfile);
+// 17Oct25 mab Change dyn file prefix to %
+    sprintf(filename, "%s%c%%%d", dh_file->akpath, DS, (int)subfile);
   } else {
-    sprintf(filename, "%s%c~%d", pathname, DS, (int)subfile);
+    sprintf(filename, "%s%c%%%d", pathname, DS, (int)subfile);
   }
 
   dh_file->sf[subfile].fu = dio_open(filename, mode);
