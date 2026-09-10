@@ -644,7 +644,7 @@ void op_ccall() {
     k_error("CCALL string 2 null");
   len2 = arg2->data.str.saddr->string_len;
   if (len2 > MAX_LOCAL_STRING_LEN) {
-    s2 = k_alloc(87, len1 + 1);
+    s2 = k_alloc(87, len2 + 1);
     if (s2 == NULL) {
       if (len1 > MAX_LOCAL_STRING_LEN)
         k_free(s1);
