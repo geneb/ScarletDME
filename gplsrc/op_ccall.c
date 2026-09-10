@@ -87,7 +87,14 @@ Private void ccall_c(unsigned char *s1, void *s2) {
   u_int64 Val;
   #endif
   
+#ifndef __LP64__
   u_int32_t Stk[50];
+#else
+  /* Stk holds the arguments passed to the called function, and case 4
+     pushes an address into it.  On LP64 a 32 bit slot silently truncates
+     every pointer to its low half. */
+  u_int64 Stk[50];
+#endif
   int StkCnt;
   u_int64 res64;
   void *v;
@@ -132,7 +139,11 @@ Private void ccall_c(unsigned char *s1, void *s2) {
         break;
 
       case 3: /* Push value */
+#ifndef __LP64__
         Stk[StkCnt++] = *(u_int32_t*)s1;
+#else
+        Stk[StkCnt++] = *(u_int64*)s1;
+#endif
         s1 += sizeof(u_int32_t*);
         break;
 
