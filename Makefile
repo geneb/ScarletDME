@@ -141,7 +141,11 @@ qm: C_FLAGS  := $(CSTD) -Wall -Wformat=2 -Wno-format-nonliteral -D_DEFAULT_SOURC
 qm: $(QMOBJS) qmclilib.so qmtic qmfix qmconv qmidx qmlnxd
 	@echo Linking $@
 	@cd $(GPLOBJ)
-	@$(COMP) $(ARCH) $(L_FLAGS) $(QMOBJSD) -o $(GPLBIN)qm
+#	-rdynamic puts qm's own symbols in the dynamic symbol table so that a
+#	library loaded by CCALL can call back into QM.  op_ccall.c dlopen()s with
+#	RTLD_NOW, so without this a library referencing, say, dh_read does not
+#	load at all.
+	@$(COMP) $(ARCH) -rdynamic $(L_FLAGS) $(QMOBJSD) -o $(GPLBIN)qm
 
 qm32: ARCH := -m32
 qm32: BITSIZE := 32
